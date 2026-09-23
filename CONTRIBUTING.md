@@ -460,11 +460,11 @@ For end-to-end behavior — verifying that Grayscale programs produce the right 
 ```gray
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: description
-    mut result int = 1 + 1
+    mut result i64 = 1 + 1
     if result == 2 {
         println("  [PASS] 1 + 1 = 2")
         passed += 1
@@ -493,7 +493,7 @@ The test runner checks for `SOME TESTS FAILED` in the output — if it's present
  */
 
 do main() {
-    mut x int = "hello"  // Should produce E3001
+    mut x i64 = "hello"  // Should produce E3001
 }
 ```
 

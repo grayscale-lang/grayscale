@@ -59,7 +59,7 @@ Grayscale supports two forms of comments:
 
 ```gray
 // This is a single-line comment
-mut x int = 42  // inline comment
+mut x i64 = 42  // inline comment
 ```
 
 **Multi-line comments** begin with `/*` and end with `*/`:
@@ -72,7 +72,7 @@ mut x int = 42  // inline comment
 Multi-line comments can also be used inline within a statement:
 
 ```gray
-mut x int = /* default value */ 10
+mut x i64 = /* default value */ 10
 ```
 
 Multi-line comments do not nest. A `/*` inside a multi-line comment has no special meaning.
@@ -117,9 +117,8 @@ mut          new         private     struct      use*        using
 
 **Types (reserved names):**
 ```
-bool         byte           char        Error       float
-func         int            map         nil         SourceLocation
-string       uint
+bool         char        Error       func        map
+nil          SourceLocation          string
 ```
 
 `Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
@@ -176,7 +175,7 @@ if a { } elif b { } otherwise { }      // E2088 — crossed dialects
 
 `if` and `default` are spelled the same in both dialects and never vary.
 
-> 💡 **Tip:** The `map` keyword is optional in type position — `[string:int]` and `map[string:int]` are identical. The parser normalizes both to the same canonical form.
+> 💡 **Tip:** The `map` keyword is optional in type position — `[string:i64]` and `map[string:i64]` are identical. The parser normalizes both to the same canonical form.
 
 ### 2.6 Operators and Punctuation
 
@@ -284,7 +283,7 @@ Escape sequences:
 
 - A character literal must contain exactly one codepoint. `''` and `'ab'` are `E1018`.
 - The bytes between the quotes are decoded as UTF-8; a malformed sequence is `E1018`.
-- In a character literal `\xNN` is codepoint U+00NN, not a raw byte (unlike a string literal, where `\xNN` is a byte). For sub-codepoint byte values use `byte`.
+- In a character literal `\xNN` is codepoint U+00NN, not a raw byte (unlike a string literal, where `\xNN` is a byte). For sub-codepoint byte values use `u8`.
 - An unterminated literal is `E1005`; an unknown escape is `E1007`; a malformed `\x` or `\u{}` is `E1006`.
 
 #### 2.7.6 Boolean Literals
@@ -303,48 +302,70 @@ Grayscale is statically typed. Every variable and expression has a type known at
 
 ### 3.1 Primitive Types
 
-#### 3.1.1 Integer Type (`int`)
+#### 3.1.1 Integer Types
 
-The `int` type represents a 64-bit signed integer. Arithmetic operations use checked arithmetic; overflow or underflow produces a runtime panic rather than silent wrapping.
+Grayscale's integer types are named by signedness and width:
+
+| Type | Width | Signed | Range |
+|------|-------|--------|-------|
+| `i8` | 8-bit | yes | -128 to 127 |
+| `i16` | 16-bit | yes | -32,768 to 32,767 |
+| `i32` | 32-bit | yes | -2^31 to 2^31-1 |
+| `i64` | 64-bit | yes | -2^63 to 2^63-1 |
+| `u8` | 8-bit | no | 0 to 255 |
+| `u16` | 16-bit | no | 0 to 65,535 |
+| `u32` | 32-bit | no | 0 to 2^32-1 |
+| `u64` | 64-bit | no | 0 to 2^64-1 |
+
+An integer literal with no other type to take is an `i64`. Arithmetic is overflow-checked: overflow or underflow produces a runtime panic rather than silent wrapping.
 
 ```gray
-mut small int = 42
-mut large int = 9223372036854775807  // Max 64-bit signed value
+mut small i64 = 42
+mut large i64 = 9223372036854775807   // max i64
+mut count u64 = 18446744073709551615  // max u64
+mut flags u8 = 0xFF
 ```
 
-#### 3.1.2 Unsigned Integer Type (`uint`)
+A literal outside the declared type's range, or a negative literal assigned to an unsigned type, is a check-time error. Byte data is `u8`: a `[u8]` stores one byte per element, and the stdlib's byte-oriented functions (`io.read_bytes`, `encoding`, `binary`, `uuid.to_bytes`) take and return `[u8]`.
 
-The `uint` type represents a 64-bit unsigned integer. Like `int`, arithmetic is overflow-checked with a runtime panic on overflow.
+Use `cast` to convert between integer types: `cast(value, i32)`, `cast(value, u16)`. A narrowing cast is range-checked at runtime.
+
+The names `int`, `uint`, `float`, and `byte` are not built in. Code that prefers them declares them as aliases:
 
 ```gray
-mut count uint = 100
-mut big uint = 18446744073709551615  // Max 64-bit unsigned value
+alias int = i64
+alias uint = u64
+alias float = f64
+alias byte = u8
 ```
 
-Assigning a negative value to a `uint` produces a check-time error.
+#### 3.1.2 Floating-Point Types
 
-#### 3.1.3 Floating-Point Type (`float`)
+| Type | Width | C Type | Precision |
+|------|-------|--------|-----------|
+| `f32` | 32-bit | `float` | ~7 decimal digits (IEEE 754 single-precision) |
+| `f64` | 64-bit | `double` | ~15 decimal digits (IEEE 754 double-precision) |
 
-The `float` type represents 64-bit IEEE 754 double-precision floating-point numbers.
+A float literal with no other type to take is an `f64`. Use `f32` when interfacing with C APIs that expect single-precision or when memory is constrained.
 
 Division by zero with floating-point operands produces a runtime panic. However, special IEEE 754 values (`NaN`, `Infinity`, `-Infinity`) can appear through stdlib math functions (e.g., edge cases in trigonometric or logarithmic functions). Use `math.is_nan()`, `math.is_infinite()`, and `math.is_finite()` to check for these values.
 
 ```gray
-mut pi float = 3.14159
-mut negative float = -2.5
+mut pi f64 = 3.14159
+mut ratio f32 = 0.5
 ```
 
-Integer values are implicitly promoted to `float` when the target type is `float`, `f32`, or `f64`. This applies to variable declarations, assignments, function arguments, map literal values, and return statements:
+Integer values are implicitly promoted to a floating-point type when the target type is `f32` or `f64`. This applies to variable declarations, assignments, function arguments, map literal values, and return statements:
 
 ```gray
-mut x float = 5       // 5.0
-mut y f64 = 1          // 1.0
+mut x f64 = 5          // 5.0
+mut y f32 = 1          // 1.0
 x = 42                 // 42.0
 ```
 
-No explicit `float()` cast is needed. The promotion is lossless for values within the floating-point range.
+No explicit cast is needed. The promotion is lossless for values within the floating-point range.
 
-#### 3.1.4 String Type (`string`)
+#### 3.1.3 String Type (`string`)
 
 The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint. `len()` returns the byte length, not the character count.
 
@@ -362,12 +383,12 @@ mut s string = "日本語"
 println(len(s))              // 9 (byte length, not 3 characters)
 println(char_count(s))       // 3 (Unicode character count)
 println(to_char(s, 0))       // 日 (the character at codepoint index 0)
-println(int(to_char(s, 0)))  // 26085 (its Unicode codepoint value)
+println(cast(to_char(s, 0), i64))  // 26085 (its Unicode codepoint value)
 ```
 
-Use `to_char()` to access characters by codepoint index and `char_count()` to get the true character count. `to_char()` returns a `char`; apply `int()` to it for the numeric codepoint.
+Use `to_char()` to access characters by codepoint index and `char_count()` to get the true character count. `to_char()` returns a `char`; apply `cast(c, i64)` to it for the numeric codepoint.
 
-#### 3.1.5 Boolean Type (`bool`)
+#### 3.1.4 Boolean Type (`bool`)
 
 The `bool` type has exactly two values: `true` and `false`.
 
@@ -376,9 +397,9 @@ mut flag bool = true
 mut result bool = 10 > 5  // true
 ```
 
-#### 3.1.6 Character Type (`char`)
+#### 3.1.5 Character Type (`char`)
 
-The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `byte` (8-bit, 0–255) and from `int`. At the C boundary a `char` is `int32_t`.
+The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `u8` (8-bit, 0–255) and from the other integer types. At the C boundary a `char` is `int32_t`.
 
 ```gray
 mut letter char = 'A'          // U+0041
@@ -387,56 +408,12 @@ mut eacute char = '\u{E9}'     // U+00E9  é
 mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-- `int(c)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
+- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
 - Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
-- `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `int`.
+- `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `i64`.
 - `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.
 
-#### 3.1.7 Byte Type (`byte`)
-
-The `byte` type represents an 8-bit unsigned integer with values from 0 to 255.
-
-```gray
-mut b byte = 0xFF  // 255
-mut c byte = 128   // decimal also works
-```
-
-Assigning a value outside the range 0-255 to a `byte` is a check-time error.
-
-#### 3.1.8 Sized Floating-Point Types
-
-Grayscale provides fixed-width floating-point types:
-
-| Type | Width | C Type | Precision |
-|------|-------|--------|-----------|
-| `f32` | 32-bit | `float` | ~7 decimal digits (IEEE 754 single-precision) |
-| `f64` | 64-bit | `double` | ~15 decimal digits (IEEE 754 double-precision) |
-
-`f64` is equivalent to `float`. Use `f32` when interfacing with C APIs that expect single-precision or when memory is constrained.
-
-```gray
-mut x f32 = 3.14    // single-precision
-mut y f64 = 3.14    // double-precision (same as float)
-```
-
-#### 3.1.9 Sized Integer Types
-
-Grayscale provides fixed-width integer types for precise control over integer size:
-
-| Type | Width | Signed | Range |
-|------|-------|--------|-------|
-| `i8` | 8-bit | yes | -128 to 127 |
-| `i16` | 16-bit | yes | -32,768 to 32,767 |
-| `i32` | 32-bit | yes | -2^31 to 2^31-1 |
-| `i64` | 64-bit | yes | -2^63 to 2^63-1 |
-| `u8` | 8-bit | no | 0 to 255 |
-| `u16` | 16-bit | no | 0 to 65,535 |
-| `u32` | 32-bit | no | 0 to 2^32-1 |
-| `u64` | 64-bit | no | 0 to 2^64-1 |
-
-Use `cast` for sized type conversions: `cast(value, i32)`, `cast(value, u16)`.
-
-#### 3.1.10 Wide Integer Types (`i128`, `u128`, `i256`, `u256`)
+#### 3.1.6 Wide Integer Types (`i128`, `u128`, `i256`, `u256`)
 
 Grayscale provides portable wide integer types backed by struct-based arithmetic (no compiler extensions required):
 
@@ -457,28 +434,28 @@ println(c)                   // prints "142"
 println(type_of(c))          // "i128"
 println(size_of(i128))       // 16
 
-mut x int = int(c)           // cast back to int
+mut x i64 = cast(c, i64)           // cast back to i64
 mut s string = string(c)     // convert to string
 ```
 
-Wide integers use the same overflow-checked arithmetic as `int` and `uint`; overflow produces a runtime panic.
+Wide integers use the same overflow-checked arithmetic as `i64` and `u64`; overflow produces a runtime panic.
 
-A negative literal assigned to `u128` or `u256` is rejected with `E3036`, the same as for `uint`.
+A negative literal assigned to `u128` or `u256` is rejected with `E3036`, the same as for `u64`.
 
-#### 3.1.11 Pointer Type (`^Type`)
+#### 3.1.7 Pointer Type (`^Type`)
 
 The pointer type `^Type` represents a memory address pointing to a value of `Type`.
 
 | Syntax | Meaning |
 |--------|---------|
-| `^int` | Pointer to an `int` |
+| `^i64` | Pointer to an `i64` |
 | `^MyStruct` | Pointer to a `MyStruct` |
 | `addr(x)` | Get the address of `x` |
 | `p^` | Dereference pointer `p` |
 
 ```gray
-mut x int = 42
-mut p ^int = addr(x)
+mut x i64 = 42
+mut p ^i64 = addr(x)
 println(p)   // 0x16d1ab9f8, prints the address as hex
 println(p^)  // 42, explicit dereference reads the pointee
 p^ = 100
@@ -503,7 +480,7 @@ root = make_node(nil)  // OK: nil satisfies the ^Node parameter
 **Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p.field = ...`, `p^ += ...`). This protection follows the pointer wherever it goes — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction, and so does a pointer read back out of a function's return value, a struct field, an array element, or a map value. Passing such a pointer to a function that writes through that parameter is rejected at the call. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
 
 ```gray
-const x int = 42
+const x i64 = 42
 mut p = addr(x)
 println(p^)     // 42 — reading is allowed
 p^ = 99         // ERROR — writing through a const-sourced pointer
@@ -514,7 +491,7 @@ q^ = 99         // ERROR — const origin propagates through assignment
 **Pointer aliasing:** Calling `addr()` more than once on the same variable produces pointers that all refer to the same memory. Changing the value through one pointer changes it for all of them. In multithreaded code, protect shared variables with `sync.lock()` to avoid data races.
 
 ```gray
-mut x int = 10
+mut x i64 = 10
 mut p1 = addr(x)
 mut p2 = addr(x)
 p1^ = 99
@@ -524,12 +501,12 @@ println(p2^)    // 99 — p1 and p2 point to the same variable
 **Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index or a dynamic `[T]` array element.
 
 ```gray
-const x int = 42
+const x i64 = 42
 mut p = raw(x)
 p^ = 99           // allowed — raw() bypasses const-source protection
 println(p^)        // 99
 
-mut q ^int = raw(x)
+mut q ^i64 = raw(x)
 // q^ dereference has no nil-check — if q were nil, behavior is undefined
 ```
 
@@ -548,35 +525,35 @@ Arrays are ordered collections of elements of the same type.
 **Dynamic arrays** have variable length:
 
 ```gray
-mut numbers [int] = {1, 2, 3, 4, 5}
+mut numbers [i64] = {1, 2, 3, 4, 5}
 mut empty [string] = {}
 ```
 
 **Fixed-size arrays** have a length specified at declaration:
 
 ```gray
-const fixed [int, 3] = {10, 20, 30}
+const fixed [i64, 3] = {10, 20, 30}
 ```
 
 Fixed-size arrays must be declared with `const`. Providing fewer values than the declared size is permitted; providing more values than the declared size is an error.
 
 ```gray
-const a [int, 5] = {1, 2, 3}           // OK (3 of 5 slots used, remaining zero-initialized)
-const b [int, 5] = {1, 2, 3, 4, 5, 6}  // Error: 6 values exceeds size of 5
+const a [i64, 5] = {1, 2, 3}           // OK (3 of 5 slots used, remaining zero-initialized)
+const b [i64, 5] = {1, 2, 3, 4, 5, 6}  // Error: 6 values exceeds size of 5
 ```
 
-The size specifier `N` may also be a compile-time integer constant of any integer type (`int`, `uint`, `i8`–`i64`, `u8`–`u64`). The constant must be declared before the array and must resolve to a value greater than zero.
+The size specifier `N` may also be a compile-time integer constant of any integer type (`i8`–`i64`, `u8`–`u64`). The constant must be declared before the array and must resolve to a value greater than zero.
 
 ```gray
-const SIZE int = 4
-const buf [byte, SIZE] = {0x01, 0x02, 0x03, 0x04}
+const SIZE i64 = 4
+const buf [u8, SIZE] = {0x01, 0x02, 0x03, 0x04}
 ```
 
 **Multi-dimensional arrays**:
 
 ```gray
-mut matrix [[int]] = {{1, 2}, {3, 4}}
-mut cube [[[int]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
+mut matrix [[i64]] = {{1, 2}, {3, 4}}
+mut cube [[[i64]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
 ```
 
 Array indexing is zero-based. Accessing an index outside the valid range produces a runtime error.
@@ -586,34 +563,34 @@ Array indexing is zero-based. Accessing an index outside the valid range produce
 Maps are unordered collections of key-value pairs. The `map` keyword is optional — `[K:V]` and `map[K:V]` are identical:
 
 ```gray
-mut ages [string:int] = {
+mut ages [string:i64] = {
     "alice": 30,
     "bob": 25
 }
-mut empty [string:int] = {:}  // Empty map
+mut empty [string:i64] = {:}  // Empty map
 
 // Long form is also valid:
-mut scores map[string:int] = {"math": 95}
+mut scores map[string:i64] = {"math": 95}
 ```
 
 > 💡 **Tip:** Empty maps use `{:}`, not `{}`. The `{}` literal is an empty array; the colon is the tell!
 
 ```gray
-mut arr [int] = {}       // Empty array
-mut m [string:int] = {:}  // Empty map
+mut arr [i64] = {}       // Empty array
+mut m [string:i64] = {:}  // Empty map
 ```
 
 **Bracket disambiguation:**
 
 | Syntax    | Meaning                   | Example                   |
 |-----------|---------------------------|---------------------------|
-| `[T]`     | Dynamic array of `T`      | `[int]`                   |
-| `[T,N]`   | Fixed-size array of `T`   | `[int,3]`                 |
-| `[K:V]`   | Map from `K` to `V`       | `[string:int]`            |
+| `[T]`     | Dynamic array of `T`      | `[i64]`                   |
+| `[T,N]`   | Fixed-size array of `T`   | `[i64,3]`                 |
+| `[K:V]`   | Map from `K` to `V`       | `[string:i64]`            |
 
 Maps must be declared with `mut`. Declaring a map with `const` is a compile-time error. If the keys are known at compile time, use a struct instead.
 
-Keys must be of a hashable type: `int`, `uint`, `float`, `string`, `bool`, `char`, or `byte`.
+Keys must be of a hashable type: an integer or float type, `string`, `bool`, or `char`.
 
 Accessing a key that does not exist produces a runtime error.
 
@@ -623,13 +600,13 @@ Structs are user-defined composite types with named fields.
 
 ```gray
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Person struct {
     name string
-    age int
+    age i64
     active bool
 }
 ```
@@ -640,7 +617,7 @@ A field may be a fixed-size array (`[T,N]`), the same spelling used for a local 
 
 ```gray
 const Buffer struct {
-    data [byte, 256]
+    data [u8, 256]
 }
 ```
 
@@ -650,13 +627,13 @@ A struct may reference itself through a **pointer field**. Value-type self-refer
 
 ```gray
 const Node struct {
-    val  int
+    val  i64
     next ^Node   // OK: pointer field
 }
 
 // Value-type self-reference is an error:
 const Bad struct {
-    val  int
+    val  i64
     next Bad     // error: struct 'Bad' cannot contain itself by value; use a pointer field '^Bad'
 }
 ```
@@ -691,7 +668,7 @@ Struct fields may specify a default value using `= expr` after the type. When a 
 ```gray
 const Config struct {
     host string = "localhost"
-    port int = 8080
+    port i64 = 8080
     verbose bool = false
 }
 
@@ -705,8 +682,8 @@ Grouped fields share the same default:
 
 ```gray
 const Point struct {
-    x, y int = 0
-    z int = 1
+    x, y i64 = 0
+    z i64 = 1
 }
 ```
 
@@ -717,7 +694,7 @@ Fields without a default value remain zero-initialized when omitted.
 Fields are accessed using dot notation:
 
 ```gray
-mut x_value int = origin.x
+mut x_value i64 = origin.x
 origin.x = 10  // Modification (if variable is mut)
 ```
 
@@ -749,15 +726,15 @@ const Foobar enum {
 
 > 💡 **Tip:** Enum variants must be on separate lines. Inline declarations like `const Color enum { RED; GREEN; BLUE }` are not allowed. Semicolons are never used in enum declarations.
 
-> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `int` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status int = Direction.NORTH` assigns `0`.
+> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `i64` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status i64 = Direction.NORTH` assigns `0`.
 
-> 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, int) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
+> 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, i64) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
 
 **Printing enum values** depends on the enum's backing:
 
 | Enum kind | `println(value)` prints |
 |-----------|--------------------------|
-| Plain int-backed (default) | The underlying integer (e.g. `0` for the first variant) |
+| Plain integer-backed (default) | The underlying integer (e.g. `0` for the first variant) |
 | String-backed | The variant's string value (e.g. `"todo"`) |
 | `#error_code`-tagged (and `ErrorCode` itself) | The variant's name (e.g. `"PAYMENT_DECLINED"`) — see [Section 10.5](#105-errorcode) |
 
@@ -808,7 +785,7 @@ mut dir Direction = .NORTH
 dir = .SOUTH
 
 // Function arguments
-do move(d Direction) -> int { return 0 }
+do move(d Direction) -> i64 { return 0 }
 move(.EAST)
 
 // When/is branches
@@ -842,8 +819,8 @@ Enum variants can carry associated data (payloads), making the enum a tagged uni
 
 ```gray
 const Shape enum {
-    Circle(float)
-    Rect(float, float)
+    Circle(f64)
+    Rect(f64, f64)
     Point
 }
 ```
@@ -901,7 +878,7 @@ The number of bindings in a pattern must match the variant's payload count. `#st
 `func` is a type keyword that represents a reference to a named function. Function references are created with `()name` or `ref(name)` and are always `const`. The `func` type is used in parameter declarations, struct fields, arrays, and maps to accept or store callable references.
 
 ```gray
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 const f = ()double
 f(5)   // 10
 ```
@@ -909,7 +886,7 @@ f(5)   // 10
 A typed `func` signature specifies parameter and return types:
 
 ```gray
-do apply(x int, f func(int) -> int) -> int {
+do apply(x i64, f func(i64) -> i64) -> i64 {
     return f(x)
 }
 ```
@@ -930,29 +907,29 @@ Type inference works with:
 6. **`mut` array and map literals of primitives** - `[T]` is inferred from the element type, `map[K:V]` from the first pair
 
 > 💡 **Tip:** Array and map literal inference applies only to `mut` declarations whose elements
-> are all primitives (`int`, `uint`, `float`, `string`, `bool`, `char`, `byte`) — for maps, both
+> are all primitives (integer and float types, `string`, `bool`, `char`) — for maps, both
 > keys and values must be primitive. Empty literals (`{}`, `{:}`), `const` declarations, and
 > literals containing structs, enums, pointers, or nested containers still require an explicit
 > annotation (e.g. `mut arr [Point] = {Point{x: 1, y: 2}}`).
 
-> ⚠️ **File-scope `const` declarations** of primitive types and arrays require explicit type annotations. Type inference for `const` is only supported inside function bodies. For example, `const MAX_SIZE int = 100` is required at file scope, while `const x = 42` is valid inside a function.
+> ⚠️ **File-scope `const` declarations** of primitive types and arrays require explicit type annotations. Type inference for `const` is only supported inside function bodies. For example, `const MAX_SIZE i64 = 100` is required at file scope, while `const x = 42` is valid inside a function.
 
 ```gray
 // Inferred from literals
-mut x = 42                    // Inferred: int
+mut x = 42                    // Inferred: i64
 mut name = "Alice"            // Inferred: string
-mut pi = 3.14                 // Inferred: float
+mut pi = 3.14                 // Inferred: f64
 mut flag = true               // Inferred: bool
 
 // Explicit annotations are always accepted
-mut y int = 42                // Explicit: int
+mut y i64 = 42                // Explicit: i64
 
 // Inferred from function return type
-do sum(a int, b int) -> int {
+do sum(a i64, b i64) -> i64 {
     return a + b
 }
-mut result = sum(1, 2)        // Inferred: int
-println(type_of(result))        // Output: int
+mut result = sum(1, 2)        // Inferred: i64
+println(type_of(result))        // Output: i64
 
 // Inferred from struct literal
 const p = Point{x: 1, y: 2}    // Inferred: Point
@@ -962,16 +939,16 @@ mut val = new(Person)         // Inferred: ^Person (pointer)
 mut dup = copy(val^)          // Inferred: Person (copy() needs a value, not a pointer)
 
 // mut array/map literals of primitives are inferred
-mut arr = {1, 2, 3}                 // Inferred: [int]
+mut arr = {1, 2, 3}                 // Inferred: [i64]
 mut letters = {'a', 'b', 'c'}       // Inferred: [char]
-mut scores = {"alice": 10, "bob": 7} // Inferred: map[string:int]
+mut scores = {"alice": 10, "bob": 7} // Inferred: map[string:i64]
 mut fixed [Point] = {Point{x: 1, y: 2}}  // Explicit: non-primitive elements
 
 // Multiple return values
-do divide(a, b int) -> (int, int) {
+do divide(a, b i64) -> (i64, i64) {
     return a / b, a % b
 }
-mut quotient, remainder = divide(10, 3)  // Both inferred: int
+mut quotient, remainder = divide(10, 3)  // Both inferred: i64
 ```
 
 Explicit type annotations are generally optional but can be used for clarity or documentation. The exceptions are file-scope `const` declarations of primitive types and arrays, and any `const` or non-primitive array/map literal, which always require explicit type annotations.
@@ -980,13 +957,13 @@ Explicit type annotations are generally optional but can be used for clarity or 
 
 ### 3.4 Type Conversions
 
-Explicit type conversions are performed using type constructors:
+Explicit type conversions are performed with `cast`, `string()`, and `char()`:
 
 ```gray
-mut i int = int('A')       // 65 - char to int (code point)
-mut f float = float(42)    // 42.0 - int to float
-mut s string = string(123) // "123" - int to string
-mut c char = char(65)      // 'A' - int to char
+mut i i64 = cast('A', i64)   // 65 - char to i64 (code point)
+mut f f64 = cast(42, f64)    // 42.0 - i64 to f64
+mut s string = string(123)   // "123" - i64 to string
+mut c char = char(65)        // 'A' - i64 to char
 ```
 
 Conversions that would lose information or are invalid produce check-time or runtime errors.
@@ -997,30 +974,33 @@ The `cast` keyword provides explicit type conversion for values and arrays:
 
 ```gray
 mut small u8 = cast(42, u8)
-mut truncated int = cast(3.7, int)     // 3
+mut truncated i64 = cast(3.7, i64)     // 3
 mut text string = cast(123, string)    // "123"
+mut parsed i64 = cast("42", i64)       // 42
 ```
+
+A string cast to an integer or float type is parsed at runtime; a string that is not a number panics (`P0084` for an integer target, `P0085` for a float target).
 
 For array conversions, `cast` converts each element to the target element type:
 
 ```gray
-mut ints [int] = {1, 2, 3}
+mut ints [i64] = {1, 2, 3}
 mut bytes [u8] = cast(ints, [u8])
 ```
 
 Range constraints are enforced at runtime (e.g., `u8` values must be 0-255).
 
-> 💡 **Tip:** `cast` truncates floats to integers, it does not round. `cast(3.9, int)` gives `3`, not `4`.
+> 💡 **Tip:** `cast` truncates floats to integers, it does not round. `cast(3.9, i64)` gives `3`, not `4`.
 
 ### 3.5 Type Aliases
 
 The `alias` keyword creates an interchangeable name for an existing type:
 
 ```gray
-alias Meters = float
+alias Meters = f64
 alias Vec2 = Point
 alias Names = [string]
-alias Lookup = map[string:int]
+alias Lookup = map[string:i64]
 ```
 
 **Rules:**
@@ -1028,19 +1008,19 @@ alias Lookup = map[string:int]
 - **File-scope only** — aliases cannot be declared inside functions.
 - **Public by default** — prefix with `private` to restrict to the declaring file.
 - **Erased at compile time** — aliases produce no runtime overhead. `type_of()` returns the underlying type name.
-- **Transitive** — aliases can chain: `alias A = int` then `alias B = A` resolves `B` to `int`.
+- **Transitive** — aliases can chain: `alias A = i64` then `alias B = A` resolves `B` to `i64`.
 - **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
 - **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
-- **The alias name may not be a reserved type name or a builtin function name** — `alias int = float` and `alias println = int` are both rejected, the same way a struct or enum by those names is.
+- **The alias name may not be a reserved type name or a builtin function name** — `alias i64 = f64` and `alias println = i64` are both rejected, the same way a struct or enum by those names is.
 
 Aliases are fully interchangeable with the underlying type:
 
 ```gray
-alias Meters = float
+alias Meters = f64
 
 do main() {
     mut d Meters = 10.5
-    println(type_of(d))   // "float"
+    println(type_of(d))   // "f64"
     println(d + 1.0)      // 11.5
 }
 ```
@@ -1049,8 +1029,8 @@ Struct and enum aliases work with constructors and member access:
 
 ```gray
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 alias Vec2 = Point
 
@@ -1070,7 +1050,7 @@ do main() {
 Private aliases restrict access to the declaring file:
 
 ```gray
-private alias InternalID = int
+private alias InternalID = i64
 ```
 
 ---
@@ -1082,8 +1062,8 @@ private alias InternalID = int
 Variables are mutable by default. The `mut` keyword is accepted but optional:
 
 ```gray
-x int = 42              // mutable (default)
-mut x int = 42          // also mutable (explicit, accepted)
+x i64 = 42              // mutable (default)
+mut x i64 = 42          // also mutable (explicit, accepted)
 name = "hello"          // mutable, type inferred
 result, err = func()    // mutable, multi-return inferred
 ```
@@ -1095,8 +1075,8 @@ Variables declared this way:
 A declaration with a type annotation but no value is allowed and zero-initializes the variable (`0`, `0.0`, `""`, `false`, and so on). Because a dropped `= value` is easy to miss, the compiler emits `W1004` in that case:
 
 ```gray
-count int          // warning[W1004]: 'count' declared with no value — defaults to 0
-count int = 0      // no warning; the zero value is explicit
+count i64          // warning[W1004]: 'count' declared with no value — defaults to 0
+count i64 = 0      // no warning; the zero value is explicit
 ```
 
 Like all warnings, `W1004` can be suppressed with `-q W1004` or `-q all`. `const` declarations must always have a value (`E2011`).
@@ -1106,19 +1086,19 @@ Like all warnings, `W1004` can be suppressed with `-q W1004` or `-q all`. `const
 Constants are declared using the `const` keyword:
 
 ```gray
-const PI float = 3.14159
-const MAX_SIZE int = 100
+const PI f64 = 3.14159
+const MAX_SIZE i64 = 100
 const origin = Point{x: 0, y: 0}
 ```
 
-> ⚠️ At file scope, `const` declarations of primitive types (`int`, `float`, `string`, `bool`, `char`, `byte`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations.
+> ⚠️ At file scope, `const` declarations of primitive types (integer and float types, `string`, `bool`, `char`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations.
 
 ### 4.3 Mutability
 
 The `mut` keyword allows modification and **ensures the value itself is mutable**:
 
 ```gray
-mut arr [int] = {1, 2, 3}
+mut arr [i64] = {1, 2, 3}
 arr[0] = 10  // OK
 arr = {4, 5, 6}  // OK
 ```
@@ -1126,7 +1106,7 @@ arr = {4, 5, 6}  // OK
 When assigning from a function return or other source, `mut` automatically makes the value mutable. There is no need to use `copy()` to obtain a mutable version:
 
 ```gray
-do get_data() -> [int] {
+do get_data() -> [i64] {
     return {1, 2, 3}
 }
 
@@ -1144,9 +1124,9 @@ Variables and constants are block-scoped. A block is delimited by braces `{}`.
 Inner scopes may declare variables that shadow outer scope variables:
 
 ```gray
-mut x int = 10
+mut x i64 = 10
 if true {
-    mut x int = 20  // Shadows outer x
+    mut x i64 = 20  // Shadows outer x
     // x is 20 here
 }
 // x is 10 here
@@ -1234,16 +1214,16 @@ Point{}  // Zero-initialized
 
 | Operator | Description | Operand Types | Result Type |
 |----------|-------------|---------------|-------------|
-| `+` | Addition | `int`, `int` | `int` |
-| `+` | Addition | `float`, `float` | `float` |
+| `+` | Addition | `i64`, `i64` | `i64` |
+| `+` | Addition | `f64`, `f64` | `f64` |
 | `+` | Concatenation | `string`, `string` | `string` |
-| `-` | Subtraction | `int`, `int` | `int` |
-| `-` | Subtraction | `float`, `float` | `float` |
-| `*` | Multiplication | `int`, `int` | `int` |
-| `*` | Multiplication | `float`, `float` | `float` |
-| `/` | Division | `int`, `int` | `int` (truncated) |
-| `/` | Division | `float`, `float` | `float` |
-| `%` | Modulo | `int`, `int` | `int` |
+| `-` | Subtraction | `i64`, `i64` | `i64` |
+| `-` | Subtraction | `f64`, `f64` | `f64` |
+| `*` | Multiplication | `i64`, `i64` | `i64` |
+| `*` | Multiplication | `f64`, `f64` | `f64` |
+| `/` | Division | `i64`, `i64` | `i64` (truncated) |
+| `/` | Division | `f64`, `f64` | `f64` |
+| `%` | Modulo | `i64`, `i64` | `i64` |
 
 Division by zero produces a runtime error.
 
@@ -1265,7 +1245,7 @@ operands must be strings; mixing a string with any other type is an error
 
 Comparison operators return `bool`.
 
-Comparison operators only work on primitive types (numeric kinds, `bool`, `char`, `byte`, `string` for equality, enums) and pointer equality (`==` / `!=` against `nil` or another pointer of the same pointee type). They are not defined on aggregate types:
+Comparison operators only work on primitive types (numeric kinds, `bool`, `char`, `string` for equality, enums) and pointer equality (`==` / `!=` against `nil` or another pointer of the same pointee type). They are not defined on aggregate types:
 
 - Arrays — use `arrays.is_equal(a, b)` for equality.
 - Maps — use `maps.is_equal(a, b)` for equality; ordering is not defined on maps.
@@ -1316,7 +1296,7 @@ if 10 !in range(0, 10) { ... }  // Shorthand for not_in
 | `--` | Post-decrement |
 
 ```gray
-mut x int = 5
+mut x i64 = 5
 x++  // x is now 6
 x--  // x is now 5
 ```
@@ -1327,19 +1307,19 @@ Grayscale uses keyword operators for bitwise operations. Symbol alternatives (`&
 
 | Operator | Syntax | Description | Operand Types |
 |----------|--------|-------------|---------------|
-| `bit_and` | `a bit_and b` | Bitwise AND | `int`, `uint`, `byte`, `char`, sized integer types |
-| `bit_or` | `a bit_or b` | Bitwise OR | `int`, `uint`, `byte`, `char`, sized integer types |
-| `bit_xor` | `a bit_xor b` | Bitwise XOR | `int`, `uint`, `byte`, `char`, sized integer types |
-| `bit_not` | `bit_not a` | Bitwise NOT (complement) | `int`, `uint`, `byte`, `char`, sized integer types |
-| `bit_shift_left` | `a bit_shift_left n` | Left shift by `n` bits | `int`, `uint`, `byte`, `char`, sized integer types |
-| `bit_shift_right` | `a bit_shift_right n` | Right shift by `n` bits | `int`, `uint`, `byte`, `char`, sized integer types |
+| `bit_and` | `a bit_and b` | Bitwise AND | integer types and `char` |
+| `bit_or` | `a bit_or b` | Bitwise OR | integer types and `char` |
+| `bit_xor` | `a bit_xor b` | Bitwise XOR | integer types and `char` |
+| `bit_not` | `bit_not a` | Bitwise NOT (complement) | integer types and `char` |
+| `bit_shift_left` | `a bit_shift_left n` | Left shift by `n` bits | integer types and `char` |
+| `bit_shift_right` | `a bit_shift_right n` | Right shift by `n` bits | integer types and `char` |
 
 `bit_not` is a prefix operator. All others are infix operators. Results have the same type as the operands.
 
 ```gray
 // Basic operations
-mut a int = 0b1010
-mut b int = 0b1100
+mut a i64 = 0b1010
+mut b i64 = 0b1100
 
 println(a bit_and b)          // 8  (0b1000)
 println(a bit_or  b)          // 14 (0b1110)
@@ -1352,11 +1332,11 @@ println(16 bit_shift_right 1) // 8
 A common use is flag manipulation with named constants:
 
 ```gray
-const READ  int = 0b001
-const WRITE int = 0b010
-const EXEC  int = 0b100
+const READ  i64 = 0b001
+const WRITE i64 = 0b010
+const EXEC  i64 = 0b100
 
-mut perms int = READ bit_or WRITE   // set READ and WRITE flags
+mut perms i64 = READ bit_or WRITE   // set READ and WRITE flags
 
 if perms bit_and READ == READ {
     println("readable")
@@ -1387,31 +1367,31 @@ From highest to lowest precedence:
 ### 5.4 Index Expressions
 
 ```gray
-mut arr [int] = {10, 20, 30}
-mut val int = arr[1]  // 20
+mut arr [i64] = {10, 20, 30}
+mut val i64 = arr[1]  // 20
 arr[0] = 100  // Modification
 
 mut str string = "hello"
 mut c char = str[0]  // 'h'
 
-mut m map[string:int] = {"a": 1}
-mut v int = m["a"]  // 1
+mut m map[string:i64] = {"a": 1}
+mut v i64 = m["a"]  // 1
 ```
 
 ### 5.5 Member Expressions
 
 ```gray
 mut p Point = Point{x: 10, y: 20}
-mut x int = p.x  // 10
+mut x i64 = p.x  // 10
 p.y = 30  // Modification
 
-mut status int = Direction.NORTH  // Enum access
+mut status i64 = Direction.NORTH  // Enum access
 ```
 
 ### 5.6 Call Expressions
 
 ```gray
-mut sum int = add(1, 2)
+mut sum i64 = add(1, 2)
 mut greeting string = greet("World")
 println("Hello!")
 ```
@@ -1427,7 +1407,7 @@ range(10, 0, -2)   // 10, 8, 6, 4, 2   (decrement)
 
 Ranges are inclusive of the start value and exclusive of the end value.
 
-A `for` loop over a range gives its variable the type `int`. When any bound is a wide
+A `for` loop over a range gives its variable the type `i64`. When any bound is a wide
 integer (`i128`, `u128`, `i256`, `u256`), the range runs in that type, the other bounds
 widen into it, and the loop variable has that type. Bounds of two different wide types are
 rejected with `E5026`.
@@ -1533,7 +1513,7 @@ for_each i, item in items {
 // Output: 0: a, 1: b, 2: c
 ```
 
-The index variable is always of type `int` and is zero-based. It works with both arrays and strings:
+The index variable is always of type `i64` and is zero-based. It works with both arrays and strings:
 
 ```gray
 for_each i, ch in "hello" {
@@ -1551,7 +1531,7 @@ for_each i, _ in items { ... }     // index only, discard value
 **Map iteration** is also supported. With two variables, the first is the key and the second is the value:
 
 ```gray
-mut ages map[string:int] = {"alice": 30, "bob": 25}
+mut ages map[string:i64] = {"alice": 30, "bob": 25}
 for_each k, v in ages {
     println("${k}: ${v}")
 }
@@ -1586,7 +1566,7 @@ Map iteration order is undefined (maps are unordered).
 > 💡 **Tip:** `while` and `as_long_as` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ```gray
-mut count int = 0
+mut count i64 = 0
 as_long_as count < 10 {
     count++
 }
@@ -1643,7 +1623,7 @@ for i in range(0, 10) {
 The `return` statement exits the current function, optionally returning a value:
 
 ```gray
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
@@ -1676,7 +1656,7 @@ switch x {
 }
 ```
 
-**Allowed condition types:** `int`, `uint`, `string`, `char`, `byte`, `bool`, `float`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
+**Allowed condition types:** integer and float types, `string`, `char`, `bool`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
 
 **Strict mode** requires all possible values to be handled:
 
@@ -1729,8 +1709,8 @@ do load() -> (string, Error) {
 mut content = read_file("data.txt") or_return "", error("failed to load")
 
 // Destructuring a call that returns more than one non-error value:
-do consume() -> (int, Error) {
-    mut a, b = two() or_return   // two() -> (int, int, Error); a, b bound, error propagated
+do consume() -> (i64, Error) {
+    mut a, b = two() or_return   // two() -> (i64, i64, Error); a, b bound, error propagated
     return a + b, nil
 }
 
@@ -1750,7 +1730,7 @@ When the call returns a non-nil error, `or_return` immediately returns from the 
 ### 7.1 Function Declarations
 
 ```gray
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
@@ -1766,7 +1746,7 @@ do process() {
 `fn` is an alias for `do`. Both are valid, user's choice.
 
 ```gray
-fn add(a int, b int) -> int {
+fn add(a i64, b i64) -> i64 {
     return a + b
 }
 ```
@@ -1780,7 +1760,7 @@ fn add(a int, b int) -> int {
 By default, parameters are passed by value and cannot modify the caller's variables:
 
 ```gray
-do double(x int) -> int {
+do double(x i64) -> i64 {
     return x * 2
 }
 ```
@@ -1790,19 +1770,19 @@ do double(x int) -> int {
 The `&` prefix on a parameter name declares it as mutable (pass-by-reference). The function can modify the caller's variable through the parameter:
 
 ```gray
-do increment(&x int) {
+do increment(&x i64) {
     x = x + 1
 }
 
 do main() {
-    mut val int = 5
+    mut val i64 = 5
     increment(val)    // no & at the call site
     println(val)      // 6
 }
 ```
 
 **Rules:**
-- `&` goes before the parameter name in the function signature: `do f(&x int)`.
+- `&` goes before the parameter name in the function signature: `do f(&x i64)`.
 - At the call site, pass the variable directly — no `&` prefix: `f(val)`.
 - Only `mut` variables can be passed to `&` parameters. Passing a `const` variable is a compile-time error (E3027).
 - `&` parameters also accept struct fields (`increment(point.x)`), array elements (`increment(arr[0])`), and map values (`increment(map["key"])`).
@@ -1812,12 +1792,12 @@ do main() {
 Multiple parameters of the same type can be grouped:
 
 ```gray
-do add(a, b int) -> int {
+do add(a, b i64) -> i64 {
     return a + b
 }
 
-do swap(&a, &b int) {
-    mut t int = a
+do swap(&a, &b i64) {
+    mut t i64 = a
     a = b
     b = t
 }
@@ -1825,7 +1805,7 @@ do swap(&a, &b int) {
 
 #### 7.2.4 Default Parameters
 
-Parameters can have default values. Default values are supported for all primitive types (`int`, `uint`, `float`, `string`, `bool`, `char`):
+Parameters can have default values. Default values are supported for all primitive types (integer and float types, `string`, `bool`, `char`):
 
 ```gray
 do greet(name string = "World") -> string {
@@ -1839,7 +1819,7 @@ greet("Alice")  // "Hello, Alice!"
 Multiple parameters may have defaults. When calling, arguments fill left-to-right and any remaining parameters use their defaults:
 
 ```gray
-do connect(host string, port int = 8080, verbose bool = false) {
+do connect(host string, port i64 = 8080, verbose bool = false) {
     if verbose {
         println("Connecting to ${host}:${port}")
     }
@@ -1853,8 +1833,8 @@ connect("localhost", 3000, true)  // port=3000, verbose=true
 Default parameters must appear after non-default parameters. A required parameter cannot follow a parameter with a default value:
 
 ```gray
-do foo(a int = 10, b int) {}   // error: required parameter cannot follow a default parameter
-do bar(a int, b int = 10) {}   // OK: required first, then default
+do foo(a i64 = 10, b i64) {}   // error: required parameter cannot follow a default parameter
+do bar(a i64, b i64 = 10) {}   // OK: required first, then default
 ```
 
 #### 7.2.5 Named Arguments
@@ -1862,7 +1842,7 @@ do bar(a int, b int = 10) {}   // OK: required first, then default
 When calling a function, arguments can be passed by name using `name: value` syntax. This lets callers provide arguments in any order and skip over defaulted parameters to target specific ones:
 
 ```gray
-do connect(host string, port int = 8080, verbose bool = false) {
+do connect(host string, port i64 = 8080, verbose bool = false) {
     if verbose {
         println("Connecting to ${host}:${port}")
     }
@@ -1885,7 +1865,7 @@ add(a: 1, 2)     // error: positional argument after named argument
 - Named arguments must match a parameter name in the function signature exactly. Unknown names are rejected:
 
 ```gray
-do add(a int, b int) -> int { return a + b }
+do add(a i64, b i64) -> i64 { return a + b }
 
 add(a: 1, c: 2)  // error: unknown parameter name 'c' in call to 'add'
 ```
@@ -1900,10 +1880,10 @@ add(1, a: 2)      // error: parameter 'a' is already provided positionally
 
 ```gray
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do scale(self Vec, factor int) -> Vec {
+    do scale(self Vec, factor i64) -> Vec {
         return Vec{x: self.x * factor, y: self.y * factor}
     }
 }
@@ -1925,7 +1905,7 @@ strings.to_upper(s: "hello")      // error: named arguments not supported
 #### 7.3.1 Single Return Value
 
 ```gray
-do square(x int) -> int {
+do square(x i64) -> i64 {
     return x * x
 }
 ```
@@ -1946,7 +1926,7 @@ do square(x int) -> int {
 #### 7.3.2 Multiple Return Values
 
 ```gray
-do divide(a, b int) -> (int, int) {
+do divide(a, b i64) -> (i64, i64) {
     return a / b, a % b
 }
 
@@ -1956,7 +1936,7 @@ mut quotient, remainder = divide(17, 5)
 #### 7.3.3 Error Returns
 
 ```gray
-do parse(s string) -> (int, Error) {
+do parse(s string) -> (i64, Error) {
     if s == "" {
         return 0, error("empty string")
     }
@@ -1974,9 +1954,9 @@ if err != nil {
 Return values can be given names to document what each position in the return tuple represents. Naming a return value does not implicitly declare a variable — the programmer must still explicitly declare a variable with that exact name in the function body:
 
 ```gray
-do divide(a, b int) -> (quotient int, remainder int) {
-    mut quotient int = a / b
-    mut remainder int = a % b
+do divide(a, b i64) -> (quotient i64, remainder i64) {
+    mut quotient i64 = a / b
+    mut remainder i64 = a % b
     return quotient, remainder
 }
 
@@ -1986,10 +1966,10 @@ mut q, r = divide(17, 5)  // q=3, r=2
 Named returns support grouped types (multiple names sharing one type):
 
 ```gray
-do get_info() -> (name, city string, age int) {
+do get_info() -> (name, city string, age i64) {
     mut name string = "Alice"
     mut city string = "NYC"
-    mut age int = 30
+    mut age i64 = 30
     return name, city, age
 }
 ```
@@ -1999,9 +1979,9 @@ Named return values must be enclosed in parentheses.
 **The `return` statement must reference the named variable itself, not merely an equal or same-typed expression.** Once a return position is named, `return` in that position accepts only the variable declared under that exact name — assigning an equivalent value to a differently-named variable and returning that instead is a compile-time error (`E3080`):
 
 ```gray
-do square(x int) -> (result int) {
-    mut result int = x * x
-    mut other int = result
+do square(x i64) -> (result i64) {
+    mut result i64 = x * x
+    mut other i64 = result
     return other        // error[E3080]: function must return named variable 'result', not a different expression
 }
 ```
@@ -2035,10 +2015,10 @@ By default, every top-level declaration is public. The `private` keyword restric
 ```gray
 // mathlib/mathlib.gray — module name comes from directory
 
-private const MAX_ITERATIONS int = 1000
+private const MAX_ITERATIONS i64 = 1000
 
 private const Counter struct {
-    n int
+    n i64
 }
 
 private const Mode enum {
@@ -2046,11 +2026,11 @@ private const Mode enum {
     SLOW
 }
 
-private do validate(n int) -> bool {
+private do validate(n i64) -> bool {
     return n > 0
 }
 
-do factorial(n int) -> int {
+do factorial(n i64) -> i64 {
     // Can call private members within the same module
     if !validate(n) { return 1 }
     // ...
@@ -2079,14 +2059,14 @@ Attributes are annotations prefixed with `#` that modify declaration behavior. A
 #json
 const Person struct {
     name string
-    age int
+    age i64
 }
 
 // Equivalent, using the single-line container form:
 #[doc("A person with a name and age"), json]
 const Person struct {
     name string
-    age int
+    age i64
 }
 ```
 
@@ -2118,18 +2098,18 @@ The `#doc` attribute adds documentation metadata to functions, structs, enums, a
 
 ```gray
 #doc("Adds two integers and returns the sum")
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 #doc("Represents a 2D point")
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 #doc("Maximum number of retries before giving up")
-const MAX_RETRIES int = 5
+const MAX_RETRIES i64 = 5
 ```
 
 #### 7.5.2 `#json` Attribute
@@ -2142,7 +2122,7 @@ import @json
 #json
 const User struct {
     name string
-    age int
+    age i64
     active bool
 }
 
@@ -2164,13 +2144,13 @@ By default, a field's JSON key is its Grayscale name. A field can serialize unde
 #json
 const User struct {
     name string `json:"Name"`
-    age  int    `json:"Age"`
+    age  i64    `json:"Age"`
 }
 ```
 
 `json.stringify()`/`json.parse()` then use `"Name"`/`"Age"` as the JSON keys instead of `name`/`age`.
 
-An enum field is serialized by the enum's backing type. An int-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
+An enum field is serialized by the enum's backing type. An integer-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
 
 ```gray
 const Priority enum {
@@ -2205,12 +2185,12 @@ A JSON value that names no variant of the field's enum is a `json.parse()` failu
 
 - Without a tag, a field's JSON key must match the struct field name exactly.
 - A tag is written `` `json:"Name"` `` immediately after the field's type, before any default value. The key can be any non-empty text but cannot contain a `"` or a backslash.
-- A tag cannot be shared across a comma-grouped field list (`x, y int \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
+- A tag cannot be shared across a comma-grouped field list (`x, y i64 \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
 - A `#json` struct's fields are either all tagged or all untagged — mixing the two within one struct is rejected (E3171). This is scoped per struct, not per file: a file that aggregates many structs is free to tag some and leave others untagged, as long as each struct is internally consistent.
 - Two fields of the same `#json` struct cannot serialize under the same key (E3172).
 - A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
-- Supported field types: `int`, `uint`, `float`, `string`, `bool`, and non-tagged enums (serialized by backing type).
+- Supported field types: `i64`, `u64`, `f64`, `string`, `bool`, and non-tagged enums (serialized by backing type).
 - `json.parse()` into an array of a `#json` struct (`[Task]`) parses each element independently, so an enum field works there with no extra handling.
 
 #### 7.5.3 `#discard` Attribute
@@ -2219,7 +2199,7 @@ The `#discard` attribute marks a function whose return value may safely be ignor
 
 ```gray
 #discard
-do tryInsert(value int) -> bool {
+do tryInsert(value i64) -> bool {
     // ... returns true on success, but caller may not care
     return true
 }
@@ -2234,10 +2214,10 @@ do main() {
 
 ```gray
 const List struct {
-    items [int]
+    items [i64]
 
     #discard
-    do push(self List, value int) -> int {
+    do push(self List, value i64) -> i64 {
         return len(self.items) + 1
     }
 }
@@ -2274,19 +2254,19 @@ It applies the same way to struct and enum declarations, and to individual struc
 ```gray
 #deprecated("Point is old, use Point3D")
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Container struct {
-    id int
+    id i64
 
     #deprecated("use current() instead")
-    do legacy(self Container) -> int {
+    do legacy(self Container) -> i64 {
         return 1
     }
 
-    do current(self Container) -> int {
+    do current(self Container) -> i64 {
         return 2
     }
 }
@@ -2308,7 +2288,7 @@ The `#test` attribute marks a function as a test. Test functions are run by the
 output — they add no code and no overhead to a normal binary.
 
 ```gray
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
@@ -2392,7 +2372,7 @@ do something() { }
 A function reference is a value that holds a pointer to a named function. Function references are created with `()` prefix syntax or `ref()` and must always be bound to a `const`:
 
 ```gray
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 
 // ()func_name: implicit syntax (type is inferred)
 const f = ()double
@@ -2401,7 +2381,7 @@ const f = ()double
 const g = ref(double)
 
 // Optional explicit type annotation
-const h func(int) -> int = ()double
+const h func(i64) -> i64 = ()double
 ```
 
 `mut` is rejected for func reference variables; func references are compile-time aliases, not mutable state.
@@ -2424,26 +2404,26 @@ When a function accepts another function as an argument, declare the parameter w
 
 ```gray
 // Single param
-do apply(x int, f func(int) -> int) -> int {
+do apply(x i64, f func(i64) -> i64) -> i64 {
     return f(x)
 }
 
 // Multiple params
-do combine(a int, b string, f func(int, string) -> bool) -> bool {
+do combine(a i64, b string, f func(i64, string) -> bool) -> bool {
     return f(a, b)
 }
 
 // No params
-do run(f func() -> int) -> int {
+do run(f func() -> i64) -> i64 {
     return f()
 }
 
 // No return value
-do each(arr [int], f func(int)) {
+do each(arr [i64], f func(i64)) {
     for_each v in arr { f(v) }
 }
 
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 do main() {
     println(apply(5, ()double))    // 10
     println(apply(5, ref(double))) // 10, ref() is equivalent
@@ -2461,8 +2441,8 @@ Bare `func` is a valid type in arrays and maps. Elements are untyped function po
 ```gray
 import @arrays
 
-do double(n int) -> int { return n * 2 }
-do triple(n int) -> int { return n * 3 }
+do double(n i64) -> i64 { return n * 2 }
+do triple(n i64) -> i64 { return n * 3 }
 
 // Dynamic array of func refs
 mut arr [func] = {}
@@ -2482,7 +2462,7 @@ m["dbl"](5)   // 10
 m["trpl"](5)  // 15
 ```
 
-Typed func signatures as an array element type (e.g. `[func(int)->int]`) are not allowed. Use `[func]` or `[func, N]` instead.
+Typed func signatures as an array element type (e.g. `[func(i64)->i64]`) are not allowed. Use `[func]` or `[func, N]` instead.
 
 #### 7.6.4 Func Fields in Structs
 
@@ -2490,10 +2470,10 @@ Struct fields can hold func references. A typed `func` signature is required for
 
 ```gray
 const Wrapper struct {
-    f func(int) -> int
+    f func(i64) -> i64
 }
 
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 do main() {
     // Struct literal
     const w = Wrapper{f: ()double}
@@ -2527,10 +2507,10 @@ if f != h { println("different") }  // different
 | `mut f = ()double` | ❌ must use `const` |
 | `println(f)` | ❌ func refs are not printable |
 | `copy(f)` | ❌ func refs cannot be copied |
-| `do get_fn() -> func(int) -> int` | ❌ a function cannot declare a func return type; the result is unusable |
+| `do get_fn() -> func(i64) -> i64` | ❌ a function cannot declare a func return type; the result is unusable |
 | `const f = get_fn()` | ❌ cannot assign func-type return value; use `()func_name` |
 | `get_fn()(5)` | ❌ cannot call a function's return value directly |
-| `[func(int)->int]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
+| `[func(i64)->i64]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
 | `()println` / `ref(println)` | ❌ builtin and stdlib functions cannot be referenced |
 | `()f` (f is a variable) | ❌ `()` only works with named function declarations, not variables |
 | `()f(5)` (f is a variable) | ❌ same restriction; `f(5)` is the only valid call syntax |
@@ -2538,8 +2518,8 @@ if f != h { println("different") }  // different
 Rules:
 - No anonymous functions or lambdas; every reference points to a named function declaration
 - `const` only — func references cannot be declared `mut`
-- The typed signature (e.g. `func(int) -> int`) must match exactly; param types and return type must all agree
-- Each parameter in a `func` signature is listed as its own type: `func(int, string) -> bool`. Grouped-type shorthand is not supported inside `func` signatures
+- The typed signature (e.g. `func(i64) -> i64`) must match exactly; param types and return type must all agree
+- Each parameter in a `func` signature is listed as its own type: `func(i64, string) -> bool`. Grouped-type shorthand is not supported inside `func` signatures
 - Default parameter values inside `func` signatures are not supported
 - References work with top-level and struct-namespaced functions
 
@@ -2549,15 +2529,15 @@ Functions can be declared inside struct blocks as namespaced free functions:
 
 ```gray
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(x int, y int) -> Point {
+    do create(x i64, y i64) -> Point {
         return Point{x: x, y: y}
     }
 
-    do distance(a Point, b Point) -> float {
-        return math.sqrt(math.pow(float(a.x - b.x), 2) + math.pow(float(a.y - b.y), 2))
+    do distance(a Point, b Point) -> f64 {
+        return math.sqrt(math.pow(cast(a.x - b.x, f64), 2) + math.pow(cast(a.y - b.y, f64), 2))
     }
 
     private do validate(p Point) -> bool {
@@ -2583,13 +2563,13 @@ Inside a struct function body, a sibling function in the same struct can be call
 
 ```gray
 const Calculator struct {
-    value int
+    value i64
 
-    private do internal_add(a int, b int) -> int {
+    private do internal_add(a i64, b i64) -> i64 {
         return a + b
     }
 
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return internal_add(a, b)        // bare sibling call
     }
 }
@@ -2609,10 +2589,10 @@ When a struct function takes the struct (or a pointer to it) as its first parame
 
 ```gray
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do len_sq(v Vec) -> int {
+    do len_sq(v Vec) -> i64 {
         return v.x * v.x + v.y * v.y
     }
 
@@ -2631,7 +2611,7 @@ a.bump()           // sugar for Vec.bump(a); '&v' makes it a mutable alias
 
 Both `do f(v Vec)` and `do f(&v Vec)` (mutable receiver) and `do f(v ^Vec)` (pointer receiver) participate in instance dispatch. The mutable-receiver form (`&v`) takes the instance by reference and may modify the caller's variable.
 
-Factory-style functions whose first parameter isn't the struct (e.g. `do make(x int) -> Vec`) keep requiring the type-namespaced form (`Vec.make(...)`); there is no instance to bind.
+Factory-style functions whose first parameter isn't the struct (e.g. `do make(x i64) -> Vec`) keep requiring the type-namespaced form (`Vec.make(...)`); there is no instance to bind.
 
 Chained struct function calls (`a.f().g()`) are not supported. Assign each intermediate result to a variable.
 
@@ -2642,10 +2622,10 @@ All functions in Grayscale are declared at the top level or inside struct blocks
 Storing a reference to an existing function in a local variable is not the same as declaring a function and is perfectly valid:
 
 ```gray
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 
 do main() {
-    const f func(int) -> int = ()double  // valid: f is a variable, not a function declaration
+    const f func(i64) -> i64 = ()double  // valid: f is a variable, not a function declaration
     println(f(5))                         // 10
 }
 ```
@@ -2659,7 +2639,7 @@ do identity(x ?) -> ? {
     return x
 }
 
-mut a = identity(42)        // ? binds to int, returns int
+mut a = identity(42)        // ? binds to i64, returns i64
 mut b = identity("hello")   // ? binds to string, returns string
 ```
 
@@ -2670,7 +2650,7 @@ do pick_first(a ?, b ?) -> ? {
     return a
 }
 
-pick_first(1, 2)          // OK, both args are int, ? binds to int
+pick_first(1, 2)          // OK, both args are i64, ? binds to i64
 pick_first(1, "hello")    // Error: conflicting bindings for ?
 ```
 
@@ -2681,7 +2661,7 @@ do first(arr [?]) -> ? {
     return arr[0]
 }
 
-mut x = first({1, 2, 3})      // ? binds to int
+mut x = first({1, 2, 3})      // ? binds to i64
 mut y = first({"a", "b"})     // ? binds to string
 ```
 
@@ -2712,8 +2692,8 @@ The `<?>` annotation allows a function parameter to accept a type name rather th
 
 ```gray
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do make(T <?>) -> ^? {
@@ -2759,7 +2739,7 @@ mut s = make_stack(Point)    // -> Point
 Type parameters and value parameters cannot appear in the same function signature:
 
 ```gray
-do bad(T <?>, x int) -> ^? {     // Error E2087
+do bad(T <?>, x i64) -> ^? {     // Error E2087
     return new(T)
 }
 ```
@@ -2777,7 +2757,7 @@ const Color enum {
 
 mut p = make(Point)       // OK — struct
 mut c = make(Color)       // OK — enum
-mut x = make(int)         // OK — primitive
+mut x = make(i64)         // OK — primitive
 mut y = make(1 + 2)       // Error E3128 — not a type name
 mut z = make(Nonexisto)   // Error E4016 — names no type
 ```
@@ -2792,7 +2772,7 @@ do make_stack(T <?>) -> ? {
 }
 
 mut s = make_stack(Point)   // OK
-mut n = make_stack(int)     // Error E3127 — T is used as a struct literal
+mut n = make_stack(i64)     // Error E3127 — T is used as a struct literal
 ```
 
 #### Across module boundaries
@@ -2803,8 +2783,8 @@ Generic functions work through a module prefix, and the qualified spelling behav
 import "./utils.gray"
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
@@ -2832,7 +2812,7 @@ A concrete return type stays legal whenever the body returns a value of that typ
 
 ```gray
 do new_foo(t <?>) -> Foo { return new(Foo)^ }   // OK — returns an actual Foo
-do size_T(t <?>) -> int  { return size_of(t) }  // OK — size_of is always int
+do size_T(t <?>) -> i64  { return size_of(t) }  // OK — size_of is always i64
 ```
 
 ---
@@ -3063,8 +3043,8 @@ same rule applies — assign it to a type-annotated variable before using it
 extern import "stdio.h"
 
 do main() {
-    mut eof int = extern.EOF        // -1
-    mut ok int = extern.EXIT_SUCCESS // 0
+    mut eof i64 = extern.EOF        // -1
+    mut ok i64 = extern.EXIT_SUCCESS // 0
     println(eof)
     println(ok)
 }
@@ -3074,18 +3054,16 @@ do main() {
 
 | Grayscale type | C type | Notes |
 |---|---|---|
-| `int` | `int64_t` | Use `i32` for C `int` |
-| `uint` | `uint64_t` | Use `u32` for C `unsigned int` |
-| `i8`, `i16`, `i32`, `i64` | `int8_t`, `int16_t`, `int32_t`, `int64_t` | Exact match |
-| `u8`, `u16`, `u32`, `u64` | `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t` | Exact match |
-| `float` | `double` | Use `f32` for C `float` |
+| `i8`, `i16`, `i32`, `i64` | `int8_t`, `int16_t`, `int32_t`, `int64_t` | Use `i32` for C `int` |
+| `u8`, `u16`, `u32`, `u64` | `uint8_t`, `uint16_t`, `uint32_t`, `uint64_t` | Use `u32` for C `unsigned int` |
+| `f32` | `float` | Exact match |
+| `f64` | `double` | Exact match |
 | `bool` | `bool` | Exact match |
-| `byte` | `uint8_t` | Exact match |
 | `char` | `int32_t` | Grayscale uses 32-bit for Unicode |
 | `string` | `char*` | Auto-converted when passed to C functions |
 | `^T` | `T*` | Direct pointer mapping |
 
-**Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Grayscale `int` / `uint` are 64-bit and `float` is 64-bit, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
+**Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Integer and float literals are `i64` and `f64`, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
 
 **String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
 
@@ -3098,11 +3076,11 @@ do main() {
 }
 ```
 
-**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `byte`, and pointers (`^T` is `T*`, so `^void` or `^int` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
+**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
 
 **Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
-- as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
+- as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `u8`, or a pointer
 - as an argument to **another `extern.` call**
 - through **`c_string()`**, which converts a C `char*` to a Grayscale `string`
 - as the value of a **`cast()`** to one of the annotation-eligible types above
@@ -3112,7 +3090,7 @@ extern import "math.h"
 extern import "stdlib.h"
 
 do main() {
-    mut x float = extern.sqrt(2.0)             // annotated declaration
+    mut x f64 = extern.sqrt(2.0)             // annotated declaration
     println(x)                                 // prints 1.4142135623730951
 
     mut home string = c_string(extern.getenv("HOME"))   // text: via c_string()
@@ -3129,7 +3107,7 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
 - **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
-- **Numeric arguments narrow silently.** Grayscale `int` / `uint` are 64-bit and `float` is 64-bit. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
+- **Numeric arguments narrow silently.** Integer and float literals are `i64` and `f64`. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
 #### Restrictions
 
@@ -3172,7 +3150,7 @@ Built-in functions are always available without importing any module.
 | `eprint` | `(value T)` | Print to stderr without newline. Accepts any type. |
 | `flush` | `()` | Flush buffered stdout so partial-line output appears immediately. |
 
-All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs, and pointers.
+All types are printable: `string`, `i64`, `f64`, `bool`, arrays, maps, structs, and pointers.
 
 `stdout` is buffered. `print` output may not appear until a newline is written (on a
 terminal) or the buffer fills (on a pipe or file); call `flush()` to force it out for
@@ -3196,9 +3174,9 @@ running the child so output is not reordered.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `len` | `(collection T) -> int` | Length of array, map, or string (byte length for strings, not character count) |
-| `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
-| `size_of` | `(Type) -> int` | Size of type in bytes |
+| `len` | `(collection T) -> i64` | Length of array, map, or string (byte length for strings, not character count) |
+| `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"i64"`, `"u64"`, `"f64"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
+| `size_of` | `(Type) -> i64` | Size of type in bytes |
 | `fields` | `(instance T) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
@@ -3208,21 +3186,21 @@ running the child so output is not reordered.
 | `error` | `(message string) -> Error` | Create error value |
 | `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
-| `exit` | `(code int)` | Exit program with code |
-| `range` | `(start int, end int, step int = 1) -> Range` | Create integer range; `step` defaults to 1 |
+| `exit` | `(code i64)` | Exit program with code |
+| `range` | `(start i64, end i64, step i64 = 1) -> Range` | Create integer range; `step` defaults to 1 |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
-| `to_char` | `(s string, index int) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `int()` on the result for its numeric value. Panics if index is out of bounds. |
-| `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
+| `to_char` | `(s string, index i64) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `cast(c, i64)` on the result for its numeric value. Panics if index is out of bounds. |
+| `char_count` | `(s string) -> i64` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
 | `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
-| `system` | `(command string) -> int` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
+| `system` | `(command string) -> i64` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 
 **Reference behavior with `ref()`:**
 
 The `ref()` function creates a reference to an existing value. The mutability of the reference depends on the variable declaration:
 
 ```gray
-mut arr [int] = {1, 2, 3}
+mut arr [i64] = {1, 2, 3}
 
 // mut ref is mutable - can modify through the reference
 mut r1 = ref(arr)
@@ -3272,9 +3250,9 @@ assert(connected)  // message is optional
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `sleep_s` | `(seconds int)` | Sleep for seconds |
-| `sleep_ms` | `(ms int)` | Sleep for milliseconds |
-| `sleep_ns` | `(ns int)` | Sleep for nanoseconds |
+| `sleep_s` | `(seconds i64)` | Sleep for seconds |
+| `sleep_ms` | `(ms i64)` | Sleep for milliseconds |
+| `sleep_ns` | `(ns i64)` | Sleep for nanoseconds |
 
 #### Compile-time Functions
 
@@ -3308,11 +3286,11 @@ do main() {
 |----------|-----------|-------------|
 | `is_empty` | `(arr [T]) -> bool` | Check if array is empty |
 | `contains` | `(arr [T], value T) -> bool` | Check if value exists |
-| `index_of` | `(arr [T], value T) -> int` | First index of value (-1 if not found) |
-| `count` | `(arr [T], value T) -> int` | Count occurrences of value |
-| `is_equal` | `(a [T], b [T]) -> bool` | Structural equality. Compares length first, then elements. `T` must be a primitive (`int`, `uint`, `float`, `bool`, `char`, `byte`, sized variants) or `string`; arrays of nested composites are rejected at compile time. |
+| `index_of` | `(arr [T], value T) -> i64` | First index of value (-1 if not found) |
+| `count` | `(arr [T], value T) -> i64` | Count occurrences of value |
+| `is_equal` | `(a [T], b [T]) -> bool` | Structural equality. Compares length first, then elements. `T` must be a primitive (an integer or float type, `bool`, `char`) or `string`; arrays of nested composites are rejected at compile time. |
 | `is_sorted` | `(arr [T]) -> bool` | True if elements are in ascending order (each `<=` the next). Empty and single-element arrays are sorted. `T` must be comparable, as for `sort_asc`. |
-| `binary_search` | `(arr [T], val T) -> int` | Search a sorted array for val (index, or -1 if absent). `arr` must already be sorted ascending, as by `sort_asc`; behavior on an unsorted array is undefined. `T` must be comparable, as for `sort_asc`. |
+| `binary_search` | `(arr [T], val T) -> i64` | Search a sorted array for val (index, or -1 if absent). `arr` must already be sorted ascending, as by `sort_asc`; behavior on an unsorted array is undefined. `T` must be comparable, as for `sort_asc`. |
 
 The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b)` for equality.
 
@@ -3329,40 +3307,40 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 |----------|-----------|-------------|
 | `append` | `(&arr [T], value T)` | Append element |
 | `prepend` | `(&arr [T], value T)` | Insert value at front |
-| `insert_at` | `(&arr [T], index int, value T)` | Insert at index |
+| `insert_at` | `(&arr [T], index i64, value T)` | Insert at index |
 | `remove` | `(&arr [T], value T)` | Remove first occurrence of value |
-| `remove_at` | `(&arr [T], index int)` | Remove element at index |
+| `remove_at` | `(&arr [T], index i64)` | Remove element at index |
 | `remove_first` | `(&arr [T]) -> T` | Remove and return first element (panic if empty) |
 | `remove_last` | `(&arr [T]) -> T` | Remove and return last element (panic if empty) |
 | `clear` | `(&arr [T])` | Remove all elements |
-| `fill` | `(&arr [T], value T, count int)` | Fill array with N copies of value |
+| `fill` | `(&arr [T], value T, count i64)` | Fill array with N copies of value |
 | `sort_asc` | `(&arr [T])` | Sort ascending in-place |
 | `sort_desc` | `(&arr [T])` | Sort descending in-place |
-| `swap` | `(&arr [T], i int, j int)` | Swap the elements at `i` and `j` in place; panics if either index is out of bounds |
+| `swap` | `(&arr [T], i i64, j i64)` | Swap the elements at `i` and `j` in place; panics if either index is out of bounds |
 
 #### Transformation Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `reverse` | `(arr [T]) -> [T]` | Return reversed copy |
-| `rotate` | `(arr [T], n int) -> [T]` | Return a copy rotated left by n (negative n rotates right) |
-| `slice` | `(arr [T], start int, end int) -> [T]` | Return slice |
+| `rotate` | `(arr [T], n i64) -> [T]` | Return a copy rotated left by n (negative n rotates right) |
+| `slice` | `(arr [T], start i64, end i64) -> [T]` | Return slice |
 | `concat` | `(a [T], b [T]) -> [T]` | Concatenate two arrays |
 | `deduplicate` | `(arr [T]) -> [T]` | Remove duplicate values |
 | `flatten` | `(arr [[T]]) -> [T]` | Flatten one level of nesting |
-| `split_every` | `(arr [T], size int) -> [[T]]` | Split into sub-arrays of given size |
+| `split_every` | `(arr [T], size i64) -> [[T]]` | Split into sub-arrays of given size |
 | `pair` | `(a [T], b [T]) -> [[T]]` | Pair elements from two arrays |
 
 #### Computation Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get_sum` | `(arr [T]) -> T` | Sum all elements. Accepts int, float, or any sized integer/float type. |
+| `get_sum` | `(arr [T]) -> T` | Sum all elements. Accepts any integer or float type. |
 | `get_min` | `(arr [T]) -> T` | Minimum element |
 | `get_max` | `(arr [T]) -> T` | Maximum element |
-| `min_index` | `(arr [T]) -> int` | Index of the minimum element, or -1 if arr is empty |
-| `max_index` | `(arr [T]) -> int` | Index of the maximum element, or -1 if arr is empty |
-| `average` | `(arr [T]) -> float` | Arithmetic mean as a `float`. `T` must be numeric; panics on an empty array. |
+| `min_index` | `(arr [T]) -> i64` | Index of the minimum element, or -1 if arr is empty |
+| `max_index` | `(arr [T]) -> i64` | Index of the maximum element, or -1 if arr is empty |
+| `average` | `(arr [T]) -> f64` | Arithmetic mean as an `f64`. `T` must be numeric; panics on an empty array. |
 
 #### Higher-Order Functions
 
@@ -3374,7 +3352,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `any` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if at least one element satisfies `predicate`. Returns false on an empty array. |
 | `all` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if every element satisfies `predicate`. Returns true on an empty array. |
 | `find` | `(arr [T], predicate func(T) -> bool) -> (T, bool)` | Returns the first matching element and `true`, or the zero value and `false`. Must be destructured. |
-| `find_index` | `(arr [T], predicate func(T) -> bool) -> int` | Returns the index of the first matching element, or `-1`. |
+| `find_index` | `(arr [T], predicate func(T) -> bool) -> i64` | Returns the index of the first matching element, or `-1`. |
 
 ### 9.3 Strings Module (`@strings`)
 
@@ -3396,7 +3374,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `char_at` | `(s string, index int) -> char` | Character at byte index; panics if out of bounds |
+| `char_at` | `(s string, index i64) -> char` | Character at byte index; panics if out of bounds |
 
 #### Editing Functions
 
@@ -3408,9 +3386,9 @@ result.
 |----------|-----------|-------------|
 | `append_char` | `(s string, c char) -> string` | New string with `c` added at the end |
 | `prepend_char` | `(s string, c char) -> string` | New string with `c` added at the front |
-| `insert_char_at` | `(s string, index int, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
-| `remove_at` | `(s string, index int) -> string` | New string with the byte at `index` removed; panics if out of bounds |
-| `set_char_at` | `(s string, index int, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
+| `insert_char_at` | `(s string, index i64, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
+| `remove_at` | `(s string, index i64) -> string` | New string with the byte at `index` removed; panics if out of bounds |
+| `set_char_at` | `(s string, index i64, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
 
 #### Query Functions
 
@@ -3420,12 +3398,12 @@ result.
 | `contains` | `(s string, sub string) -> bool` | Check if contains substring |
 | `starts_with` | `(s string, prefix string) -> bool` | Check prefix |
 | `ends_with` | `(s string, suffix string) -> bool` | Check suffix |
-| `index_of` | `(s string, sub string) -> int` | First index of substring |
-| `last_index_of` | `(s string, sub string) -> int` | Last index of substring (-1 if not found) |
-| `count` | `(s string, sub string) -> int` | Count occurrences |
+| `index_of` | `(s string, sub string) -> i64` | First index of substring |
+| `last_index_of` | `(s string, sub string) -> i64` | Last index of substring (-1 if not found) |
+| `count` | `(s string, sub string) -> i64` | Count occurrences |
 | `contains_any` | `(s string, chars string) -> bool` | True if any single character from `chars` appears in `s`; false when `chars` is empty |
 | `equal_fold` | `(a string, b string) -> bool` | Case-insensitive equality (ASCII) |
-| `compare` | `(a string, b string) -> int` | Bytewise comparison; -1 if `a` sorts first, 1 if `b` does, 0 if equal |
+| `compare` | `(a string, b string) -> i64` | Bytewise comparison; -1 if `a` sorts first, 1 if `b` does, 0 if equal |
 
 #### Classification Functions
 
@@ -3448,9 +3426,9 @@ result.
 | `remove_prefix` | `(s string, prefix string) -> string` | Remove prefix if present, otherwise return unchanged |
 | `remove_suffix` | `(s string, suffix string) -> string` | Remove suffix if present, otherwise return unchanged |
 | `replace` | `(s string, old string, new string) -> string` | Replace all occurrences |
-| `repeat` | `(s string, count int) -> string` | Repeat string |
+| `repeat` | `(s string, count i64) -> string` | Repeat string |
 | `reverse` | `(s string) -> string` | Reverse string |
-| `truncate` | `(s string, max int, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes plus `ellipsis` (total byte length exactly `max`); panics if `max < len(ellipsis)` |
+| `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes plus `ellipsis` (total byte length exactly `max`); panics if `max < len(ellipsis)` |
 
 #### Conversion Functions
 
@@ -3458,9 +3436,9 @@ result.
 |----------|-----------|-------------|
 | `split` | `(s string, sep string) -> [string]` | Split into array |
 | `split_whitespace` | `(s string) -> [string]` | Split on runs of whitespace, discarding empty pieces |
-| `split_n` | `(s string, sep string, n int) -> [string]` | Split into at most `n` pieces; the last holds the unsplit remainder. Empty array when `n <= 0` |
+| `split_n` | `(s string, sep string, n i64) -> [string]` | Split into at most `n` pieces; the last holds the unsplit remainder. Empty array when `n <= 0` |
 | `join` | `(arr [string], sep string) -> string` | Join array |
-| `slice` | `(s string, start int, end int) -> string` | Extract substring |
+| `slice` | `(s string, start i64, end i64) -> string` | Extract substring |
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
 | `from_chars` | `(chars [char]) -> string` | Convert char array to string |
 
@@ -3485,13 +3463,13 @@ plain (immutable) parameter is a compile error (E5007).
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `builder` | `() -> Builder` | Create an empty builder |
-| `builder_reserve` | `(b Builder, n int) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
+| `builder_reserve` | `(b Builder, n i64) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
 | `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
 | `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
-| `builder_append_bytes` | `(b Builder, data [byte]) -> void` | Append every byte of `data` |
-| `builder_append_int` | `(b Builder, n int) -> void` | Append the decimal text of `n` |
+| `builder_append_bytes` | `(b Builder, data [u8]) -> void` | Append every byte of `data` |
+| `builder_append_int` | `(b Builder, n i64) -> void` | Append the decimal text of `n` |
 | `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
-| `builder_len` | `(b Builder) -> int` | Bytes accumulated so far |
+| `builder_len` | `(b Builder) -> i64` | Bytes accumulated so far |
 | `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
 | `build` | `(b Builder) -> string` | Copy the accumulated bytes into a new string; the builder stays usable |
 
@@ -3524,7 +3502,7 @@ do rows_to_csv(rows [[string]]) -> string {
 | `remove_key` | `(&m map[K:V], key K)` | Remove key-value pair; does nothing if key absent |
 | `clear` | `(&m map[K:V])` | Remove all entries |
 | `merge` | `(m1 map[K:V], m2 map[K:V]) -> map[K:V]` | Combine two maps (m2 overwrites on conflict) |
-| `is_equal` | `(a map[K:V], b map[K:V]) -> bool` | Structural equality. Compares counts, then iterates the first map's entries in insertion order looking each key up in the second. `K` and `V` must each be a primitive (`int`, `uint`, `float`, `bool`, `char`, `byte`, sized variants) or `string`; maps with nested-composite values are rejected at compile time. |
+| `is_equal` | `(a map[K:V], b map[K:V]) -> bool` | Structural equality. Compares counts, then iterates the first map's entries in insertion order looking each key up in the second. `K` and `V` must each be a primitive (`i64`, `u64`, `f64`, `bool`, `char`, `u8`, sized variants) or `string`; maps with nested-composite values are rejected at compile time. |
 
 The `==` and `!=` operators on maps are not allowed; use `maps.is_equal(a, b)` for equality. Maps have no defined ordering, so `<` / `<=` / `>` / `>=` on maps is also rejected.
 
@@ -3532,7 +3510,7 @@ Use `len(m)` to get the number of entries (builtin, no import needed).
 
 ### 9.5 Math Module (`@math`)
 
-Unless noted otherwise, all math functions accept `int`, `float`, and sized numeric types (`i8`–`i64`, `u8`–`u64`, `f32`, `f64`). Functions that return the same type as their input are marked with `-> T` below; others specify their return type explicitly.
+Unless noted otherwise, all math functions accept any integer or float type (`i8`–`i64`, `u8`–`u64`, `f32`, `f64`). Functions that return the same type as their input are marked with `-> T` below; others specify their return type explicitly.
 
 #### Basic Arithmetic
 
@@ -3540,11 +3518,11 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 |----------|-----------|-------------|
 | `abs` | `(n T) -> T` | Absolute value |
 | `neg` | `(n T) -> T` | Negation |
-| `sign` | `(n T) -> int` | Sign (-1, 0, or 1) |
-| `mod` | `(x float, y float) -> float` | Floating-point remainder, carrying the sign of `x` |
-| `copysign` | `(x float, y float) -> float` | Magnitude of `x` with the sign of `y` |
-| `fma` | `(x float, y float, z float) -> float` | Fused multiply-add: `x * y + z` with a single rounding step |
-| `modf` | `(x float) -> (float, float)` | Integer and fractional parts of `x`, both carrying its sign. Both values must be captured: `mut whole, frac = math.modf(x)` |
+| `sign` | `(n T) -> i64` | Sign (-1, 0, or 1) |
+| `mod` | `(x f64, y f64) -> f64` | Floating-point remainder, carrying the sign of `x` |
+| `copysign` | `(x f64, y f64) -> f64` | Magnitude of `x` with the sign of `y` |
+| `fma` | `(x f64, y f64, z f64) -> f64` | Fused multiply-add: `x * y + z` with a single rounding step |
+| `modf` | `(x f64) -> (f64, f64)` | Integer and fractional parts of `x`, both carrying its sign. Both values must be captured: `mut whole, frac = math.modf(x)` |
 
 #### Min/Max/Clamp
 
@@ -3558,77 +3536,77 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `floor` | `(n T) -> float` | Round down to nearest integer (returns float) |
-| `ceil` | `(n T) -> float` | Round up to nearest integer (returns float) |
-| `round` | `(n T) -> float` | Round to nearest integer (returns float) |
-| `trunc` | `(n T) -> float` | Truncate toward zero (returns float) |
+| `floor` | `(n T) -> f64` | Round down to nearest integer (returns f64) |
+| `ceil` | `(n T) -> f64` | Round up to nearest integer (returns f64) |
+| `round` | `(n T) -> f64` | Round to nearest integer (returns f64) |
+| `trunc` | `(n T) -> f64` | Truncate toward zero (returns f64) |
 
 #### Powers and Roots
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pow` | `(base T, exp T) -> float` | Raise base to exponent |
-| `sqrt` | `(n T) -> float` | Square root |
-| `cbrt` | `(n T) -> float` | Cube root |
-| `hypot` | `(x T, y T) -> float` | Hypotenuse (sqrt(x^2 + y^2)) |
-| `exp` | `(n T) -> float` | e raised to the power n |
-| `exp2` | `(n T) -> float` | 2 raised to the power n |
+| `pow` | `(base T, exp T) -> f64` | Raise base to exponent |
+| `sqrt` | `(n T) -> f64` | Square root |
+| `cbrt` | `(n T) -> f64` | Cube root |
+| `hypot` | `(x T, y T) -> f64` | Hypotenuse (sqrt(x^2 + y^2)) |
+| `exp` | `(n T) -> f64` | e raised to the power n |
+| `exp2` | `(n T) -> f64` | 2 raised to the power n |
 
 #### Logarithms
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `log` | `(n T) -> float` | Natural logarithm |
-| `log2` | `(n T) -> float` | Base 2 logarithm |
-| `log10` | `(n T) -> float` | Base 10 logarithm |
-| `log_base` | `(value T, base T) -> float` | Logarithm with custom base |
+| `log` | `(n T) -> f64` | Natural logarithm |
+| `log2` | `(n T) -> f64` | Base 2 logarithm |
+| `log10` | `(n T) -> f64` | Base 10 logarithm |
+| `log_base` | `(value T, base T) -> f64` | Logarithm with custom base |
 
 #### Trigonometry
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `sin` | `(rad T) -> float` | Sine |
-| `cos` | `(rad T) -> float` | Cosine |
-| `tan` | `(rad T) -> float` | Tangent |
-| `asin` | `(n T) -> float` | Arc sine |
-| `acos` | `(n T) -> float` | Arc cosine |
-| `atan` | `(n T) -> float` | Arc tangent |
-| `atan2` | `(y T, x T) -> float` | Arc tangent of y/x |
-| `sinh` | `(n T) -> float` | Hyperbolic sine |
-| `cosh` | `(n T) -> float` | Hyperbolic cosine |
-| `tanh` | `(n T) -> float` | Hyperbolic tangent |
-| `deg_to_rad` | `(deg T) -> float` | Degrees to radians |
-| `rad_to_deg` | `(rad T) -> float` | Radians to degrees |
+| `sin` | `(rad T) -> f64` | Sine |
+| `cos` | `(rad T) -> f64` | Cosine |
+| `tan` | `(rad T) -> f64` | Tangent |
+| `asin` | `(n T) -> f64` | Arc sine |
+| `acos` | `(n T) -> f64` | Arc cosine |
+| `atan` | `(n T) -> f64` | Arc tangent |
+| `atan2` | `(y T, x T) -> f64` | Arc tangent of y/x |
+| `sinh` | `(n T) -> f64` | Hyperbolic sine |
+| `cosh` | `(n T) -> f64` | Hyperbolic cosine |
+| `tanh` | `(n T) -> f64` | Hyperbolic tangent |
+| `deg_to_rad` | `(deg T) -> f64` | Degrees to radians |
+| `rad_to_deg` | `(rad T) -> f64` | Radians to degrees |
 
 #### Statistical
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `factorial` | `(n int) -> int` | Factorial (n must be non-negative) |
-| `gcd` | `(a int, b int) -> int` | Greatest common divisor |
-| `lcm` | `(a int, b int) -> int` | Least common multiple |
+| `factorial` | `(n i64) -> i64` | Factorial (n must be non-negative) |
+| `gcd` | `(a i64, b i64) -> i64` | Greatest common divisor |
+| `lcm` | `(a i64, b i64) -> i64` | Least common multiple |
 
 #### Number Properties
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `is_prime` | `(n int) -> bool` | Check if prime |
-| `is_even` | `(n int) -> bool` | Check if even |
-| `is_odd` | `(n int) -> bool` | Check if odd |
-| `is_infinite` | `(n float) -> bool` | Check if infinite |
-| `is_nan` | `(n float) -> bool` | Check if NaN |
-| `is_finite` | `(n float) -> bool` | Check if finite (not infinite or NaN) |
-| `is_power_of_two` | `(n int) -> bool` | Check if a positive power of two; zero and negatives are not |
-| `next_power_of_two` | `(n int) -> int` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_INT` |
+| `is_prime` | `(n i64) -> bool` | Check if prime |
+| `is_even` | `(n i64) -> bool` | Check if even |
+| `is_odd` | `(n i64) -> bool` | Check if odd |
+| `is_infinite` | `(n f64) -> bool` | Check if infinite |
+| `is_nan` | `(n f64) -> bool` | Check if NaN |
+| `is_finite` | `(n f64) -> bool` | Check if finite (not infinite or NaN) |
+| `is_power_of_two` | `(n i64) -> bool` | Check if a positive power of two; zero and negatives are not |
+| `next_power_of_two` | `(n i64) -> i64` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_INT` |
 
 #### Utility
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `lerp` | `(a T, b T, t T) -> float` | Linear interpolation between a and b by factor t |
-| `remap` | `(v float, in_lo float, in_hi float, out_lo float, out_hi float) -> float` | Linearly map `v` from `[in_lo, in_hi]` onto `[out_lo, out_hi]` without clamping; panics (`P0122`) if `in_lo == in_hi` |
-| `approx_equal` | `(a float, b float, epsilon float) -> bool` | True if `abs(a - b) <= epsilon` |
-| `distance` | `(x1 T, y1 T, x2 T, y2 T) -> float` | Euclidean distance between two 2D points |
+| `lerp` | `(a T, b T, t T) -> f64` | Linear interpolation between a and b by factor t |
+| `remap` | `(v f64, in_lo f64, in_hi f64, out_lo f64, out_hi f64) -> f64` | Linearly map `v` from `[in_lo, in_hi]` onto `[out_lo, out_hi]` without clamping; panics (`P0122`) if `in_lo == in_hi` |
+| `approx_equal` | `(a f64, b f64, epsilon f64) -> bool` | True if `abs(a - b) <= epsilon` |
+| `distance` | `(x1 T, y1 T, x2 T, y2 T) -> f64` | Euclidean distance between two 2D points |
 
 #### Constants
 
@@ -3641,11 +3619,11 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 - `TAU` - Tau (2*Pi)
 - `INF` - Positive infinity
 - `NEG_INF` - Negative infinity
-- `EPSILON` - Smallest representable float difference
-- `MAX_INT` - Largest value an `int` can hold (9223372036854775807)
-- `MIN_INT` - Smallest value an `int` can hold (-9223372036854775808)
-- `MAX_FLOAT` - Largest finite value a `float` can hold (1.7976931348623157e308)
-- `MIN_FLOAT` - Smallest, i.e. most negative, finite value a `float` can hold (-1.7976931348623157e308)
+- `EPSILON` - Smallest representable f64 difference
+- `MAX_INT` - Largest value an `i64` can hold (9223372036854775807)
+- `MIN_INT` - Smallest value an `i64` can hold (-9223372036854775808)
+- `MAX_FLOAT` - Largest finite value an `f64` can hold (1.7976931348623157e308)
+- `MIN_FLOAT` - Smallest, i.e. most negative, finite value an `f64` can hold (-1.7976931348623157e308)
 
 ### 9.6 Time Module (`@time`)
 
@@ -3653,47 +3631,47 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `now` | `() -> int` | Current Unix timestamp (seconds) |
-| `now_ms` | `() -> int` | Current Unix timestamp (milliseconds) |
-| `now_ns` | `() -> int` | Current Unix timestamp (nanoseconds) |
+| `now` | `() -> i64` | Current Unix timestamp (seconds) |
+| `now_ms` | `() -> i64` | Current Unix timestamp (milliseconds) |
+| `now_ns` | `() -> i64` | Current Unix timestamp (nanoseconds) |
 
 #### Time Components
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `year` | `(timestamp int) -> int` | Get year |
-| `month` | `(timestamp int) -> int` | Get month (1-12) |
-| `day` | `(timestamp int) -> int` | Get day of month |
-| `hour` | `(timestamp int) -> int` | Get hour |
-| `minute` | `(timestamp int) -> int` | Get minute |
-| `second` | `(timestamp int) -> int` | Get second |
-| `weekday` | `(timestamp int) -> int` | Get day of week (0=Sunday) |
-| `weekday_name` | `(timestamp int) -> string` | English weekday name (`"Sunday"`..`"Saturday"`), matching `weekday()` numbering |
-| `month_name` | `(timestamp int) -> string` | English month name (`"January"`..`"December"`) |
-| `day_of_year` | `(timestamp int) -> int` | Day of the year, 1–366 |
-| `days_in_month` | `(year int, month int) -> int` | Days in `month` (1–12) of `year`, leap-year aware; panics (`P0128`) if `month` is outside 1–12 |
-| `is_leap_year` | `(year int) -> bool` | Check if year is a leap year |
+| `year` | `(timestamp i64) -> i64` | Get year |
+| `month` | `(timestamp i64) -> i64` | Get month (1-12) |
+| `day` | `(timestamp i64) -> i64` | Get day of month |
+| `hour` | `(timestamp i64) -> i64` | Get hour |
+| `minute` | `(timestamp i64) -> i64` | Get minute |
+| `second` | `(timestamp i64) -> i64` | Get second |
+| `weekday` | `(timestamp i64) -> i64` | Get day of week (0=Sunday) |
+| `weekday_name` | `(timestamp i64) -> string` | English weekday name (`"Sunday"`..`"Saturday"`), matching `weekday()` numbering |
+| `month_name` | `(timestamp i64) -> string` | English month name (`"January"`..`"December"`) |
+| `day_of_year` | `(timestamp i64) -> i64` | Day of the year, 1–366 |
+| `days_in_month` | `(year i64, month i64) -> i64` | Days in `month` (1–12) of `year`, leap-year aware; panics (`P0128`) if `month` is outside 1–12 |
+| `is_leap_year` | `(year i64) -> bool` | Check if year is a leap year |
 
 #### Formatting
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `format` | `(format string, timestamp int) -> string` | Format time |
-| `to_iso` | `(timestamp int) -> string` | ISO 8601 string |
-| `date` | `(timestamp int) -> string` | Date (YYYY-MM-DD) |
-| `to_clock` | `(timestamp int) -> string` | Time (HH:MM:SS) |
-| `humanize` | `(seconds int) -> string` | Relative phrase for a signed delta: positive is past (`"2 days ago"`), negative is future (`"in 1 hour"`), `0` is `"just now"`; largest whole unit only |
-| `format_duration` | `(seconds int) -> string` | `"1h 30m 15s"`; capped at hours (no days), zero components omitted unless the whole value is zero (`"0s"`), negative gets a leading `-` |
+| `format` | `(format string, timestamp i64) -> string` | Format time |
+| `to_iso` | `(timestamp i64) -> string` | ISO 8601 string |
+| `date` | `(timestamp i64) -> string` | Date (YYYY-MM-DD) |
+| `to_clock` | `(timestamp i64) -> string` | Time (HH:MM:SS) |
+| `humanize` | `(seconds i64) -> string` | Relative phrase for a signed delta: positive is past (`"2 days ago"`), negative is future (`"in 1 hour"`), `0` is `"just now"`; largest whole unit only |
+| `format_duration` | `(seconds i64) -> string` | `"1h 30m 15s"`; capped at hours (no days), zero components omitted unless the whole value is zero (`"0s"`), negative gets a leading `-` |
 
 #### Parsing
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `parse` | `(s string, layout string) -> (int, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
-| `parse_duration` | `(s string) -> (int, Error)` | Parse `"1h30m"`, `"90s"`, `"2d"`, `"1h30m15s"` (units `s m h d`) into total seconds; bad input yields a non-nil error and `0` |
+| `parse` | `(s string, layout string) -> (i64, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
+| `parse_duration` | `(s string) -> (i64, Error)` | Parse `"1h30m"`, `"90s"`, `"2d"`, `"1h30m15s"` (units `s m h d`) into total seconds; bad input yields a non-nil error and `0` |
 
 **Behavior:**
-- `parse` and `parse_duration` are fallible functions. Single-variable assignment (`mut ts int = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
+- `parse` and `parse_duration` are fallible functions. Single-variable assignment (`mut ts i64 = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
 - `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
 - `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
@@ -3701,20 +3679,20 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `diff` | `(t1 int, t2 int) -> int` | Difference in seconds (t2 - t1); negative if t1 is after t2 |
-| `since` | `(t int) -> int` | Seconds elapsed from t to now; equivalent to `diff(t, now())` |
-| `add_days` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` days (`n` may be negative); pure Unix arithmetic, no calendar/DST logic |
-| `add_hours` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` hours |
-| `add_seconds` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` seconds |
-| `start_of_day` | `(timestamp int) -> int` | Unix timestamp of `00:00:00` UTC on the same day |
-| `end_of_day` | `(timestamp int) -> int` | Unix timestamp of `23:59:59` UTC on the same day (`start_of_day + 86399`) |
+| `diff` | `(t1 i64, t2 i64) -> i64` | Difference in seconds (t2 - t1); negative if t1 is after t2 |
+| `since` | `(t i64) -> i64` | Seconds elapsed from t to now; equivalent to `diff(t, now())` |
+| `add_days` | `(timestamp i64, n i64) -> i64` | `timestamp` shifted by `n` days (`n` may be negative); pure Unix arithmetic, no calendar/DST logic |
+| `add_hours` | `(timestamp i64, n i64) -> i64` | `timestamp` shifted by `n` hours |
+| `add_seconds` | `(timestamp i64, n i64) -> i64` | `timestamp` shifted by `n` seconds |
+| `start_of_day` | `(timestamp i64) -> i64` | Unix timestamp of `00:00:00` UTC on the same day |
+| `end_of_day` | `(timestamp i64) -> i64` | Unix timestamp of `23:59:59` UTC on the same day (`start_of_day + 86399`) |
 
 #### Performance Timing
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `tick` | `() -> int` | High-resolution timestamp in nanoseconds |
-| `elapsed_ms` | `(start_tick int) -> int` | Milliseconds elapsed since a tick |
+| `tick` | `() -> i64` | High-resolution timestamp in nanoseconds |
+| `elapsed_ms` | `(start_tick i64) -> i64` | Milliseconds elapsed since a tick |
 
 ### 9.7 Random Module (`@random`)
 
@@ -3722,19 +3700,19 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `rand_float` | `() -> float` | Random float [0.0, 1.0) |
-| `rand_float` | `(min float, max float) -> float` | Random float [min, max) |
-| `rand_int` | `(max int) -> int` | Random int [0, max) |
-| `rand_int` | `(min int, max int) -> int` | Random int [min, max) |
+| `rand_float` | `() -> f64` | Random f64 [0.0, 1.0) |
+| `rand_float` | `(min f64, max f64) -> f64` | Random f64 [min, max) |
+| `rand_int` | `(max i64) -> i64` | Random i64 [0, max) |
+| `rand_int` | `(min i64, max i64) -> i64` | Random i64 [min, max) |
 | `rand_bool` | `() -> bool` | Random boolean |
-| `rand_byte` | `() -> byte` | Random byte [0, 255] |
+| `rand_byte` | `() -> u8` | Random u8 [0, 255] |
 | `rand_char` | `() -> char` | Random printable char |
 | `rand_char` | `(min char, max char) -> char` | Random char in range |
-| `rand_string` | `(length int, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
+| `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
 | `choice` | `(arr [T]) -> T` | Random element from array |
 | `shuffle` | `(arr [T]) -> [T]` | Return shuffled copy |
-| `sample` | `(arr [T], n int) -> [T]` | Return n unique random elements |
-| `seed` | `(value int)` | Seed the random number generator |
+| `sample` | `(arr [T], n i64) -> [T]` | Return n unique random elements |
+| `seed` | `(value i64)` | Seed the random number generator |
 
 ### 9.8 JSON Module (`@json`)
 
@@ -3742,9 +3720,9 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 |----------|-----------|-------------|
 | `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
-| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (`int`, `uint`, sized ints, `byte`, `float`, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, or a string-keyed map of primitives. `char` encodes as its codepoint number. For `#json` structs use `stringify`. |
+| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (integers, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, or a string-keyed map of primitives. `char` encodes as its codepoint number. For `#json` structs use `stringify`. |
 | `stringify` | `(value T) -> string` | Encode a `#json` struct to a JSON string |
-| `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
+| `pretty_print` | `(m map[K:V], indent i64) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
 `decode` is fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut m, err = ...` or `mut m, _ = ...`).
@@ -3756,15 +3734,15 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `read_file` | `(path string) -> string` | Read entire file as a string |
-| `read_bytes` | `(path string) -> [byte]` | Read entire file as a byte array |
-| `read_lines` | `(path string, limit int = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
+| `read_bytes` | `(path string) -> [u8]` | Read entire file as a byte array |
+| `read_lines` | `(path string, limit i64 = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
 
 #### Standard Input
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `read_stdin_all` | `() -> string` | Read all of standard input to EOF as one string |
-| `read_stdin_bytes` | `() -> [byte]` | Read all of standard input to EOF as a packed byte array |
+| `read_stdin_bytes` | `() -> [u8]` | Read all of standard input to EOF as a packed byte array |
 
 #### File Writing
 
@@ -3772,8 +3750,8 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 |----------|-----------|-------------|
 | `write_file` | `(path string, content string) -> bool` | Write file |
 | `append_file` | `(path string, content string) -> bool` | Append to file |
-| `write_bytes` | `(path string, data [byte]) -> bool` | Write byte array to file |
-| `append_bytes` | `(path string, data [byte]) -> bool` | Append byte array to file |
+| `write_bytes` | `(path string, data [u8]) -> bool` | Write byte array to file |
+| `append_bytes` | `(path string, data [u8]) -> bool` | Append byte array to file |
 
 #### File Operations
 
@@ -3782,7 +3760,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | `file_exists` | `(path string) -> bool` | Check if file exists |
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
-| `file_size` | `(path string) -> int` | Get file size in bytes (fallible; see below) |
+| `file_size` | `(path string) -> i64` | Get file size in bytes (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `rename_file` | `(old_path string, new_path string) -> bool` | Rename file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
@@ -3830,9 +3808,9 @@ The functions below are fallible: they return `(T, Error)`, and the tables above
 | Function | Full signature returns |
 |----------|------------------------|
 | `read_file` | `(string, Error)` |
-| `read_bytes` | `([byte], Error)` |
+| `read_bytes` | `([u8], Error)` |
 | `read_lines` | `([string], Error)` |
-| `file_size` | `(int, Error)` |
+| `file_size` | `(i64, Error)` |
 | `write_file` | `(bool, Error)` |
 | `append_file` | `(bool, Error)` |
 | `delete_file` | `(bool, Error)` |
@@ -3926,17 +3904,17 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `current_dir` | `() -> string` | Get current working directory |
 | `home_dir` | `() -> string` | Get the current user's home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) |
 | `hostname` | `() -> string` | Get machine hostname |
-| `pid` | `() -> int` | Get process ID |
+| `pid` | `() -> i64` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
 | `arch` | `() -> string` | Get CPU architecture |
-| `cpu_count` | `() -> int` | Number of logical CPUs available to the process; falls back to 1 |
+| `cpu_count` | `() -> i64` | Number of logical CPUs available to the process; falls back to 1 |
 | `is_tty` | `() -> bool` | True if standard output is a terminal (not a file or pipe) |
 
 #### Process Execution
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `exec` | `(cmd string, args [string]) -> (int, string, string, bool)` | Run a subprocess. Returns `(exit_code, stdout, stderr, ok)`. `ok` is `false` if the process could not be launched. stdout and stderr are captured. POSIX only. |
+| `exec` | `(cmd string, args [string]) -> (i64, string, string, bool)` | Run a subprocess. Returns `(exit_code, stdout, stderr, ok)`. `ok` is `false` if the process could not be launched. stdout and stderr are captured. POSIX only. |
 
 ```gray
 mut code, stdout, stderr, ok = os.exec("ls", {"-l", "/tmp"})
@@ -3987,7 +3965,7 @@ HTTP client for making requests. Currently supports HTTP only.
 
 The `HttpResponse` struct is available when either `@http` or `@server` is imported.
 
-- `status int` - HTTP status code
+- `status i64` - HTTP status code
 - `body string` - Response body
 - `headers map` - Response headers
 
@@ -4002,10 +3980,10 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 | `hmac_sha256` | `(key string, data string) -> string` | RFC 2104 HMAC-SHA-256 (hex) |
 | `hmac_sha1` | `(key string, data string) -> string` | RFC 2104 HMAC-SHA-1 (hex) |
 | `constant_time_equal` | `(a string, b string) -> bool` | Compare without an early return on mismatch; a length difference is folded into the result |
-| `crc32` | `(data string) -> uint` | IEEE CRC-32 checksum (polynomial `0xEDB88320`). A checksum, not a cryptographic hash |
-| `entropy` | `(data string) -> float` | Shannon entropy of `data` in bits per byte (0.0–8.0); `""` returns `0.0` |
-| `totp` | `(secret string, timestamp int, digits int) -> string` | RFC 6238 TOTP over the raw secret bytes (SHA-1, 30 s step), zero-padded to `digits`; panics (`P0126`) if `digits` is outside 1–9 |
-| `random_hex` | `(length int) -> string` | Cryptographically secure random hex string |
+| `crc32` | `(data string) -> u64` | IEEE CRC-32 checksum (polynomial `0xEDB88320`). A checksum, not a cryptographic hash |
+| `entropy` | `(data string) -> f64` | Shannon entropy of `data` in bits per byte (0.0–8.0); `""` returns `0.0` |
+| `totp` | `(secret string, timestamp i64, digits i64) -> string` | RFC 6238 TOTP over the raw secret bytes (SHA-1, 30 s step), zero-padded to `digits`; panics (`P0126`) if `digits` is outside 1–9 |
+| `random_hex` | `(length i64) -> string` | Cryptographically secure random hex string |
 
 ### 9.13 Encoding Module (`@encoding`)
 
@@ -4029,12 +4007,12 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `from_string` | `(s string) -> [byte]` | Create from UTF-8 string |
-| `from_hex` | `(hex string) -> [byte]` | Decode hex string |
-| `from_base64` | `(b64 string) -> [byte]` | Decode base64 string |
-| `to_string` | `(bytes [byte]) -> string` | Convert to UTF-8 string |
-| `to_hex` | `(bytes [byte]) -> string` | Encode to hex string |
-| `to_base64` | `(bytes [byte]) -> string` | Encode to base64 string |
+| `from_string` | `(s string) -> [u8]` | Create from UTF-8 string |
+| `from_hex` | `(hex string) -> [u8]` | Decode hex string |
+| `from_base64` | `(b64 string) -> [u8]` | Decode base64 string |
+| `to_string` | `(bytes [u8]) -> string` | Convert to UTF-8 string |
+| `to_hex` | `(bytes [u8]) -> string` | Encode to hex string |
+| `to_base64` | `(bytes [u8]) -> string` | Encode to base64 string |
 
 ### 9.14 UUID Module (`@uuid`)
 
@@ -4049,10 +4027,10 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 | `generate_compact` | `(id UUID) -> string` | Strip hyphens from a UUID, returning a 32-char hex string |
 | `parse` | `(s string) -> UUID` | Validate and normalize a 36-char hyphenated UUID to lowercase. Panics on invalid input — gate with `is_valid()` for a non-panicking check |
 | `to_string` | `(id UUID) -> string` | Convert UUID to its 36-char hyphenated string representation |
-| `to_bytes` | `(id UUID) -> [byte]` | The 16 raw bytes, big-endian order |
-| `from_bytes` | `(bytes [byte]) -> UUID` | Build a UUID from 16 raw bytes, verbatim. Panics if fewer than 16 |
-| `version` | `(id UUID) -> int` | The version nibble (1–8); 0 for the nil UUID |
-| `timestamp` | `(id UUID) -> (int, bool)` | Embedded creation time as Unix ms; the bool is true only for v1/v7 — always destructure |
+| `to_bytes` | `(id UUID) -> [u8]` | The 16 raw bytes, big-endian order |
+| `from_bytes` | `(bytes [u8]) -> UUID` | Build a UUID from 16 raw bytes, verbatim. Panics if fewer than 16 |
+| `version` | `(id UUID) -> i64` | The version nibble (1–8); 0 for the nil UUID |
+| `timestamp` | `(id UUID) -> (i64, bool)` | Embedded creation time as Unix ms; the bool is true only for v1/v7 — always destructure |
 | `is_valid` | `(s string) -> bool` | Validate UUID format |
 
 | Constant | Type | Value |
@@ -4159,7 +4137,7 @@ An HTTP server module with dynamic handlers and path parameters.
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
 | `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
-| `listen` | `(router Router, port int)` | Start HTTP server on port (blocks until killed) |
+| `listen` | `(router Router, port i64)` | Start HTTP server on port (blocks until killed) |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
 | `use` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
@@ -4167,10 +4145,10 @@ An HTTP server module with dynamic handlers and path parameters.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `text` | `(status int, body string) -> HttpResponse` | Create text/plain response |
-| `json` | `(status int, data) -> HttpResponse` | Create application/json response |
-| `html` | `(status int, body string) -> HttpResponse` | Create text/html response |
-| `redirect` | `(status int, url string) -> HttpResponse` | Create redirect response |
+| `text` | `(status i64, body string) -> HttpResponse` | Create text/plain response |
+| `json` | `(status i64, data) -> HttpResponse` | Create application/json response |
+| `html` | `(status i64, body string) -> HttpResponse` | Create text/html response |
+| `redirect` | `(status i64, url string) -> HttpResponse` | Create redirect response |
 
 #### Request Type
 
@@ -4222,7 +4200,7 @@ Regular expression operations using POSIX extended regex syntax.
 | `find_all_groups` | `(pattern string, text string) -> ([[string]], Error)` | Capture groups for every match — always use destructuring |
 | `replace` | `(pattern string, text string, replacement string) -> (string, Error)` | Replace matches — always use destructuring |
 | `split` | `(pattern string, text string) -> ([string], Error)` | Split by pattern — always use destructuring |
-| `count` | `(pattern string, text string) -> int` | Number of non-overlapping matches; 0 for an invalid pattern |
+| `count` | `(pattern string, text string) -> i64` | Number of non-overlapping matches; 0 for an invalid pattern |
 | `escape` | `(s string) -> string` | Backslash-escape regex metacharacters so `s` matches literally |
 
 `find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
@@ -4257,13 +4235,13 @@ TCP sockets and DNS resolution.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `connect` | `(host string, port int) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
-| `listen` | `(port int) -> (Listener, Error)` | Listen for incoming connections on a port — always use destructuring |
+| `connect` | `(host string, port i64) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
+| `listen` | `(port i64) -> (Listener, Error)` | Listen for incoming connections on a port — always use destructuring |
 | `accept` | `(listener Listener) -> (Socket, Error)` | Accept an incoming connection — always use destructuring |
-| `send` | `(sock Socket, data string) -> (int, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
-| `receive` | `(sock Socket, max_bytes int) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
+| `send` | `(sock Socket, data string) -> (i64, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
+| `receive` | `(sock Socket, max_bytes i64) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
 | `close` | `(sock Socket)` | Close a socket or listener |
-| `set_timeout` | `(sock Socket, ms int)` | Set read/write timeout in milliseconds |
+| `set_timeout` | `(sock Socket, ms i64)` | Set read/write timeout in milliseconds |
 | `resolve` | `(hostname string) -> (string, Error)` | Resolve a hostname to an IP address — always use destructuring |
 
 `connect`, `listen`, `accept`, `send`, `receive`, and `resolve` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
@@ -4275,14 +4253,14 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `spawn` | `(fn func()) -> Thread` | Spawn a new thread running `fn` |
-| `spawn_arg` | `(fn func(int), arg int) -> Thread` | Spawn a new thread running `fn`, passing `arg` as its int parameter. `spawn` with a second int argument forwards here |
+| `spawn_arg` | `(fn func(i64), arg i64) -> Thread` | Spawn a new thread running `fn`, passing `arg` as its i64 parameter. `spawn` with a second i64 argument forwards here |
 | `join` | `(t Thread)` | Wait for a thread to finish |
 | `detach` | `(t Thread)` | Release ownership; the thread runs independently. After detach the handle must not be joined or queried |
 | `is_alive` | `(t Thread) -> bool` | True while the thread's body has not returned. Not valid after `detach` or `join` |
-| `get_id` | `() -> int` | Get the current thread's ID |
+| `get_id` | `() -> i64` | Get the current thread's ID |
 | `yield` | `()` | Hint the scheduler to run another runnable thread |
-| `sleep` | `(ms int)` | Sleep the current thread for `ms` milliseconds |
-| `thread_count` | `() -> int` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
+| `sleep` | `(ms i64)` | Sleep the current thread for `ms` milliseconds |
+| `thread_count` | `() -> i64` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
 
 ### 9.22 Sync Module (`@sync`)
 
@@ -4302,14 +4280,14 @@ Message passing between threads. Compiler-only feature; requires POSIX threads.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `open` | `(capacity int) -> Channel` | Create a buffered channel |
-| `send` | `(ch Channel, value int)` | Send an int value into a channel |
-| `receive` | `(ch Channel) -> int` | Receive an int value from a channel (blocks if empty) |
+| `open` | `(capacity i64) -> Channel` | Create a buffered channel |
+| `send` | `(ch Channel, value i64)` | Send an i64 value into a channel |
+| `receive` | `(ch Channel) -> i64` | Receive an i64 value from a channel (blocks if empty) |
 | `close` | `(ch Channel)` | Close a channel |
-| `try_send` | `(ch Channel, value int) -> bool` | Non-blocking send; returns false if full |
-| `try_receive` | `(ch Channel) -> (int, bool)` | Non-blocking receive; returns value and success |
+| `try_send` | `(ch Channel, value i64) -> bool` | Non-blocking send; returns false if full |
+| `try_receive` | `(ch Channel) -> (i64, bool)` | Non-blocking receive; returns value and success |
 
-Channels are **int-only**. Sending non-int types (`string`, `float`, `bool`, etc.) is a compile-time error.
+Channels are **i64-only**. Sending non-i64 types (`string`, `f64`, `bool`, etc.) is a compile-time error.
 
 ### 9.24 Memory Module (`@mem`)
 
@@ -4317,15 +4295,15 @@ Arena-based memory allocation. Compiler-only feature.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `arena` | `(size int) -> Arena` | Create an arena with the given byte capacity |
+| `arena` | `(size i64) -> Arena` | Create an arena with the given byte capacity |
 | `destroy` | `(arena Arena)` | Destroy an arena and free its memory |
 | `reset` | `(arena Arena)` | Reset an arena, reclaiming all allocations without freeing |
-| `usage` | `(arena Arena) -> int` | Return the number of bytes currently used |
+| `usage` | `(arena Arena) -> i64` | Return the number of bytes currently used |
 | `init` | `(arena Arena, Type) -> ^Type` | Allocate a zero-initialized value of `Type` in the arena |
 | `alloc` | `(arena Arena, value T) -> ^T` | Allocate a copy of value in the arena |
-| `raw_copy` | `(dest ptr, src ptr, n int)` | Copy `n` bytes from `src` to `dest` |
-| `zero` | `(p ptr, n int)` | Zero out `n` bytes at `p` |
-| `fill` | `(p ptr, value int, n int)` | Set `n` bytes at `p` to `value` |
+| `raw_copy` | `(dest ptr, src ptr, n i64)` | Copy `n` bytes from `src` to `dest` |
+| `zero` | `(p ptr, n i64)` | Zero out `n` bytes at `p` |
+| `fill` | `(p ptr, value i64, n i64)` | Set `n` bytes at `p` to `value` |
 
 ### 9.25 Atomic Module (`@atomic`)
 
@@ -4333,19 +4311,19 @@ Lock-free atomic operations backed by hand-written assembly (ARM64 and x86_64). 
 
 #### 64-bit Atomics
 
-All pointer arguments must be `^int` (pointer to int).
+All pointer arguments must be `^i64` (pointer to i64).
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `load` | `(ptr ^int) -> int` | Atomically load a value |
-| `store` | `(ptr ^int, val int)` | Atomically store a value |
-| `add` | `(ptr ^int, val int) -> int` | Atomic add; returns previous value |
-| `sub` | `(ptr ^int, val int) -> int` | Atomic subtract; returns previous value |
-| `exchange` | `(ptr ^int, val int) -> int` | Atomic swap; returns previous value |
-| `cas` | `(ptr ^int, expected int, desired int) -> bool` | Compare-and-swap; returns true on success |
-| `and` | `(ptr ^int, val int) -> int` | Atomic bitwise AND; returns previous value |
-| `or` | `(ptr ^int, val int) -> int` | Atomic bitwise OR; returns previous value |
-| `xor` | `(ptr ^int, val int) -> int` | Atomic bitwise XOR; returns previous value |
+| `load` | `(ptr ^i64) -> i64` | Atomically load a value |
+| `store` | `(ptr ^i64, val i64)` | Atomically store a value |
+| `add` | `(ptr ^i64, val i64) -> i64` | Atomic add; returns previous value |
+| `sub` | `(ptr ^i64, val i64) -> i64` | Atomic subtract; returns previous value |
+| `exchange` | `(ptr ^i64, val i64) -> i64` | Atomic swap; returns previous value |
+| `cas` | `(ptr ^i64, expected i64, desired i64) -> bool` | Compare-and-swap; returns true on success |
+| `and` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise AND; returns previous value |
+| `or` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise OR; returns previous value |
+| `xor` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise XOR; returns previous value |
 
 #### Spinlock
 
@@ -4378,7 +4356,7 @@ Formatted output and string formatting functions.
 | `sprintf` | `(format string, args [T]) -> string` | Return formatted string |
 | `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
 
-One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
+One argument per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
 
 > 💡 **Tip:** `eprintln` and `eprint` are builtins, not fmt module functions. Use them without an import.
 
@@ -4388,25 +4366,25 @@ Format strings use C-style `%` specifiers:
 
 | Specifier | Type | Description |
 |-----------|------|-------------|
-| `%d`, `%i` | `int` | Signed decimal integer |
-| `%u` | `uint` | Unsigned decimal integer |
-| `%f` | `float` | Decimal floating-point |
-| `%e` | `float` | Scientific notation |
-| `%g` | `float` | Shorter of `%f` or `%e` |
+| `%d`, `%i` | `i64` | Signed decimal integer |
+| `%u` | `u64` | Unsigned decimal integer |
+| `%f` | `f64` | Decimal floating-point |
+| `%e` | `f64` | Scientific notation |
+| `%g` | `f64` | Shorter of `%f` or `%e` |
 | `%s` | `string` | String |
 | `%c` | `char` | Single character |
 | `%b` | `bool` | `true` / `false` |
-| `%x`, `%X` | `int` / `uint` | Hexadecimal (lowercase / uppercase) |
-| `%o` | `int` / `uint` | Octal |
+| `%x`, `%X` | `i64` / `u64` | Hexadecimal (lowercase / uppercase) |
+| `%o` | `i64` / `u64` | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `int`/`uint` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint argument only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint argument only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
 
-mut score int = 42
-mut x int = 7
+mut score i64 = 42
+mut x i64 = 7
 fmt.printf("%-10s %5d\n", "score", score)  // "score         42"
 fmt.printf("%08.2f\n", 3.14159)            // "00003.14"
 mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
@@ -4416,23 +4394,23 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pad_left` | `(s string, width int, ch char) -> string` | Pad string on the left to `width` with `ch` |
-| `pad_right` | `(s string, width int, ch char) -> string` | Pad string on the right to `width` with `ch` |
-| `center` | `(s string, width int, ch char) -> string` | Center string within `width`, padding both sides with `ch` |
+| `pad_left` | `(s string, width i64, ch char) -> string` | Pad string on the left to `width` with `ch` |
+| `pad_right` | `(s string, width i64, ch char) -> string` | Pad string on the right to `width` with `ch` |
+| `center` | `(s string, width i64, ch char) -> string` | Center string within `width`, padding both sides with `ch` |
 
 #### Number Formatting
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `int_to_hex` | `(n int) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
-| `int_to_binary` | `(n int) -> string` | Format integer as binary |
-| `int_to_octal` | `(n int) -> string` | Format integer as octal |
-| `float_fixed` | `(f float, decimals int) -> string` | Format float with fixed decimal places |
-| `float_sci` | `(f float) -> string` | Format float in scientific notation |
-| `format_number` | `(n int) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
-| `format_bytes` | `(n int) -> string` | Human-readable byte count in binary units B/KiB/MiB/GiB/TiB/PiB; whole bytes below 1024 (`"1023 B"`), one decimal above (`"1.5 KiB"`) |
+| `int_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
+| `int_to_binary` | `(n i64) -> string` | Format integer as binary |
+| `int_to_octal` | `(n i64) -> string` | Format integer as octal |
+| `float_fixed` | `(f f64, decimals i64) -> string` | Format f64 with fixed decimal places |
+| `float_sci` | `(f f64) -> string` | Format f64 in scientific notation |
+| `format_number` | `(n i64) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
+| `format_bytes` | `(n i64) -> string` | Human-readable byte count in binary units B/KiB/MiB/GiB/TiB/PiB; whole bytes below 1024 (`"1023 B"`), one decimal above (`"1.5 KiB"`) |
 
-Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
+Formatted output functions take one argument per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
 ### 9.27 Strconv Module (`@strconv`)
 
@@ -4442,13 +4420,13 @@ String-to-type and type-to-string conversion functions with proper error handlin
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_int` | `(s string, base int = 10) -> (int, Error)` | Parse string as signed integer in given base |
-| `to_uint` | `(s string, base int = 10) -> (uint, Error)` | Parse string as unsigned integer in given base |
-| `to_float` | `(s string) -> (float, Error)` | Parse string as floating-point number |
+| `to_int` | `(s string, base i64 = 10) -> (i64, Error)` | Parse string as signed integer in given base |
+| `to_uint` | `(s string, base i64 = 10) -> (u64, Error)` | Parse string as unsigned integer in given base |
+| `to_float` | `(s string) -> (f64, Error)` | Parse string as floating-point number |
 | `to_bool` | `(s string) -> (bool, Error)` | Parse string as boolean |
 
 **Behavior:**
-- These are fallible functions. Single-variable assignment (`mut n int = strconv.to_int("42")`) is a compile-time error (`E3089`); the result must be destructured.
+- These are fallible functions. Single-variable assignment (`mut n i64 = strconv.to_int("42")`) is a compile-time error (`E3089`); the result must be destructured.
 - `mut n, err = strconv.to_int(s)` — inspect `err` (non-nil on invalid input).
 - `mut n, _ = strconv.to_int(s)` — discard the error; on invalid input `n` is the zero value (`0`), no panic.
 
@@ -4471,12 +4449,12 @@ String-to-type and type-to-string conversion functions with proper error handlin
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `from_int` | `(n int) -> string` | Convert integer to decimal string |
-| `from_uint` | `(n uint) -> string` | Convert unsigned integer to decimal string |
-| `from_float` | `(f float) -> string` | Convert float to string (shortest representation) |
+| `from_int` | `(n i64) -> string` | Convert integer to decimal string |
+| `from_uint` | `(n u64) -> string` | Convert unsigned integer to decimal string |
+| `from_float` | `(f f64) -> string` | Convert f64 to string (shortest representation) |
 | `from_bool` | `(b bool) -> string` | Convert boolean to `"true"` or `"false"` |
-| `format_int` | `(n int, base int) -> string` | Convert signed integer to a string in any base 2–36 |
-| `format_uint` | `(n uint, base int) -> string` | Convert unsigned integer to a string in any base 2–36 |
+| `format_int` | `(n i64, base i64) -> string` | Convert signed integer to a string in any base 2–36 |
+| `format_uint` | `(n u64, base i64) -> string` | Convert unsigned integer to a string in any base 2–36 |
 
 These functions never fail, except `format_int` / `format_uint` panic when `base` is
 outside 2–36 (a compile-time error when the base is a literal).
@@ -4522,7 +4500,7 @@ outside 2–36 (a compile-time error when the base is a literal).
 **`is_integer` rules:**
 - Accepts optional leading `+` or `-`, followed by one or more digits (`0`–`9`).
 - Empty strings return `false`.
-- Does not validate whether the value fits in an `int` or `uint`.
+- Does not validate whether the value fits in an `i64` or `u64`.
 
 #### Constants
 
@@ -4542,18 +4520,18 @@ Read-only introspection into the compiler-managed arenas (default + heap), execu
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `arena_usage` | `() -> int` | Bytes currently used in the default (scope) arena |
-| `heap_usage` | `() -> int` | Bytes currently used in the heap arena (backs `new()`) |
-| `total_usage` | `() -> int` | Combined default + heap arena bytes currently used |
-| `peak_usage` | `() -> int` | High-water mark of combined default + heap arena bytes committed at any point during execution |
-| `alloc_count` | `() -> int` | Total number of arena allocations across the default and heap arenas since program start |
-| `arena_blocks` | `() -> int` | Number of blocks chained in the default arena |
-| `heap_blocks` | `() -> int` | Number of blocks chained in the heap arena |
-| `arena_limit` | `() -> int` | Current arena growth limit in bytes (from `--arena-limit`, or the 1 GB default) |
+| `arena_usage` | `() -> i64` | Bytes currently used in the default (scope) arena |
+| `heap_usage` | `() -> i64` | Bytes currently used in the heap arena (backs `new()`) |
+| `total_usage` | `() -> i64` | Combined default + heap arena bytes currently used |
+| `peak_usage` | `() -> i64` | High-water mark of combined default + heap arena bytes committed at any point during execution |
+| `alloc_count` | `() -> i64` | Total number of arena allocations across the default and heap arenas since program start |
+| `arena_blocks` | `() -> i64` | Number of blocks chained in the default arena |
+| `heap_blocks` | `() -> i64` | Number of blocks chained in the heap arena |
+| `arena_limit` | `() -> i64` | Current arena growth limit in bytes (from `--arena-limit`, or the 1 GB default) |
 | `version` | `() -> string` | Grayscale version that compiled this binary |
-| `call_depth` | `() -> int` | Current call stack depth |
-| `call_limit` | `() -> int` | Maximum allowed call stack depth (10,000) |
-| `uptime` | `() -> float` | Seconds elapsed since the program started |
+| `call_depth` | `() -> i64` | Current call stack depth |
+| `call_limit` | `() -> i64` | Maximum allowed call stack depth (10,000) |
+| `uptime` | `() -> f64` | Seconds elapsed since the program started |
 
 ### 9.29 Chars Module (`@chars`)
 
@@ -4598,8 +4576,8 @@ two-character escapes, other control characters and DEL as `\xNN`, non-ASCII cod
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `width` | `(c char) -> int` | Terminal display width of c |
-| `string_width` | `(s string) -> int` | Total terminal display width of s |
+| `width` | `(c char) -> i64` | Terminal display width of c |
+| `string_width` | `(s string) -> i64` | Total terminal display width of s |
 
 `width` follows `wcwidth` semantics: `-1` for a C0/C1 control character, `0` for a
 zero-width codepoint (combining marks, joiners, variation selectors), `2` for a wide
@@ -4696,7 +4674,7 @@ when err.code {
 
 ### 10.5 ErrorCode
 
-`ErrorCode` is a single, program-wide enum whose variant set is **open**: it is assembled at compile time from a compiler-owned builtin list plus every user enum marked `#error_code`. The compiler owns the numbering, so `int(someErrorCode)` is that variant's global slot, not a 0-based position within one enum.
+`ErrorCode` is a single, program-wide enum whose variant set is **open**: it is assembled at compile time from a compiler-owned builtin list plus every user enum marked `#error_code`. The compiler owns the numbering, so `cast(someErrorCode, i64)` is that variant's global slot, not a 0-based position within one enum.
 
 Builtin variants:
 
@@ -4716,7 +4694,7 @@ const PaymentErrors enum {
 ```
 
 - `error(.PAYMENT_DECLINED, ...)`, `when err.code { is .PAYMENT_DECLINED ... }`, and `PaymentErrors.PAYMENT_DECLINED` all denote the same value.
-- The enum must be plain int-backed. String-backed enums, enums with explicit `= N` variant values, tagged (payload) enums, and `#flags` enums are rejected under `#error_code`.
+- The enum must be plain integer-backed. String-backed enums, enums with explicit `= N` variant values, tagged (payload) enums, and `#flags` enums are rejected under `#error_code`.
 - Every variant name across the whole `ErrorCode` set must be unique; a name already present (builtin or another `#error_code` enum) is a compile error.
 - `PaymentErrors` stays usable as its own enum type. A `#error_code` enum value and an `ErrorCode` value are freely interchangeable in comparisons and assignments — they share one value space.
 
@@ -4724,7 +4702,7 @@ const PaymentErrors enum {
 
 Certain operations produce runtime errors that terminate program execution:
 
-- Division by zero (int or float)
+- Division by zero (integer or float)
 - Array index out of bounds
 - Map key not found
 - Invalid type conversion
@@ -4774,11 +4752,11 @@ for_each line in lines {
 
 ### 11.2 Reference Semantics
 
-Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, into an existing struct field, or into a container element (`grid[0] = row`, `m["k"] = arr`, `arrays.append(outer, row)`), or reading one out of a container (`mut e [int] = grid[0]`), copies it:
+Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, into an existing struct field, or into a container element (`grid[0] = row`, `m["k"] = arr`, `arrays.append(outer, row)`), or reading one out of a container (`mut e [i64] = grid[0]`), copies it:
 
 ```gray
-mut a [int] = {1, 2, 3}
-mut b [int] = a
+mut a [i64] = {1, 2, 3}
+mut b [i64] = a
 b[0] = 99
 println(a[0])   // 1 - b is an independent copy, not an alias
 ```
@@ -4787,10 +4765,10 @@ The one place a composite gets aliased instead of copied is a **literal that emb
 
 ```gray
 const Box struct {
-    items [int]
+    items [i64]
 }
 
-mut arr [int] = {1, 2, 3}
+mut arr [i64] = {1, 2, 3}
 mut box Box = Box{items: arr}   // struct literal embeds arr
 box.items[0] = 99
 println(arr[0])                  // 99 - box.items aliases arr
@@ -4812,8 +4790,8 @@ duplicate.age = 31  // original.age is still 30
 
 ```gray
 const Node struct {
-    val int
-    self_ptr ^int
+    val i64
+    self_ptr ^i64
 }
 
 mut n Node = Node{val: 1}
@@ -4831,12 +4809,11 @@ The `new()` function allocates a zero-initialized value of any type on the heap 
 
 | Type | Zero Value |
 |------|------------|
-| `int/uint` | `0` |
-| `float` | `0.0` |
+| integer types | `0` |
+| `f32` / `f64` | `0.0` |
 | `string` | `""` |
 | `bool` | `false` |
 | `char` | `'\0'` |
-| `byte` | `0` |
 | `[T]` | Empty array (valid for append) |
 | `map[K:V]` | Empty map (`{:}`) |
 | enum | First variant |
@@ -4881,7 +4858,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Pointer-type reinterpretation | `cast()` between two pointer types is rejected; `cast()` converts values, not pointer identity |
 | Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen. Also traced across a function call: a helper that destroys or resets its own arena parameter (directly, or by forwarding it to another helper that does) is treated as destroying/resetting the caller's arena at the call site |
 | Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, on a prior iteration of an enclosing loop, or inside a helper the arena was passed to |
-| A pointer allocated inside a called function and handed back to the caller | Traced the same way as a destroy/reset: a helper that allocates on its own arena parameter and returns the pointer is followed at the call site, so `do make(a Arena) -> ^int { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller is a compile error, not a runtime fallback |
+| A pointer allocated inside a called function and handed back to the caller | Traced the same way as a destroy/reset: a helper that allocates on its own arena parameter and returns the pointer is followed at the call site, so `do make(a Arena) -> ^i64 { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller is a compile error, not a runtime fallback |
 | An arena reached through a struct field | An arena stored in a field and destroyed/reset by reading it back through that same field — including across a function call that takes the struct (or a pointer to it) and destroys the field itself — is traced |
 
 **Prevented by ASBAM:**
