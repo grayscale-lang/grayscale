@@ -6059,6 +6059,17 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     if ((strcmp(func, "abs") == 0 || strcmp(func, "neg") == 0) && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
         GrayType *arg_type = typetable_get(codegen->type_table, arg);
+        if (arg_type && arg_type->name && is_bigint_type(arg_type->name)) {
+            /* An unsigned wide value is its own absolute value. */
+            if (arg_type->kind == TK_UINT) {
+                emit_expression(codegen, arg);
+                return true;
+            }
+            emit_formatted(codegen, "%s_%s_checked(", bigint_prefix(arg_type->name), func);
+            emit_expression(codegen, arg);
+            emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+            return true;
+        }
         if (arg_type && arg_type->kind == TK_INT) {
             /* Negating the most negative value overflows, as `-n` does. */
             if (strcmp(func, "neg") == 0) {

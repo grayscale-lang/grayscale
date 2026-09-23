@@ -1,0 +1,53 @@
+import @math
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // abs of a negative i128
+    mut a i128 = -5
+    if math.abs(a) == 5 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // abs of a negative i256
+    mut b i256 = -7
+    if math.abs(b) == 7 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // abs of a u128 is the value itself
+    mut c u128 = 9
+    if math.abs(c) == 9 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // neg of an i128
+    if math.neg(a) == 5 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // neg of an i256
+    mut d i256 = 11
+    if math.neg(d) == -11 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

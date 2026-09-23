@@ -704,6 +704,19 @@ static inline gray_i128 gray_i128_mul_checked(gray_i128 left, gray_i128 right, c
     return result;
 }
 
+/* Negating the minimum value overflows; every other value negates exactly. */
+static inline gray_i128 gray_i128_neg_checked(gray_i128 value, const char *file, int line) {
+    gray_i128 result = gray_i128_neg(value);
+    if (value.hi < 0 && result.hi < 0) {
+        gray_panic_code_at(file, line, "P0014", "i128 negation result is too large; value exceeds the range of this type");
+    }
+    return result;
+}
+
+static inline gray_i128 gray_i128_abs_checked(gray_i128 value, const char *file, int line) {
+    return value.hi < 0 ? gray_i128_neg_checked(value, file, line) : value;
+}
+
 static inline gray_u128 gray_u128_add_checked(gray_u128 left, gray_u128 right, const char *file, int line) {
     gray_u128 result = gray_u128_add(left, right);
     if (gray_u128_lt(result, left)) {
@@ -765,6 +778,18 @@ static inline gray_i256 gray_i256_mul_checked(gray_i256 left, gray_i256 right, c
         }
     }
     return result;
+}
+
+static inline gray_i256 gray_i256_neg_checked(gray_i256 value, const char *file, int line) {
+    gray_i256 result = gray_i256_neg(value);
+    if (gray_i256_is_neg(value) && gray_i256_is_neg(result)) {
+        gray_panic_code_at(file, line, "P0014", "i256 negation result is too large; value exceeds the range of this type");
+    }
+    return result;
+}
+
+static inline gray_i256 gray_i256_abs_checked(gray_i256 value, const char *file, int line) {
+    return gray_i256_is_neg(value) ? gray_i256_neg_checked(value, file, line) : value;
 }
 
 static inline gray_u256 gray_u256_add_checked(gray_u256 left, gray_u256 right, const char *file, int line) {
