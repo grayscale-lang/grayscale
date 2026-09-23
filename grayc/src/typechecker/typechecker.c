@@ -5967,6 +5967,28 @@ static GrayType *resolve_math_abs_neg(TypeChecker *checker, AstNode *node, const
     return &TYPE_I64;
 }
 
+/* math.min / max / clamp: (a T, b T...) -> T. T is the type of the first
+ * argument that is not a numeric literal, so a literal argument takes the
+ * other arguments' type (math.max(small_i8, 3) is i8). With only literal
+ * arguments, T is the literals' default type. */
+static GrayType *resolve_math_min_max_clamp(TypeChecker *checker, AstNode *node) {
+    GrayType *literal_type = NULL;
+    for (int i = 0; i < node->data.call.arg_count; i++) {
+        AstNode *arg = node->data.call.args[i];
+        GrayType *arg_t = resolve_expression(checker, arg);
+        if (!arg_t || (arg_t->kind != TK_INT && arg_t->kind != TK_UINT && arg_t->kind != TK_FLOAT))
+            continue;
+        AstNode *unsigned_arg = (arg->kind == NODE_PREFIX_EXPR && arg->data.prefix.op == TOK_MINUS)
+            ? arg->data.prefix.right : arg;
+        if (unsigned_arg->kind == NODE_INT_VALUE || unsigned_arg->kind == NODE_FLOAT_VALUE) {
+            if (!literal_type || arg_t->kind == TK_FLOAT) literal_type = arg_t;
+            continue;
+        }
+        return arg_t;
+    }
+    return literal_type ? literal_type : &TYPE_I64;
+}
+
 static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
     if (strcmp(mfn, "get_keys") == 0) {
         if (node->data.call.arg_count > 0) {
@@ -6774,14 +6796,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             result = resolve_math_abs_neg(checker, node, mfn);
         } else if (strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
                    strcmp(mfn, "clamp") == 0) {
-            /* min/max/clamp: return type matches argument type */
-            if (node->data.call.arg_count > 0) {
-                GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_F64 :
-                         (arg_t && arg_t->kind == TK_UINT) ? &TYPE_U64 : &TYPE_I64;
-            } else {
-                result = &TYPE_I64;
-            }
+            result = resolve_math_min_max_clamp(checker, node);
         }
     } else if (strcmp(mod, "random") == 0) {
         if (strcmp(mfn, "shuffle") == 0 || strcmp(mfn, "sample") == 0) {
@@ -9363,8 +9378,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     }
                 }
             }
-            if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0 ||
-                strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
+            if (!found_in_using && (strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
                 strcmp(function_name, "clamp") == 0)) {
                 for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
                     if (!using_module_accessible(checker, using_index)) continue;
@@ -9372,12 +9386,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     if (strcmp(real_mod, "math") == 0) {
                         found_in_using = true;
                         using_stdlib_mod = real_mod;
-                        if (node->data.call.arg_count > 0) {
-                            GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
-                            result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_F64 : &TYPE_I64;
-                        } else {
-                            result = &TYPE_I64;
-                        }
+                        result = resolve_math_min_max_clamp(checker, node);
                         break;
                     }
                 }

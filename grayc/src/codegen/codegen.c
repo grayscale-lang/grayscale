@@ -6070,28 +6070,39 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
-    if ((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) {
-        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
-        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "f64" :
-                              (arg_type && arg_type->kind == TK_UINT) ? "u64" : "i64";
+    if (((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) ||
+        (strcmp(func, "clamp") == 0 && node->data.call.arg_count == 3)) {
+        /* The result is the call's type T. The helpers work at 64 bits, so
+         * when an argument is not already T (a literal, or a wider value)
+         * the result is range-checked back into T. */
+        GrayType *result_type = typetable_get(codegen->type_table, node);
+        const char *suffix = (result_type && result_type->kind == TK_FLOAT) ? "f64" :
+                              (result_type && result_type->kind == TK_UINT) ? "u64" : "i64";
+        const char *min = NULL, *max = NULL;
+        bool is_unsigned = false;
+        bool needs_check = false;
+        if (result_type && result_type->name &&
+            sized_int_bounds(result_type->name, &min, &max, &is_unsigned)) {
+            for (int i = 0; i < node->data.call.arg_count; i++) {
+                GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[i]);
+                if (!arg_type || !arg_type->name || strcmp(arg_type->name, result_type->name) != 0)
+                    needs_check = true;
+            }
+        }
+        if (needs_check) emit_formatted(codegen, "(%s)%s%s(", gray_type_to_c_codegen(codegen, result_type->name),
+                                        is_unsigned ? "gray_ucast_check" : "gray_cast_check",
+                                        strcmp(suffix, "u64") == 0 ? "_u64" : "");
         emit_formatted(codegen, "gray_math_%s_%s(", func, suffix);
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
+        for (int i = 0; i < node->data.call.arg_count; i++) {
+            if (i > 0) emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[i]);
+        }
         emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "clamp") == 0 && node->data.call.arg_count == 3) {
-        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
-        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "f64" :
-                              (arg_type && arg_type->kind == TK_UINT) ? "u64" : "i64";
-        emit_formatted(codegen, "gray_math_clamp_%s(", suffix);
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ")");
+        if (needs_check) {
+            emit(codegen, ", ");
+            emit_sized_bounds_args(codegen, min, max, is_unsigned, result_type->name, node->token.line);
+            emit(codegen, ")");
+        }
         return true;
     }
     /* Generic: math.func(args...) → gray_math_func(args...) */
