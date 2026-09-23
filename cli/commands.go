@@ -98,6 +98,35 @@ var checkCmd = &cobra.Command{
 	},
 }
 
+// commonBuildOpts reads the flags shared by build and cross into BuildOpts.
+func commonBuildOpts(cmd *cobra.Command) (driver.BuildOpts, error) {
+	output, _ := cmd.Flags().GetString("output")
+	emitC, _ := cmd.Flags().GetBool("emit-c")
+	showTime, _ := cmd.Flags().GetBool("time")
+	quiet, _ := cmd.Flags().GetString("quiet")
+	noColor, _ := cmd.Flags().GetBool("no-color")
+	arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
+
+	arenaLimit, err := parseArenaLimit(arenaLimitStr)
+	if err != nil {
+		return driver.BuildOpts{}, err
+	}
+
+	opts := driver.BuildOpts{
+		Output:     output,
+		EmitC:      emitC,
+		Time:       showTime,
+		NoColor:    noColor,
+		ArenaLimit: arenaLimit,
+	}
+	if quiet == "all" {
+		opts.Quiet = true
+	} else if quiet != "" {
+		opts.QuietCodes = quiet
+	}
+	return opts, nil
+}
+
 var buildCmd = &cobra.Command{
 	Use:   "build [file.gray]",
 	Short: "Compile a Grayscale source file to a native binary",
@@ -106,32 +135,11 @@ var buildCmd = &cobra.Command{
 		if !strings.HasSuffix(args[0], ".gray") {
 			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
 		}
-		output, _ := cmd.Flags().GetString("output")
-		verbose, _ := cmd.Flags().GetBool("verbose")
-		emitC, _ := cmd.Flags().GetBool("emit-c")
-		quiet, _ := cmd.Flags().GetString("quiet")
-		showTime, _ := cmd.Flags().GetBool("time")
-		noColor, _ := cmd.Flags().GetBool("no-color")
-		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
-
-		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		opts, err := commonBuildOpts(cmd)
 		if err != nil {
 			return err
 		}
-
-		opts := driver.BuildOpts{
-			Output:     output,
-			Verbose:    verbose,
-			EmitC:      emitC,
-			Time:       showTime,
-			NoColor:    noColor,
-			ArenaLimit: arenaLimit,
-		}
-		if quiet == "all" {
-			opts.Quiet = true
-		} else if quiet != "" {
-			opts.QuietCodes = quiet
-		}
+		opts.Verbose, _ = cmd.Flags().GetBool("verbose")
 		code, err := driver.Build(args[0], opts)
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
@@ -808,31 +816,11 @@ var crossBuildCmd = &cobra.Command{
 			return &ExitError{1}
 		}
 
-		output, _ := cmd.Flags().GetString("output")
-		emitC, _ := cmd.Flags().GetBool("emit-c")
-		showTime, _ := cmd.Flags().GetBool("time")
-		quiet, _ := cmd.Flags().GetString("quiet")
-		noColor, _ := cmd.Flags().GetBool("no-color")
-		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
-
-		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		opts, err := commonBuildOpts(cmd)
 		if err != nil {
 			return err
 		}
-
-		opts := driver.BuildOpts{
-			Output:     output,
-			EmitC:      emitC,
-			Time:       showTime,
-			NoColor:    noColor,
-			ArenaLimit: arenaLimit,
-			CC:         fmt.Sprintf("%s cc -target %s", zigPath, zigTriple),
-		}
-		if quiet == "all" {
-			opts.Quiet = true
-		} else if quiet != "" {
-			opts.QuietCodes = quiet
-		}
+		opts.CC = fmt.Sprintf("%s cc -target %s", zigPath, zigTriple)
 
 		code, err := driver.Build(args[0], opts)
 		if err != nil {
