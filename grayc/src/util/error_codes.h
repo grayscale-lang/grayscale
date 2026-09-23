@@ -363,7 +363,7 @@
 #define GRAY_STDLIB_ERRORS \
     GRAY_ERROR("E7004", "stdlib", "function argument must be an integer, not a float") \
     GRAY_ERROR("E7006", "stdlib", "'threads.spawn()' needs a function reference; use '()function_name' to pass a function") \
-    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode code point (0 or greater)") \
+    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111)") \
     GRAY_ERROR("E7015", "stdlib", "'len()' is not supported for type '%s'; 'len()' works on string, array, and map types") \
     GRAY_ERROR("E9002", "stdlib", "'arrays.%s()' requires a numeric array, got array of '%s'") \
     GRAY_ERROR("E9003", "stdlib", "'arrays.%s()' requires a function reference; use '()func_name' to pass a function") \

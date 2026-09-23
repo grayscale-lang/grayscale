@@ -1,0 +1,40 @@
+/*
+ * char_conversion_codepoint_range.gray - char(n), cast(n, char) and
+ * cast(arr, [char]) accept every codepoint from U+0000 to U+10FFFF.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut low i64 = 0
+    mut high i64 = 1114111
+    if cast(char(low), i64) == 0 && cast(char(high), i64) == 1114111 {
+        passed++
+    } otherwise {
+        println("FAIL: char() at the range edges")
+        failed++
+    }
+
+    mut a i64 = 65
+    if cast(a, char) == 'A' && cast(69.7, char) == 'E' {
+        passed++
+    } otherwise {
+        println("FAIL: cast to char")
+        failed++
+    }
+
+    mut arr [i64] = {67, 68}
+    mut letters [char] = cast(arr, [char])
+    if letters[0] == 'C' && letters[1] == 'D' {
+        passed++
+    } otherwise {
+        println("FAIL: cast to [char]")
+        failed++
+    }
+
+    println("char_conversion_codepoint_range: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -335,7 +335,7 @@
 | `E6016` | imports | C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
-| `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
+| `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111) |
 | `E7015` | stdlib | 'len()' is not supported for type '%s'; 'len()' works on string, array, and map types |
 | `E9002` | stdlib | 'arrays.%s()' requires a numeric array, got array of '%s' |
 | `E9003` | stdlib | 'arrays.%s()' requires a function reference; use '()func_name' to pass a function |
@@ -535,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-23 16:25:11 UTC*
+*Generated on 2026-09-23 16:31:38 UTC*

@@ -8866,9 +8866,9 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = &TYPE_CHAR;
             return result;
         }
-        /* E7014: char() with negative integer */
+        /* E7014: char() with a constant outside U+0000–U+10FFFF */
         int64_t lit_val;
-        if (try_get_literal_int(node->data.call.args[0], &lit_val) && lit_val < 0) {
+        if (try_get_literal_int(node->data.call.args[0], &lit_val) && (lit_val < 0 || lit_val > 0x10FFFF)) {
             diagnostic_error_code_formatted(checker->diag, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)lit_val);
         }
         /* E5026: char() converts an integer codepoint; reject any non-integer

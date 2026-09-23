@@ -401,6 +401,10 @@ static void emit_checked_negation(CodeGen *codegen, GrayType *int_type, AstNode 
         emit_formatted(codegen, ", \"%s\", %d)", codegen->file, line);
 }
 
+/* A char holds a Unicode codepoint, U+0000–U+10FFFF; a conversion to char is
+ * range-checked like a cast to an unsigned type with that maximum. */
+#define CHAR_CODEPOINT_MAX "1114111"
+
 /* Emit a range-checked narrowing to a sized integer: `check(value, bounds)`.
  * The check is picked by the source type so a u64 or float value is checked
  * as it is rather than after a lossy conversion to int64_t. The value is the
@@ -3970,6 +3974,10 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         const char *arr_min = NULL, *arr_max = NULL;
         bool arr_unsigned = false;
         sized_int_bounds(dst_elem, &arr_min, &arr_max, &arr_unsigned);
+        if (strcmp(dst_elem, "char") == 0 && strcmp(src_elem, "char") != 0) {
+            arr_max = CHAR_CODEPOINT_MAX;
+            arr_unsigned = true;
+        }
         char source_value[32];
         snprintf(source_value, sizeof(source_value), "_cv%d", id);
         if (arr_max) {
@@ -4129,6 +4137,10 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         const char *smin = NULL, *smax = NULL;
         bool is_unsigned = false;
         sized_int_bounds(target, &smin, &smax, &is_unsigned);
+        if (strcmp(target, "char") == 0 && val_kind != TK_CHAR) {
+            smax = CHAR_CODEPOINT_MAX;
+            is_unsigned = true;
+        }
 
         if (smax) {
             emit_formatted(codegen, "(%s)", gray_type_to_c_codegen(codegen, target));
@@ -5802,13 +5814,30 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             AstNode *carg = node->data.call.args[0];
             /* Bigint→scalar: e.g., char(x128) → gray_i128_to_i64(x128) */
             const char *src_bi = resolve_bigint_type(codegen, carg);
+            bool to_char = strcmp(func, "char") == 0;
             if (src_bi) {
                 const char *src_pfx = bigint_prefix(src_bi);
                 bool src_unsigned = (strcmp(src_bi, "u128") == 0 || strcmp(src_bi, "u256") == 0);
                 const char *to_suffix = src_unsigned ? "u64" : "i64";
+                if (to_char)
+                    emit_formatted(codegen, "((%s)%s(", cast_type,
+                                   src_unsigned ? "gray_ucast_check_u64" : "gray_ucast_check");
                 emit_formatted(codegen, "((%s)%s_to_%s(", cast_type, src_pfx, to_suffix);
                 emit_expression(codegen, carg);
                 emit_formatted(codegen, ", \"%s\", %d))", codegen->file, node->token.line);
+                if (to_char) {
+                    emit(codegen, ", ");
+                    emit_sized_bounds_args(codegen, NULL, CHAR_CODEPOINT_MAX, true, "char", node->token.line);
+                    emit(codegen, "))");
+                }
+                return true;
+            }
+            GrayType *carg_t = typetable_get(codegen->type_table, carg);
+            if (to_char && !(carg_t && carg_t->kind == TK_CHAR)) {
+                emit_formatted(codegen, "((%s)", cast_type);
+                emit_range_checked_narrowing(codegen, carg_t, carg, NULL, NULL, CHAR_CODEPOINT_MAX,
+                                             true, "char", node->token.line);
+                emit(codegen, ")");
                 return true;
             }
             emit_formatted(codegen, "((%s)(", cast_type);

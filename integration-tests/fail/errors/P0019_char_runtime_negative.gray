@@ -1,0 +1,6 @@
+/* Panic Test: P0019 - char() of a negative runtime value */
+do main() {
+    mut v i64 = -5
+    mut a char = char(v)
+    println(a)
+}

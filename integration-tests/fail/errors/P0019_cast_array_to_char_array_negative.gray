@@ -1,0 +1,5 @@
+/* Panic Test: P0019 - cast of an [i64] with a negative element to [char] */
+do main() {
+    mut arr [i64] = {-5}
+    println(cast(arr, [char]))
+}
