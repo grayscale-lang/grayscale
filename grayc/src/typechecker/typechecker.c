@@ -6103,17 +6103,15 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         }
     } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
                strcmp(mfn, "get_max") == 0) {
-        /* A float array yields a float; a wide-integer array yields that
-         * same wide type (the value does not fit int64); every other
-         * integer element width folds back to i64 (matches math.min/max). */
+        /* An integer or float array yields its own element type; a char or
+         * integer-backed enum array folds to i64. */
         result = &TYPE_I64;
         if (node->data.call.arg_count > 0) {
             GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
             if (arr_t && arr_t->element_type) {
-                if (type_from_name(arr_t->element_type)->kind == TK_FLOAT)
-                    result = &TYPE_F64;
-                else if (is_bigint_type(arr_t->element_type))
-                    result = type_from_name(arr_t->element_type);
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                if (elem_t->kind == TK_INT || elem_t->kind == TK_UINT || elem_t->kind == TK_FLOAT)
+                    result = elem_t;
             }
         }
     }

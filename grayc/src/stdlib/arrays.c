@@ -536,8 +536,8 @@ GRAY_DEFINE_INTROSORT(str, GrayString, gray_sort_str_lt)
 GRAY_DEFINE_INTROSORT(u8, uint8_t, GRAY_SORT_LT)
 GRAY_DEFINE_INTROSORT(i32, int32_t, GRAY_SORT_LT)
 
-/* The remaining packed element widths — [i8], [i16], [u16], [u32] and [f32]
- * — each get the full asc/desc/is_sorted set at their own C width. */
+/* The remaining element types — [i8], [i16], [u16], [u32], [u64] and [f32] —
+ * each get the full asc/desc/is_sorted set at their own C type. */
 #define GRAY_DEFINE_PACKED_SORT(SUF, T)                                         \
 GRAY_DEFINE_INTROSORT(SUF, T, GRAY_SORT_LT)                                    \
 void gray_arrays_sort_asc_##SUF(GrayArray *arr) {                              \
@@ -565,6 +565,7 @@ GRAY_DEFINE_PACKED_SORT(i8, int8_t)
 GRAY_DEFINE_PACKED_SORT(i16, int16_t)
 GRAY_DEFINE_PACKED_SORT(u16, uint16_t)
 GRAY_DEFINE_PACKED_SORT(u32, uint32_t)
+GRAY_DEFINE_PACKED_SORT(u64, uint64_t)
 GRAY_DEFINE_PACKED_SORT(f32, float)
 
 /* Fallback comparators for the rare element widths the specialized paths do

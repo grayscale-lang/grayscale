@@ -20,11 +20,11 @@ do main() {
     mut total i64 = 0
 
     // --- [u8] ---
-    mut b [u8] = {85, 226, 3, 4}
-    passed += check("u8 contains", arrays.contains(b, 85) && arrays.contains(b, 226) && !arrays.contains(b, 9))
-    passed += check("u8 index_of", arrays.index_of(b, 226) == 1 && arrays.index_of(b, 9) == -1)
+    mut b [u8] = {85, 160, 3, 4}
+    passed += check("u8 contains", arrays.contains(b, 85) && arrays.contains(b, 160) && !arrays.contains(b, 9))
+    passed += check("u8 index_of", arrays.index_of(b, 160) == 1 && arrays.index_of(b, 9) == -1)
     passed += check("u8 count", arrays.count(b, 3) == 1)
-    passed += check("u8 sum/min/max", arrays.get_max(b) == 226 && arrays.get_min(b) == 3 && arrays.get_sum(b) == 318)
+    passed += check("u8 sum/min/max", arrays.get_max(b) == 160 && arrays.get_min(b) == 3 && arrays.get_sum(b) == 252)
     total += 4
 
     mut br [u8] = {10, 20, 30, 20}

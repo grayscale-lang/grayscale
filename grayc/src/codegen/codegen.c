@@ -7232,11 +7232,11 @@ static void emit_escape_staged_value(CodeGen *codegen, AstNode *value_arg, const
     }
 }
 
-/* The sort_asc/sort_desc/is_sorted runtime variant suffix for a packed
- * element width that has no wider sibling to share (i32 shares '_char',
- * u8 has its own), or NULL. */
+/* The sort_asc/sort_desc/is_sorted runtime variant suffix for an element
+ * type the i64/f64/char/u8 variants cannot order (i32 shares '_char', u8 has
+ * its own), or NULL. */
 static const char *packed_sort_suffix(const char *elem_type) {
-    static const char *const packed[] = { "i8", "i16", "u16", "u32", "f32" };
+    static const char *const packed[] = { "i8", "i16", "u16", "u32", "u64", "f32" };
     if (!elem_type) return NULL;
     for (size_t i = 0; i < sizeof(packed) / sizeof(packed[0]); i++)
         if (strcmp(elem_type, packed[i]) == 0) return packed[i];
@@ -7781,24 +7781,42 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         }
         char c_elem[MSG_BUF_SIZE];
         snprintf(c_elem, sizeof(c_elem), "%s", gray_type_to_c_codegen(codegen, elem_tn));
-        bool is_float = type_from_name(elem_tn)->kind == TK_FLOAT;
-        const char *acc = is_float ? "double" : "int64_t";
+        TypeKind elem_kind = type_from_name(elem_tn)->kind;
+        bool is_float = elem_kind == TK_FLOAT;
+        const char *acc = is_float ? "double" : elem_kind == TK_UINT ? "uint64_t" : "int64_t";
         int tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayArray _ag%d = ", tag);
         emit_expression(codegen, node->data.call.args[0]);
         emit_formatted(codegen, "; %s _ar%d = 0; ", acc, tag);
-        if (strcmp(func, "get_sum") == 0) {
+        if (strcmp(func, "get_sum") == 0 && (elem_kind == TK_INT || elem_kind == TK_UINT)) {
+            /* The sum is the element type, so it overflows the way `+` on
+             * that type does. */
+            const char *sized_min = NULL, *sized_max = NULL;
+            bool sized_unsigned = false;
+            const char *add_check = elem_kind == TK_UINT ? "gray_uadd_check" : "gray_add_check";
+            if (sized_int_bounds(elem_tn, &sized_min, &sized_max, &sized_unsigned))
+                add_check = sized_unsigned ? "gray_usized_add_check" : "gray_sized_add_check";
             emit_formatted(codegen, "for (int32_t _ai%d = 0; _ai%d < _ag%d.len; _ai%d++) { "
-                "_ar%d += (%s)((%s *)_ag%d.data)[_ai%d]; } _ar%d; })",
-                tag, tag, tag, tag, tag, acc, c_elem, tag, tag, tag);
+                "_ar%d = %s(_ar%d, ((%s *)_ag%d.data)[_ai%d], ",
+                tag, tag, tag, tag, tag, add_check, tag, c_elem, tag, tag);
+            if (sized_max)
+                emit_sized_bounds_args(codegen, sized_min, sized_max, sized_unsigned, elem_tn, node->token.line);
+            else
+                emit_formatted(codegen, "\"%s\", %d", codegen->file, node->token.line);
+            emit_formatted(codegen, "); } (%s)_ar%d; })", c_elem, tag);
+        } else if (strcmp(func, "get_sum") == 0) {
+            emit_formatted(codegen, "for (int32_t _ai%d = 0; _ai%d < _ag%d.len; _ai%d++) { "
+                "_ar%d += (%s)((%s *)_ag%d.data)[_ai%d]; } %s%s%s_ar%d; })",
+                tag, tag, tag, tag, tag, acc, c_elem, tag, tag,
+                is_float ? "(" : "", is_float ? c_elem : "", is_float ? ")" : "", tag);
         } else {
             const char *cmp = (strcmp(func, "get_max") == 0) ? ">" : "<";
             emit_formatted(codegen, "if (_ag%d.len > 0) { _ar%d = (%s)((%s *)_ag%d.data)[0]; "
                 "for (int32_t _ai%d = 1; _ai%d < _ag%d.len; _ai%d++) { "
-                "%s _av%d = (%s)((%s *)_ag%d.data)[_ai%d]; if (_av%d %s _ar%d) _ar%d = _av%d; } } _ar%d; })",
+                "%s _av%d = (%s)((%s *)_ag%d.data)[_ai%d]; if (_av%d %s _ar%d) _ar%d = _av%d; } } (%s)_ar%d; })",
                 tag, tag, acc, c_elem, tag,
                 tag, tag, tag, tag,
-                acc, tag, acc, c_elem, tag, tag, tag, cmp, tag, tag, tag, tag);
+                acc, tag, acc, c_elem, tag, tag, tag, cmp, tag, tag, tag, c_elem, tag);
         }
         return true;
     }
@@ -7893,21 +7911,23 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         char bs_c_elem[MSG_BUF_SIZE];
         snprintf(bs_c_elem, sizeof(bs_c_elem), "%s",
             gray_type_to_c_codegen(codegen, bs_elem ? bs_elem : "i64"));
+        const char *bs_key = type_from_name(bs_elem ? bs_elem : "i64")->kind == TK_UINT
+            ? "uint64_t" : "int64_t";
         int bs_tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayArray _bs%d = ", bs_tag);
         emit_expression(codegen, node->data.call.args[0]);
-        emit_formatted(codegen, "; int64_t _bv%d = ", bs_tag);
+        emit_formatted(codegen, "; %s _bv%d = ", bs_key, bs_tag);
         emit_expression(codegen, node->data.call.args[1]);
         emit_formatted(codegen,
             "; int64_t _blo%d = 0, _bhi%d = (int64_t)_bs%d.len - 1, _br%d = -1; "
             "while (_blo%d <= _bhi%d) { int64_t _bm%d = _blo%d + (_bhi%d - _blo%d) / 2; "
-            "int64_t _bev%d = (int64_t)((%s *)_bs%d.data)[_bm%d]; "
+            "%s _bev%d = (%s)((%s *)_bs%d.data)[_bm%d]; "
             "if (_bev%d < _bv%d) _blo%d = _bm%d + 1; "
             "else if (_bev%d > _bv%d) _bhi%d = _bm%d - 1; "
             "else { _br%d = _bm%d; break; } } _br%d; })",
             bs_tag, bs_tag, bs_tag, bs_tag,
             bs_tag, bs_tag, bs_tag, bs_tag, bs_tag, bs_tag,
-            bs_tag, bs_c_elem, bs_tag, bs_tag,
+            bs_key, bs_tag, bs_key, bs_c_elem, bs_tag, bs_tag,
             bs_tag, bs_tag, bs_tag, bs_tag,
             bs_tag, bs_tag, bs_tag, bs_tag,
             bs_tag, bs_tag, bs_tag);
@@ -7952,19 +7972,21 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         snprintf(mi_c_elem, sizeof(mi_c_elem), "%s",
             gray_type_to_c_codegen(codegen, mi_elem ? mi_elem : "i64"));
         const char *mi_rel = want_max ? ">" : "<";
+        const char *mi_key = type_from_name(mi_elem ? mi_elem : "i64")->kind == TK_UINT
+            ? "uint64_t" : "int64_t";
         int mi_tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayArray _mi%d = ", mi_tag);
         emit_expression(codegen, node->data.call.args[0]);
         emit_formatted(codegen,
             "; int64_t _mr%d = -1; if (_mi%d.len > 0) { _mr%d = 0; "
-            "int64_t _mb%d = (int64_t)((%s *)_mi%d.data)[0]; "
+            "%s _mb%d = (%s)((%s *)_mi%d.data)[0]; "
             "for (int32_t _mj%d = 1; _mj%d < _mi%d.len; _mj%d++) { "
-            "int64_t _mv%d = (int64_t)((%s *)_mi%d.data)[_mj%d]; "
+            "%s _mv%d = (%s)((%s *)_mi%d.data)[_mj%d]; "
             "if (_mv%d %s _mb%d) { _mb%d = _mv%d; _mr%d = _mj%d; } } } _mr%d; })",
             mi_tag, mi_tag, mi_tag,
-            mi_tag, mi_c_elem, mi_tag,
+            mi_key, mi_tag, mi_key, mi_c_elem, mi_tag,
             mi_tag, mi_tag, mi_tag, mi_tag,
-            mi_tag, mi_c_elem, mi_tag, mi_tag,
+            mi_key, mi_tag, mi_key, mi_c_elem, mi_tag, mi_tag,
             mi_tag, mi_rel, mi_tag, mi_tag, mi_tag, mi_tag, mi_tag,
             mi_tag);
         return true;
