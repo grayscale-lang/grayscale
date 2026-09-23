@@ -1,0 +1,52 @@
+/*
+ * compare_unsigned_with_negative_signed.gray - comparing an unsigned value
+ * with a signed one compares the two values, even when the signed value is
+ * negative.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut u u64 = 5
+    mut s i64 = -1
+    mut big u64 = 18446744073709551615
+    if u > s && s < u && u != s && !(big == s) && !(s >= u) {
+        passed++
+    } otherwise {
+        println("FAIL: u64 with negative i64")
+        failed++
+    }
+
+    mut u2 u32 = 4294967295
+    mut s2 i32 = -1
+    if u2 > s2 && !(u2 == s2) {
+        passed++
+    } otherwise {
+        println("FAIL: u32 with negative i32")
+        failed++
+    }
+
+    mut one u64 = 1
+    mut neg8 i8 = -1
+    mut neg16 i16 = -1
+    if one > neg8 && one >= neg16 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 with negative i8/i16")
+        failed++
+    }
+
+    mut five i64 = 5
+    if u == five && five <= u && big > five && u > 0 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 with non-negative signed")
+        failed++
+    }
+
+    println("compare_unsigned_with_negative_signed: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

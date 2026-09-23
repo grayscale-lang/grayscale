@@ -3062,6 +3062,32 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    /* Comparison between an unsigned and a signed integer: compare by value.
+     * C would convert the signed side to unsigned first, so a negative value
+     * would compare as a huge one. An integer literal is never negative
+     * (a leading minus is a prefix expression), so it needs no helper. */
+    if ((op == TOK_EQ || op == TOK_NOT_EQ || op == TOK_LT || op == TOK_GT ||
+         op == TOK_LT_EQ || op == TOK_GT_EQ) && !codegen->in_const_decl &&
+        left_type && right_type) {
+        bool left_unsigned = left_type->kind == TK_UINT && right_type->kind == TK_INT;
+        bool right_unsigned = right_type->kind == TK_UINT && left_type->kind == TK_INT;
+        AstNode *signed_side = left_unsigned ? node->data.infix.right : node->data.infix.left;
+        if ((left_unsigned || right_unsigned) && signed_side->kind != NODE_INT_VALUE) {
+            AstNode *unsigned_side = left_unsigned ? node->data.infix.left : node->data.infix.right;
+            /* signed OP unsigned  <=>  0 OP compare(unsigned, signed) */
+            emit_formatted(codegen, "(%s", left_unsigned ? "" : "0 ");
+            if (!left_unsigned) emit_formatted(codegen, "%s ", operator_to_c_string(op));
+            emit(codegen, "gray_compare_unsigned_signed((uint64_t)(");
+            emit_expression(codegen, unsigned_side);
+            emit(codegen, "), (int64_t)(");
+            emit_expression(codegen, signed_side);
+            emit(codegen, "))");
+            if (left_unsigned) emit_formatted(codegen, " %s 0", operator_to_c_string(op));
+            emit(codegen, ")");
+            return;
+        }
+    }
+
     /* Runtime division/modulo by zero check.
      * GNU statement expressions are not valid as C file-scope initializers,
      * so skip the runtime check when inside a const declaration. */
