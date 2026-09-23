@@ -1,0 +1,6 @@
+/* Panic Test: P0018 - a u64 at or above 2^63 cast to i32 */
+do main() {
+    mut big u64 = 18446744073709551615
+    mut a i32 = cast(big, i32)
+    println(a)
+}

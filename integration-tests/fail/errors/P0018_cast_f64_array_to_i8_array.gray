@@ -1,0 +1,5 @@
+/* Panic Test: P0018 - an out-of-range f64 element cast to [i8] */
+do main() {
+    mut f [f64] = {300.0}
+    println(cast(f, [i8]))
+}

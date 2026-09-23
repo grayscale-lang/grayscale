@@ -401,6 +401,32 @@ static void emit_checked_negation(CodeGen *codegen, GrayType *int_type, AstNode 
         emit_formatted(codegen, ", \"%s\", %d)", codegen->file, line);
 }
 
+/* Emit a range-checked narrowing to a sized integer: `check(value, bounds)`.
+ * The check is picked by the source type so a u64 or float value is checked
+ * as it is rather than after a lossy conversion to int64_t. The value is the
+ * expression `operand`, or the C expression `operand_c` when non-NULL. */
+static void emit_range_checked_narrowing(CodeGen *codegen, GrayType *source_type,
+                                         AstNode *operand, const char *operand_c,
+                                         const char *min, const char *max, bool is_unsigned,
+                                         const char *target, int line) {
+    const char *source_suffix = "";
+    const char *value_cast = "";
+    if (source_type && source_type->kind == TK_FLOAT) {
+        source_suffix = "_f64";
+        value_cast = "(double)";
+    } else if (source_type && source_type->name && strcmp(source_type->name, "u64") == 0) {
+        source_suffix = "_u64";
+        value_cast = "(uint64_t)";
+    }
+    emit_formatted(codegen, "%s%s(%s(", is_unsigned ? "gray_ucast_check" : "gray_cast_check",
+                   source_suffix, value_cast);
+    if (operand_c) emit(codegen, operand_c);
+    else emit_expression(codegen, operand);
+    emit(codegen, "), ");
+    emit_sized_bounds_args(codegen, min, max, is_unsigned, target, line);
+    emit(codegen, ")");
+}
+
 /* Emit an overflow-checked compound assignment for a pointer-based target
  * whose C reference string is ref_str (e.g. "*_dp", "_dp->field").
  * Handles +=, -=, *= on sized and plain integer types.
@@ -3941,7 +3967,18 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         emit_formatted(codegen, "for (int32_t _ci%d = 0; _ci%d < _ca%d.len; _ci%d++) { ", id, id, id, id);
         emit_formatted(codegen, "%s _cv%d = ((%s*)_ca%d.data)[_ci%d]; ", src_c, id, src_c, id, id);
 
-        if (src_is_float && !dst_is_float) {
+        const char *arr_min = NULL, *arr_max = NULL;
+        bool arr_unsigned = false;
+        sized_int_bounds(dst_elem, &arr_min, &arr_max, &arr_unsigned);
+        char source_value[32];
+        snprintf(source_value, sizeof(source_value), "_cv%d", id);
+        if (arr_max) {
+            /* Narrowing to a sized integer: range-check the source as it is. */
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)", dst_c, id, id, dst_c);
+            emit_range_checked_narrowing(codegen, type_from_name(src_elem), NULL, source_value,
+                                         arr_min, arr_max, arr_unsigned, dst_elem, node->token.line);
+            emit(codegen, "; ");
+        } else if (src_is_float && !dst_is_float) {
             /* float → integer: use overflow-safe float conversion */
             if (dst_is_uint) {
                 emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)gray_f64_to_u64((double)_cv%d, \"%s\", %d); ",
@@ -3951,15 +3988,6 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
                     dst_c, id, id, dst_c, id, codegen->file, node->token.line);
             }
         } else {
-            /* Integer → integer or integer → float: range-check for narrowing */
-            const char *smin = NULL, *smax = NULL;
-            bool is_unsigned = false;
-            sized_int_bounds(dst_elem, &smin, &smax, &is_unsigned);
-            if (smax) {
-                emit_formatted(codegen, "%s(_cv%d, ", is_unsigned ? "gray_ucast_check" : "gray_cast_check", id);
-                emit_sized_bounds_args(codegen, smin, smax, is_unsigned, dst_elem, node->token.line);
-                emit(codegen, "); ");
-            }
             emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)_cv%d; ", dst_c, id, id, dst_c, id);
         }
 
@@ -4061,7 +4089,7 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
 
                 if (nmax) {
                     if (narrow_unsigned)
-                        emit_formatted(codegen, "(%s)gray_ucast_check((int64_t)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
+                        emit_formatted(codegen, "(%s)gray_ucast_check_u64(%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
                     else
                         emit_formatted(codegen, "(%s)gray_cast_check(%s_to_i64(", gray_type_to_c_codegen(codegen, target), bp);
                     emit_expression(codegen, val);
@@ -4103,12 +4131,9 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
         if (smax) {
-            emit_formatted(codegen, "(%s)%s(", gray_type_to_c_codegen(codegen, target),
-                is_unsigned ? "gray_ucast_check" : "gray_cast_check");
-            emit_expression(codegen, val);
-            emit(codegen, ", ");
-            emit_sized_bounds_args(codegen, smin, smax, is_unsigned, target, node->token.line);
-            emit(codegen, ")");
+            emit_formatted(codegen, "(%s)", gray_type_to_c_codegen(codegen, target));
+            emit_range_checked_narrowing(codegen, val_t, val, NULL, smin, smax, is_unsigned,
+                                         target, node->token.line);
         } else if ((strcmp(target, "u64") == 0) &&
                    (val_kind == TK_INT || val_kind == TK_UNKNOWN || val_kind == TK_C_FUNC)) {
             /* signed integer → u64: panic if value is negative. TK_C_FUNC
@@ -9784,11 +9809,9 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
         emit_expression(codegen, val);
         emit(codegen, ")");
     } else {
-        emit_formatted(codegen, "(%s)%s(", c_target, is_unsigned ? "gray_ucast_check" : "gray_cast_check");
-        emit_expression(codegen, val);
-        emit(codegen, ", ");
-        emit_sized_bounds_args(codegen, smin, smax, is_unsigned, target, line);
-        emit(codegen, ")");
+        emit_formatted(codegen, "(%s)", c_target);
+        emit_range_checked_narrowing(codegen, typetable_get(codegen->type_table, val), val, NULL,
+                                     smin, smax, is_unsigned, target, line);
     }
     return true;
 }

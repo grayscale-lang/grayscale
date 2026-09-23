@@ -1,0 +1,43 @@
+/*
+ * cast_narrowing_from_u64_and_float.gray - in-range narrowing casts from u64
+ * and float sources to sized integers keep their value.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a u64 = 200
+    if cast(a, u8) == 200 && cast(a, i16) == 200 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 to sized int")
+        failed++
+    }
+
+    mut f f64 = 127.9
+    mut g f64 = -128.9
+    mut h f32 = 255.5
+    if cast(f, i8) == 127 && cast(g, i8) == -128 && cast(h, u8) == 255 {
+        passed++
+    } otherwise {
+        println("FAIL: float to sized int at the range edges")
+        failed++
+    }
+
+    mut arr [f64] = {1.5, -2.5}
+    mut narrowed [i8] = cast(arr, [i8])
+    mut u [u64] = {7}
+    mut u_narrowed [u16] = cast(u, [u16])
+    if narrowed[0] == 1 && narrowed[1] == -2 && u_narrowed[0] == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: array narrowing")
+        failed++
+    }
+
+    println("cast_narrowing_from_u64_and_float: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

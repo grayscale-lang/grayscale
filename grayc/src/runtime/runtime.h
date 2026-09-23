@@ -442,6 +442,45 @@ static inline int64_t gray_u64_to_i64_check(uint64_t value, const char *file, in
     return (int64_t)value;
 }
 
+/* Narrowing casts from a u64 or float source. gray_cast_check/gray_ucast_check
+ * take an int64_t, so a u64 at or above 2^63 would turn negative and a float
+ * outside the int64 range (or NaN) would be undefined behavior before the
+ * range check ever ran; these check the source value as it is. */
+static inline int64_t gray_cast_check_u64(uint64_t value, int64_t min_val, int64_t max_val,
+    const char *type_name, const char *file, int line) {
+    if (value > (uint64_t)max_val)
+        gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %llu is outside the valid range (%lld to %lld)",
+            type_name, (unsigned long long)value, (long long)min_val, (long long)max_val);
+    return (int64_t)value;
+}
+
+static inline uint64_t gray_ucast_check_u64(uint64_t value, uint64_t max_val,
+    const char *type_name, const char *file, int line) {
+    if (value > max_val)
+        gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %llu is outside the valid range (0 to %llu)",
+            type_name, (unsigned long long)value, (unsigned long long)max_val);
+    return value;
+}
+
+/* A float source truncates toward zero, so it fits when it lies strictly
+ * between min - 1 and max + 1 (exact doubles for every sub-64-bit width).
+ * NaN fails both comparisons and is reported as "value nan". */
+static inline int64_t gray_cast_check_f64(double value, int64_t min_val, int64_t max_val,
+    const char *type_name, const char *file, int line) {
+    if (!(value > (double)min_val - 1.0 && value < (double)max_val + 1.0))
+        gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %.17g is outside the valid range (%lld to %lld)",
+            type_name, value, (long long)min_val, (long long)max_val);
+    return (int64_t)value;
+}
+
+static inline uint64_t gray_ucast_check_f64(double value, uint64_t max_val,
+    const char *type_name, const char *file, int line) {
+    if (!(value > -1.0 && value < (double)max_val + 1.0))
+        gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %.17g is outside the valid range (0 to %llu)",
+            type_name, value, (unsigned long long)max_val);
+    return (uint64_t)value;
+}
+
 /* Safe f64-to-i64 conversion with overflow check */
 static inline int64_t gray_f64_to_i64(double value, const char *file, int line) {
     if (value > 9.223372036854775e+18 || value < -9.223372036854775e+18 ||
