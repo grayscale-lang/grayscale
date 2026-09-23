@@ -2516,6 +2516,24 @@ static AstNode *parse_if_statement(Parser *parser) {
     return node;
 }
 
+/* E2058: a declaration nested inside a struct or enum body. `kind` and
+ * `outer_name` name the enclosing declaration. Skips to the nested
+ * declaration's closing brace to avoid cascading errors. */
+static void reject_nested_declaration(Parser *parser, const char *kind, const char *outer_name) {
+    diagnostic_error_code_formatted(parser->diag, "E2058",
+        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+        kind, outer_name);
+    int depth = 0;
+    while (!current_token_is(parser, TOK_EOF)) {
+        if (current_token_is(parser, TOK_LBRACE)) depth++;
+        if (current_token_is(parser, TOK_RBRACE)) {
+            if (depth <= 1) { next_token(parser); break; }
+            depth--;
+        }
+        next_token(parser);
+    }
+}
+
 static AstNode *parse_struct_declaration(Parser *parser) {
     /* cur_token is the struct name (IDENT), already consumed by caller */
     AstNode *node = ast_alloc(parser->arena, NODE_STRUCT_DECL, parser->cur_token);
@@ -2664,19 +2682,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
 
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOK_CONST)) {
-            diagnostic_error_code_formatted(parser->diag, "E2058",
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                "struct", node->data.struct_decl.name);
-            /* Skip to the end of the nested declaration to avoid cascading errors */
-            int depth = 0;
-            while (!current_token_is(parser, TOK_EOF)) {
-                if (current_token_is(parser, TOK_LBRACE)) depth++;
-                if (current_token_is(parser, TOK_RBRACE)) {
-                    if (depth <= 1) { next_token(parser); break; }
-                    depth--;
-                }
-                next_token(parser);
-            }
+            reject_nested_declaration(parser, "struct", node->data.struct_decl.name);
             continue;
         }
 
@@ -2892,19 +2898,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
 
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOK_CONST)) {
-            diagnostic_error_code_formatted(parser->diag, "E2058",
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                "enum", node->data.enum_decl.name);
-            /* Skip to the end of the nested declaration to avoid cascading errors */
-            int depth = 0;
-            while (!current_token_is(parser, TOK_EOF)) {
-                if (current_token_is(parser, TOK_LBRACE)) depth++;
-                if (current_token_is(parser, TOK_RBRACE)) {
-                    if (depth <= 1) { next_token(parser); break; }
-                    depth--;
-                }
-                next_token(parser);
-            }
+            reject_nested_declaration(parser, "enum", node->data.enum_decl.name);
             continue;
         }
 
