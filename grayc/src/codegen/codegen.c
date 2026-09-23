@@ -10198,9 +10198,12 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
         /* Signal to emit_expression that we are inside a file-scope const
          * initializer.  Overflow-check wrappers (gray_add_check etc.) are
          * runtime function calls; C rejects them as file-scope initializers.
-         * The typechecker has already verified no overflow for such exprs. */
+         * The typechecker has already verified no overflow for such exprs.
+         * A module-level mut whose initializer is a C constant is emitted
+         * inline the same way, and its literal is range-checked (E3036). */
         bool prev_in_const_decl = codegen->in_const_decl;
-        if (codegen->indent == 0 && !node->data.var_decl.mutable)
+        if (codegen->indent == 0 &&
+            (!node->data.var_decl.mutable || initializer_is_c_constant(node->data.var_decl.value)))
             codegen->in_const_decl = true;
         /* Bigint literal zero: emit zero constant instead of plain 0 */
         if (type_name && is_bigint_type(type_name) &&
