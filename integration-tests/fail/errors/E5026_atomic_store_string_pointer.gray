@@ -1,0 +1,7 @@
+import @atomic
+
+do main() {
+    mut s string = "hello"
+    atomic.store(addr(s), 1)
+    println(s)
+}

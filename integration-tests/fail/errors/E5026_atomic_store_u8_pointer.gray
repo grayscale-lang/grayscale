@@ -1,0 +1,12 @@
+import @atomic
+
+const Pk struct {
+    a u8
+    b u8
+}
+
+do main() {
+    mut p Pk = Pk{a: 1, b: 2}
+    atomic.store(addr(p.a), 300)
+    println(p.b)
+}

@@ -3020,7 +3020,7 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 
 typedef enum {
     ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
-    ARG_BUILDER, ARG_UUID, ARG_U8_ARRAY,
+    ARG_BUILDER, ARG_UUID, ARG_U8_ARRAY, ARG_I64_POINTER,
     /* A type name, not a value. Declaring the position here is what keeps
      * it out of value resolution — see arg_is_type_position(). */
     ARG_TYPE
@@ -3047,6 +3047,9 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
                              actual->name && strcmp(actual->name, "UUID") == 0;
     case ARG_U8_ARRAY: return actual->kind == TK_ARRAY && actual->element_type &&
                              strcmp(actual->element_type, "u8") == 0;
+    /* The atomic operations read and write exactly 8 bytes as an int64. */
+    case ARG_I64_POINTER: return actual->kind == TK_POINTER && actual->element_type &&
+                             strcmp(actual->element_type, "i64") == 0;
     /* Validated by name, never by resolved type — the argument is a type
      * name and is never resolved as a value. */
     case ARG_TYPE:   return true;
@@ -3069,6 +3072,7 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_BUILDER: return "Builder";
     case ARG_UUID:    return "UUID";
     case ARG_U8_ARRAY: return "[u8]";
+    case ARG_I64_POINTER: return "^i64";
     case ARG_TYPE:   return "a type name";
     }
     return "unknown";
@@ -3149,21 +3153,21 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "split_every",  2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "[[i64]]"},
     {"arrays", "swap",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     /* atomic */
-    {"atomic", "add",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
-    {"atomic", "and",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
-    {"atomic", "cas",              3, 3, false, FT_NONE, 0, {{0}},"bool"},
-    {"atomic", "exchange",         2, 2, false, FT_NONE, 0, {{0}},"i64"},
+    {"atomic", "add",              2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
+    {"atomic", "and",              2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
+    {"atomic", "cas",              3, 3, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"bool"},
+    {"atomic", "exchange",         2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
     {"atomic", "fence",            0, 0, false, FT_NONE, 0, {{0}},"void"},
-    {"atomic", "load",             1, 1, false, FT_NONE, 0, {{0}},"i64"},
-    {"atomic", "or",               2, 2, false, FT_NONE, 0, {{0}},"i64"},
+    {"atomic", "load",             1, 1, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
+    {"atomic", "or",               2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
     {"atomic", "spin_lock",        1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"atomic", "spin_trylock",     1, 1, false, FT_NONE, 0, {{0}},"bool"},
     {"atomic", "spin_unlock",      1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"atomic", "spinlock",         0, 0, false, FT_NONE, 0, {{0}},"SpinLock"},
     {"atomic", "spinlock_destroy", 1, 1, false, FT_NONE, 0, {{0}},"void"},
-    {"atomic", "store",            2, 2, false, FT_NONE, 0, {{0}},"void"},
-    {"atomic", "sub",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
-    {"atomic", "xor",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
+    {"atomic", "store",            2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"void"},
+    {"atomic", "sub",              2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
+    {"atomic", "xor",              2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
     /* binary */
     {"binary", "decode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f32"},
     {"binary", "decode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f32"},
