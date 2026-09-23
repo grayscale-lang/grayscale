@@ -15603,6 +15603,29 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    /* E3155 / E3019: a wide integer returned as a narrower integer, or across
+     * signedness to or from a wide integer. Same rules as a var-decl; the
+     * struct-backed wide types have no implicit C conversion. */
+    if (node->data.return_stmt.count == checker->current_return_count) {
+        for (int i = 0; i < node->data.return_stmt.count; i++) {
+            AstNode *return_val = node->data.return_stmt.values[i];
+            GrayType *value_type = typetable_get(checker->type_table, return_val);
+            GrayType *expected = checker->current_return_types[i];
+            if (!value_type || !expected || !value_type->name || !expected->name) continue;
+            int declared_rank = int_type_name_rank(expected->name);
+            int value_rank = int_type_name_rank(value_type->name);
+            if (declared_rank == 0 || value_rank == 0) continue;
+            if (value_rank >= 5 && declared_rank < value_rank) {
+                char *msg = typechecker_format(checker,
+                    "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
+                    value_type->name, expected->name, expected->name);
+                tc_err_at(checker, "E3155", return_val, msg);
+            } else if (value_rank >= 5 || declared_rank >= 5) {
+                check_signedness_crossing(checker, expected->name, return_val, value_type, return_val);
+            }
+        }
+    }
+
     /* Check return type matches function signature */
     if (checker->current_return_count == 0 && node->data.return_stmt.count > 0) {
         /* Returning a value from a void function; suppress when
