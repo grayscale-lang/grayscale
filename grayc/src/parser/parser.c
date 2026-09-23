@@ -1883,6 +1883,11 @@ static AstNode *parse_var_declaration(Parser *parser) {
     return parse_var_declaration_ex(parser, false);
 }
 
+/* `x int = 5`, `x, err = f()`: no mut/const keyword; cur_token is the name. */
+static AstNode *parse_bare_var_declaration(Parser *parser) {
+    return parse_var_declaration_ex(parser, true);
+}
+
 static AstNode *parse_return_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_RETURN_STMT, parser->cur_token);
 
@@ -3779,7 +3784,7 @@ static AstNode *parse_statement(Parser *parser) {
             return parse_discard_statement(parser);
         }
         if (peek_token_is(parser, TOK_COMMA)) {
-            return parse_var_declaration_ex(parser, true);
+            return parse_bare_var_declaration(parser);
         }
         diagnostic_error_message(parser->diag, "E2002",
             arena_copy_string(parser->arena,"unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
@@ -3802,7 +3807,7 @@ static AstNode *parse_statement(Parser *parser) {
             parser->peek_token.line == parser->cur_token.line &&
             (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA) ||
              (peek_token_is(parser, TOK_LBRACKET) && parser->peek_token.preceded_by_ws))) {
-            return parse_var_declaration_ex(parser, true);
+            return parse_bare_var_declaration(parser);
         }
         /* Could be assignment or expression statement */
         AstNode *expr = parse_expression(parser, PREC_LOWEST);
