@@ -7180,6 +7180,25 @@ static const char *array_value_c_type(CodeGen *codegen, GrayType *val_t) {
     }
 }
 
+/* A value staged in the temp `temp_name` for append/insert_at/prepend may
+ * live in the per-iteration arena (inside a loop) or alias the source
+ * (a composite passed by name). Copy it into `arena` — a string by a plain
+ * copy, an array/map/struct with embedded pointers by a deep copy. */
+static void emit_escape_staged_value(CodeGen *codegen, AstNode *value_arg, const char *elem_tn,
+                                     bool is_string, const char *temp_name, const char *arena) {
+    if (codegen->loop_scope_depth == 0 && !composite_value_aliases(codegen, elem_tn, value_arg))
+        return;
+    if (is_string) {
+        emit_formatted(codegen, "%s = gray_string_new(%s, %s.data, %s.len); ",
+            temp_name, arena, temp_name, temp_name);
+    } else if (elem_tn && type_needs_deep_copy(codegen, elem_tn)) {
+        emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; %s = ",
+            arena, temp_name);
+        emit_value_deep_copy(codegen, elem_tn, temp_name);
+        emit(codegen, "; gray_default_arena = _esc; } ");
+    }
+}
+
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "append") == 0 && node->data.call.arg_count == 2) {
         GrayType *val_t = typetable_get(codegen->type_table, node->data.call.args[1]);
@@ -7211,19 +7230,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_formatted(codegen, "{ %s _av = ", c_elem);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; ");
-        /* escape arena-allocated data to the outer arena when
-         * inside a loop scope. Strings get a simple copy; arrays, maps,
-         * and structs with embedded pointers need a full deep copy. */
-        if (codegen->loop_scope_depth > 0 ||
-            composite_value_aliases(codegen, elem_tn, node->data.call.args[1])) {
-            if (elem_is_string) {
-                emit_formatted(codegen, "_av = gray_string_new(%s, _av.data, _av.len); ", alloc_arena);
-            } else if (elem_tn && type_needs_deep_copy(codegen, elem_tn)) {
-                emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _av = ", alloc_arena);
-                emit_value_deep_copy(codegen, elem_tn, "_av");
-                emit(codegen, "; gray_default_arena = _esc; } ");
-            }
-        }
+        emit_escape_staged_value(codegen, node->data.call.args[1], elem_tn, elem_is_string, "_av", alloc_arena);
         /* Ensure elem_size is set on the target array before appending;
          * struct fields may be zero-initialized with no elem_size. */
         emit(codegen, "{ GrayArray *_tgt = ");
@@ -7242,16 +7249,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         const char *ia_elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         bool ia_str = (val_t && val_t->kind == TK_STRING) ||
             (ia_elem_tn && strcmp(ia_elem_tn, "string") == 0);
-        if (codegen->loop_scope_depth > 0 ||
-            composite_value_aliases(codegen, ia_elem_tn, node->data.call.args[2])) {
-            if (ia_str) {
-                emit_formatted(codegen, "_iv = gray_string_new(%s, _iv.data, _iv.len); ", ia_arena);
-            } else if (ia_elem_tn && type_needs_deep_copy(codegen, ia_elem_tn)) {
-                emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _iv = ", ia_arena);
-                emit_value_deep_copy(codegen, ia_elem_tn, "_iv");
-                emit(codegen, "; gray_default_arena = _esc; } ");
-            }
-        }
+        emit_escape_staged_value(codegen, node->data.call.args[2], ia_elem_tn, ia_str, "_iv", ia_arena);
         emit_formatted(codegen, "gray_arrays_insert_at(%s, ", ia_arena);
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
@@ -7524,16 +7522,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; ");
-        if (codegen->loop_scope_depth > 0 ||
-            composite_value_aliases(codegen, pp_elem_tn, node->data.call.args[1])) {
-            if (pp_str) {
-                emit_formatted(codegen, "_pv = gray_string_new(%s, _pv.data, _pv.len); ", pp_arena);
-            } else if (pp_elem_tn && type_needs_deep_copy(codegen, pp_elem_tn)) {
-                emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _pv = ", pp_arena);
-                emit_value_deep_copy(codegen, pp_elem_tn, "_pv");
-                emit(codegen, "; gray_default_arena = _esc; } ");
-            }
-        }
+        emit_escape_staged_value(codegen, node->data.call.args[1], pp_elem_tn, pp_str, "_pv", pp_arena);
         emit_formatted(codegen, "gray_arrays_prepend(%s, ", pp_arena);
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ", &_pv); }");
