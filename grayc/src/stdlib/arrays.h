@@ -266,6 +266,11 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
 bool gray_arrays_is_sorted(GrayArray *arr);
 bool gray_arrays_is_sorted_u8(GrayArray *arr);
 bool gray_arrays_is_sorted_char(GrayArray *arr);
+bool gray_arrays_is_sorted_i8(GrayArray *arr);
+bool gray_arrays_is_sorted_i16(GrayArray *arr);
+bool gray_arrays_is_sorted_u16(GrayArray *arr);
+bool gray_arrays_is_sorted_u32(GrayArray *arr);
+bool gray_arrays_is_sorted_f32(GrayArray *arr);
 bool gray_arrays_is_sorted_f64(GrayArray *arr);
 bool gray_arrays_is_sorted_str(GrayArray *arr);
 
@@ -480,6 +485,11 @@ void gray_arrays_sort_asc_f64(GrayArray *arr);
 void gray_arrays_sort_asc_str(GrayArray *arr);
 void gray_arrays_sort_asc_u8(GrayArray *arr);
 void gray_arrays_sort_asc_char(GrayArray *arr);
+void gray_arrays_sort_asc_i8(GrayArray *arr);
+void gray_arrays_sort_asc_i16(GrayArray *arr);
+void gray_arrays_sort_asc_u16(GrayArray *arr);
+void gray_arrays_sort_asc_u32(GrayArray *arr);
+void gray_arrays_sort_asc_f32(GrayArray *arr);
 
 /*@man sort_desc
  *@module arrays
@@ -498,6 +508,11 @@ void gray_arrays_sort_desc_f64(GrayArray *arr);
 void gray_arrays_sort_desc_str(GrayArray *arr);
 void gray_arrays_sort_desc_u8(GrayArray *arr);
 void gray_arrays_sort_desc_char(GrayArray *arr);
+void gray_arrays_sort_desc_i8(GrayArray *arr);
+void gray_arrays_sort_desc_i16(GrayArray *arr);
+void gray_arrays_sort_desc_u16(GrayArray *arr);
+void gray_arrays_sort_desc_u32(GrayArray *arr);
+void gray_arrays_sort_desc_f32(GrayArray *arr);
 
 /* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
  * i64/f64/str paths only look at the low 64 bits; this orders by the full

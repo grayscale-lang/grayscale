@@ -7232,6 +7232,17 @@ static void emit_escape_staged_value(CodeGen *codegen, AstNode *value_arg, const
     }
 }
 
+/* The sort_asc/sort_desc/is_sorted runtime variant suffix for a packed
+ * element width that has no wider sibling to share (i32 shares '_char',
+ * u8 has its own), or NULL. */
+static const char *packed_sort_suffix(const char *elem_type) {
+    static const char *const packed[] = { "i8", "i16", "u16", "u32", "f32" };
+    if (!elem_type) return NULL;
+    for (size_t i = 0; i < sizeof(packed) / sizeof(packed[0]); i++)
+        if (strcmp(elem_type, packed[i]) == 0) return packed[i];
+    return NULL;
+}
+
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "append") == 0 && node->data.call.arg_count == 2) {
         GrayType *val_t = typetable_get(codegen->type_table, node->data.call.args[1]);
@@ -7375,13 +7386,17 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         bool sa_elem_is_str_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM &&
             codegen_enum_is_string(codegen, codegen_resolve_type(codegen, sa_elem));
         bool sa_elem_is_int_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM && !sa_elem_is_str_enum;
-        if (sa_elem && strcmp(sa_elem, "f64") == 0)
+        const char *sa_packed = packed_sort_suffix(sa_elem);
+        if (sa_packed)
+            emit_formatted(codegen, "gray_arrays_sort_%s_%s(", desc ? "desc" : "asc", sa_packed);
+        else if (sa_elem && strcmp(sa_elem, "f64") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_f64(", desc ? "desc" : "asc");
         else if ((sa_elem && strcmp(sa_elem, "string") == 0) || sa_elem_is_str_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
         else if (sa_elem && strcmp(sa_elem, "u8") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_u8(", desc ? "desc" : "asc");
-        else if ((sa_elem && strcmp(sa_elem, "char") == 0) || sa_elem_is_int_enum)
+        else if ((sa_elem && (strcmp(sa_elem, "char") == 0 || strcmp(sa_elem, "i32") == 0)) ||
+                 sa_elem_is_int_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_char(", desc ? "desc" : "asc");
         else
             emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");
@@ -7807,7 +7822,10 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         bool is_elem_is_str_enum = is_elem_t && is_elem_t->kind == TK_ENUM &&
             codegen_enum_is_string(codegen, codegen_resolve_type(codegen, is_elem));
         bool is_elem_is_int_enum = is_elem_t && is_elem_t->kind == TK_ENUM && !is_elem_is_str_enum;
-        if (is_elem && strcmp(is_elem, "f64") == 0)
+        const char *is_packed = packed_sort_suffix(is_elem);
+        if (is_packed)
+            emit_formatted(codegen, "gray_arrays_is_sorted_%s(", is_packed);
+        else if (is_elem && strcmp(is_elem, "f64") == 0)
             emit(codegen, "gray_arrays_is_sorted_f64(");
         else if ((is_elem && strcmp(is_elem, "string") == 0) || is_elem_is_str_enum)
             emit(codegen, "gray_arrays_is_sorted_str(");
@@ -7816,7 +7834,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
          * bool array's real (1-byte-strided) backing store. */
         else if (is_elem && (strcmp(is_elem, "u8") == 0 || strcmp(is_elem, "bool") == 0))
             emit(codegen, "gray_arrays_is_sorted_u8(");
-        else if ((is_elem && strcmp(is_elem, "char") == 0) || is_elem_is_int_enum)
+        else if ((is_elem && (strcmp(is_elem, "char") == 0 || strcmp(is_elem, "i32") == 0)) ||
+                 is_elem_is_int_enum)
             emit(codegen, "gray_arrays_is_sorted_char(");
         else
             emit(codegen, "gray_arrays_is_sorted(");

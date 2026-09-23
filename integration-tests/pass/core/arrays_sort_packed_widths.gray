@@ -1,0 +1,123 @@
+/*
+ * arrays_sort_packed_widths.gray - arrays.sort_asc, sort_desc and is_sorted
+ * on i8, i16, i32, u16, u32 and f32 elements.
+ *
+ * These element types fell through to the int64_t sort and is_sorted path,
+ * which read 8 bytes per element and produced an arbitrary order.
+ */
+
+import @arrays
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a8 [i8] = {94, 15, 26, -70, -66, -84, 45, 95, -35}
+    arrays.sort_asc(a8)
+    if a8[0] == -84 && a8[8] == 95 && arrays.is_sorted(a8) {
+        passed++
+    } otherwise {
+        println("FAIL: i8 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(a8)
+    if a8[0] == 95 && a8[8] == -84 && !arrays.is_sorted(a8) {
+        passed++
+    } otherwise {
+        println("FAIL: i8 sort_desc")
+        failed++
+    }
+
+    mut a16 [i16] = {940, 15, 26, -700, -66, -840, 45, 950, -35}
+    arrays.sort_asc(a16)
+    if a16[0] == -840 && a16[8] == 950 && arrays.is_sorted(a16) {
+        passed++
+    } otherwise {
+        println("FAIL: i16 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(a16)
+    if a16[0] == 950 && a16[8] == -840 {
+        passed++
+    } otherwise {
+        println("FAIL: i16 sort_desc")
+        failed++
+    }
+
+    mut a32 [i32] = {5, 3, 9, 1, -50000, 90000}
+    arrays.sort_asc(a32)
+    if a32[0] == -50000 && a32[1] == 1 && a32[5] == 90000 && arrays.is_sorted(a32) {
+        passed++
+    } otherwise {
+        println("FAIL: i32 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(a32)
+    if a32[0] == 90000 && a32[5] == -50000 {
+        passed++
+    } otherwise {
+        println("FAIL: i32 sort_desc")
+        failed++
+    }
+
+    mut u16s [u16] = {940, 15, 60000, 700, 66}
+    arrays.sort_asc(u16s)
+    if u16s[0] == 15 && u16s[4] == 60000 && arrays.is_sorted(u16s) {
+        passed++
+    } otherwise {
+        println("FAIL: u16 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(u16s)
+    if u16s[0] == 60000 && u16s[4] == 15 {
+        passed++
+    } otherwise {
+        println("FAIL: u16 sort_desc")
+        failed++
+    }
+
+    mut u32s [u32] = {940, 15, 4000000000, 700, 66}
+    arrays.sort_asc(u32s)
+    if u32s[0] == 15 && u32s[4] == 4000000000 && arrays.is_sorted(u32s) {
+        passed++
+    } otherwise {
+        println("FAIL: u32 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(u32s)
+    if u32s[0] == 4000000000 && u32s[4] == 15 {
+        passed++
+    } otherwise {
+        println("FAIL: u32 sort_desc")
+        failed++
+    }
+
+    mut f32s [f32] = {9.5, 1.5, 2.5, -7.0, 0.25}
+    arrays.sort_asc(f32s)
+    if f32s[0] == -7.0 && f32s[4] == 9.5 && arrays.is_sorted(f32s) {
+        passed++
+    } otherwise {
+        println("FAIL: f32 sort_asc")
+        failed++
+    }
+    arrays.sort_desc(f32s)
+    if f32s[0] == 9.5 && f32s[4] == -7.0 {
+        passed++
+    } otherwise {
+        println("FAIL: f32 sort_desc")
+        failed++
+    }
+
+    mut u8s [u8] = {1, 2, 3, 200}
+    if arrays.is_sorted(u8s) {
+        passed++
+    } otherwise {
+        println("FAIL: u8 is_sorted")
+        failed++
+    }
+
+    println("arrays_sort_packed_widths: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -536,6 +536,37 @@ GRAY_DEFINE_INTROSORT(str, GrayString, gray_sort_str_lt)
 GRAY_DEFINE_INTROSORT(u8, uint8_t, GRAY_SORT_LT)
 GRAY_DEFINE_INTROSORT(i32, int32_t, GRAY_SORT_LT)
 
+/* The remaining packed element widths — [i8], [i16], [u16], [u32] and [f32]
+ * — each get the full asc/desc/is_sorted set at their own C width. */
+#define GRAY_DEFINE_PACKED_SORT(SUF, T)                                         \
+GRAY_DEFINE_INTROSORT(SUF, T, GRAY_SORT_LT)                                    \
+void gray_arrays_sort_asc_##SUF(GrayArray *arr) {                              \
+    ARRAY_CHECK_ITER(arr);                                                     \
+    if (arr->len <= 1) return;                                                 \
+    gray_sort_##SUF((T *)arr->data, arr->len);                                 \
+}                                                                             \
+void gray_arrays_sort_desc_##SUF(GrayArray *arr) {                             \
+    ARRAY_CHECK_ITER(arr);                                                     \
+    if (arr->len <= 1) return;                                                 \
+    gray_sort_##SUF((T *)arr->data, arr->len);                                 \
+    T *v = (T *)arr->data;                                                     \
+    for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {                   \
+        T t = v[a]; v[a] = v[b]; v[b] = t;                                     \
+    }                                                                         \
+}                                                                             \
+bool gray_arrays_is_sorted_##SUF(GrayArray *arr) {                             \
+    const T *v = (const T *)arr->data;                                         \
+    for (int32_t i = 1; i < arr->len; i++)                                     \
+        if (v[i - 1] > v[i]) return false;                                     \
+    return true;                                                               \
+}
+
+GRAY_DEFINE_PACKED_SORT(i8, int8_t)
+GRAY_DEFINE_PACKED_SORT(i16, int16_t)
+GRAY_DEFINE_PACKED_SORT(u16, uint16_t)
+GRAY_DEFINE_PACKED_SORT(u32, uint32_t)
+GRAY_DEFINE_PACKED_SORT(f32, float)
+
 /* Fallback comparators for the rare element widths the specialized paths do
  * not cover — a [i128]/[u128]/[i256]/[u256] array reaches sort_asc with an
  * elem_size of 16 or 32, not 8. The introsort indexes by sizeof(int64_t), so
