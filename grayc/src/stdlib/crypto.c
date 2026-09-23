@@ -490,14 +490,10 @@ GrayString gray_crypto_md5(GrayArena *arena, GrayString data) {
         a0+=A; b0+=B; c0+=C; d0+=D;
     }
 
-    char *hex = gray_arena_alloc_uninitialized(arena, 33);
     uint8_t digest[16];
     memcpy(digest, &a0, 4); memcpy(digest+4, &b0, 4);
     memcpy(digest+8, &c0, 4); memcpy(digest+12, &d0, 4);
-    for (int i = 0; i < 16; i++) snprintf(hex + i*2, 3, "%02x", digest[i]);
-    hex[32] = '\0';
-    GrayString r = { hex, 32 };
-    return r;
+    return crypto_hex(arena, digest, 16);
 }
 
 GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
@@ -534,12 +530,10 @@ GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
     fclose(uf);
 #endif
 
-    static const char hex_chars[] = "0123456789abcdef";
-    char *hex = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
-    for (int64_t i = 0; i < length; i++) {
-        int nibble = (i % 2 == 0) ? ((raw[i / 2] >> 4) & 0x0f) : (raw[i / 2] & 0x0f);
-        hex[i] = hex_chars[nibble];
-    }
-    hex[length] = '\0';
-    return (GrayString){hex, (int32_t)length};
+    /* nbytes random bytes encode to an even number of hex digits; an odd
+     * `length` drops the final one. */
+    GrayString hex = crypto_hex(arena, raw, (int)nbytes);
+    ((char *)hex.data)[length] = '\0';
+    hex.len = (int32_t)length;
+    return hex;
 }
