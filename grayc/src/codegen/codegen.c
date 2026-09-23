@@ -7242,11 +7242,13 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (strcmp(func, "insert_at") == 0 && node->data.call.arg_count == 3) {
         GrayType *val_t = typetable_get(codegen->type_table, node->data.call.args[2]);
         const char *c_elem = array_value_c_type(codegen, val_t);
+        const char *ia_elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
+        /* [f32] elements are stored packed as 4-byte float. */
+        if (ia_elem_tn && strcmp(ia_elem_tn, "f32") == 0) c_elem = "float";
         const char *ia_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
         emit_formatted(codegen, "{ %s _iv = ", c_elem);
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "; ");
-        const char *ia_elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         bool ia_str = (val_t && val_t->kind == TK_STRING) ||
             (ia_elem_tn && strcmp(ia_elem_tn, "string") == 0);
         emit_escape_staged_value(codegen, node->data.call.args[2], ia_elem_tn, ia_str, "_iv", ia_arena);
@@ -7518,6 +7520,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (pet->kind == TK_ENUM) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
             else if (pet->kind == TK_INT || pet->kind == TK_UINT)
                 pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
+            /* [f32] elements are stored packed as 4-byte float. */
+            if (strcmp(pp_elem_tn, "f32") == 0) pp_c_elem = "float";
         }
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);

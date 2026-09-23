@@ -1,0 +1,39 @@
+/*
+ * f32_array_insert_at_prepend.gray
+ * arrays.insert_at and arrays.prepend on an [f32] array must stage the value
+ * as a packed 4-byte float, the same as arrays.append.
+ */
+
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a [f32] = {cast(1.5, f32), cast(2.5, f32)}
+    arrays.insert_at(a, 1, cast(9.5, f32))
+    if len(a) == 3 && a[0] == 1.5 && a[1] == 9.5 && a[2] == 2.5 {
+        println("  [PASS] [f32] insert_at")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] insert_at: ${a}")
+        failed += 1
+    }
+
+    mut b [f32] = {cast(1.5, f32), cast(2.5, f32)}
+    arrays.prepend(b, cast(9.5, f32))
+    if len(b) == 3 && b[0] == 9.5 && b[1] == 1.5 && b[2] == 2.5 {
+        println("  [PASS] [f32] prepend")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] prepend: ${b}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
