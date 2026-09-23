@@ -431,6 +431,58 @@ static void emit_range_checked_narrowing(CodeGen *codegen, GrayType *source_type
     emit(codegen, ")");
 }
 
+/* Emit the checked result of `current op= value` for an integer target of
+ * type int_type, where current_c is the target's current value as C:
+ * overflow-checked +, -, * and, for / and %, a division-by-zero check plus
+ * (signed only) the TYPE_MIN / -1 overflow check. Returns false when the
+ * operator or type has no checked form. */
+static bool emit_checked_compound_value(CodeGen *codegen, AstNode *node,
+                                        GrayType *int_type, const char *current_c) {
+    TokenType assign_op = node->data.assign.op;
+    if (!int_type || (int_type->kind != TK_INT && int_type->kind != TK_UINT)) return false;
+    bool unsigned_op = int_type->kind == TK_UINT;
+    const char *smin = NULL, *smax = NULL;
+    bool is_unsigned = false;
+    if (int_type->name) sized_int_bounds(int_type->name, &smin, &smax, &is_unsigned);
+
+    if (assign_op == TOK_SLASH_ASSIGN || assign_op == TOK_PERCENT_ASSIGN) {
+        emit(codegen, "({ __auto_type _dv = ");
+        emit_expression(codegen, node->data.assign.value);
+        emit_formatted(codegen, "; if (!_dv) { %s; } ", panic_call(codegen, node, "P0078", ""));
+        if (!unsigned_op)
+            emit_formatted(codegen, "if ((int64_t)(%s) == %s && _dv == -1) { %s; } ",
+                current_c, smin ? smin : "(-9223372036854775807LL - 1)",
+                panic_call(codegen, node, "P0079",
+                           (assign_op == TOK_SLASH_ASSIGN) ? ", \"division\"" : ", \"modulo\""));
+        emit_formatted(codegen, "(%s) %s _dv; })", current_c, assign_op == TOK_SLASH_ASSIGN ? "/" : "%");
+        return true;
+    }
+
+    const char *check_func_name = NULL;
+    if (smax) {
+        check_func_name = sized_check_func(assign_op, is_unsigned);
+    } else if (unsigned_op) {
+        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_uadd_check";
+        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_usub_check";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_umul_check";
+    } else {
+        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_add_check";
+        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_sub_check";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_mul_check";
+    }
+    if (!check_func_name) return false;
+    emit_formatted(codegen, "%s(%s, ", check_func_name, current_c);
+    emit_expression(codegen, node->data.assign.value);
+    if (smax) {
+        emit(codegen, ", ");
+        emit_sized_bounds_args(codegen, smin, smax, is_unsigned, int_type->name, node->token.line);
+        emit(codegen, ")");
+    } else {
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+    }
+    return true;
+}
+
 /* Emit an overflow-checked compound assignment for a pointer-based target
  * whose C reference string is ref_str (e.g. "*_dp", "_dp->field").
  * Handles +=, -=, *= on sized and plain integer types.
@@ -453,44 +505,9 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         return true;
     }
 
-    const char *type_name_str = tgt_t->name;
-
-    /* Sized integers (i8/i16/i32/u8/u16/u32): gray_(u)sized_*_check */
-    const char *smin = NULL, *smax = NULL;
-    bool is_unsigned = false;
-    if (type_name_str) sized_int_bounds(type_name_str, &smin, &smax, &is_unsigned);
-    if (smax) {
-        const char *check_func_name = sized_check_func(assign_op, is_unsigned);
-        if (!check_func_name) return false;
-        emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
-        emit_expression(codegen, node->data.assign.value);
-        emit(codegen, ", ");
-        emit_sized_bounds_args(codegen, smin, smax, is_unsigned, type_name_str, node->token.line);
-        emit(codegen, ")");
-        return true;
-    }
-
-    /* Plain i64/u64: gray_(u)*_check */
-    bool tgt_is_int = (tgt_t->kind == TK_INT || tgt_t->kind == TK_UINT);
-    if (!tgt_is_int) return false;
-
-    bool unsigned_op = tgt_t->kind == TK_UINT;
-    const char *check_func_name = NULL;
-    if (unsigned_op) {
-        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_uadd_check";
-        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_usub_check";
-        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_umul_check";
-    } else {
-        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_add_check";
-        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_sub_check";
-        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_mul_check";
-    }
-    if (!check_func_name) return false;
-
-    emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
-    emit_expression(codegen, node->data.assign.value);
-    emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-    return true;
+    if (tgt_t->kind != TK_INT && tgt_t->kind != TK_UINT) return false;
+    emit_formatted(codegen, "%s = ", ref_str);
+    return emit_checked_compound_value(codegen, node, tgt_t, ref_str);
 }
 
 static const char *sanitize_name(const char *name) {
@@ -10917,6 +10934,8 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
     }
     const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
         ? left_t->value_type : NULL;
+    GrayType *ms_val_t = left_t->value_type ? type_from_name(left_t->value_type) : NULL;
+    bool ms_int_val = !ms_bi_val && ms_val_t && (ms_val_t->kind == TK_INT || ms_val_t->kind == TK_UINT);
     emit_formatted(codegen, "%s _mv = ", c_val);
     if (ms_compound && ms_bi_val) {
         /* Wide-integer entries have no C arithmetic operators; route the
@@ -10933,6 +10952,11 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
         emit(codegen, "gray_string_concat(gray_default_arena, *(GrayString*)_cur, ");
         emit_expression(codegen, node->data.assign.value);
         emit(codegen, ")");
+    } else if (ms_compound && ms_int_val) {
+        /* Integer entry: checked like the same operator on a variable. */
+        char current_c[MSG_BUF_SIZE];
+        snprintf(current_c, sizeof(current_c), "*(%s*)_cur", c_val);
+        emit_checked_compound_value(codegen, node, type_from_name(left_t->value_type), current_c);
     } else if (ms_compound) {
         emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
         emit_expression(codegen, node->data.assign.value);

@@ -1,0 +1,7 @@
+/* Panic Test: P0078 - /= by zero on a map value */
+do main() {
+    mut d map[string:i64] = {"k": 100}
+    mut z i64 = 0
+    d["k"] /= z
+    println(d)
+}

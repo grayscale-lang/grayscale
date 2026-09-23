@@ -1,0 +1,6 @@
+/* Panic Test: P0009 - -= on a u64 map value goes below zero */
+do main() {
+    mut w map[string:u64] = {"k": 0}
+    w["k"] -= 1
+    println(w)
+}

@@ -1,0 +1,55 @@
+/*
+ * map_value_compound_assign_checked.gray - compound assignment to a map
+ * value keeps working for in-range results on every value type.
+ */
+
+const Holder struct {
+    m map[string:i64]
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut m map[string:i64] = {"k": 10}
+    m["k"] += 5
+    m["k"] -= 3
+    m["k"] *= 2
+    m["k"] /= 4
+    m["k"] %= 4
+    if m["k"] == 2 {
+        passed++
+    } otherwise {
+        println("FAIL: i64 map value")
+        failed++
+    }
+
+    mut u map[string:u8] = {"k": 250}
+    u["k"] += 5
+    mut w map[string:u64] = {"k": 18446744073709551614}
+    w["k"] += 1
+    if u["k"] == 255 && w["k"] == 18446744073709551615 {
+        passed++
+    } otherwise {
+        println("FAIL: unsigned map values")
+        failed++
+    }
+
+    mut h Holder = Holder{m: {"k": 1}}
+    h.m["k"] += 41
+    mut f map[string:f64] = {"k": 1.5}
+    f["k"] *= 2.0
+    mut t map[string:string] = {"k": "a"}
+    t["k"] += "b"
+    if h.m["k"] == 42 && f["k"] == 3.0 && t["k"] == "ab" {
+        passed++
+    } otherwise {
+        println("FAIL: struct field map, f64 and string map values")
+        failed++
+    }
+
+    println("map_value_compound_assign_checked: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

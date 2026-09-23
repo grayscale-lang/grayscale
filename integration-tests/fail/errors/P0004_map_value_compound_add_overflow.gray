@@ -1,0 +1,6 @@
+/* Panic Test: P0004 - += on an i64 map value overflows */
+do main() {
+    mut m map[string:i64] = {"k": 9223372036854775807}
+    m["k"] += 1
+    println(m)
+}
