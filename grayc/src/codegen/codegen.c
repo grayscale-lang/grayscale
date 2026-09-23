@@ -2177,14 +2177,16 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
     }
     TypeKind tk = elem_t ? elem_t->kind : TK_INT;
 
+    /* The declared element type, from both the [T] and [T, N] forms. */
+    const char *declared_elem = extract_array_element_type(codegen->current_var_type);
+    bool declared_f32 = declared_elem && strcmp(declared_elem, "f32") == 0;
+
     /* Integer literals in a declared [float]/[f32]/[f64] array must use
      * double so the C compound literal stores the correct IEEE 754 bits
      * instead of raw int64_t bit patterns. */
-    if (tk == TK_INT && codegen->current_var_type) {
-        const char *cvt = codegen->current_var_type;
-        if (strcmp(cvt, "[float]") == 0 || strcmp(cvt, "[f32]") == 0 || strcmp(cvt, "[f64]") == 0)
-            tk = TK_FLOAT;
-    }
+    if (tk == TK_INT && declared_elem &&
+        (strcmp(declared_elem, "float") == 0 || declared_f32 || strcmp(declared_elem, "f64") == 0))
+        tk = TK_FLOAT;
 
     const char *c_type;
     /* Check for bigint types first */
@@ -2234,8 +2236,7 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
 
     /* A declared [f32] array stores packed 4-byte float; the TK_FLOAT case
      * (and the int-literal override above) otherwise emit double storage. */
-    if (strcmp(c_type, "double") == 0 && codegen->current_var_type &&
-        strcmp(codegen->current_var_type, "[f32]") == 0)
+    if (strcmp(c_type, "double") == 0 && declared_f32)
         c_type = "float";
 
     /* A non-empty integer-literal element carries TK_INT regardless of the
@@ -11264,7 +11265,12 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             snprintf(full_tn, sizeof(full_tn), "[%s]", tgt_t->element_type ? tgt_t->element_type : "");
             emit(codegen, "{ GrayArray ");
             emit_formatted(codegen, "%s = ", src_var);
+            /* An array literal takes the target's element type, as in a
+             * declaration, so a [f32] target gets packed float storage. */
+            const char *saved_var_type = codegen->current_var_type;
+            codegen->current_var_type = full_tn;
             emit_expression(codegen, node->data.assign.value);
+            codegen->current_var_type = saved_var_type;
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
                 emit(codegen, "GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");

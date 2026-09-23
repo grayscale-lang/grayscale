@@ -1,0 +1,59 @@
+/*
+ * f32_fixed_array_storage.gray
+ * A fixed-size [f32, N] array stores packed 4-byte float from every
+ * construction path — a const declaration, a struct literal field, and a
+ * struct field reassigned from an array literal — so element reads return
+ * the values written.
+ */
+
+const Widget struct {
+    ratios [f32, 3]
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const fixed [f32, 2] = {0.5, 1.5}
+    if fixed[0] == 0.5 && fixed[1] == 1.5 {
+        println("  [PASS] const [f32, N] reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const [f32, N] reads: ${fixed[0]} ${fixed[1]}")
+        failed += 1
+    }
+
+    const ints [f32, 2] = {1, 2}
+    if ints[0] == 1.0 && ints[1] == 2.0 {
+        println("  [PASS] const [f32, N] from int literals")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const [f32, N] from int literals: ${ints[0]} ${ints[1]}")
+        failed += 1
+    }
+
+    mut w Widget = Widget{ratios: {2.5, 3.5, 4.5}}
+    if w.ratios[0] == 2.5 && w.ratios[2] == 4.5 {
+        println("  [PASS] struct literal [f32, N] field reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal [f32, N] field reads: ${w.ratios[0]} ${w.ratios[2]}")
+        failed += 1
+    }
+
+    w.ratios = {5.5, 6.5, 7.5}
+    if w.ratios[0] == 5.5 && w.ratios[2] == 7.5 {
+        println("  [PASS] reassigned [f32, N] field reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassigned [f32, N] field reads: ${w.ratios[0]} ${w.ratios[2]}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
