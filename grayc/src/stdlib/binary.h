@@ -18,7 +18,7 @@
 /*@man encode_i8
  *@module binary
  *@group 8-bit
- *@sig encode_i8(val i64) -> [u8]
+ *@sig encode_i8(val i8) -> [u8]
  *@desc Encodes a signed 8-bit integer as a 1-byte array.
  *@example
  *   import @binary
@@ -29,19 +29,19 @@
 /*@man decode_i8
  *@module binary
  *@group 8-bit
- *@sig decode_i8(bytes [u8]) -> i64
+ *@sig decode_i8(bytes [u8]) -> i8
  *@desc Decodes a 1-byte array as a signed 8-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_i8(-42)
- *   mut val i64 = binary.decode_i8(bytes)
+ *   mut val i8 = binary.decode_i8(bytes)
  *@end
  */
 
 /*@man encode_u8
  *@module binary
  *@group 8-bit
- *@sig encode_u8(val i64) -> [u8]
+ *@sig encode_u8(val u8) -> [u8]
  *@desc Encodes an unsigned 8-bit integer as a 1-byte array.
  *@example
  *   import @binary
@@ -52,19 +52,19 @@
 /*@man decode_u8
  *@module binary
  *@group 8-bit
- *@sig decode_u8(bytes [u8]) -> i64
+ *@sig decode_u8(bytes [u8]) -> u8
  *@desc Decodes a 1-byte array as an unsigned 8-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u8(200)
- *   mut val i64 = binary.decode_u8(bytes)
+ *   mut val u8 = binary.decode_u8(bytes)
  *@end
  */
 
 /*@man encode_i16_le
  *@module binary
  *@group 16-bit
- *@sig encode_i16_le(val i64) -> [u8]
+ *@sig encode_i16_le(val i16) -> [u8]
  *@desc Encodes a signed 16-bit integer as a 2-byte little-endian array.
  *@example
  *   import @binary
@@ -75,19 +75,19 @@
 /*@man decode_i16_le
  *@module binary
  *@group 16-bit
- *@sig decode_i16_le(bytes [u8]) -> i64
+ *@sig decode_i16_le(bytes [u8]) -> i16
  *@desc Decodes a 2-byte little-endian array as a signed 16-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_i16_le(-1000)
- *   mut val i64 = binary.decode_i16_le(bytes)
+ *   mut val i16 = binary.decode_i16_le(bytes)
  *@end
  */
 
 /*@man encode_i16_be
  *@module binary
  *@group 16-bit
- *@sig encode_i16_be(val i64) -> [u8]
+ *@sig encode_i16_be(val i16) -> [u8]
  *@desc Encodes a signed 16-bit integer as a 2-byte big-endian array.
  *@example
  *   import @binary
@@ -98,19 +98,19 @@
 /*@man decode_i16_be
  *@module binary
  *@group 16-bit
- *@sig decode_i16_be(bytes [u8]) -> i64
+ *@sig decode_i16_be(bytes [u8]) -> i16
  *@desc Decodes a 2-byte big-endian array as a signed 16-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_i16_be(-1000)
- *   mut val i64 = binary.decode_i16_be(bytes)
+ *   mut val i16 = binary.decode_i16_be(bytes)
  *@end
  */
 
 /*@man encode_u16_le
  *@module binary
  *@group 16-bit
- *@sig encode_u16_le(val i64) -> [u8]
+ *@sig encode_u16_le(val u16) -> [u8]
  *@desc Encodes an unsigned 16-bit integer as a 2-byte little-endian array.
  *@example
  *   import @binary
@@ -121,19 +121,19 @@
 /*@man decode_u16_le
  *@module binary
  *@group 16-bit
- *@sig decode_u16_le(bytes [u8]) -> i64
+ *@sig decode_u16_le(bytes [u8]) -> u16
  *@desc Decodes a 2-byte little-endian array as an unsigned 16-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u16_le(1000)
- *   mut val i64 = binary.decode_u16_le(bytes)
+ *   mut val u16 = binary.decode_u16_le(bytes)
  *@end
  */
 
 /*@man encode_u16_be
  *@module binary
  *@group 16-bit
- *@sig encode_u16_be(val i64) -> [u8]
+ *@sig encode_u16_be(val u16) -> [u8]
  *@desc Encodes an unsigned 16-bit integer as a 2-byte big-endian array.
  *@example
  *   import @binary
@@ -144,19 +144,19 @@
 /*@man decode_u16_be
  *@module binary
  *@group 16-bit
- *@sig decode_u16_be(bytes [u8]) -> i64
+ *@sig decode_u16_be(bytes [u8]) -> u16
  *@desc Decodes a 2-byte big-endian array as an unsigned 16-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u16_be(1000)
- *   mut val i64 = binary.decode_u16_be(bytes)
+ *   mut val u16 = binary.decode_u16_be(bytes)
  *@end
  */
 
 /*@man encode_i32_le
  *@module binary
  *@group 32-bit
- *@sig encode_i32_le(val i64) -> [u8]
+ *@sig encode_i32_le(val i32) -> [u8]
  *@desc Encodes a signed 32-bit integer as a 4-byte little-endian array.
  *@example
  *   import @binary
@@ -167,19 +167,19 @@
 /*@man decode_i32_le
  *@module binary
  *@group 32-bit
- *@sig decode_i32_le(bytes [u8]) -> i64
+ *@sig decode_i32_le(bytes [u8]) -> i32
  *@desc Decodes a 4-byte little-endian array as a signed 32-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_i32_le(-1000)
- *   mut val i64 = binary.decode_i32_le(bytes)
+ *   mut val i32 = binary.decode_i32_le(bytes)
  *@end
  */
 
 /*@man encode_i32_be
  *@module binary
  *@group 32-bit
- *@sig encode_i32_be(val i64) -> [u8]
+ *@sig encode_i32_be(val i32) -> [u8]
  *@desc Encodes a signed 32-bit integer as a 4-byte big-endian array.
  *@example
  *   import @binary
@@ -190,19 +190,19 @@
 /*@man decode_i32_be
  *@module binary
  *@group 32-bit
- *@sig decode_i32_be(bytes [u8]) -> i64
+ *@sig decode_i32_be(bytes [u8]) -> i32
  *@desc Decodes a 4-byte big-endian array as a signed 32-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_i32_be(-1000)
- *   mut val i64 = binary.decode_i32_be(bytes)
+ *   mut val i32 = binary.decode_i32_be(bytes)
  *@end
  */
 
 /*@man encode_u32_le
  *@module binary
  *@group 32-bit
- *@sig encode_u32_le(val i64) -> [u8]
+ *@sig encode_u32_le(val u32) -> [u8]
  *@desc Encodes an unsigned 32-bit integer as a 4-byte little-endian array.
  *@example
  *   import @binary
@@ -213,19 +213,19 @@
 /*@man decode_u32_le
  *@module binary
  *@group 32-bit
- *@sig decode_u32_le(bytes [u8]) -> i64
+ *@sig decode_u32_le(bytes [u8]) -> u32
  *@desc Decodes a 4-byte little-endian array as an unsigned 32-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u32_le(1000)
- *   mut val i64 = binary.decode_u32_le(bytes)
+ *   mut val u32 = binary.decode_u32_le(bytes)
  *@end
  */
 
 /*@man encode_u32_be
  *@module binary
  *@group 32-bit
- *@sig encode_u32_be(val i64) -> [u8]
+ *@sig encode_u32_be(val u32) -> [u8]
  *@desc Encodes an unsigned 32-bit integer as a 4-byte big-endian array.
  *@example
  *   import @binary
@@ -236,12 +236,12 @@
 /*@man decode_u32_be
  *@module binary
  *@group 32-bit
- *@sig decode_u32_be(bytes [u8]) -> i64
+ *@sig decode_u32_be(bytes [u8]) -> u32
  *@desc Decodes a 4-byte big-endian array as an unsigned 32-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u32_be(1000)
- *   mut val i64 = binary.decode_u32_be(bytes)
+ *   mut val u32 = binary.decode_u32_be(bytes)
  *@end
  */
 
@@ -294,7 +294,7 @@
 /*@man encode_u64_le
  *@module binary
  *@group 64-bit
- *@sig encode_u64_le(val i64) -> [u8]
+ *@sig encode_u64_le(val u64) -> [u8]
  *@desc Encodes an unsigned 64-bit integer as an 8-byte little-endian array.
  *@example
  *   import @binary
@@ -305,19 +305,19 @@
 /*@man decode_u64_le
  *@module binary
  *@group 64-bit
- *@sig decode_u64_le(bytes [u8]) -> i64
+ *@sig decode_u64_le(bytes [u8]) -> u64
  *@desc Decodes an 8-byte little-endian array as an unsigned 64-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u64_le(1000)
- *   mut val i64 = binary.decode_u64_le(bytes)
+ *   mut val u64 = binary.decode_u64_le(bytes)
  *@end
  */
 
 /*@man encode_u64_be
  *@module binary
  *@group 64-bit
- *@sig encode_u64_be(val i64) -> [u8]
+ *@sig encode_u64_be(val u64) -> [u8]
  *@desc Encodes an unsigned 64-bit integer as an 8-byte big-endian array.
  *@example
  *   import @binary
@@ -328,12 +328,12 @@
 /*@man decode_u64_be
  *@module binary
  *@group 64-bit
- *@sig decode_u64_be(bytes [u8]) -> i64
+ *@sig decode_u64_be(bytes [u8]) -> u64
  *@desc Decodes an 8-byte big-endian array as an unsigned 64-bit integer.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_u64_be(1000)
- *   mut val i64 = binary.decode_u64_be(bytes)
+ *   mut val u64 = binary.decode_u64_be(bytes)
  *@end
  */
 
@@ -524,7 +524,7 @@
 /*@man encode_f32_le
  *@module binary
  *@group Floats
- *@sig encode_f32_le(val f64) -> [u8]
+ *@sig encode_f32_le(val f32) -> [u8]
  *@desc Encodes an f64 as a 4-byte IEEE 754 little-endian array.
  *@example
  *   import @binary
@@ -535,19 +535,19 @@
 /*@man decode_f32_le
  *@module binary
  *@group Floats
- *@sig decode_f32_le(bytes [u8]) -> f64
+ *@sig decode_f32_le(bytes [u8]) -> f32
  *@desc Decodes a 4-byte IEEE 754 little-endian array as an f64.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_le(3.14)
- *   mut val f64 = binary.decode_f32_le(bytes)
+ *   mut val f32 = binary.decode_f32_le(bytes)
  *@end
  */
 
 /*@man encode_f32_be
  *@module binary
  *@group Floats
- *@sig encode_f32_be(val f64) -> [u8]
+ *@sig encode_f32_be(val f32) -> [u8]
  *@desc Encodes an f64 as a 4-byte IEEE 754 big-endian array.
  *@example
  *   import @binary
@@ -558,12 +558,12 @@
 /*@man decode_f32_be
  *@module binary
  *@group Floats
- *@sig decode_f32_be(bytes [u8]) -> f64
+ *@sig decode_f32_be(bytes [u8]) -> f32
  *@desc Decodes a 4-byte IEEE 754 big-endian array as an f64.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_be(3.14)
- *   mut val f64 = binary.decode_f32_be(bytes)
+ *   mut val f32 = binary.decode_f32_be(bytes)
  *@end
  */
 

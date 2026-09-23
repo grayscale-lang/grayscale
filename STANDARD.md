@@ -4041,7 +4041,7 @@ UUID randomness comes from `getentropy()` (macOS, BSDs, glibc 2.25+) with a fall
 
 ### 9.15 Binary Module (`@binary`)
 
-Binary encoding/decoding for integers and floats in little-endian (le) and big-endian (be) formats.
+Binary encoding/decoding for integers and floats in little-endian (le) and big-endian (be) formats. Each `encode_<T>` function takes a value of type `T` and returns its bytes as `[u8]`; each `decode_<T>` function takes `[u8]` and returns a `T`.
 
 #### 8-bit
 

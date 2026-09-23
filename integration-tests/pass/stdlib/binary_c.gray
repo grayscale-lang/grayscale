@@ -196,7 +196,7 @@ do main() {
 
     // u64_le round-trip
     mut u64le_bytes [u8] = binary.encode_u64_le(12345678901234)
-    mut u64le_val i64 = binary.decode_u64_le(u64le_bytes)
+    mut u64le_val u64 = binary.decode_u64_le(u64le_bytes)
     if u64le_val == 12345678901234 {
         println("  [PASS] u64_le round-trip")
         passed += 1
@@ -207,7 +207,7 @@ do main() {
 
     // u64_be round-trip
     mut u64be_bytes [u8] = binary.encode_u64_be(12345678901234)
-    mut u64be_val i64 = binary.decode_u64_be(u64be_bytes)
+    mut u64be_val u64 = binary.decode_u64_be(u64be_bytes)
     if u64be_val == 12345678901234 {
         println("  [PASS] u64_be round-trip")
         passed += 1

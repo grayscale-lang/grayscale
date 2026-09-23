@@ -6853,7 +6853,18 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_address_of(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", \"%s\", %d", codegen->file, node->token.line);
     } else {
-        emit_expression(codegen, node->data.call.args[0]);
+        /* encode_<T>: range-check a value narrower than it arrives, like a
+         * parameter of type T. */
+        char value_type[8] = "";
+        if (is_encode) {
+            size_t type_len = strcspn(func + 7, "_");
+            if (type_len < sizeof(value_type)) {
+                memcpy(value_type, func + 7, type_len);
+                value_type[type_len] = '\0';
+            }
+        }
+        if (!is_encode || !emit_narrowing_cast(codegen, value_type, node->data.call.args[0], node->token.line))
+            emit_expression(codegen, node->data.call.args[0]);
     }
     emit(codegen, ")");
     return true;

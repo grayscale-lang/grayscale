@@ -3165,32 +3165,32 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"atomic", "sub",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
     {"atomic", "xor",              2, 2, false, FT_NONE, 0, {{0}},"i64"},
     /* binary */
-    {"binary", "decode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f64"},
-    {"binary", "decode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f64"},
+    {"binary", "decode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f32"},
+    {"binary", "decode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f32"},
     {"binary", "decode_f64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f64"},
     {"binary", "decode_f64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f64"},
     {"binary", "decode_i128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i128"},
     {"binary", "decode_i128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i128"},
-    {"binary", "decode_i16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_i16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"binary", "decode_i16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i16"},
+    {"binary", "decode_i16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i16"},
     {"binary", "decode_i256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i256"},
     {"binary", "decode_i256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i256"},
-    {"binary", "decode_i32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_i32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"binary", "decode_i32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i32"},
+    {"binary", "decode_i32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i32"},
     {"binary", "decode_i64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
     {"binary", "decode_i64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_i8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"binary", "decode_i8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i8"},
     {"binary", "decode_u128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u128"},
     {"binary", "decode_u128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u128"},
-    {"binary", "decode_u16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_u16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"binary", "decode_u16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u16"},
+    {"binary", "decode_u16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u16"},
     {"binary", "decode_u256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u256"},
     {"binary", "decode_u256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u256"},
-    {"binary", "decode_u32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_u32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_u64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"binary", "decode_u8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"binary", "decode_u32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u32"},
+    {"binary", "decode_u32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u32"},
+    {"binary", "decode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u64"},
+    {"binary", "decode_u64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u64"},
+    {"binary", "decode_u8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u8"},
     {"binary", "encode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[u8]"},
     {"binary", "encode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[u8]"},
     {"binary", "encode_f64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[u8]"},
@@ -3773,9 +3773,12 @@ static void typechecker_check_io_read_lines_limit(TypeChecker *checker, const ch
     }
 }
 
+static void typechecker_check_binary_encode_arg(TypeChecker *checker, const char *fn, AstNode *node);
+
 static void typechecker_check_stdlib_arg_types(TypeChecker *checker, const char *mod,
     const char *fn, AstNode *node)
 {
+    if (strcmp(mod, "binary") == 0) typechecker_check_binary_encode_arg(checker, fn, node);
     const StdlibFuncMeta *m = find_stdlib_meta(mod, fn);
     if (!m || m->arg_type_count == 0) return;
 
@@ -5636,7 +5639,27 @@ static void check_arg_integer_range(TypeChecker *checker, AstNode *arg,
             arg->token.line, arg->token.column, param_type_name, v, neg);
 }
 
-/* --- Expression type resolution --- */
+/* binary.encode_<T>[_le|_be](val T): the argument is checked like a
+ * parameter of type T. E3019 for a signedness crossing, E3036 for an
+ * out-of-range literal; a narrowing value is range-checked in codegen. The
+ * 128/256-bit encoders take their wide type through their own path. */
+static void typechecker_check_binary_encode_arg(TypeChecker *checker, const char *fn, AstNode *node) {
+    static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64" };
+    if (strncmp(fn, "encode_", 7) != 0 || node->data.call.arg_count != 1) return;
+    const char *type_start = fn + 7;
+    size_t type_len = strcspn(type_start, "_");
+    for (size_t i = 0; i < sizeof(value_types) / sizeof(value_types[0]); i++) {
+        if (strlen(value_types[i]) == type_len && strncmp(type_start, value_types[i], type_len) == 0) {
+            AstNode *arg = node->data.call.args[0];
+            check_signedness_crossing(checker, value_types[i], arg,
+                resolve_expression(checker, arg), arg);
+            check_arg_integer_range(checker, arg, value_types[i]);
+            return;
+        }
+    }
+}
+
+/* --- Expression type resolution --- *//* --- Expression type resolution --- */
 
 /* shared void-expression guard. Emits E3038 at `expr` when `t`
  * is TK_VOID. `context` is a short phrase describing what the
