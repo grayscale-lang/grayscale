@@ -341,57 +341,60 @@ static void format_float_element(char *out, size_t out_size, const void *p, int3
     else gray_fmt_shortest_float(out, out_size, *(const double *)p);
 }
 
+/* Append one element/value of the given kind (see the to_string callers) at
+ * buf[pos]; returns the new pos. */
+static int format_value_into(char *buf, size_t buf_size, int pos, int kind,
+                             const void *value_ptr, int32_t value_size) {
+    switch (kind) {
+    case 0:
+        pos += snprintf(buf + pos, buf_size - pos, "%" PRId64, element_as_signed(value_ptr, value_size));
+        break;
+    case 1: {
+        char float_buffer[GRAY_FLOAT_STR_BUF];
+        format_float_element(float_buffer, sizeof(float_buffer), value_ptr, value_size);
+        pos += snprintf(buf + pos, buf_size - pos, "%s", float_buffer);
+        break;
+    }
+    case 2: {
+        const GrayString *element = (const GrayString *)value_ptr;
+        pos += snprintf(buf + pos, buf_size - pos, "\"%.*s\"",
+            (int)element->len, element->data ? element->data : "");
+        break;
+    }
+    case 3:
+        pos += snprintf(buf + pos, buf_size - pos, "%s", *(const bool *)value_ptr ? "true" : "false");
+        break;
+    case 4:
+        pos += snprintf(buf + pos, buf_size - pos, "%" PRIu64, element_as_unsigned(value_ptr, value_size));
+        break;
+    case 5:
+        pos += snprintf(buf + pos, buf_size - pos, "%u", (unsigned)*(const uint8_t *)value_ptr);
+        break;
+    case 6: {
+        int32_t cp = *(const int32_t *)value_ptr;
+        char utf8[4]; int utf8_length = cp_to_utf8(cp, utf8);
+        if (pos + 2 + utf8_length < (int)buf_size) {
+            buf[pos++] = '\'';
+            memcpy(buf + pos, utf8, (size_t)utf8_length); pos += utf8_length;
+            buf[pos++] = '\'';
+        }
+        break;
+    }
+    case 7:
+        pos += snprintf(buf + pos, buf_size - pos, "%d", *(const int *)value_ptr);
+        break;
+    }
+    return pos;
+}
+
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind) {
     char buf[GRAY_TOSTRING_BUF_SIZE];
     int pos = 0;
     buf[pos++] = '{';
     for (int32_t i = 0; i < arr->len && pos < GRAY_TOSTRING_SAFE_LIMIT; i++) {
         if (i > 0) { buf[pos++] = ','; buf[pos++] = ' '; }
-        switch (elem_kind) {
-        case 0:
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64,
-                element_as_signed((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size));
-            break;
-        case 1: {
-            char float_buffer[GRAY_FLOAT_STR_BUF];
-            format_float_element(float_buffer, sizeof(float_buffer),
-                (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
-            break;
-        }
-        case 2: {
-            GrayString element = GRAY_ARRAY_GET(*arr, GrayString, i);
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\"",
-                (int)element.len, element.data ? element.data : "");
-            break;
-        }
-        case 3:
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-                GRAY_ARRAY_GET(*arr, bool, i) ? "true" : "false");
-            break;
-        case 4:
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRIu64,
-                element_as_unsigned((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size));
-            break;
-        case 5:
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%u",
-                (unsigned)GRAY_ARRAY_GET(*arr, uint8_t, i));
-            break;
-        case 6: {
-            int32_t cp = GRAY_ARRAY_GET(*arr, int32_t, i);
-            char utf8[4]; int utf8_length = cp_to_utf8(cp, utf8);
-            if (pos + 2 + utf8_length < (int)sizeof(buf)) {
-                buf[pos++] = '\'';
-                memcpy(buf + pos, utf8, (size_t)utf8_length); pos += utf8_length;
-                buf[pos++] = '\'';
-            }
-            break;
-        }
-        case 7:
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%d",
-                GRAY_ARRAY_GET(*arr, int, i));
-            break;
-        }
+        pos = format_value_into(buf, sizeof(buf), pos, elem_kind,
+            (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
@@ -503,38 +506,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_ki
         pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\": ",
             (int)kp->len, kp->data ? kp->data : "");
         void *vp = (char *)map->values + (size_t)i * map->value_size;
-        switch (val_kind) {
-        case 0: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64,
-            element_as_signed(vp, (int32_t)map->value_size)); break;
-        case 1: {
-            char float_buffer[GRAY_FLOAT_STR_BUF];
-            format_float_element(float_buffer, sizeof(float_buffer), vp, (int32_t)map->value_size);
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
-            break;
-        }
-        case 2: {
-            GrayString *sp = (GrayString *)vp;
-            pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\"",
-                (int)sp->len, sp->data ? sp->data : "");
-            break;
-        }
-        case 3: pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
-            *(bool *)vp ? "true" : "false"); break;
-        case 4: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRIu64,
-            element_as_unsigned(vp, (int32_t)map->value_size)); break;
-        case 5: pos += snprintf(buf + pos, sizeof(buf) - pos, "%u", (unsigned)*(uint8_t *)vp); break;
-        case 6: {
-            int32_t cp = *(int32_t *)vp;
-            char utf8[4]; int utf8_length = cp_to_utf8(cp, utf8);
-            if (pos + 2 + utf8_length < (int)sizeof(buf)) {
-                buf[pos++] = '\'';
-                memcpy(buf + pos, utf8, (size_t)utf8_length); pos += utf8_length;
-                buf[pos++] = '\'';
-            }
-            break;
-        }
-        case 7: pos += snprintf(buf + pos, sizeof(buf) - pos, "%d", *(int *)vp); break;
-        }
+        pos = format_value_into(buf, sizeof(buf), pos, val_kind, vp, (int32_t)map->value_size);
     }
     if (map->count == 0) { buf[pos++] = ':'; }
     buf[pos++] = '}';
