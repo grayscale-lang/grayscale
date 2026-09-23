@@ -910,6 +910,88 @@ static inline GrayString gray_i256_to_string(GrayArena *arena, gray_i256 value) 
     return gray_u256_to_string(arena, bits);
 }
 
+/* --- Bitwise ---
+ * Each value is handled as its little-endian array of 64-bit words (w[0] is
+ * the low word), the layout every wide type shares. A signed right shift is
+ * arithmetic, as it is for i64. */
+
+static inline void gray_bigint_shift_left_words(uint64_t *words, int count, int amount) {
+    int word_shift = amount / 64, bit_shift = amount % 64;
+    for (int i = count - 1; i >= 0; i--) {
+        int source = i - word_shift;
+        uint64_t word = source >= 0 ? words[source] << bit_shift : 0;
+        if (bit_shift != 0 && source - 1 >= 0) word |= words[source - 1] >> (64 - bit_shift);
+        words[i] = word;
+    }
+}
+
+static inline void gray_bigint_shift_right_words(uint64_t *words, int count, int amount, bool arithmetic) {
+    uint64_t fill = (arithmetic && (words[count - 1] >> 63)) ? UINT64_MAX : 0;
+    int word_shift = amount / 64, bit_shift = amount % 64;
+    for (int i = 0; i < count; i++) {
+        int source = i + word_shift;
+        uint64_t word = source < count ? words[source] >> bit_shift : fill;
+        if (bit_shift != 0) word |= (source + 1 < count ? words[source + 1] : fill) << (64 - bit_shift);
+        words[i] = word;
+    }
+}
+
+/* Generates T_and/_or/_xor/_not, the range-checked T_shl/_shr, and
+ * T_shift_amount, which narrows a T used as a shift amount to int64_t or
+ * panics when it cannot be an in-range amount for a max_amount operand. */
+#define GRAY_BIGINT_BITWISE(T, WORDS, SIGNED)                                              \
+    static inline T T##_and(T left, T right) {                                            \
+        uint64_t left_words[WORDS], right_words[WORDS]; memcpy(left_words, &left, sizeof(left_words)); memcpy(right_words, &right, sizeof(right_words)); \
+        for (int i = 0; i < WORDS; i++) left_words[i] &= right_words[i];                                      \
+        T result; memcpy(&result, left_words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline T T##_or(T left, T right) {                                             \
+        uint64_t left_words[WORDS], right_words[WORDS]; memcpy(left_words, &left, sizeof(left_words)); memcpy(right_words, &right, sizeof(right_words)); \
+        for (int i = 0; i < WORDS; i++) left_words[i] |= right_words[i];                                      \
+        T result; memcpy(&result, left_words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline T T##_xor(T left, T right) {                                            \
+        uint64_t left_words[WORDS], right_words[WORDS]; memcpy(left_words, &left, sizeof(left_words)); memcpy(right_words, &right, sizeof(right_words)); \
+        for (int i = 0; i < WORDS; i++) left_words[i] ^= right_words[i];                                      \
+        T result; memcpy(&result, left_words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline T T##_not(T value) {                                                    \
+        uint64_t words[WORDS]; memcpy(words, &value, sizeof(words));                                   \
+        for (int i = 0; i < WORDS; i++) words[i] = ~words[i];                                      \
+        T result; memcpy(&result, words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline T T##_shl(T value, int64_t amount, const char *file, int line) {        \
+        if (amount < 0 || amount >= WORDS * 64)                                            \
+            gray_panic_code_at(file, line, "P0092", "shift amount %lld is out of range; must be in [0, %d] for this operand type", \
+                (long long)amount, WORDS * 64 - 1);                                        \
+        uint64_t words[WORDS]; memcpy(words, &value, sizeof(words));                                   \
+        gray_bigint_shift_left_words(words, WORDS, (int)amount);                               \
+        T result; memcpy(&result, words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline T T##_shr(T value, int64_t amount, const char *file, int line) {        \
+        if (amount < 0 || amount >= WORDS * 64)                                            \
+            gray_panic_code_at(file, line, "P0092", "shift amount %lld is out of range; must be in [0, %d] for this operand type", \
+                (long long)amount, WORDS * 64 - 1);                                        \
+        uint64_t words[WORDS]; memcpy(words, &value, sizeof(words));                                   \
+        gray_bigint_shift_right_words(words, WORDS, (int)amount, SIGNED);                      \
+        T result; memcpy(&result, words, sizeof(result)); return result;                      \
+    }                                                                                      \
+    static inline int64_t T##_shift_amount(T value, int max_amount, const char *file, int line) { \
+        uint64_t words[WORDS]; memcpy(words, &value, sizeof(words));                                   \
+        uint64_t extension = (SIGNED && (words[0] >> 63)) ? UINT64_MAX : 0;                    \
+        bool fits = SIGNED || (words[0] >> 63) == 0;                                           \
+        for (int i = 1; i < WORDS; i++) if (words[i] != extension) fits = false;               \
+        if (!fits)                                                                         \
+            gray_panic_code_at(file, line, "P0092", "shift amount %s is out of range; must be in [0, %d] for this operand type", \
+                T##_to_string(gray_default_arena, value).data, max_amount);                \
+        return (int64_t)words[0];                                                              \
+    }
+
+GRAY_BIGINT_BITWISE(gray_i128, 2, true)
+GRAY_BIGINT_BITWISE(gray_u128, 2, false)
+GRAY_BIGINT_BITWISE(gray_i256, 4, true)
+GRAY_BIGINT_BITWISE(gray_u256, 4, false)
+
 /* --- Hex / octal rendering ---
  * Used by the fmt module for %x / %X / %o directives. The value is rendered
  * from its raw bit pattern (like C printf), so the signed variants forward

@@ -1518,8 +1518,9 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     /* cast(expr, i128/u128/i256/u256) — the result is already the target bigint */
     if (node->kind == NODE_CAST_EXPR && is_bigint_type(node->data.cast.target_type))
         return node->data.cast.target_type;
-    /* -bigint_var — the result is still the same bigint type */
-    if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS)
+    /* -bigint_var / bit_not bigint_var — the result is still the same bigint type */
+    if (node->kind == NODE_PREFIX_EXPR &&
+        (node->data.prefix.op == TOK_MINUS || node->data.prefix.op == TOK_BIT_NOT))
         return resolve_bigint_type(codegen, node->data.prefix.right);
     /* If this is an infix expression, check left operand.
      * Operators that yield bool never yield a bigint, whatever their operands
@@ -1534,6 +1535,8 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
             return NULL;
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
+        /* A shift has its left operand's type; the amount never widens it. */
+        if (op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT) return NULL;
         return resolve_bigint_type(codegen, node->data.infix.right);
     }
     /* Struct field access a.val — check the resolved field type from the type table */
@@ -1703,6 +1706,22 @@ static void emit_bigint_operand(CodeGen *codegen, AstNode *operand,
     }
     /* Non-label expression — emit directly */
     emit_expression(codegen, operand);
+}
+
+/* Emit a shift amount as an int64_t. A wide amount too large for int64_t
+ * cannot be in range for any operand, so it panics with the shift's
+ * max_amount. */
+static void emit_shift_amount(CodeGen *codegen, AstNode *amount, int max_amount) {
+    const char *wide = resolve_bigint_type(codegen, amount);
+    if (wide) {
+        emit_formatted(codegen, "%s_shift_amount(", bigint_prefix(wide));
+        emit_expression(codegen, amount);
+        emit_formatted(codegen, ", %d, \"%s\", %d)", max_amount, codegen->file, amount->token.line);
+        return;
+    }
+    emit(codegen, "(int64_t)(");
+    emit_expression(codegen, amount);
+    emit(codegen, ")");
 }
 
 static bool is_mutable_parameter(CodeGen *codegen, const char *name) {
@@ -2758,6 +2777,13 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
      * masked back to their width because C promotes them to int before
      * applying ~, yielding a negative value that fails the runtime range check. */
     if (node->data.prefix.op == TOK_BIT_NOT) {
+        const char *bn_wide = resolve_bigint_type(codegen, node->data.prefix.right);
+        if (bn_wide) {
+            emit_formatted(codegen, "%s_not(", bigint_prefix(bn_wide));
+            emit_expression(codegen, node->data.prefix.right);
+            emit(codegen, ")");
+            return;
+        }
         GrayType *bn_t = typetable_get(codegen->type_table, node->data.prefix.right);
         const char *bn_mask = NULL;
         if (bn_t && bn_t->name) {
@@ -2843,6 +2869,20 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
 
     /* Bitwise keyword operators → C bitwise operators */
     if (op == TOK_BIT_AND || op == TOK_BIT_OR || op == TOK_BIT_XOR) {
+        /* A wide operand makes the operation wide; the other operand is
+         * widened to match, as for the arithmetic operators. */
+        const char *wide = resolve_bigint_type(codegen, node->data.infix.left);
+        if (!wide) wide = resolve_bigint_type(codegen, node->data.infix.right);
+        if (wide) {
+            const char *pfx = bigint_prefix(wide);
+            emit_formatted(codegen, "%s_%s(", pfx,
+                op == TOK_BIT_AND ? "and" : op == TOK_BIT_OR ? "or" : "xor");
+            emit_bigint_operand(codegen, node->data.infix.left, pfx, wide, left_type);
+            emit(codegen, ", ");
+            emit_bigint_operand(codegen, node->data.infix.right, pfx, wide, right_type);
+            emit(codegen, ")");
+            return;
+        }
         const char *c_op = operator_to_c_string(op);
         emit(codegen, "(");
         emit_expression(codegen, node->data.infix.left);
@@ -2859,6 +2899,16 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
      * shift goes through the unsigned type so shifting into or past the
      * sign bit is defined. Capture the amount once, validate it, then shift. */
     if (op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT) {
+        const char *shifted_wide = resolve_bigint_type(codegen, node->data.infix.left);
+        if (shifted_wide) {
+            emit_formatted(codegen, "%s_%s(", bigint_prefix(shifted_wide),
+                op == TOK_BIT_SHIFT_LEFT ? "shl" : "shr");
+            emit_expression(codegen, node->data.infix.left);
+            emit(codegen, ", ");
+            emit_shift_amount(codegen, node->data.infix.right, strstr(shifted_wide, "256") ? 255 : 127);
+            emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+            return;
+        }
         GrayType *shift_t = typetable_get(codegen->type_table, node->data.infix.left);
         const char *shift_name = (shift_t && shift_t->kind == TK_CHAR) ? "i32"
             : (shift_t && (shift_t->kind == TK_INT || shift_t->kind == TK_UINT)) ? shift_t->name : NULL;
@@ -2875,9 +2925,9 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
         char panic_args[32];
         snprintf(panic_args, sizeof(panic_args), ", (long long)_sa, %d", bits - 1);
-        emit(codegen, "({ int64_t _sa = (int64_t)(");
-        emit_expression(codegen, node->data.infix.right);
-        emit_formatted(codegen, "); if (_sa < 0 || _sa >= %d) { %s; } (%s)((%s)(",
+        emit(codegen, "({ int64_t _sa = ");
+        emit_shift_amount(codegen, node->data.infix.right, bits - 1);
+        emit_formatted(codegen, "; if (_sa < 0 || _sa >= %d) { %s; } (%s)((%s)(",
             bits, panic_call(codegen, node, "P0092", panic_args), c_type,
             op == TOK_BIT_SHIFT_LEFT ? unsigned_c_type : c_type);
         emit_expression(codegen, node->data.infix.left);
