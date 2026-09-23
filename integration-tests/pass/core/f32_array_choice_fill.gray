@@ -1,0 +1,51 @@
+/*
+ * f32_array_choice_fill.gray - random.choice and arrays.fill read and write
+ * [f32] elements at their real 4-byte width.
+ */
+
+import @arrays
+import @random
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut f [f32] = {1.5, 2.5, 3.5}
+    mut all_found bool = true
+    for i in range(0, 20) {
+        mut pick f32 = random.choice(f)
+        if !arrays.contains(f, pick) {
+            all_found = false
+        }
+    }
+    if all_found {
+        passed++
+    } otherwise {
+        println("FAIL: f32 choice")
+        failed++
+    }
+
+    mut g [f32] = {}
+    arrays.fill(g, 2.5, 3)
+    if len(g) == 3 && g[0] == 2.5 && g[2] == 2.5 {
+        passed++
+    } otherwise {
+        println("FAIL: f32 fill")
+        failed++
+    }
+
+    mut d [f64] = {}
+    arrays.fill(d, 4.25, 2)
+    mut d_pick f64 = random.choice(d)
+    if d[1] == 4.25 && d_pick == 4.25 {
+        passed++
+    } otherwise {
+        println("FAIL: f64 fill/choice")
+        failed++
+    }
+
+    println("f32_array_choice_fill: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

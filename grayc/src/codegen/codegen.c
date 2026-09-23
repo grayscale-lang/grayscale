@@ -7153,11 +7153,11 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
         GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
             GrayType *et = type_from_name(arr_t->element_type);
-            if (et->kind == TK_FLOAT) c_elem = "double";
-            else if (et->kind == TK_BOOL) c_elem = "bool";
+            if (et->kind == TK_BOOL) c_elem = "bool";
             else if (et->kind == TK_STRING) c_elem = "GrayString";
             else if (et->kind == TK_CHAR) c_elem = "int32_t";
-            else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(arr_t->element_type))
+            else if ((et->kind == TK_INT || et->kind == TK_UINT || et->kind == TK_FLOAT) &&
+                     !is_bigint_type(arr_t->element_type))
                 c_elem = gray_type_to_c_codegen(codegen, arr_t->element_type);
             else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, arr_t->element_type);
             else if (et->kind == TK_ENUM) {
@@ -7605,15 +7605,14 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         const char *fl_c_elem = "int64_t";
         if (fl_arr_t && fl_arr_t->kind == TK_ARRAY && fl_arr_t->element_type) {
             GrayType *fet = type_from_name(fl_arr_t->element_type);
-            if (fet->kind == TK_FLOAT) fl_c_elem = "double";
-            else if (fet->kind == TK_BOOL) fl_c_elem = "bool";
+            if (fet->kind == TK_BOOL) fl_c_elem = "bool";
             else if (fet->kind == TK_CHAR) fl_c_elem = "int32_t";
             else if (fet->kind == TK_STRING) fl_c_elem = "GrayString";
             else if (fet->kind == TK_ARRAY) fl_c_elem = "GrayArray";
             else if (fet->kind == TK_MAP) fl_c_elem = "GrayMap";
             else if (fet->kind == TK_STRUCT) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
             else if (fet->kind == TK_ENUM) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
-            else if (fet->kind == TK_INT || fet->kind == TK_UINT)
+            else if (fet->kind == TK_INT || fet->kind == TK_UINT || fet->kind == TK_FLOAT)
                 fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
         }
         const char *fl_elem_tn = (fl_arr_t && fl_arr_t->kind == TK_ARRAY) ? fl_arr_t->element_type : NULL;
