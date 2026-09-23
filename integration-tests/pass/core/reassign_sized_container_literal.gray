@@ -1,0 +1,78 @@
+/*
+ * reassign_sized_container_literal.gray
+ * An array or map literal reassigned to a variable with sized elements takes
+ * the variable's element types, the same way a declaration does, and stores
+ * the values at that width.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut narrow [i32] = {1}
+    narrow = {2, 70000}
+    if len(narrow) == 2 && narrow[1] == 70000 {
+        println("  [PASS] [i32] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [i32] reassign: ${narrow}")
+        failed += 1
+    }
+
+    mut bytes [u8] = {1}
+    bytes = {2, 255}
+    if len(bytes) == 2 && bytes[1] == 255 {
+        println("  [PASS] [u8] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [u8] reassign: ${bytes}")
+        failed += 1
+    }
+
+    mut ratios [f32] = {1.5}
+    ratios = {2.5, 3.5}
+    if len(ratios) == 2 && ratios[0] == 2.5 && ratios[1] == 3.5 {
+        println("  [PASS] [f32] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] reassign: ${ratios}")
+        failed += 1
+    }
+
+    mut wide [f64] = {1.5}
+    wide = {2.5}
+    if len(wide) == 1 && wide[0] == 2.5 {
+        println("  [PASS] [f64] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64] reassign: ${wide}")
+        failed += 1
+    }
+
+    mut rows [[i32]] = {{1}}
+    rows = {{4, 5}}
+    if rows[0][1] == 5 {
+        println("  [PASS] [[i32]] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [[i32]] reassign: ${rows}")
+        failed += 1
+    }
+
+    mut weights map[string:f32] = {"a": 1.5}
+    weights = {"b": 2.5}
+    if weights["b"] == 2.5 {
+        println("  [PASS] map[string:f32] reassign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[string:f32] reassign: ${weights}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

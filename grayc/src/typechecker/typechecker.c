@@ -7917,6 +7917,93 @@ static bool try_get_static_array_length(TypeChecker *checker, AstNode *expr, int
     return false;
 }
 
+/* True when a map of `value_type` can be stored as `declared`: key and
+ * value types match, or differ only by int-kind or float width coercion.
+ * Int-to-float values coerce only for a map literal (`value_is_literal`),
+ * not a map variable. */
+static bool map_types_coercible(GrayType *declared, GrayType *value_type, bool value_is_literal) {
+    bool key_mismatch = declared->key_type && value_type->key_type &&
+        strcmp(declared->key_type, value_type->key_type) != 0;
+    bool val_mismatch = declared->value_type && value_type->value_type &&
+        strcmp(declared->value_type, value_type->value_type) != 0;
+    if (key_mismatch) {
+        GrayType *dk = type_from_name(declared->key_type);
+        GrayType *vk = type_from_name(value_type->key_type);
+        if (dk && vk && ((is_int_kind(dk->kind) && is_int_kind(vk->kind)) ||
+                        (dk->kind == TK_FLOAT && vk->kind == TK_FLOAT) ||
+                        (dk->kind == TK_FLOAT && is_int_kind(vk->kind))))
+            key_mismatch = false;
+    }
+    if (val_mismatch) {
+        GrayType *dv = type_from_name(declared->value_type);
+        GrayType *vv = type_from_name(value_type->value_type);
+        if (dv && vv && ((is_int_kind(dv->kind) && is_int_kind(vv->kind)) ||
+                        (dv->kind == TK_FLOAT && vv->kind == TK_FLOAT) ||
+                        (value_is_literal && dv->kind == TK_FLOAT && is_int_kind(vv->kind))))
+            val_mismatch = false;
+    }
+    return !key_mismatch && !val_mismatch;
+}
+
+/* Each element of array literal `arr`, stored as `elem_type`: E3019 when it
+ * crosses signedness, E3046/E3036 when an integer literal doesn't fit. */
+static void check_array_literal_elements(TypeChecker *checker, const char *elem_type, AstNode *arr) {
+    bool elem_is_u64_like = (strcmp(elem_type, "uint") == 0 || strcmp(elem_type, "u64") == 0);
+    for (int element_index = 0; element_index < arr->data.array_value.count; element_index++) {
+        AstNode *el = arr->data.array_value.elements[element_index];
+        check_signedness_crossing(checker, elem_type, el, typetable_get(checker->type_table, el), el);
+        if (is_bigint_type(elem_type)) continue;
+        bool el_overflowed = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow);
+        bool el_overflowed_u64 = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow_u64);
+        /* Element exceeds UINT64_MAX entirely; always an error. */
+        if (el_overflowed_u64) {
+            diagnostic_error_message(checker->diag, "E3046",
+                "integer literal overflows 64-bit integer; max value is 18446744073709551615",
+                NODE_FILE(checker, el), el->token.line, el->token.column, 0);
+            continue;
+        }
+        /* Element exceeds INT64_MAX but fits UINT64_MAX — fine for u64/uint
+         * elements, error for narrower signed/unsigned and for int. */
+        if (el_overflowed) {
+            if (!elem_is_u64_like) {
+                diagnostic_error_message(checker->diag, "E3046",
+                    "integer literal overflows 64-bit integer; max value is 9223372036854775807",
+                    NODE_FILE(checker, el), el->token.line, el->token.column, 0);
+            }
+            continue;
+        }
+        int64_t ev;
+        bool ev_neg;
+        if (try_get_signed_literal_int(el, &ev, &ev_neg)) {
+            check_integer_range(checker->diag, NODE_FILE(checker, el),
+                el->token.line, el->token.column,
+                elem_type, ev, ev_neg);
+        }
+    }
+}
+
+/* Each entry of map literal `map`, stored as `key_tn`:`val_tn`: E3019 when a
+ * key or value crosses signedness, E3036 when an integer literal doesn't fit. */
+static void check_map_literal_entries(TypeChecker *checker, const char *key_tn, const char *val_tn,
+                                      AstNode *map) {
+    for (int entry_index = 0; entry_index < map->data.map_value.count; entry_index++) {
+        AstNode *key_node = map->data.map_value.keys[entry_index];
+        AstNode *value_node = map->data.map_value.values[entry_index];
+        check_signedness_crossing(checker, key_tn, key_node,
+            typetable_get(checker->type_table, key_node), key_node);
+        check_signedness_crossing(checker, val_tn, value_node,
+            typetable_get(checker->type_table, value_node), value_node);
+        int64_t literal_value;
+        bool literal_negative;
+        if (try_get_signed_literal_int(key_node, &literal_value, &literal_negative))
+            check_integer_range(checker->diag, NODE_FILE(checker, key_node),
+                key_node->token.line, key_node->token.column, key_tn, literal_value, literal_negative);
+        if (try_get_signed_literal_int(value_node, &literal_value, &literal_negative))
+            check_integer_range(checker->diag, NODE_FILE(checker, value_node),
+                value_node->token.line, value_node->token.column, val_tn, literal_value, literal_negative);
+    }
+}
+
 /* Shared W3003/E3052 length check for a fixed-size struct field ([T,N])
  * receiving `value`, whether at struct-literal construction or plain
  * reassignment: too many elements is an error, too few is a warning (the
@@ -13676,31 +13763,9 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
         }
         /* Map key/value type mismatch (both TK_MAP but different key or value types) */
         if (declared->kind == TK_MAP && value_type->kind == TK_MAP) {
-            bool key_mismatch = declared->key_type && value_type->key_type &&
-                strcmp(declared->key_type, value_type->key_type) != 0;
-            bool val_mismatch = declared->value_type && value_type->value_type &&
-                strcmp(declared->value_type, value_type->value_type) != 0;
-            /* Suppress key/value mismatches caused by int-kind coercion or float coercion */
-            if (key_mismatch) {
-                GrayType *dk = type_from_name(declared->key_type);
-                GrayType *vk = type_from_name(value_type->key_type);
-                if (dk && vk && ((is_int_kind(dk->kind) && is_int_kind(vk->kind)) ||
-                                (dk->kind == TK_FLOAT && vk->kind == TK_FLOAT) ||
-                                (dk->kind == TK_FLOAT && is_int_kind(vk->kind))))
-                    key_mismatch = false;
-            }
-            if (val_mismatch) {
-                GrayType *dv = type_from_name(declared->value_type);
-                GrayType *vv = type_from_name(value_type->value_type);
-                bool val_is_literal = node->data.var_decl.value &&
-                    node->data.var_decl.value->kind == NODE_MAP_VALUE;
-                if (dv && vv && ((is_int_kind(dv->kind) && is_int_kind(vv->kind)) ||
-                                (dv->kind == TK_FLOAT && vv->kind == TK_FLOAT) ||
-                                /* int→float coercion only for map literals, not variables */
-                                (val_is_literal && dv->kind == TK_FLOAT && is_int_kind(vv->kind))))
-                    val_mismatch = false;
-            }
-            if ((key_mismatch || val_mismatch) && !literal_widths_ok) {
+            bool val_is_literal = node->data.var_decl.value &&
+                node->data.var_decl.value->kind == NODE_MAP_VALUE;
+            if (!map_types_coercible(declared, value_type, val_is_literal) && !literal_widths_ok) {
                 char *msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
@@ -13801,40 +13866,8 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                         elem_type[elen] = '\0';
                     }
                 }
-                if (elem_type[0] && !is_bigint_type(elem_type)) {
-                    AstNode *arr = node->data.var_decl.value;
-                    bool elem_is_u64_like = (strcmp(elem_type, "uint") == 0 || strcmp(elem_type, "u64") == 0);
-                    for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
-                        AstNode *el = arr->data.array_value.elements[enum_index];
-                        bool el_overflowed = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow);
-                        bool el_overflowed_u64 = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow_u64);
-                        /* Element exceeds UINT64_MAX entirely; always an error. */
-                        if (el_overflowed_u64) {
-                            diagnostic_error_message(checker->diag, "E3046",
-                                "integer literal overflows 64-bit integer; max value is 18446744073709551615",
-                                NODE_FILE(checker, el), el->token.line, el->token.column, 0);
-                            continue;
-                        }
-                        /* Element exceeds INT64_MAX but fits UINT64_MAX —
-                         * fine for u64/uint elements, error for narrower
-                         * signed/unsigned and for int. */
-                        if (el_overflowed) {
-                            if (!elem_is_u64_like) {
-                                diagnostic_error_message(checker->diag, "E3046",
-                                    "integer literal overflows 64-bit integer; max value is 9223372036854775807",
-                                    NODE_FILE(checker, el), el->token.line, el->token.column, 0);
-                            }
-                            continue;
-                        }
-                        int64_t ev;
-                        bool ev_neg;
-                        if (try_get_signed_literal_int(el, &ev, &ev_neg)) {
-                            check_integer_range(checker->diag, NODE_FILE(checker, el),
-                                el->token.line, el->token.column,
-                                elem_type, ev, ev_neg);
-                        }
-                    }
-                }
+                if (elem_type[0])
+                    check_array_literal_elements(checker, elem_type, node->data.var_decl.value);
                 /* E3053: element type mismatch in array initializer */
                 if (elem_type[0]) {
                     GrayType *expected_et = typechecker_type_from_name(checker, elem_type);
@@ -13842,9 +13875,6 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                     for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
                         AstNode *el_node = arr->data.array_value.elements[enum_index];
                         GrayType *actual_et = resolve_expression(checker, el_node);
-                        /* E3019: an array element that crosses signedness needs a cast. */
-                        check_signedness_crossing(checker, elem_type,
-                            el_node, actual_et, el_node);
                         if (actual_et && actual_et->kind != TK_UNKNOWN &&
                             expected_et && expected_et->kind != TK_UNKNOWN &&
                             actual_et->kind != expected_et->kind) {
@@ -13930,23 +13960,12 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                         GrayType *expected_k = typechecker_type_from_name(checker, key_tn);
                         GrayType *expected_v = typechecker_type_from_name(checker, val_tn);
                         AstNode *mv = node->data.var_decl.value;
+                        check_map_literal_entries(checker, key_tn, val_tn, mv);
                         for (int mi = 0; mi < mv->data.map_value.count; mi++) {
                             AstNode *kn = mv->data.map_value.keys[mi];
                             AstNode *vn = mv->data.map_value.values[mi];
                             GrayType *kt = resolve_expression(checker, kn);
                             GrayType *vt = resolve_expression(checker, vn);
-                            /* E3019: a map key or value that crosses signedness needs a cast. */
-                            check_signedness_crossing(checker, key_tn, kn, kt, kn);
-                            check_signedness_crossing(checker, val_tn, vn, vt, vn);
-                            /* E3036: an out-of-range literal key or value ({"a": 300}). */
-                            int64_t kv_lit;
-                            bool kv_neg;
-                            if (try_get_signed_literal_int(kn, &kv_lit, &kv_neg))
-                                check_integer_range(checker->diag, NODE_FILE(checker, kn),
-                                    kn->token.line, kn->token.column, key_tn, kv_lit, kv_neg);
-                            if (try_get_signed_literal_int(vn, &kv_lit, &kv_neg))
-                                check_integer_range(checker->diag, NODE_FILE(checker, vn),
-                                    vn->token.line, vn->token.column, val_tn, kv_lit, kv_neg);
                             if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
                                 expected_k && expected_k->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, expected_k, kt) &&
@@ -14689,6 +14708,20 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         try_get_literal_int(node->data.assign.value, &reassign_lit_val) &&
         !(node->data.assign.value->kind == NODE_INT_VALUE &&
           node->data.assign.value->data.int_value.overflow);
+    /* An array or map literal takes the target's element widths, as in a
+     * declaration — {1, 2} for a [i32] target, {2.5} for a [f32] one,
+     * {"k": 2.5} for a map[string:f32] one. */
+    bool value_fits_literal_widths =
+        literal_fits_nested_widths(checker, node->data.assign.value, target_t, value_t) ||
+        (node->data.assign.value->kind == NODE_MAP_VALUE && target_t && value_t &&
+         target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
+         map_types_coercible(target_t, value_t, true));
+    if (value_fits_literal_widths && target_t->kind == TK_ARRAY &&
+        node->data.assign.value->kind == NODE_ARRAY_VALUE && target_t->element_type)
+        check_array_literal_elements(checker, target_t->element_type, node->data.assign.value);
+    if (value_fits_literal_widths && target_t->kind == TK_MAP &&
+        node->data.assign.value->kind == NODE_MAP_VALUE && target_t->key_type && target_t->value_type)
+        check_map_literal_entries(checker, target_t->key_type, target_t->value_type, node->data.assign.value);
 
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
@@ -15007,7 +15040,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL) {
         Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
         if (sym && sym->type->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
-            target_t->kind != TK_UNKNOWN &&
+            target_t->kind != TK_UNKNOWN && !value_fits_literal_widths &&
             !types_assignable(checker, target_t, value_t) &&
             !(target_t->kind == TK_ENUM && is_int_kind(value_t->kind)) &&
             !(target_t->kind == TK_STRUCT && is_int_kind(value_t->kind)) &&
@@ -15097,7 +15130,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Array-to-array: element types differ on reassignment (e.g., [int] = [string]).
      * Both sides are TK_ARRAY so the outer kind-equality guard passes. */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_fits_literal_widths &&
         target_t && value_t &&
         target_t->kind == TK_ARRAY && value_t->kind == TK_ARRAY &&
         target_t->element_type && value_t->element_type &&
@@ -15109,7 +15142,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Map-to-map: key or value types differ on reassignment (e.g., [string:int] = [string:string]).
      * Both sides are TK_MAP so the outer kind-equality guard passes. */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_fits_literal_widths &&
         target_t && value_t &&
         target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
         target_t->key_type && value_t->key_type &&
@@ -15123,7 +15156,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
      * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
-    if (target->kind == NODE_LABEL && !value_is_int_literal &&
+    if (target->kind == NODE_LABEL && !value_is_int_literal && !value_fits_literal_widths &&
         target_t && value_t &&
         target_t->name && value_t->name) {
         int declared_rank = int_type_name_rank(target_t->name);

@@ -11317,7 +11317,12 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             snprintf(src_var, sizeof(src_var), "_ma%d", tag);
             emit(codegen, "{ GrayMap ");
             emit_formatted(codegen, "%s = ", src_var);
+            /* A map literal takes the target's key and value types, as in a
+             * declaration, so a map[string:f32] target stores floats. */
+            const char *saved_var_type = codegen->current_var_type;
+            codegen->current_var_type = tgt_t->name;
             emit_expression(codegen, node->data.assign.value);
+            codegen->current_var_type = saved_var_type;
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
                 emit(codegen, "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
