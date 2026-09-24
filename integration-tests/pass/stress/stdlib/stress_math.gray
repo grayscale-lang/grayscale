@@ -68,10 +68,10 @@ do main() {
         passed += 1
     } otherwise { println("  [FAIL] min/max") failed += 1 }
 
-    // factorial (returns f64, compare with f64)
+    // factorial
     mut f0 = math.factorial(0)
     mut f5 = math.factorial(5)
-    if f0 > 0.9 && f0 < 1.1 && f5 > 119.9 && f5 < 120.1 {
+    if f0 == 1 && f5 == 120 {
         println("  [PASS] factorial(0,5)")
         passed += 1
     } otherwise { println("  [FAIL] factorial") failed += 1 }
