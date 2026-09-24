@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3036 - a range bound above the i64 range
+ * Expected: one error for the out-of-range literal; the bound is not read
+ * as a negative number, so there is no E9005
+ */
+
+do main() {
+    for i in range(0, 9223372036854775808) {
+        println(i)
+    }
+}
+// expect-error: E3036
+// expect-error-count: 1

@@ -1,0 +1,22 @@
+/*
+ * Pass Test: integer consts fold at full width
+ * Expected: a u64 const above the i64 range keeps its value when a later
+ * const or a fixed array size uses it, and a u64 product that fits u64 is
+ * not reported as overflowing.
+ */
+
+const N u64 = 3
+const BIG u64 = 18446744073709551615
+const HALF u64 = BIG / 2
+const A u64 = 4000000000
+const B u64 = A * A
+const G i128 = 170141183460469231731687303715884105727
+const H i128 = G - 1
+
+do main() {
+    const arr [i64, N] = {1, 2, 3}
+    println(arr[2])
+    println(HALF)
+    println(B)
+    println(H)
+}

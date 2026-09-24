@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3036 - a repeat count above the i64 range
+ * Expected: one error for the out-of-range literal; the count is not read
+ * as a negative number
+ */
+import @strings
+
+do main() {
+    println(strings.repeat("a", 9223372036854775808))
+}
+// expect-error: E3036
+// expect-error-count: 1

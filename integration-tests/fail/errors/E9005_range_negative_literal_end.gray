@@ -1,0 +1,13 @@
+/*
+ * Error Test: E9005 - a range whose negated literal end is below its start
+ * Expected: the bounds are folded as literal expressions, so a negative end
+ * is checked
+ */
+
+do main() {
+    for i in range(10, -5) {
+        println(i)
+    }
+}
+// expect-error: E9005
+// expect-error-count: 1

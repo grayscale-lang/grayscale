@@ -5291,19 +5291,6 @@ static int int_type_name_rank(const char *n) {
 
 /* --- Number literals --- */
 
-/* A number literal expression folded at full width. An integer is a sign and
- * a 320-bit magnitude: room for every value an integer type holds
- * (-2^255 .. 2^256-1) plus headroom for intermediate results. */
-#define LITERAL_LIMBS 10
-
-typedef struct {
-    bool is_decimal;
-    bool too_large;                     /* an integer step reached 2^320 */
-    bool negative;
-    uint32_t magnitude[LITERAL_LIMBS];  /* little-endian 32-bit limbs */
-    double decimal;
-} LiteralValue;
-
 static bool magnitude_is_zero(const uint32_t *m) {
     for (int i = 0; i < LITERAL_LIMBS; i++) if (m[i]) return false;
     return true;
@@ -5473,13 +5460,21 @@ static void literal_add(LiteralValue *out, const LiteralValue *left, const Liter
     *out = result;
 }
 
-/* Fold the literal expression `node` into *out. Returns false when it is not
- * a constant: a shift by a non-literal count, a division by zero, a negative
- * shift count, or an operator the operands do not support (reported
- * elsewhere). */
-static bool literal_fold(AstNode *node, LiteralValue *out) {
+static bool constant_fold(TypeChecker *checker, AstNode *node, LiteralValue *out);
+
+/* One step of constant_fold: fold `node` from its folded operands. */
+static bool constant_fold_step(TypeChecker *checker, AstNode *node, LiteralValue *out) {
     if (!node) return false;
     switch (node->kind) {
+    case NODE_LABEL:
+        if (!checker) return false;
+        for (int i = 0; i < checker->const_int_count; i++) {
+            if (strcmp(checker->const_int_names[i], node->data.label.value) == 0) {
+                *out = checker->const_int_values[i];
+                return true;
+            }
+        }
+        return false;
     case NODE_INT_VALUE:
         literal_set_u64(out, (uint64_t)node->data.int_value.value);
         if (node->data.int_value.overflow_u64) {
@@ -5502,7 +5497,7 @@ static bool literal_fold(AstNode *node, LiteralValue *out) {
         out->decimal = node->data.float_value.value;
         return true;
     case NODE_PREFIX_EXPR: {
-        if (!literal_fold(node->data.prefix.right, out)) return false;
+        if (!constant_fold(checker, node->data.prefix.right, out)) return false;
         if (node->data.prefix.op == TOK_MINUS) {
             if (out->is_decimal) out->decimal = -out->decimal;
             else out->negative = !out->negative;
@@ -5523,8 +5518,8 @@ static bool literal_fold(AstNode *node, LiteralValue *out) {
     }
     case NODE_INFIX_EXPR: {
         LiteralValue left, right;
-        if (!literal_fold(node->data.infix.left, &left) ||
-            !literal_fold(node->data.infix.right, &right))
+        if (!constant_fold(checker, node->data.infix.left, &left) ||
+            !constant_fold(checker, node->data.infix.right, &right))
             return false;
         TokenType op = node->data.infix.op;
         if (left.is_decimal || right.is_decimal) {
@@ -5600,6 +5595,32 @@ static bool literal_fold(AstNode *node, LiteralValue *out) {
     default:
         return false;
     }
+}
+
+static bool literal_fits(const LiteralValue *v, GrayType *target);
+static bool is_literal_expr(AstNode *node);
+
+/* Fold the constant expression `node` into *out at full width. With a
+ * checker, a name bound to a const integer folds to its value, and a step
+ * whose resolved type is a sized integer must fit that type (too_large is
+ * set when it does not); a literal expression has no type of its own and
+ * folds at full width throughout. Returns false when `node` is not a
+ * constant: a shift by a non-constant count, a division by zero, a negative
+ * shift count, or an operator the operands do not support (reported
+ * elsewhere). */
+static bool constant_fold(TypeChecker *checker, AstNode *node, LiteralValue *out) {
+    if (!constant_fold_step(checker, node, out)) return false;
+    if (checker && !out->is_decimal && node->kind != NODE_LABEL && !is_literal_expr(node)) {
+        GrayType *type = typetable_get(checker->type_table, node);
+        if (type && (type->kind == TK_INT || type->kind == TK_UINT) && !literal_fits(out, type))
+            out->too_large = true;
+    }
+    return true;
+}
+
+/* Fold the literal expression `node` into *out. */
+static bool literal_fold(AstNode *node, LiteralValue *out) {
+    return constant_fold(NULL, node, out);
 }
 
 /* True when `node` is built only from number literals: a literal, a unary
@@ -5740,15 +5761,32 @@ static bool literal_fits_some_integer(const LiteralValue *v) {
     return length < 256 || (length == 256 && magnitude_is_power_of_two(v->magnitude, 255));
 }
 
+/* The value of the folded integer `v` when it fits i64. */
+static bool literal_value_as_i64(const LiteralValue *v, int64_t *out) {
+    if (v->is_decimal || !literal_fits(v, &TYPE_I64)) return false;
+    uint64_t magnitude = (uint64_t)v->magnitude[0] | ((uint64_t)v->magnitude[1] << 32);
+    *out = v->negative ? (int64_t)(0u - magnitude) : (int64_t)magnitude;
+    return true;
+}
+
+/* <0, 0 or >0 as the folded integer a is below, equal to or above b. */
+static int literal_compare(const LiteralValue *a, const LiteralValue *b) {
+    if (a->negative != b->negative) return a->negative ? -1 : 1;
+    int by_magnitude = magnitude_compare(a->magnitude, b->magnitude);
+    return a->negative ? -by_magnitude : by_magnitude;
+}
+
+/* True when `node` is a constant integer literal expression; *out is its
+ * value at full width. */
+static bool literal_integer_value(AstNode *node, LiteralValue *out) {
+    return node && is_literal_expr(node) && !literal_expr_is_decimal(node) &&
+           literal_fold(node, out) && !out->too_large;
+}
+
 /* The value of a constant integer literal expression that fits in i64. */
 static bool literal_int_value(AstNode *node, int64_t *out) {
     LiteralValue v;
-    if (!is_literal_expr(node) || !literal_fold(node, &v) || v.is_decimal || v.too_large ||
-        magnitude_bit_length(v.magnitude) > 63)
-        return false;
-    uint64_t magnitude = (uint64_t)v.magnitude[0] | ((uint64_t)v.magnitude[1] << 32);
-    *out = v.negative ? -(int64_t)magnitude : (int64_t)magnitude;
-    return true;
+    return is_literal_expr(node) && literal_fold(node, &v) && literal_value_as_i64(&v, out);
 }
 
 /* Record `type` on every node of the literal expression `node`, and its
@@ -5993,13 +6031,13 @@ static GrayType *check_expr_as(TypeChecker *checker, AstNode *value, GrayType *t
 }
 
 /* Register a file-scope const integer value for later constant folding. */
-static void typechecker_register_const_int(TypeChecker *checker, const char *name, int64_t value) {
+static void typechecker_register_const_int(TypeChecker *checker, const char *name, LiteralValue value) {
     if (checker->const_int_count >= checker->const_int_cap) {
         checker->const_int_cap = checker->const_int_cap ? checker->const_int_cap * 2 : 8;
         checker->const_int_names = xrealloc(checker->const_int_names,
             sizeof(const char *) * (size_t)checker->const_int_cap);
         checker->const_int_values = xrealloc(checker->const_int_values,
-            sizeof(int64_t) * (size_t)checker->const_int_cap);
+            sizeof(LiteralValue) * (size_t)checker->const_int_cap);
     }
     checker->const_int_names[checker->const_int_count] = name;
     checker->const_int_values[checker->const_int_count] = value;
@@ -6055,7 +6093,7 @@ static void typechecker_resolve_array_size_str(TypeChecker *checker,
 
     /* Look up the identifier in the const integer table. */
     bool found = false;
-    int64_t resolved = 0;
+    LiteralValue resolved;
     for (int i = 0; i < checker->const_int_count; i++) {
         if (strcmp(checker->const_int_names[i], size_buf) == 0) {
             resolved = checker->const_int_values[i];
@@ -6070,10 +6108,11 @@ static void typechecker_resolve_array_size_str(TypeChecker *checker,
         diagnostic_error_message(checker->diag, "E3125", msg, file, line, col, 0);
         return;
     }
-    if (resolved <= 0) {
+    const char *resolved_text = literal_text(checker, &resolved);
+    if (resolved.negative || magnitude_is_zero(resolved.magnitude)) {
         char *msg = typechecker_format(checker,
-            "array size must be greater than zero; '%s' resolves to %d",
-            size_buf, (int)resolved);
+            "array size must be greater than zero; '%s' resolves to %s",
+            size_buf, resolved_text);
         diagnostic_error_message(checker->diag, "E3126", msg, file, line, col, 0);
         return;
     }
@@ -6081,12 +6120,11 @@ static void typechecker_resolve_array_size_str(TypeChecker *checker,
     /* Rewrite the type string with the resolved numeric value.
      * e.g. "[i64,SIZE]" → "[i64,5]" */
     size_t prefix_len = (size_t)(size_comma + 1 - tn);
-    char num_buf[32];
-    int num_len = snprintf(num_buf, sizeof(num_buf), "%d", (int)resolved);
-    size_t new_len = prefix_len + (size_t)num_len + 2; /* +1 for ']' +1 for '\0' */
+    size_t num_len = strlen(resolved_text);
+    size_t new_len = prefix_len + num_len + 2; /* +1 for ']' +1 for '\0' */
     char *new_tn = arena_alloc(checker->arena, new_len);
     memcpy(new_tn, tn, prefix_len);
-    memcpy(new_tn + prefix_len, num_buf, (size_t)num_len);
+    memcpy(new_tn + prefix_len, resolved_text, num_len);
     new_tn[prefix_len + (size_t)num_len] = ']';
     new_tn[prefix_len + (size_t)num_len + 1] = '\0';
     *type_name_slot = new_tn;
@@ -6097,80 +6135,22 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
         NODE_FILE(checker, node), node->token.line, node->token.column);
 }
 
-/* Try to evaluate node as a compile-time integer constant.
- * Handles integer literals, negated literals, label references to known
- * file-scope const ints, and infix arithmetic.
+/* Try to evaluate node as a compile-time i64 constant: a literal
+ * expression, a name bound to a const integer, or arithmetic on those,
+ * folded at full width by constant_fold.
  *
- * Returns true if the expression folded to *out with no overflow.
+ * Returns true if the expression folded to *out.
  * Returns false if:
  *   - any operand is not a known constant (*overflowed unchanged), or
- *   - arithmetic overflowed int64 (*overflowed set to true).
+ *   - a step overflowed its type, or the value does not fit i64
+ *     (*overflowed set to true).
  */
 static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
                                int64_t *out, bool *overflowed) {
-    if (!node) return false;
-    if (node->kind == NODE_INT_VALUE) {
-        /* overflow_u64 means the literal exceeds uint64 range entirely;
-         * overflow alone only means it exceeds int64 range (still valid
-         * for unsigned Grayscale types).  Only treat overflow_u64 as a hard
-         * failure here since we fold using the raw int64 bit pattern. */
-        if (node->data.int_value.overflow_u64) { *overflowed = true; return false; }
-        *out = node->data.int_value.value;
-        return true;
-    }
-    if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
-        node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
-        if (node->data.prefix.right->data.int_value.overflow_u64) { *overflowed = true; return false; }
-        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
-        return true;
-    }
-    if (node->kind == NODE_LABEL) {
-        const char *name = node->data.label.value;
-        for (int i = 0; i < checker->const_int_count; i++) {
-            if (strcmp(checker->const_int_names[i], name) == 0) {
-                *out = checker->const_int_values[i];
-                return true;
-            }
-        }
-        return false;
-    }
-    if (node->kind == NODE_INFIX_EXPR) {
-        int64_t left_value, right_value;
-        bool left_overflowed = false, right_overflowed = false;
-        bool left_ok = typechecker_fold_const_int(checker, node->data.infix.left, &left_value, &left_overflowed);
-        bool right_ok = typechecker_fold_const_int(checker, node->data.infix.right, &right_value, &right_overflowed);
-        if (!left_ok || !right_ok) {
-            if (left_overflowed || right_overflowed) *overflowed = true;
-            return false;
-        }
-        TokenType op = node->data.infix.op;
-        int64_t result;
-        if (op == TOK_PLUS) {
-            if (__builtin_add_overflow(left_value, right_value, &result)) { *overflowed = true; return false; }
-            *out = result; return true;
-        }
-        if (op == TOK_MINUS) {
-            if (__builtin_sub_overflow(left_value, right_value, &result)) { *overflowed = true; return false; }
-            *out = result; return true;
-        }
-        if (op == TOK_ASTERISK) {
-            if (__builtin_mul_overflow(left_value, right_value, &result)) { *overflowed = true; return false; }
-            *out = result; return true;
-        }
-        /* INT64_MIN / -1 (and the equivalent %) is the one division C
-         * leaves undefined at the int64 boundary — it traps (SIGFPE) on
-         * x86-64. Treat it as overflow rather than performing it. */
-        bool div_by_min_neg_one = left_value == INT64_MIN && right_value == -1;
-        if (op == TOK_SLASH && right_value != 0) {
-            if (div_by_min_neg_one) { *overflowed = true; return false; }
-            *out = left_value / right_value; return true;
-        }
-        if (op == TOK_PERCENT && right_value != 0) {
-            if (div_by_min_neg_one) { *overflowed = true; return false; }
-            *out = left_value % right_value; return true;
-        }
-    }
-    return false;
+    LiteralValue value;
+    if (!constant_fold(checker, node, &value) || value.is_decimal) return false;
+    if (value.too_large || !literal_value_as_i64(&value, out)) { *overflowed = true; return false; }
+    return true;
 }
 
 /* Extract a compile-time numeric value from an argument: a float literal or an
@@ -13510,41 +13490,6 @@ static void check_var_decl_annotation(TypeChecker *checker, AstNode *node) {
         diagnostic_error_code(checker->diag, "E5040",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
-    /* Track const integer values for constant folding in later
-     * declarations (e.g. fixed-size array sizes).  Also detect overflow
-     * in const arithmetic expressions: codegen emits runtime
-     * overflow-check wrappers (gray_add_check etc.) which are not valid
-     * as C file-scope initializers.  The typechecker must evaluate and
-     * reject overflowing expressions before codegen runs.
-     * E5039: constant expression overflows the declared integer type. */
-    if (!node->data.var_decl.mutable &&
-        node->data.var_decl.type_name && node->data.var_decl.value) {
-        const char *type_name_str = node->data.var_decl.type_name;
-        /* Track integer types (signed and unsigned) in the const table.
-         * Unsigned values that fit in int64_t are stored as-is; this
-         * covers practical array-size use cases.  Full uint64 overflow
-         * detection is left to a separate check; for now we just ensure
-         * the codegen fix applies (in_const_decl suppresses the runtime
-         * wrapper). */
-        bool is_int_type = is_any_int_type(type_name_str);
-        if (is_int_type) {
-            int64_t folded = 0;
-            bool overflowed = false;
-            bool ok = typechecker_fold_const_int(checker, node->data.var_decl.value, &folded, &overflowed);
-            if (ok) {
-                /* Expression is a valid compile-time constant.  Register
-                 * the value so later const declarations can reference it. */
-                typechecker_register_const_int(checker, node->data.var_decl.name, folded);
-            } else if (overflowed && !is_literal_expr(node->data.var_decl.value) &&
-                       !is_bigint_type(type_name_str)) {
-                /* A literal expression is range-checked against the declared
-                 * type when it takes it (E3036); this folds consts in i64. */
-                char *msg = typechecker_format(checker,
-                    "constant expression overflows type '%s'", type_name_str);
-                tc_err_at(checker, "E5039", node, msg);
-            }
-        }
-    }
     /* E3038: void cannot be used as variable type */
     if (node->data.var_decl.type_name && strcmp(node->data.var_decl.type_name, "void") == 0) {
         tc_err_at(checker, "E3038", node, "'void' cannot be used as a variable type");
@@ -14535,6 +14480,31 @@ static void declare_var_symbol(TypeChecker *checker, AstNode *node, GrayType *de
     }
 }
 
+/* Track const integer values for constant folding in later declarations
+ * (e.g. fixed-size array sizes). Also detect overflow in const arithmetic
+ * expressions: codegen emits runtime overflow-check wrappers (gray_add_check
+ * etc.) which are not valid as C file-scope initializers, so the typechecker
+ * must evaluate and reject overflowing expressions before codegen runs. Runs
+ * after the initializer is resolved, so each step has its type.
+ * E5039: constant expression overflows the declared integer type. */
+static void check_const_int_value(TypeChecker *checker, AstNode *node) {
+    if (node->data.var_decl.mutable || !node->data.var_decl.type_name ||
+        !node->data.var_decl.value || !is_any_int_type(node->data.var_decl.type_name))
+        return;
+    LiteralValue folded;
+    if (!constant_fold(checker, node->data.var_decl.value, &folded) || folded.is_decimal)
+        return;
+    if (!folded.too_large) {
+        typechecker_register_const_int(checker, node->data.var_decl.name, folded);
+    } else if (!is_literal_expr(node->data.var_decl.value)) {
+        /* A step overflowed its type. A literal expression is range-checked
+         * against the declared type when it takes it (E3036). */
+        char *msg = typechecker_format(checker,
+            "constant expression overflows type '%s'", node->data.var_decl.type_name);
+        tc_err_at(checker, "E5039", node, msg);
+    }
+}
+
 static void check_var_decl(TypeChecker *checker, AstNode *node) {
     check_var_decl_annotation(checker, node);
 
@@ -14577,6 +14547,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     reject_non_json_parse_target(checker, node, node->data.var_decl.value, declared);
 
     declared = check_var_decl_initializer(checker, node, declared);
+    check_const_int_value(checker, node);
 
     /* E3062 (): handle types (channels, mutexes, threads)
      * cannot be declared const; every meaningful operation on
@@ -16366,37 +16337,34 @@ static void check_for_stmt(TypeChecker *checker, AstNode *node) {
     if (node->data.for_stmt.iterable &&
         node->data.for_stmt.iterable->kind == NODE_RANGE_EXPR) {
         AstNode *r = node->data.for_stmt.iterable;
-        if (r->data.range_expr.start && r->data.range_expr.end &&
-            r->data.range_expr.start->kind == NODE_INT_VALUE &&
-            r->data.range_expr.end->kind == NODE_INT_VALUE) {
-            /* Skip bounds check when step is a runtime variable — direction is unknown. */
-            bool has_neg_step = r->data.range_expr.step &&
-                r->data.range_expr.step->kind == NODE_INT_VALUE &&
-                r->data.range_expr.step->data.int_value.value < 0;
-            bool has_neg_prefix = r->data.range_expr.step &&
-                r->data.range_expr.step->kind == NODE_PREFIX_EXPR &&
-                r->data.range_expr.step->data.prefix.op == TOK_MINUS;
-            bool step_direction_known = !r->data.range_expr.step ||
-                (r->data.range_expr.step->kind == NODE_INT_VALUE) ||
-                has_neg_prefix;
-            if (step_direction_known) {
-                int64_t start_val = r->data.range_expr.start->data.int_value.value;
-                int64_t end_val = r->data.range_expr.end->data.int_value.value;
-                bool negative_step = has_neg_step || has_neg_prefix;
-                bool invalid = negative_step ? (start_val < end_val) : (start_val > end_val);
-                if (invalid) {
-                    char *msg = NULL;
-                    if (negative_step) {
-                        msg = typechecker_format(checker,
-                            "invalid range: start (%lld) must be greater than or equal to end (%lld) for negative step",
-                            (long long)start_val, (long long)end_val);
-                    } else {
-                        msg = typechecker_format(checker,
-                            "invalid range: start (%lld) must be less than or equal to end (%lld)",
-                            (long long)start_val, (long long)end_val);
-                    }
-                    tc_err_at(checker, "E9005", node, msg);
-                }
+        LiteralValue start_value, end_value, step_value;
+        AstNode *step = r->data.range_expr.step;
+        /* The step's direction: none or a literal is known; a negated
+         * runtime value counts as negative; any other runtime step skips
+         * the check. */
+        bool step_is_literal = step && literal_integer_value(step, &step_value);
+        bool negative_step = step_is_literal ? step_value.negative
+            : step && step->kind == NODE_PREFIX_EXPR && step->data.prefix.op == TOK_MINUS;
+        bool step_direction_known = !step || step_is_literal || negative_step;
+        /* A bound that does not fit the range's type is already E3036. */
+        const char *wide = range_wide_type(checker, r);
+        GrayType *range_type = wide ? type_from_name(wide) : &TYPE_I64;
+        if (step_direction_known &&
+            literal_integer_value(r->data.range_expr.start, &start_value) &&
+            literal_integer_value(r->data.range_expr.end, &end_value) &&
+            literal_fits(&start_value, range_type) && literal_fits(&end_value, range_type)) {
+            int order = literal_compare(&start_value, &end_value);
+            if (negative_step ? order < 0 : order > 0) {
+                const char *start_text = literal_text(checker, &start_value);
+                const char *end_text = literal_text(checker, &end_value);
+                char *msg = negative_step
+                    ? typechecker_format(checker,
+                        "invalid range: start (%s) must be greater than or equal to end (%s) for negative step",
+                        start_text, end_text)
+                    : typechecker_format(checker,
+                        "invalid range: start (%s) must be less than or equal to end (%s)",
+                        start_text, end_text);
+                tc_err_at(checker, "E9005", node, msg);
             }
         }
     }
@@ -19084,9 +19052,9 @@ static void register_file_scope_const_ints(TypeChecker *checker, AstNode *progra
             stmt->data.var_decl.synthetic || !stmt->data.var_decl.type_name ||
             !stmt->data.var_decl.value) continue;
         if (!is_any_int_type(stmt->data.var_decl.type_name)) continue;
-        int64_t folded = 0;
-        bool overflowed = false;
-        if (typechecker_fold_const_int(checker, stmt->data.var_decl.value, &folded, &overflowed))
+        LiteralValue folded;
+        if (constant_fold(checker, stmt->data.var_decl.value, &folded) && !folded.is_decimal &&
+            !folded.too_large)
             typechecker_register_const_int(checker, stmt->data.var_decl.name, folded);
     }
 }

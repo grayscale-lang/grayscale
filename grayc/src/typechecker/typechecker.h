@@ -18,6 +18,20 @@
 #include "../util/error.h"
 #include "../util/arena.h"
 
+/* A constant number folded at full width. An integer is a sign and a
+ * 320-bit magnitude: room for every value an integer type holds
+ * (-2^255 .. 2^256-1) plus headroom for intermediate results. */
+#define LITERAL_LIMBS 10
+
+typedef struct {
+    bool is_decimal;
+    bool too_large;                     /* an integer step reached 2^320, or a
+                                         * typed step overflowed its type */
+    bool negative;
+    uint32_t magnitude[LITERAL_LIMBS];  /* little-endian 32-bit limbs */
+    double decimal;
+} LiteralValue;
+
 /* Type annotation table: maps AST node pointers to resolved types.
  * Uses open-addressing hash table with pointer hashing for O(1) lookup. */
 #define TYPETABLE_INIT_CAP 256
@@ -433,7 +447,7 @@ typedef struct {
      * Used to constant-fold expressions in subsequent const initializers
      * and to detect overflow before codegen runs. */
     const char **const_int_names;
-    int64_t *const_int_values;
+    LiteralValue *const_int_values;
     int const_int_count;
     int const_int_cap;
 
