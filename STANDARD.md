@@ -516,6 +516,66 @@ mut q ^i64 = raw(x)
 
 > 💡 **Tip:** The dot operator (`.`) automatically dereferences pointers to structs. If `p` is a `^MyStruct`, writing `p.field` is equivalent to `p^.field`. This auto-dereference applies to field access and struct function calls but does **not** apply in other contexts. For example, `println(p)` prints the address, and `return p` returns the pointer itself. Use explicit `p^` when you need the pointee value rather than field access.
 
+#### 3.1.8 Sized Types
+
+These rules decide the type of every number value and where it may go. They
+are the same in every position a value can be written.
+
+**Literals take their type from context.** A number literal — or an expression
+built only from number literals, such as `200 + 100 - 50` or
+`1 bit_shift_left 9` — has no type of its own until something gives it one:
+
+- the slot it is stored into (see below): `mut b u8 = 200` makes `200` a `u8`;
+- the other operand of a binary operator: in `x == 0.1` with `x f32`, `0.1` is an `f32`;
+- the target of a `cast` it is the operand of: in `cast(1.0e300, f32)`, the literal is an `f32`.
+
+Otherwise it becomes an `i64`, or an `f64` if it contains a decimal literal.
+An expression made only of literals is computed exactly (up to 256 bits)
+before it takes its type, so `mut a u8 = 200 + 100 - 50` stores `250`. A literal
+whose value does not fit the type it takes is `E3036`: `mut b u8 = 300`,
+`mut n u8 = -1`, `mut f f32 = 1.0e300`, `mut a u8 = 1 bit_shift_left 9`. An
+integer literal no integer type can hold (at or above 2^256, or below -2^255)
+is `E3046`. An array, map or struct literal passes its element, key, value and
+field types down to each entry, so `mut xs [i8] = {a, 7}` makes `7` an `i8`.
+
+**Every slot converts a value the same way.** A slot is any place a value is
+stored: a variable declaration, a reassignment, a compound assignment `x op= v`
+(`v` is checked as `x`'s type), an element, map key or map value, a pointer's
+target, a field, a struct literal field, a field or parameter default, an enum
+payload, a `when` arm (checked as the subject's type), each position of a
+multi-value declaration, an array or map literal entry, a call argument (user,
+struct and func-typed functions, builtins and stdlib functions), a `return`
+value, an array or string index (an `i64`), a map index (the key type), and a
+`range()` bound or step (an `i64`, or the widest wide integer type among its
+bounds). A value of type `S` stored into a slot of type `T`:
+
+| `S` to `T` | Example | Result |
+|---|---|---|
+| the same type | `i32` to `i32` | allowed |
+| wider, same signedness | `i32` to `i64`, `u8` to `u16`, `f32` to `f64` | allowed |
+| unsigned to strictly wider signed | `u32` to `i64` | allowed |
+| integer to float | `i64` to `f64` | allowed |
+| narrower | `i64` to `i32`, `u64` to `u8`, `i64` to `u8`, `f64` to `f32`, `i128` to `i64` | `E3155` |
+| other signedness, same or greater width | `i64` to `u64`, `u8` to `i8`, `i8` to `u64` | `E3019` |
+| float to integer | `f64` to `i64` | the position's type mismatch error |
+
+An array or map never converts its elements: a `[i64]` value is not a `[u8]`.
+A narrowing or signedness-crossing conversion is written with `cast`.
+
+**Binary operators keep their operands' type.** For `+ - * / %`, the bitwise
+operators and the comparisons:
+
+- two operands of the same type compute (or compare) at that type: `f32 + f32` is `f32`;
+- operands of one signedness and different widths compute at the wider type: `i8 + i32` is `i32`, `i128 + i256` is `i256`;
+- a literal operand takes the other operand's type: `x == 0.1` with `x f32` compares as `f32`;
+- two literals give a literal (computed exactly, as above);
+- `bit_shift_left` and `bit_shift_right` take a count of any integer type, and the result has the left operand's type; a count outside `[0, width - 1]` of that type panics (`P0092`);
+- any other pair of typed operands — `i64 + u8`, `i64 + f64`, `u64 == i64` — is an error (`E3002`, or `E3156` for a comparison); convert one side with `cast`.
+
+Arithmetic is overflow-checked at the result type, whatever expression or
+compound assignment it appears in: `xs[0] += 10` on a `[u8]` holding 250 panics,
+whether `xs` is a variable, a field, a map value, or reached through a pointer.
+
 ### 3.2 Composite Types
 
 #### 3.2.1 Arrays
@@ -1408,9 +1468,10 @@ range(10, 0, -2)   // 10, 8, 6, 4, 2   (decrement)
 Ranges are inclusive of the start value and exclusive of the end value.
 
 A `for` loop over a range gives its variable the type `i64`. When any bound is a wide
-integer (`i128`, `u128`, `i256`, `u256`), the range runs in that type, the other bounds
-widen into it, and the loop variable has that type. Bounds of two different wide types are
-rejected with `E5026`.
+integer (`i128`, `u128`, `i256`, `u256`), the range runs in the widest of them, every
+bound and the step are checked as that type (see [Sized Types](#318-sized-types)), and
+the loop variable has that type. A `u64` bound of an `i64` range, or a `u128` bound of an
+`i128` range, crosses signedness and is `E3019`.
 
 **Step validation rules:**
 - Positive step (or omitted) expects start ≤ end; negative step expects start ≥ end.
@@ -2149,6 +2210,8 @@ const User struct {
 ```
 
 `json.stringify()`/`json.parse()` then use `"Name"`/`"Age"` as the JSON keys instead of `name`/`age`.
+
+A field of any sized number type (`i8` through `i256`, `u8` through `u256`, `f32`, `f64`) is encoded and decoded at that type. `json.parse()` panics on a number field whose JSON value is not a number of that type or does not fit it.
 
 An enum field is serialized by the enum's backing type. An integer-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
 
@@ -3528,9 +3591,9 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `min` | `(a T, b T) -> T` | Minimum of two values |
-| `max` | `(a T, b T) -> T` | Maximum of two values |
-| `clamp` | `(value T, min T, max T) -> T` | Clamp value to range [min, max] |
+| `min` | `(a T, b T) -> T` | Minimum of two values. `T` is the arguments' common type, as a binary operator would type them (see [Sized Types](#318-sized-types)) |
+| `max` | `(a T, b T) -> T` | Maximum of two values; `T` as for `min` |
+| `clamp` | `(value T, min T, max T) -> T` | Clamp value to range [min, max]; `T` as for `min` |
 
 #### Rounding
 
