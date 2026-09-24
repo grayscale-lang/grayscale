@@ -378,7 +378,7 @@ static void test_panic_P0103(void) { ASSERT_PANICS("P0103", trigger_P0103); }
 
 static void trigger_P0104(void) {
     GrayArena *a = gray_arena_create(64);
-    a->max_bytes = 64;
+    a->maximum_bytes = 64;
     gray_arena_alloc(a, 10000);
 }
 static void test_panic_P0104(void) { ASSERT_PANICS("P0104", trigger_P0104); }
@@ -386,7 +386,7 @@ static void test_panic_P0104(void) { ASSERT_PANICS("P0104", trigger_P0104); }
 static void trigger_P0117(void) {
     GrayArena *a = gray_arena_create(64);
     int64_t x = 5;
-    a->destroyed = true;
+    a->is_destroyed = true;
     gray_mem_check_live(a, &x, __FILE__, __LINE__);
 }
 static void test_panic_P0117(void) { ASSERT_PANICS("P0117", trigger_P0117); }

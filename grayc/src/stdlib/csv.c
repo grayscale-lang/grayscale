@@ -19,14 +19,14 @@
 
 /* RFC 4180 parser with a caller-chosen field delimiter. gray_csv_parse and
  * gray_csv_parse_delimited are thin wrappers over this. */
-static GrayArray csv_parse_delim(GrayArena *arena, GrayString csv_string, char delim) {
+static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, char delim) {
     GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = csv_string.data;
-    const char *end = cursor + csv_string.len;
+    const char *end_cursor = cursor + csv_string.len;
 
-    while (cursor < end) {
-        GrayArray row = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
-        while (cursor < end && *cursor != '\n' && *cursor != '\r') {
+    while (cursor < end_cursor) {
+        GrayArray row_array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
+        while (cursor < end_cursor && *cursor != '\n' && *cursor != '\r') {
             const char *field_start;
             int32_t field_length;
 
@@ -34,52 +34,52 @@ static GrayArray csv_parse_delim(GrayArena *arena, GrayString csv_string, char d
                 /* Quoted field */
                 cursor++;
                 field_start = cursor;
-                while (cursor < end && !(*cursor == '"' && (cursor + 1 >= end || *(cursor + 1) != '"'))) {
+                while (cursor < end_cursor && !(*cursor == '"' && (cursor + 1 >= end_cursor || *(cursor + 1) != '"'))) {
                     if (*cursor == '"' && *(cursor + 1) == '"') cursor += 2;
                     else cursor++;
                 }
                 field_length = (int32_t)(cursor - field_start);
-                if (cursor < end) cursor++; /* skip closing quote */
+                if (cursor < end_cursor) cursor++; /* skip closing quote */
 
                 /* RFC 4180 §2.7: unescape doubled quotes ("") to single (") */
                 if (memchr(field_start, '"', (size_t)field_length)) {
-                    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)field_length);
-                    int32_t out = 0;
-                    for (int32_t k = 0; k < field_length; k++) {
-                        buf[out++] = field_start[k];
-                        if (field_start[k] == '"' && k + 1 < field_length && field_start[k + 1] == '"')
-                            k++; /* skip second quote of pair */
+                    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)field_length);
+                    int32_t row_count = 0;
+                    for (int32_t field_index = 0; field_index < field_length; field_index++) {
+                        buffer[row_count++] = field_start[field_index];
+                        if (field_start[field_index] == '"' && field_index + 1 < field_length && field_start[field_index + 1] == '"')
+                            field_index++; /* skip second quote of pair */
                     }
-                    field_start = buf;
-                    field_length = out;
+                    field_start = buffer;
+                    field_length = row_count;
                 }
             } else {
                 /* Unquoted field */
                 field_start = cursor;
-                while (cursor < end && *cursor != delim && *cursor != '\n' && *cursor != '\r') cursor++;
+                while (cursor < end_cursor && *cursor != delim && *cursor != '\n' && *cursor != '\r') cursor++;
                 field_length = (int32_t)(cursor - field_start);
             }
 
             GrayString field = gray_string_new(arena, field_start, field_length);
-            GRAY_ARRAY_PUSH(arena, &row, &field);
+            GRAY_ARRAY_PUSH(arena, &row_array, &field);
 
-            if (cursor < end && *cursor == delim) cursor++;
+            if (cursor < end_cursor && *cursor == delim) cursor++;
         }
-        GRAY_ARRAY_PUSH(arena, &rows, &row);
+        GRAY_ARRAY_PUSH(arena, &rows, &row_array);
 
         /* Skip line ending */
-        if (cursor < end && *cursor == '\r') cursor++;
-        if (cursor < end && *cursor == '\n') cursor++;
+        if (cursor < end_cursor && *cursor == '\r') cursor++;
+        if (cursor < end_cursor && *cursor == '\n') cursor++;
     }
     return rows;
 }
 
 GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
-    return csv_parse_delim(arena, csv_string, ',');
+    return csv_parse_delimited(arena, csv_string, ',');
 }
 
 GrayArray gray_csv_parse_delimited(GrayArena *arena, GrayString csv_string, int32_t delimiter) {
-    return csv_parse_delim(arena, csv_string, (char)delimiter);
+    return csv_parse_delimited(arena, csv_string, (char)delimiter);
 }
 
 /* --- Helpers shared by the [[string]] / [map[string:string]] views --- */
@@ -90,28 +90,28 @@ static GrayArray *csv_row(GrayArray *data, int32_t index) {
 }
 
 /* Cell `index` of a row, or "" when the row is short. */
-static GrayString csv_cell(GrayArray *row, int32_t index) {
-    if (index < 0 || index >= row->len) return gray_string_lit("");
-    return *(GrayString *)((char *)row->data + (size_t)index * sizeof(GrayString));
+static GrayString csv_cell(GrayArray *row_array, int32_t index) {
+    if (index < 0 || index >= row_array->len) return gray_string_lit("");
+    return *(GrayString *)((char *)row_array->data + (size_t)index * sizeof(GrayString));
 }
 
-static bool csv_str_eq(GrayString left, GrayString right) {
+static bool csv_string_equal(GrayString left, GrayString right) {
     return left.len == right.len && memcmp(left.data, right.data, (size_t)left.len) == 0;
 }
 
-static int csv_str_cmp(GrayString left, GrayString right) {
-    int32_t common_len = left.len < right.len ? left.len : right.len;
-    int cmp = memcmp(left.data, right.data, (size_t)common_len);
-    if (cmp != 0) return cmp;
+static int csv_string_compare(GrayString left, GrayString right) {
+    int32_t common_length = left.len < right.len ? left.len : right.len;
+    int comparison = memcmp(left.data, right.data, (size_t)common_length);
+    if (comparison != 0) return comparison;
     return (left.len > right.len) - (left.len < right.len);
 }
 
 /* Index of column `name` in the header (row 0), or -1. */
-static int32_t csv_col_index(GrayArray *data, GrayString name) {
+static int32_t csv_column_index(GrayArray *data, GrayString name) {
     if (data->len == 0) return -1;
     GrayArray *header = csv_row(data, 0);
     for (int32_t j = 0; j < header->len; j++) {
-        if (csv_str_eq(csv_cell(header, j), name)) return j;
+        if (csv_string_equal(csv_cell(header, j), name)) return j;
     }
     return -1;
 }
@@ -122,26 +122,26 @@ static _Noreturn void csv_no_such_column(GrayString name) {
 }
 
 GrayArray gray_csv_to_maps(GrayArena *arena, GrayArray *data) {
-    GrayArray out = gray_array_new(arena, sizeof(GrayMap), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_MAP);
-    if (data->len <= 1) return out;
+    GrayArray output = gray_array_new(arena, sizeof(GrayMap), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_MAP);
+    if (data->len <= 1) return output;
     GrayArray *header = csv_row(data, 0);
     for (int32_t i = 1; i < data->len; i++) {
-        GrayArray *row = csv_row(data, i);
+        GrayArray *row_array = csv_row(data, i);
         GrayMap map = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), header->len > 0 ? header->len : 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
-        int32_t pair_count = row->len < header->len ? row->len : header->len;
+        int32_t pair_count = row_array->len < header->len ? row_array->len : header->len;
         for (int32_t j = 0; j < pair_count; j++) {
             GrayString key = csv_cell(header, j);
-            GrayString val = csv_cell(row, j);
-            GRAY_MAP_SET(arena, &map, &key, &val);
+            GrayString value = csv_cell(row_array, j);
+            GRAY_MAP_SET(arena, &map, &key, &value);
         }
-        GRAY_ARRAY_PUSH(arena, &out, &map);
+        GRAY_ARRAY_PUSH(arena, &output, &map);
     }
-    return out;
+    return output;
 }
 
 GrayArray gray_csv_from_maps(GrayArena *arena, GrayArray *rows) {
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), rows->len + 1, GRAY_ELEM_ARRAY);
-    if (rows->len == 0) return out;
+    GrayArray output = gray_array_new(arena, sizeof(GrayArray), rows->len + 1, GRAY_ELEM_ARRAY);
+    if (rows->len == 0) return output;
 
     /* Header = union of keys across all rows, in first-seen order. */
     GrayArray header = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
@@ -152,90 +152,90 @@ GrayArray gray_csv_from_maps(GrayArena *arena, GrayArray *rows) {
             if (slot < 0 || map->states[slot] != 1) continue;
             GrayString *key = (GrayString *)((char *)map->keys + (size_t)slot * (size_t)map->key_size);
             bool seen = false;
-            for (int32_t h = 0; h < header.len; h++) {
-                if (csv_str_eq(csv_cell(&header, h), *key)) { seen = true; break; }
+            for (int32_t header_index = 0; header_index < header.len; header_index++) {
+                if (csv_string_equal(csv_cell(&header, header_index), *key)) { seen = true; break; }
             }
             if (!seen) GRAY_ARRAY_PUSH(arena, &header, key);
         }
     }
-    GRAY_ARRAY_PUSH(arena, &out, &header);
+    GRAY_ARRAY_PUSH(arena, &output, &header);
 
     for (int32_t i = 0; i < rows->len; i++) {
         GrayMap *map = (GrayMap *)((char *)rows->data + (size_t)i * sizeof(GrayMap));
         GrayArray cells = gray_array_new(arena, sizeof(GrayString), header.len, GRAY_ELEM_STRING);
-        for (int32_t h = 0; h < header.len; h++) {
-            GrayString key = csv_cell(&header, h);
+        for (int32_t header_index = 0; header_index < header.len; header_index++) {
+            GrayString key = csv_cell(&header, header_index);
             GrayString *found = (GrayString *)gray_map_get_str(map, key);
             GrayString cell = found ? *found : gray_string_lit("");
             GRAY_ARRAY_PUSH(arena, &cells, &cell);
         }
-        GRAY_ARRAY_PUSH(arena, &out, &cells);
+        GRAY_ARRAY_PUSH(arena, &output, &cells);
     }
-    return out;
+    return output;
 }
 
 GrayArray gray_csv_column(GrayArena *arena, GrayArray *data, GrayString name) {
-    int32_t col = csv_col_index(data, name);
-    if (col < 0) csv_no_such_column(name);
-    GrayArray out = gray_array_new(arena, sizeof(GrayString), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_STRING);
+    int32_t column = csv_column_index(data, name);
+    if (column < 0) csv_no_such_column(name);
+    GrayArray output = gray_array_new(arena, sizeof(GrayString), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_STRING);
     for (int32_t i = 1; i < data->len; i++) {
-        GrayString cell = csv_cell(csv_row(data, i), col);
-        GRAY_ARRAY_PUSH(arena, &out, &cell);
+        GrayString cell = csv_cell(csv_row(data, i), column);
+        GRAY_ARRAY_PUSH(arena, &output, &cell);
     }
-    return out;
+    return output;
 }
 
 GrayArray gray_csv_select(GrayArena *arena, GrayArray *data, GrayArray *names) {
-    int32_t *idx = gray_arena_alloc_uninitialized(arena,
+    int32_t *indices = gray_arena_alloc_uninitialized(arena,
         (size_t)(names->len > 0 ? names->len : 1) * sizeof(int32_t));
-    for (int32_t k = 0; k < names->len; k++) {
-        GrayString column_name = csv_cell(names, k);
-        int32_t col_index = csv_col_index(data, column_name);
-        if (col_index < 0) csv_no_such_column(column_name);
-        idx[k] = col_index;
+    for (int32_t selected_index = 0; selected_index < names->len; selected_index++) {
+        GrayString column_name = csv_cell(names, selected_index);
+        int32_t column_index = csv_column_index(data, column_name);
+        if (column_index < 0) csv_no_such_column(column_name);
+        indices[selected_index] = column_index;
     }
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
+    GrayArray output = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
     for (int32_t i = 0; i < data->len; i++) {
-        GrayArray *row = csv_row(data, i);
+        GrayArray *row_array = csv_row(data, i);
         GrayArray proj = gray_array_new(arena, sizeof(GrayString), names->len, GRAY_ELEM_STRING);
-        for (int32_t k = 0; k < names->len; k++) {
-            GrayString cell = csv_cell(row, idx[k]);
+        for (int32_t selected_index = 0; selected_index < names->len; selected_index++) {
+            GrayString cell = csv_cell(row_array, indices[selected_index]);
             GRAY_ARRAY_PUSH(arena, &proj, &cell);
         }
-        GRAY_ARRAY_PUSH(arena, &out, &proj);
+        GRAY_ARRAY_PUSH(arena, &output, &proj);
     }
-    return out;
+    return output;
 }
 
 typedef struct { GrayString key; int32_t original_index; } CsvSortEnt;
 
-static int csv_sort_cmp(const void *left, const void *right) {
+static int csv_sort_compare(const void *left, const void *right) {
     const CsvSortEnt *left_ent = (const CsvSortEnt *)left;
     const CsvSortEnt *right_ent = (const CsvSortEnt *)right;
-    int cmp = csv_str_cmp(left_ent->key, right_ent->key);
-    if (cmp != 0) return cmp;
+    int comparison = csv_string_compare(left_ent->key, right_ent->key);
+    if (comparison != 0) return comparison;
     return (left_ent->original_index > right_ent->original_index) - (left_ent->original_index < right_ent->original_index); /* stable */
 }
 
 GrayArray gray_csv_sort_by_column(GrayArena *arena, GrayArray *data, GrayString name) {
-    int32_t col = csv_col_index(data, name);
-    if (col < 0) csv_no_such_column(name);
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
-    if (data->len == 0) return out;
-    GRAY_ARRAY_PUSH(arena, &out, csv_row(data, 0)); /* header stays first */
+    int32_t column = csv_column_index(data, name);
+    if (column < 0) csv_no_such_column(name);
+    GrayArray output = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
+    if (data->len == 0) return output;
+    GRAY_ARRAY_PUSH(arena, &output, csv_row(data, 0)); /* header stays first */
 
     int32_t body_row_count = data->len - 1;
-    if (body_row_count <= 0) return out;
+    if (body_row_count <= 0) return output;
     CsvSortEnt *entries = gray_arena_alloc_uninitialized(arena, (size_t)body_row_count * sizeof(CsvSortEnt));
     for (int32_t i = 0; i < body_row_count; i++) {
-        entries[i].key = csv_cell(csv_row(data, i + 1), col);
+        entries[i].key = csv_cell(csv_row(data, i + 1), column);
         entries[i].original_index = i;
     }
-    qsort(entries, (size_t)body_row_count, sizeof(CsvSortEnt), csv_sort_cmp);
+    qsort(entries, (size_t)body_row_count, sizeof(CsvSortEnt), csv_sort_compare);
     for (int32_t i = 0; i < body_row_count; i++) {
-        GRAY_ARRAY_PUSH(arena, &out, csv_row(data, entries[i].original_index + 1));
+        GRAY_ARRAY_PUSH(arena, &output, csv_row(data, entries[i].original_index + 1));
     }
-    return out;
+    return output;
 }
 
 int32_t gray_csv_detect_delimiter(GrayString sample) {
@@ -273,20 +273,20 @@ GrayString gray_csv_to_markdown(GrayArena *arena, GrayArray *data) {
     if (data->len == 0) return gray_string_lit("");
     GrayStringsBuilder *builder = gray_strings_builder(arena);
     for (int32_t i = 0; i < data->len; i++) {
-        GrayArray *row = csv_row(data, i);
+        GrayArray *row_array = csv_row(data, i);
         gray_strings_builder_append_char(builder, '|');
-        for (int32_t j = 0; j < row->len; j++) {
-            GrayString cell = csv_cell(row, j);
-            for (int32_t k = 0; k < cell.len; k++) {
-                if (cell.data[k] == '|') gray_strings_builder_append_char(builder, '\\');
-                gray_strings_builder_append_char(builder, (int32_t)(unsigned char)cell.data[k]);
+        for (int32_t j = 0; j < row_array->len; j++) {
+            GrayString cell = csv_cell(row_array, j);
+            for (int32_t column_index = 0; column_index < cell.len; column_index++) {
+                if (cell.data[column_index] == '|') gray_strings_builder_append_char(builder, '\\');
+                gray_strings_builder_append_char(builder, (int32_t)(unsigned char)cell.data[column_index]);
             }
             gray_strings_builder_append_char(builder, '|');
         }
         gray_strings_builder_append_char(builder, '\n');
         if (i == 0) {
             gray_strings_builder_append_char(builder, '|');
-            for (int32_t j = 0; j < row->len; j++) {
+            for (int32_t j = 0; j < row_array->len; j++) {
                 gray_strings_builder_append(builder, gray_string_lit("---|"));
             }
             gray_strings_builder_append_char(builder, '\n');
@@ -303,8 +303,8 @@ GrayString gray_csv_to_markdown(GrayArena *arena, GrayArray *data) {
  * doubles every embedded double-quote. */
 static bool csv_field_needs_quote(GrayString field) {
     for (int32_t i = 0; i < field.len; i++) {
-        char c = field.data[i];
-        if (c == ',' || c == '"' || c == '\r' || c == '\n') return true;
+        char character = field.data[i];
+        if (character == ',' || character == '"' || character == '\r' || character == '\n') return true;
     }
     return false;
 }
@@ -312,28 +312,28 @@ static bool csv_field_needs_quote(GrayString field) {
 /* Byte length of `field` once encoded: unchanged if it needs no quoting, else
  * the field plus the two surrounding quotes and one extra byte per embedded
  * quote. */
-static int32_t csv_field_encoded_len(GrayString field) {
+static int32_t csv_field_encoded_length(GrayString field) {
     if (!csv_field_needs_quote(field)) return field.len;
-    int32_t n = field.len + 2;
+    int32_t length = field.len + 2;
     for (int32_t i = 0; i < field.len; i++)
-        if (field.data[i] == '"') n++;
-    return n;
+        if (field.data[i] == '"') length++;
+    return length;
 }
 
 /* Write the encoded form of `field` at `dst`; returns the bytes written. */
-static int32_t csv_field_encode(char *dst, GrayString field) {
+static int32_t csv_field_encode(char *destination, GrayString field) {
     if (!csv_field_needs_quote(field)) {
-        memcpy(dst, field.data, (size_t)field.len);
+        memcpy(destination, field.data, (size_t)field.len);
         return field.len;
     }
-    int32_t pos = 0;
-    dst[pos++] = '"';
+    int32_t position = 0;
+    destination[position++] = '"';
     for (int32_t i = 0; i < field.len; i++) {
-        if (field.data[i] == '"') dst[pos++] = '"';
-        dst[pos++] = field.data[i];
+        if (field.data[i] == '"') destination[position++] = '"';
+        destination[position++] = field.data[i];
     }
-    dst[pos++] = '"';
-    return pos;
+    destination[position++] = '"';
+    return position;
 }
 
 GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
@@ -345,43 +345,43 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
             GrayString line = GRAY_ARRAY_GET(*data, GrayString, i);
             total += line.len + 1;
         }
-        char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
-        int32_t pos = 0;
+        char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
+        int32_t position = 0;
         for (int32_t i = 0; i < data->len; i++) {
             GrayString line = GRAY_ARRAY_GET(*data, GrayString, i);
-            memcpy(buf + pos, line.data, (size_t)line.len);
-            pos += line.len;
-            if (i < data->len - 1) buf[pos++] = '\n';
+            memcpy(buffer + position, line.data, (size_t)line.len);
+            position += line.len;
+            if (i < data->len - 1) buffer[position++] = '\n';
         }
-        buf[pos] = '\0';
-        return (GrayString){ buf, pos };
+        buffer[position] = '\0';
+        return (GrayString){ buffer, position };
     }
 
     /* Fallback: array of arrays ([[string]] rows).
      * First pass: compute exact required size to avoid heap overflow. */
     int32_t total = 0;
     for (int32_t i = 0; i < data->len; i++) {
-        GrayArray *row = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
-        for (int32_t j = 0; j < row->len; j++) {
+        GrayArray *row_array = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
+        for (int32_t j = 0; j < row_array->len; j++) {
             if (j > 0) total++; /* comma */
-            GrayString *field = (GrayString *)((char *)row->data + (size_t)j * sizeof(GrayString));
-            total += csv_field_encoded_len(*field);
+            GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
+            total += csv_field_encoded_length(*field);
         }
         total++; /* newline */
     }
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
-    int32_t pos = 0;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
+    int32_t position = 0;
     for (int32_t i = 0; i < data->len; i++) {
-        GrayArray *row = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
-        for (int32_t j = 0; j < row->len; j++) {
-            if (j > 0) buf[pos++] = ',';
-            GrayString *field = (GrayString *)((char *)row->data + (size_t)j * sizeof(GrayString));
-            pos += csv_field_encode(buf + pos, *field);
+        GrayArray *row_array = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
+        for (int32_t j = 0; j < row_array->len; j++) {
+            if (j > 0) buffer[position++] = ',';
+            GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
+            position += csv_field_encode(buffer + position, *field);
         }
-        buf[pos++] = '\n';
+        buffer[position++] = '\n';
     }
-    buf[pos] = '\0';
-    return (GrayString){ buf, pos };
+    buffer[position] = '\0';
+    return (GrayString){ buffer, position };
 }
 
 GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
@@ -403,10 +403,10 @@ GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
 }
 
 bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
-    GrayString csv = gray_csv_stringify(arena, data);
+    GrayString csv_text = gray_csv_stringify(arena, data);
     FILE *file = fopen(path.data, "wb");
     if (!file) return false;
-    fwrite(csv.data, 1, (size_t)csv.len, file);
+    fwrite(csv_text.data, 1, (size_t)csv_text.len, file);
     fclose(file);
     return true;
 }

@@ -43,7 +43,7 @@
 #define gray_sys_getpid  _getpid
 #define GRAY_R_OK        4
 #define GRAY_X_OK        0 /* _access rejects the execute mode; Windows has no exec bit */
-#define GRAY_PATH_LIST_SEP ';'
+#define GRAY_PATH_LIST_SEPARATOR ';'
 #define GRAY_WRONLY_FLAG _O_WRONLY
 
 #else /* POSIX */
@@ -76,74 +76,74 @@ extern char **environ;
 #define gray_sys_getpid  getpid
 #define GRAY_R_OK        R_OK
 #define GRAY_X_OK        X_OK
-#define GRAY_PATH_LIST_SEP ':'
+#define GRAY_PATH_LIST_SEPARATOR ':'
 #define GRAY_WRONLY_FLAG O_WRONLY
 
 #endif
 
-/* Matches PATH_BUF_SIZE in main.c — the static buffers handed back by
- * gray_self_dir() and gray_temp_dir() must hold anything a caller can pass on
- * to snprintf into its own PATH_BUF_SIZE buffer. */
-#define GRAY_PATH_BUF 2048
+/* Matches PATH_BUFFER_SIZE in main.c — the static buffers handed back by
+ * gray_self_directory() and gray_temporary_directory() must hold anything a caller can pass on
+ * to snprintf into its own PATH_BUFFER_SIZE buffer. */
+#define GRAY_PATH_BUFFER_SIZE 2048
 
 /* --- Strings --- */
 
-char *gray_strndup(const char *str, size_t max_len) {
-    size_t len = 0;
-    while (len < max_len && str[len] != '\0') len++;
-    char *out = malloc(len + 1);
+char *gray_strndup(const char *string, size_t max_length) {
+    size_t length = 0;
+    while (length < max_length && string[length] != '\0') length++;
+    char *out = malloc(length + 1);
     if (!out) return NULL;
-    memcpy(out, str, len);
-    out[len] = '\0';
+    memcpy(out, string, length);
+    out[length] = '\0';
     return out;
 }
 
 /* --- Console --- */
 
-void gray_enable_vt_mode(void) {
+void gray_enable_virtual_terminal_mode(void) {
 #if GRAY_OS_WINDOWS
     const DWORD handles[] = {STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
     for (size_t i = 0; i < sizeof(handles) / sizeof(handles[0]); i++) {
-        HANDLE h = GetStdHandle(handles[i]);
+        HANDLE handle = GetStdHandle(handles[i]);
         DWORD mode = 0;
-        if (h == INVALID_HANDLE_VALUE || !GetConsoleMode(h, &mode)) continue;
-        SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+        if (handle == INVALID_HANDLE_VALUE || !GetConsoleMode(handle, &mode)) continue;
+        SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
     }
 #endif
 }
 
-bool gray_stdout_is_tty(void) {
+bool gray_stdout_is_terminal(void) {
     return gray_sys_isatty(gray_sys_fileno(stdout)) != 0;
 }
 
-bool gray_stderr_is_tty(void) {
+bool gray_stderr_is_terminal(void) {
     return gray_sys_isatty(gray_sys_fileno(stderr)) != 0;
 }
 
 /* --- Paths --- */
 
-bool gray_is_path_sep(char c) {
+bool gray_is_path_separator(char character) {
 #if GRAY_OS_WINDOWS
-    return c == '/' || c == '\\';
+    return character == '/' || character == '\\';
 #else
-    return c == '/';
+    return character == '/';
 #endif
 }
 
 const char *gray_path_basename(const char *path) {
     const char *base = path;
-    for (const char *p = path; *p; p++) {
-        if (gray_is_path_sep(*p)) base = p + 1;
+    for (const char *cursor = path; *cursor; cursor++) {
+        if (gray_is_path_separator(*cursor)) base = cursor + 1;
     }
     return base;
 }
 
-char *gray_path_rsep(char *path) {
-    char *sep = NULL;
-    for (char *p = path; *p; p++) {
-        if (gray_is_path_sep(*p)) sep = p;
+char *gray_path_last_separator(char *path) {
+    char *separator = NULL;
+    for (char *cursor = path; *cursor; cursor++) {
+        if (gray_is_path_separator(*cursor)) separator = cursor;
     }
-    return sep;
+    return separator;
 }
 
 bool gray_path_is_root(const char *path) {
@@ -153,48 +153,48 @@ bool gray_path_is_root(const char *path) {
     /* "C:", "C:\", "C:/" — a drive with no component below it. */
     if (isalpha((unsigned char)path[0]) && path[1] == ':') {
         if (path[2] == '\0') return true;
-        return gray_is_path_sep(path[2]) && path[3] == '\0';
+        return gray_is_path_separator(path[2]) && path[3] == '\0';
     }
     /* UNC "\\server\share" — the share itself has no parent. */
-    if (gray_is_path_sep(path[0]) && gray_is_path_sep(path[1])) {
-        const char *p = path + 2;
+    if (gray_is_path_separator(path[0]) && gray_is_path_separator(path[1])) {
+        const char *cursor = path + 2;
         int components = 0;
-        while (*p) {
-            while (*p && !gray_is_path_sep(*p)) p++;
+        while (*cursor) {
+            while (*cursor && !gray_is_path_separator(*cursor)) cursor++;
             components++;
-            while (gray_is_path_sep(*p)) p++;
+            while (gray_is_path_separator(*cursor)) cursor++;
         }
         return components <= 2;
     }
 #endif
 
     /* "/" (or a run of separators) with nothing after it. */
-    const char *p = path;
-    while (gray_is_path_sep(*p)) p++;
-    return *p == '\0';
+    const char *cursor = path;
+    while (gray_is_path_separator(*cursor)) cursor++;
+    return *cursor == '\0';
 }
 
-int gray_path_join(char *dst, size_t dst_size, const char *base, const char *tail) {
-    size_t base_len = strlen(base);
-    while (base_len > 0 && gray_is_path_sep(base[base_len - 1])) base_len--;
-    while (gray_is_path_sep(*tail)) tail++;
+int gray_path_join(char *destination, size_t destination_size, const char *base, const char *tail) {
+    size_t base_length = strlen(base);
+    while (base_length > 0 && gray_is_path_separator(base[base_length - 1])) base_length--;
+    while (gray_is_path_separator(*tail)) tail++;
 
-    if (base_len == 0) {
+    if (base_length == 0) {
         /* `base` was empty, or was nothing but separators (a root). */
-        if (*base) return snprintf(dst, dst_size, GRAY_PATH_SEP_STR "%s", tail);
-        return snprintf(dst, dst_size, "%s", tail);
+        if (*base) return snprintf(destination, destination_size, GRAY_PATH_SEPARATOR_STRING "%s", tail);
+        return snprintf(destination, destination_size, "%s", tail);
     }
-    if (*tail == '\0') return snprintf(dst, dst_size, "%.*s", (int)base_len, base);
-    return snprintf(dst, dst_size, "%.*s" GRAY_PATH_SEP_STR "%s", (int)base_len, base, tail);
+    if (*tail == '\0') return snprintf(destination, destination_size, "%.*s", (int)base_length, base);
+    return snprintf(destination, destination_size, "%.*s" GRAY_PATH_SEPARATOR_STRING "%s", (int)base_length, base, tail);
 }
 
 bool gray_path_is_absolute(const char *path) {
     if (!path || !*path) return false;
 #if GRAY_OS_WINDOWS
     /* "C:\..." or "C:/..." */
-    if (isalpha((unsigned char)path[0]) && path[1] == ':' && gray_is_path_sep(path[2])) return true;
+    if (isalpha((unsigned char)path[0]) && path[1] == ':' && gray_is_path_separator(path[2])) return true;
     /* UNC "\\server\share\..." */
-    if (gray_is_path_sep(path[0]) && gray_is_path_sep(path[1])) return true;
+    if (gray_is_path_separator(path[0]) && gray_is_path_separator(path[1])) return true;
     return false;
 #else
     return path[0] == '/';
@@ -213,26 +213,26 @@ char *gray_realpath(const char *path) {
 #endif
 }
 
-bool gray_realpath_into(const char *path, char *buf, size_t buf_size) {
+bool gray_realpath_into(const char *path, char *resolved_buffer, size_t resolved_buffer_size) {
     char *resolved = gray_realpath(path);
     if (!resolved) return false;
-    bool ok = strlen(resolved) < buf_size;
-    if (ok) memcpy(buf, resolved, strlen(resolved) + 1);
+    bool can_fit = strlen(resolved) < resolved_buffer_size;
+    if (can_fit) memcpy(resolved_buffer, resolved, strlen(resolved) + 1);
     free(resolved);
-    return ok;
+    return can_fit;
 }
 
 bool gray_path_equal(const char *left, const char *right) {
 #if GRAY_OS_WINDOWS
     /* NTFS is case-insensitive, and either separator may appear. */
     for (;; left++, right++) {
-        char left_ch = *left, right_ch = *right;
-        if (gray_is_path_sep(left_ch)) left_ch = GRAY_PATH_SEP;
-        if (gray_is_path_sep(right_ch)) right_ch = GRAY_PATH_SEP;
-        left_ch = (char)tolower((unsigned char)left_ch);
-        right_ch = (char)tolower((unsigned char)right_ch);
-        if (left_ch != right_ch) return false;
-        if (left_ch == '\0') return true;
+        char left_character = *left, right_character = *right;
+        if (gray_is_path_separator(left_character)) left_character = GRAY_PATH_SEPARATOR;
+        if (gray_is_path_separator(right_character)) right_character = GRAY_PATH_SEPARATOR;
+        left_character = (char)tolower((unsigned char)left_character);
+        right_character = (char)tolower((unsigned char)right_character);
+        if (left_character != right_character) return false;
+        if (left_character == '\0') return true;
     }
 #else
     return strcmp(left, right) == 0;
@@ -248,132 +248,132 @@ bool gray_file_readable(const char *path) {
 #if GRAY_OS_WINDOWS
 #define GRAY_STAT       struct _stat
 #define gray_sys_stat   _stat
-#define GRAY_IS_DIR(m)  (((m) & _S_IFMT) == _S_IFDIR)
-#define GRAY_IS_FILE(m) (((m) & _S_IFMT) == _S_IFREG)
+#define GRAY_IS_DIRECTORY(mode)  (((mode) & _S_IFMT) == _S_IFDIR)
+#define GRAY_IS_FILE(mode) (((mode) & _S_IFMT) == _S_IFREG)
 #else
 #define GRAY_STAT       struct stat
 #define gray_sys_stat   stat
-#define GRAY_IS_DIR(m)  S_ISDIR(m)
-#define GRAY_IS_FILE(m) S_ISREG(m)
+#define GRAY_IS_DIRECTORY(mode)  S_ISDIR(mode)
+#define GRAY_IS_FILE(mode) S_ISREG(mode)
 #endif
 
 bool gray_is_file(const char *path) {
-    GRAY_STAT st;
-    return gray_sys_stat(path, &st) == 0 && GRAY_IS_FILE(st.st_mode);
+    GRAY_STAT file_status;
+    return gray_sys_stat(path, &file_status) == 0 && GRAY_IS_FILE(file_status.st_mode);
 }
 
-bool gray_is_dir(const char *path) {
-    GRAY_STAT st;
-    return gray_sys_stat(path, &st) == 0 && GRAY_IS_DIR(st.st_mode);
+bool gray_is_directory(const char *path) {
+    GRAY_STAT file_status;
+    return gray_sys_stat(path, &file_status) == 0 && GRAY_IS_DIRECTORY(file_status.st_mode);
 }
 
 bool gray_remove_file(const char *path) {
     return gray_sys_unlink(path) == 0;
 }
 
-bool gray_getcwd(char *buf, size_t buf_size) {
+bool gray_getcwd(char *directory_buffer, size_t directory_buffer_size) {
 #if GRAY_OS_WINDOWS
-    if (buf_size > (size_t)INT_MAX) buf_size = (size_t)INT_MAX;
-    return _getcwd(buf, (int)buf_size) != NULL;
+    if (directory_buffer_size > (size_t)INT_MAX) directory_buffer_size = (size_t)INT_MAX;
+    return _getcwd(directory_buffer, (int)directory_buffer_size) != NULL;
 #else
-    return getcwd(buf, buf_size) != NULL;
+    return getcwd(directory_buffer, directory_buffer_size) != NULL;
 #endif
 }
 
-bool gray_scandir(const char *dir_path, gray_dir_visitor visit, void *ctx) {
+bool gray_scandir(const char *directory_path, gray_directory_visitor visit, void *context) {
 #if GRAY_OS_WINDOWS
-    char pattern[GRAY_PATH_BUF];
-    int len = snprintf(pattern, sizeof(pattern), "%s\\*", dir_path);
-    if (len < 0 || (size_t)len >= sizeof(pattern)) return false;
+    char pattern[GRAY_PATH_BUFFER_SIZE];
+    int length = snprintf(pattern, sizeof(pattern), "%s\\*", directory_path);
+    if (length < 0 || (size_t)length >= sizeof(pattern)) return false;
 
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE) return false;
+    WIN32_FIND_DATAA find_data;
+    HANDLE find_handle = FindFirstFileA(pattern, &find_data);
+    if (find_handle == INVALID_HANDLE_VALUE) return false;
 
     do {
-        const char *name = fd.cFileName;
+        const char *name = find_data.cFileName;
         if (name[0] == '.' && (name[1] == '\0' ||
             (name[1] == '.' && name[2] == '\0')))
             continue;
-        if (!visit(name, ctx)) break;
-    } while (FindNextFileA(h, &fd));
+        if (!visit(name, context)) break;
+    } while (FindNextFileA(find_handle, &find_data));
 
-    FindClose(h);
+    FindClose(find_handle);
     return true;
 #else
-    DIR *d = opendir(dir_path);
-    if (!d) return false;
+    DIR *directory = opendir(directory_path);
+    if (!directory) return false;
 
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
-        const char *name = ent->d_name;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        const char *name = entry->d_name;
         if (name[0] == '.' && (name[1] == '\0' ||
             (name[1] == '.' && name[2] == '\0')))
             continue;
-        if (!visit(name, ctx)) break;
+        if (!visit(name, context)) break;
     }
 
-    closedir(d);
+    closedir(directory);
     return true;
 #endif
 }
 
-bool gray_write_file_mode(const char *path, const void *data, size_t len) {
+bool gray_write_file_mode(const char *path, const void *data, size_t length) {
 #if GRAY_OS_WINDOWS
-    FILE *f = fopen(path, "wb");
-    if (!f) return false;
+    FILE *file = fopen(path, "wb");
+    if (!file) return false;
 #else
     /* Create with explicit 0644 rather than letting the process umask decide. */
-    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) return false;
-    FILE *f = fdopen(fd, "wb");
-    if (!f) {
-        close(fd);
+    int file_descriptor = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (file_descriptor < 0) return false;
+    FILE *file = fdopen(file_descriptor, "wb");
+    if (!file) {
+        close(file_descriptor);
         return false;
     }
 #endif
-    bool ok = len == 0 || fwrite(data, 1, len, f) == len;
-    if (fclose(f) != 0) ok = false;
-    return ok;
+    bool was_written = length == 0 || fwrite(data, 1, length, file) == length;
+    if (fclose(file) != 0) was_written = false;
+    return was_written;
 }
 
 /* --- Self and temp locations --- */
 
-const char *gray_self_dir(const char *argv0) {
-    static char buf[GRAY_PATH_BUF];
+const char *gray_self_directory(const char *argv0) {
+    static char directory_buffer[GRAY_PATH_BUFFER_SIZE];
 
 #if GRAY_OS_WINDOWS
-    DWORD len = GetModuleFileNameA(NULL, buf, (DWORD)sizeof(buf));
-    /* 0 is failure; sizeof(buf) means the path was truncated. */
-    if (len > 0 && len < sizeof(buf)) {
-        char *sep = gray_path_rsep(buf);
-        if (sep) {
-            *sep = '\0';
-            return buf;
+    DWORD length = GetModuleFileNameA(NULL, directory_buffer, (DWORD)sizeof(directory_buffer));
+    /* 0 is failure; sizeof(directory_buffer) means the path was truncated. */
+    if (length > 0 && length < sizeof(directory_buffer)) {
+        char *separator = gray_path_last_separator(directory_buffer);
+        if (separator) {
+            *separator = '\0';
+            return directory_buffer;
         }
     }
 #elif defined(__APPLE__)
-    uint32_t size = (uint32_t)sizeof(buf);
-    if (_NSGetExecutablePath(buf, &size) == 0) {
-        char *resolved = gray_realpath(buf);
+    uint32_t size = (uint32_t)sizeof(directory_buffer);
+    if (_NSGetExecutablePath(directory_buffer, &size) == 0) {
+        char *resolved = gray_realpath(directory_buffer);
         if (resolved) {
-            snprintf(buf, sizeof(buf), "%s", resolved);
+            snprintf(directory_buffer, sizeof(directory_buffer), "%s", resolved);
             free(resolved);
-            char *sep = gray_path_rsep(buf);
-            if (sep) {
-                *sep = '\0';
-                return buf;
+            char *separator = gray_path_last_separator(directory_buffer);
+            if (separator) {
+                *separator = '\0';
+                return directory_buffer;
             }
         }
     }
 #elif defined(__linux__)
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len > 0) {
-        buf[len] = '\0';
-        char *sep = gray_path_rsep(buf);
-        if (sep) {
-            *sep = '\0';
-            return buf;
+    ssize_t length = readlink("/proc/self/exe", directory_buffer, sizeof(directory_buffer) - 1);
+    if (length > 0) {
+        directory_buffer[length] = '\0';
+        char *separator = gray_path_last_separator(directory_buffer);
+        if (separator) {
+            *separator = '\0';
+            return directory_buffer;
         }
     }
 #endif
@@ -382,12 +382,12 @@ const char *gray_self_dir(const char *argv0) {
     if (argv0) {
         char *resolved = gray_realpath(argv0);
         if (resolved) {
-            snprintf(buf, sizeof(buf), "%s", resolved);
+            snprintf(directory_buffer, sizeof(directory_buffer), "%s", resolved);
             free(resolved);
-            char *sep = gray_path_rsep(buf);
-            if (sep) {
-                *sep = '\0';
-                return buf;
+            char *separator = gray_path_last_separator(directory_buffer);
+            if (separator) {
+                *separator = '\0';
+                return directory_buffer;
             }
         }
     }
@@ -395,38 +395,38 @@ const char *gray_self_dir(const char *argv0) {
     return NULL;
 }
 
-const char *gray_temp_dir(void) {
-    static char buf[GRAY_PATH_BUF];
-    static bool resolved = false;
-    if (resolved) return buf;
+const char *gray_temporary_directory(void) {
+    static char directory_buffer[GRAY_PATH_BUFFER_SIZE];
+    static bool is_resolved = false;
+    if (is_resolved) return directory_buffer;
 
 #if GRAY_OS_WINDOWS
-    DWORD len = GetTempPathA((DWORD)sizeof(buf), buf);
-    if (len == 0 || len >= sizeof(buf)) {
-        snprintf(buf, sizeof(buf), "."); /* last resort: the current directory */
+    DWORD length = GetTempPathA((DWORD)sizeof(directory_buffer), directory_buffer);
+    if (length == 0 || length >= sizeof(directory_buffer)) {
+        snprintf(directory_buffer, sizeof(directory_buffer), "."); /* last resort: the current directory */
     } else {
         /* GetTempPathA always leaves a trailing backslash; drop it. */
-        while (len > 0 && gray_is_path_sep(buf[len - 1])) buf[--len] = '\0';
-        if (len == 0) snprintf(buf, sizeof(buf), ".");
+        while (length > 0 && gray_is_path_separator(directory_buffer[length - 1])) directory_buffer[--length] = '\0';
+        if (length == 0) snprintf(directory_buffer, sizeof(directory_buffer), ".");
     }
 #else
-    const char *env = getenv("TMPDIR");
-    if (!env || !*env) env = "/tmp";
-    size_t len = strlen(env);
-    while (len > 1 && gray_is_path_sep(env[len - 1])) len--;
-    snprintf(buf, sizeof(buf), "%.*s", (int)len, env);
+    const char *temporary_directory_variable = getenv("TMPDIR");
+    if (!temporary_directory_variable || !*temporary_directory_variable) temporary_directory_variable = "/tmp";
+    size_t length = strlen(temporary_directory_variable);
+    while (length > 1 && gray_is_path_separator(temporary_directory_variable[length - 1])) length--;
+    snprintf(directory_buffer, sizeof(directory_buffer), "%.*s", (int)length, temporary_directory_variable);
 #endif
 
-    resolved = true;
-    return buf;
+    is_resolved = true;
+    return directory_buffer;
 }
 
-int gray_temp_path(char *dst, size_t dst_size, const char *prefix, const char *suffix) {
+int gray_temporary_path(char *destination, size_t destination_size, const char *prefix, const char *suffix) {
     static unsigned counter = 0;
     char name[256];
     snprintf(name, sizeof(name), "%s%d-%u%s", prefix, (int)gray_sys_getpid(), counter++,
         suffix ? suffix : "");
-    return gray_path_join(dst, dst_size, gray_temp_dir(), name);
+    return gray_path_join(destination, destination_size, gray_temporary_directory(), name);
 }
 
 FILE *gray_tmpfile(void) {
@@ -435,13 +435,13 @@ FILE *gray_tmpfile(void) {
      * which fails without administrator rights. Place it in the real temp
      * directory instead; the "D" mode flag keeps tmpfile()'s delete-on-close
      * contract. */
-    char dir[GRAY_PATH_BUF];
+    char directory[GRAY_PATH_BUFFER_SIZE];
     char path[MAX_PATH];
-    snprintf(dir, sizeof(dir), "%s", gray_temp_dir());
-    if (GetTempFileNameA(dir, "gray", 0, path) == 0) return NULL;
-    FILE *f = fopen(path, "w+bD");
-    if (!f) DeleteFileA(path); /* GetTempFileNameA already created it */
-    return f;
+    snprintf(directory, sizeof(directory), "%s", gray_temporary_directory());
+    if (GetTempFileNameA(directory, "gray", 0, path) == 0) return NULL;
+    FILE *file = fopen(path, "w+bD");
+    if (!file) DeleteFileA(path); /* GetTempFileNameA already created it */
+    return file;
 #else
     return tmpfile();
 #endif
@@ -451,36 +451,36 @@ FILE *gray_tmpfile(void) {
 
 #if GRAY_OS_WINDOWS
 
-static int spawn_child(const char *const *argv, bool search_path, int *term_signal) {
-    (void)term_signal;
-    intptr_t rc = search_path ? _spawnvp(_P_WAIT, argv[0], argv)
+static int spawn_child(const char *const *argv, bool search_path, int *termination_signal) {
+    (void)termination_signal;
+    intptr_t exit_code = search_path ? _spawnvp(_P_WAIT, argv[0], argv)
                               : _spawnv(_P_WAIT, argv[0], argv);
     /* _P_WAIT yields the child's exit code directly; -1 means it never ran. */
-    return rc == -1 ? -1 : (int)rc;
+    return exit_code == -1 ? -1 : (int)exit_code;
 }
 
 #else
 
-static int spawn_child(const char *const *argv, bool search_path, int *term_signal) {
-    pid_t pid = 0;
+static int spawn_child(const char *const *argv, bool search_path, int *termination_signal) {
+    pid_t process_id = 0;
     /* posix_spawn takes a non-const argv purely for historical reasons; it does
      * not modify the strings. */
-    char *const *args = (char *const *)argv;
+    char *const *spawn_arguments = (char *const *)argv;
 
-    int err = search_path ? posix_spawnp(&pid, argv[0], NULL, NULL, args, gray_environ)
-                          : posix_spawn(&pid, argv[0], NULL, NULL, args, gray_environ);
-    if (err != 0) {
-        errno = err;
+    int spawn_error = search_path ? posix_spawnp(&process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ)
+                          : posix_spawn(&process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ);
+    if (spawn_error != 0) {
+        errno = spawn_error;
         return -1;
     }
 
     int status = 0;
-    while (waitpid(pid, &status, 0) < 0) {
+    while (waitpid(process_id, &status, 0) < 0) {
         if (errno != EINTR) return -1;
     }
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     if (WIFSIGNALED(status)) {
-        if (term_signal) *term_signal = WTERMSIG(status);
+        if (termination_signal) *termination_signal = WTERMSIG(status);
         return 128 + WTERMSIG(status);
     }
     return -1;
@@ -492,126 +492,126 @@ int gray_spawn_path(const char *const *argv) {
     return spawn_child(argv, true, NULL);
 }
 
-int gray_spawn_exact(const char *const *argv, int *term_signal) {
-    if (term_signal) *term_signal = 0;
-    return spawn_child(argv, false, term_signal);
+int gray_spawn_exact(const char *const *argv, int *termination_signal) {
+    if (termination_signal) *termination_signal = 0;
+    return spawn_child(argv, false, termination_signal);
 }
 
 int gray_spawn_quiet(const char *const *argv) {
-    int devnull = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
-    if (devnull < 0) return gray_spawn_path(argv);
+    int null_device = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
+    if (null_device < 0) return gray_spawn_path(argv);
 
     fflush(stdout);
     fflush(stderr);
 
-    int saved_out = gray_sys_dup(1);
-    int saved_err = gray_sys_dup(2);
-    gray_sys_dup2(devnull, 1);
-    gray_sys_dup2(devnull, 2);
+    int saved_stdout = gray_sys_dup(1);
+    int saved_stderr = gray_sys_dup(2);
+    gray_sys_dup2(null_device, 1);
+    gray_sys_dup2(null_device, 2);
 
-    int rc = spawn_child(argv, true, NULL);
+    int exit_code = spawn_child(argv, true, NULL);
 
-    if (saved_out >= 0) {
-        gray_sys_dup2(saved_out, 1);
-        gray_sys_close(saved_out);
+    if (saved_stdout >= 0) {
+        gray_sys_dup2(saved_stdout, 1);
+        gray_sys_close(saved_stdout);
     }
-    if (saved_err >= 0) {
-        gray_sys_dup2(saved_err, 2);
-        gray_sys_close(saved_err);
+    if (saved_stderr >= 0) {
+        gray_sys_dup2(saved_stderr, 2);
+        gray_sys_close(saved_stderr);
     }
-    gray_sys_close(devnull);
-    return rc;
+    gray_sys_close(null_device);
+    return exit_code;
 }
 
 int gray_spawn_capture_stdout(const char *const *argv, FILE *capture) {
-    int devnull = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
-    if (devnull < 0) return -1;
+    int null_device = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
+    if (null_device < 0) return -1;
 
     fflush(stdout);
     fflush(stderr);
     fflush(capture);
-    int cap_fd = fileno(capture);
+    int capture_descriptor = fileno(capture);
 
-    int saved_out = gray_sys_dup(1);
-    int saved_err = gray_sys_dup(2);
-    gray_sys_dup2(cap_fd, 1);
-    gray_sys_dup2(devnull, 2);
+    int saved_stdout = gray_sys_dup(1);
+    int saved_stderr = gray_sys_dup(2);
+    gray_sys_dup2(capture_descriptor, 1);
+    gray_sys_dup2(null_device, 2);
 
-    int rc = spawn_child(argv, true, NULL);
+    int exit_code = spawn_child(argv, true, NULL);
     fflush(NULL);
 
-    if (saved_out >= 0) {
-        gray_sys_dup2(saved_out, 1);
-        gray_sys_close(saved_out);
+    if (saved_stdout >= 0) {
+        gray_sys_dup2(saved_stdout, 1);
+        gray_sys_close(saved_stdout);
     }
-    if (saved_err >= 0) {
-        gray_sys_dup2(saved_err, 2);
-        gray_sys_close(saved_err);
+    if (saved_stderr >= 0) {
+        gray_sys_dup2(saved_stderr, 2);
+        gray_sys_close(saved_stderr);
     }
-    gray_sys_close(devnull);
-    return rc;
+    gray_sys_close(null_device);
+    return exit_code;
 }
 
 int gray_spawn_capture_stderr(const char *const *argv, FILE *capture) {
-    int devnull = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
-    if (devnull < 0) return -1;
+    int null_device = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
+    if (null_device < 0) return -1;
 
     fflush(stdout);
     fflush(stderr);
     fflush(capture);
-    int cap_fd = fileno(capture);
+    int capture_descriptor = fileno(capture);
 
-    int saved_out = gray_sys_dup(1);
-    int saved_err = gray_sys_dup(2);
-    gray_sys_dup2(devnull, 1);
-    gray_sys_dup2(cap_fd, 2);
+    int saved_stdout = gray_sys_dup(1);
+    int saved_stderr = gray_sys_dup(2);
+    gray_sys_dup2(null_device, 1);
+    gray_sys_dup2(capture_descriptor, 2);
 
-    int rc = spawn_child(argv, true, NULL);
+    int exit_code = spawn_child(argv, true, NULL);
     fflush(NULL);
 
-    if (saved_out >= 0) {
-        gray_sys_dup2(saved_out, 1);
-        gray_sys_close(saved_out);
+    if (saved_stdout >= 0) {
+        gray_sys_dup2(saved_stdout, 1);
+        gray_sys_close(saved_stdout);
     }
-    if (saved_err >= 0) {
-        gray_sys_dup2(saved_err, 2);
-        gray_sys_close(saved_err);
+    if (saved_stderr >= 0) {
+        gray_sys_dup2(saved_stderr, 2);
+        gray_sys_close(saved_stderr);
     }
-    gray_sys_close(devnull);
-    return rc;
+    gray_sys_close(null_device);
+    return exit_code;
 }
 
 /* --- Toolchain discovery --- */
 
-void gray_ensure_tool_dir_on_path(const char *cmd) {
+void gray_ensure_tool_directory_on_path(const char *command) {
 #if GRAY_OS_WINDOWS
     /* First whitespace-delimited token — the same split argv_push_command
      * applies to multi-word compiler commands. */
-    char head[GRAY_PATH_BUF];
-    size_t head_len = strcspn(cmd, " \t");
-    if (head_len == 0 || head_len >= sizeof(head)) return;
-    memcpy(head, cmd, head_len);
-    head[head_len] = '\0';
+    char head[GRAY_PATH_BUFFER_SIZE];
+    size_t head_length = strcspn(command, " \t");
+    if (head_length == 0 || head_length >= sizeof(head)) return;
+    memcpy(head, command, head_length);
+    head[head_length] = '\0';
 
-    char *sep = gray_path_rsep(head);
-    if (!sep) return; /* bare command name — PATH already resolves it */
-    *sep = '\0';
+    char *separator = gray_path_last_separator(head);
+    if (!separator) return; /* bare command name — PATH already resolves it */
+    *separator = '\0';
     if (!*head) return;
 
     const char *old_path = getenv("PATH");
     if (!old_path) old_path = "";
 
     /* Skip when already the front entry so repeat calls do not grow PATH. */
-    size_t dir_len = strlen(head);
-    if (strncmp(old_path, head, dir_len) == 0 &&
-        (old_path[dir_len] == ';' || old_path[dir_len] == '\0')) {
+    size_t directory_length = strlen(head);
+    if (strncmp(old_path, head, directory_length) == 0 &&
+        (old_path[directory_length] == ';' || old_path[directory_length] == '\0')) {
         return;
     }
 
-    size_t new_len = dir_len + 1 + strlen(old_path) + 1;
-    char *new_path = malloc(new_len);
+    size_t new_length = directory_length + 1 + strlen(old_path) + 1;
+    char *new_path = malloc(new_length);
     if (!new_path) return;
-    snprintf(new_path, new_len, "%s;%s", head, old_path);
+    snprintf(new_path, new_length, "%s;%s", head, old_path);
     /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
      * block child processes inherit. The two are separate on Windows, so
      * both are needed (same pattern as gray_os_set_env). */
@@ -619,16 +619,16 @@ void gray_ensure_tool_dir_on_path(const char *cmd) {
     SetEnvironmentVariableA("PATH", new_path);
     free(new_path);
 #else
-    (void)cmd;
+    (void)command;
 #endif
 }
 
 static bool file_is_executable(const char *path) {
     if (gray_sys_access(path, GRAY_X_OK) == 0) return true;
 #if GRAY_OS_WINDOWS
-    char exe[GRAY_PATH_BUF];
-    int n = snprintf(exe, sizeof(exe), "%s.exe", path);
-    if (n > 0 && n < (int)sizeof(exe) && gray_sys_access(exe, GRAY_X_OK) == 0) return true;
+    char executable_path[GRAY_PATH_BUFFER_SIZE];
+    int written_length = snprintf(executable_path, sizeof(executable_path), "%s.exe", path);
+    if (written_length > 0 && written_length < (int)sizeof(executable_path) && gray_sys_access(executable_path, GRAY_X_OK) == 0) return true;
 #endif
     return false;
 }
@@ -637,38 +637,38 @@ bool gray_command_on_path(const char *name) {
     if (!name || !*name) return false;
 
     /* An explicit path (contains a separator) is checked as given. */
-    for (const char *p = name; *p; p++) {
-        if (gray_is_path_sep(*p)) return file_is_executable(name);
+    for (const char *cursor = name; *cursor; cursor++) {
+        if (gray_is_path_separator(*cursor)) return file_is_executable(name);
     }
 
     const char *path = getenv("PATH");
     if (!path) return false;
 
-    char probe[GRAY_PATH_BUF];
+    char probe[GRAY_PATH_BUFFER_SIZE];
     while (*path) {
-        const char *sep = path;
-        while (*sep && *sep != GRAY_PATH_LIST_SEP) sep++;
-        size_t dir_len = (size_t)(sep - path);
+        const char *separator = path;
+        while (*separator && *separator != GRAY_PATH_LIST_SEPARATOR) separator++;
+        size_t directory_length = (size_t)(separator - path);
 
-        if (dir_len == 0) {
+        if (directory_length == 0) {
             /* An empty PATH entry means the current directory. */
             if (snprintf(probe, sizeof(probe), "%s", name) < (int)sizeof(probe) &&
                 file_is_executable(probe))
                 return true;
-        } else if (dir_len < sizeof(probe)) {
-            char dir[GRAY_PATH_BUF];
-            memcpy(dir, path, dir_len);
-            dir[dir_len] = '\0';
-            if (gray_path_join(probe, sizeof(probe), dir, name) < (int)sizeof(probe) &&
+        } else if (directory_length < sizeof(probe)) {
+            char directory[GRAY_PATH_BUFFER_SIZE];
+            memcpy(directory, path, directory_length);
+            directory[directory_length] = '\0';
+            if (gray_path_join(probe, sizeof(probe), directory, name) < (int)sizeof(probe) &&
                 file_is_executable(probe))
                 return true;
         }
-        path = *sep ? sep + 1 : sep;
+        path = *separator ? separator + 1 : separator;
     }
     return false;
 }
 
-const char *gray_find_cc_fallback(void) {
+const char *gray_find_c_compiler_fallback(void) {
 #if GRAY_OS_WINDOWS
     /* The same well-known install locations scripts/common.ps1 probes, in the
      * same order. MSYS2 and the common MinGW distributions deliberately do not
@@ -682,16 +682,16 @@ const char *gray_find_cc_fallback(void) {
         "C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe",
         NULL, /* %ProgramFiles%\LLVM\bin\clang.exe, built below */
     };
-    static char found[GRAY_PATH_BUF];
-    char candidate[GRAY_PATH_BUF];
+    static char found[GRAY_PATH_BUFFER_SIZE];
+    char candidate[GRAY_PATH_BUFFER_SIZE];
 
     for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); i++) {
         if (fixed[i]) {
             snprintf(candidate, sizeof(candidate), "%s", fixed[i]);
         } else {
-            const char *pf = getenv("ProgramFiles");
-            if (!pf || !*pf) continue;
-            if (gray_path_join(candidate, sizeof(candidate), pf,
+            const char *program_files = getenv("ProgramFiles");
+            if (!program_files || !*program_files) continue;
+            if (gray_path_join(candidate, sizeof(candidate), program_files,
                                "LLVM\\bin\\clang.exe") >= (int)sizeof(candidate)) {
                 continue;
             }
@@ -702,7 +702,7 @@ const char *gray_find_cc_fallback(void) {
          * from beside the compiler binary, so spawning by absolute path alone
          * fails with exit 1 and no diagnostic. Prepend the bin directory;
          * children of this process inherit it, which is the point. */
-        gray_ensure_tool_dir_on_path(candidate);
+        gray_ensure_tool_directory_on_path(candidate);
 
         const char *probe[] = {candidate, "--version", NULL};
         if (gray_spawn_quiet(probe) == 0) {
@@ -726,51 +726,51 @@ char *gray_read_file(const char *path, bool report) {
     if (fast) return fast;
 
     /* Streaming fallback for non-seekable inputs (pipes, FIFOs, /dev/stdin). */
-    FILE *f = fopen(path, "rb");
-    if (!f) {
+    FILE *file = fopen(path, "rb");
+    if (!file) {
         if (report) {
             fprintf(stderr, "gray: cannot open '%s': ", path);
             perror("");
         }
         return NULL;
     }
-    clearerr(f);
-    size_t cap = 4096;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    if (!buf) {
+    clearerr(file);
+    size_t capacity = 4096;
+    size_t length = 0;
+    char *contents = malloc(capacity);
+    if (!contents) {
         fprintf(stderr, "gray: out of memory\n");
-        fclose(f);
+        fclose(file);
         return NULL;
     }
     for (;;) {
-        if (len == cap) {
-            size_t new_cap = cap * 2;
-            char *new_buf = realloc(buf, new_cap);
-            if (!new_buf) {
-                free(buf);
-                fclose(f);
+        if (length == capacity) {
+            size_t new_capacity = capacity * 2;
+            char *grown_contents = realloc(contents, new_capacity);
+            if (!grown_contents) {
+                free(contents);
+                fclose(file);
                 fprintf(stderr, "gray: out of memory\n");
                 return NULL;
             }
-            buf = new_buf;
-            cap = new_cap;
+            contents = grown_contents;
+            capacity = new_capacity;
         }
-        size_t got = fread(buf + len, 1, cap - len, f);
-        if (got == 0) break;
-        len += got;
+        size_t bytes_read = fread(contents + length, 1, capacity - length, file);
+        if (bytes_read == 0) break;
+        length += bytes_read;
     }
-    if (len + 1 > cap) {
-        char *grow = realloc(buf, len + 1);
-        if (!grow) {
-            free(buf);
-            fclose(f);
+    if (length + 1 > capacity) {
+        char *trimmed_contents = realloc(contents, length + 1);
+        if (!trimmed_contents) {
+            free(contents);
+            fclose(file);
             fprintf(stderr, "gray: out of memory\n");
             return NULL;
         }
-        buf = grow;
+        contents = trimmed_contents;
     }
-    buf[len] = '\0';
-    fclose(f);
-    return buf;
+    contents[length] = '\0';
+    fclose(file);
+    return contents;
 }

@@ -25,7 +25,7 @@
  *   println()
  *@end
  */
-void gray_builtin_println_str(GrayString str);
+void gray_builtin_println_str(GrayString string);
 void gray_builtin_println_i64(int64_t value);
 void gray_builtin_println_u64(uint64_t value);
 void gray_builtin_println_float(double value, int bit_size);
@@ -41,7 +41,7 @@ void gray_builtin_println_addr(uintptr_t value);
  *   print(42)
  *@end
  */
-void gray_builtin_print_str(GrayString str);
+void gray_builtin_print_str(GrayString string);
 void gray_builtin_print_i64(int64_t value);
 void gray_builtin_print_u64(uint64_t value);
 void gray_builtin_print_float(double value, int bit_size);
@@ -70,7 +70,7 @@ void gray_builtin_flush(void);
  *   eprintln()
  *@end
  */
-void gray_builtin_eprintln_str(GrayString str);
+void gray_builtin_eprintln_str(GrayString string);
 void gray_builtin_eprintln_i64(int64_t value);
 void gray_builtin_eprintln_u64(uint64_t value);
 void gray_builtin_eprintln_float(double value, int bit_size);
@@ -88,7 +88,7 @@ void gray_builtin_eprintln_addr(uintptr_t value);
  *   eprint(true)
  *@end
  */
-void gray_builtin_eprint_str(GrayString str);
+void gray_builtin_eprint_str(GrayString string);
 void gray_builtin_eprint_i64(int64_t value);
 void gray_builtin_eprint_u64(uint64_t value);
 void gray_builtin_eprint_float(double value, int bit_size);
@@ -152,7 +152,7 @@ void gray_builtin_sleep_s(int64_t seconds);
  *   sleep_ms(500)
  *@end
  */
-void gray_builtin_sleep_ms(int64_t ms);
+void gray_builtin_sleep_ms(int64_t milliseconds);
 
 /*@man sleep_ns
  *@sig sleep_ns(nanoseconds i64)
@@ -161,7 +161,7 @@ void gray_builtin_sleep_ms(int64_t ms);
  *   sleep_ns(1000000)
  *@end
  */
-void gray_builtin_sleep_ns(int64_t ns);
+void gray_builtin_sleep_ns(int64_t nanoseconds);
 
 /*@man string
  *@sig string(value T) -> string
@@ -203,7 +203,7 @@ void gray_builtin_sleep_ns(int64_t ns);
 
 /*@man cast
  *@sig cast(value T, TargetType) -> TargetType
- *@desc Explicit type conversion between primitive types. Truncates floats toward zero; a string target type parses the string and panics if it is not a number. Enforces range at runtime.
+ *@desc Explicit type conversion between primitive types. Truncates floating-point values toward zero; a string target type parses the string and panics if it is not a number. Enforces range at runtime.
  *@example
  *   mut x i64 = cast(3.7, i64)
  *   mut b u8 = cast(200, u8)
@@ -443,7 +443,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *   system("echo hello")
  *@end
  */
-int64_t gray_builtin_system(GrayString cmd);
+int64_t gray_builtin_system(GrayString command);
 
 /* to_string — internal runtime overloads, not user-callable by name */
 GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value);
@@ -452,15 +452,15 @@ GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_
 GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
-int64_t gray_builtin_string_to_i64(GrayString str);
-double gray_builtin_string_to_f64(GrayString str);
+int64_t gray_builtin_string_to_i64(GrayString string);
+double gray_builtin_string_to_f64(GrayString string);
 
-/* format float for interpolation */
+/* format a floating-point value for interpolation */
 GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size);
 
 /* composite to_string */
-GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind);
-GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_kind);
+GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *array, int element_kind);
+GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int value_kind);
 
 /* A growable text buffer that generated print code writes to in place of a
  * FILE, so println and string interpolation format a nested container with the
@@ -468,13 +468,13 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_ki
 typedef struct {
     char *data;
     size_t len;
-    size_t cap;
+    size_t capacity;
 } GrayFmtOut;
 
-int gray_fmt_out_printf(GrayFmtOut *out, const char *format, ...)
+int gray_fmt_out_printf(GrayFmtOut *output, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
-size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *out);
-GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *out);
+size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *output);
+GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *output);
 
 #define gray_out_printf(stream, ...) \
     _Generic((stream), FILE *: fprintf, GrayFmtOut *: gray_fmt_out_printf)((stream), __VA_ARGS__)
@@ -482,15 +482,15 @@ GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *out);
     _Generic((stream), FILE *: fwrite, GrayFmtOut *: gray_fmt_out_write)((data), (size), (count), (stream))
 
 /* to_char / char_count — Unicode codepoint access */
-int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, int line);
-int64_t gray_builtin_char_count(GrayString str);
+int32_t gray_builtin_to_char(GrayString string, int64_t index, const char *file, int line);
+int64_t gray_builtin_char_count(GrayString string);
 
 /* char_to_utf8 — encode a codepoint to an GrayString (for interpolation) */
-GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp);
+GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t codepoint);
 
 /* Decode the next UTF-8 character starting at p (< end); writes the decoded
  * codepoint to *cp_out (0xFFFD on invalid input) and returns bytes consumed
  * (1-4). */
-int gray_builtin_utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out);
+int gray_builtin_utf8_next(const uint8_t *cursor, const uint8_t *end_cursor, int32_t *cp_out);
 
 #endif

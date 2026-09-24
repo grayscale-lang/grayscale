@@ -33,7 +33,7 @@ typedef struct { double v0; GrayError *v1; } GrayResult_f64;
  *   mut val, err = strconv.to_int("ff", strconv.BASE_16)
  *@end
  */
-int64_t gray_strconv_to_int(GrayString str, int64_t base);
+int64_t gray_strconv_to_int(GrayString string, int64_t base);
 
 /*@man to_uint
  *@module strconv
@@ -46,7 +46,7 @@ int64_t gray_strconv_to_int(GrayString str, int64_t base);
  *   mut val, err = strconv.to_uint("ff", strconv.BASE_16)
  *@end
  */
-uint64_t gray_strconv_to_uint(GrayString str, int64_t base);
+uint64_t gray_strconv_to_uint(GrayString string, int64_t base);
 
 /*@man to_float
  *@module strconv
@@ -59,7 +59,7 @@ uint64_t gray_strconv_to_uint(GrayString str, int64_t base);
  *   mut val, err = strconv.to_float("not a number")
  *@end
  */
-double gray_strconv_to_float(GrayString str);
+double gray_strconv_to_float(GrayString string);
 
 /*@man to_bool
  *@module strconv
@@ -72,15 +72,15 @@ double gray_strconv_to_float(GrayString str);
  *   mut val, err = strconv.to_bool("yes")
  *@end
  */
-bool gray_strconv_to_bool(GrayString str);
+bool gray_strconv_to_bool(GrayString string);
 
 /* Result forms — every Grayscale call compiles to one of these. The bare
  * forms above are no longer reachable (single-var assignment of a fallible
  * call is rejected with E3089). */
-GrayResult_i64 gray_strconv_to_int_result(GrayString str, int64_t base);
-GrayResult_u64 gray_strconv_to_uint_result(GrayString str, int64_t base);
-GrayResult_f64 gray_strconv_to_float_result(GrayString str);
-GrayResult_bool gray_strconv_to_bool_result(GrayString str);
+GrayResult_i64 gray_strconv_to_int_result(GrayString string, int64_t base);
+GrayResult_u64 gray_strconv_to_uint_result(GrayString string, int64_t base);
+GrayResult_f64 gray_strconv_to_float_result(GrayString string);
+GrayResult_bool gray_strconv_to_bool_result(GrayString string);
 
 /*@man from_int
  *@module strconv
@@ -92,10 +92,10 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString str);
  *   println(strconv.from_int(42))
  *@end
  */
-/* Format a float using the shortest representation that round-trips at
+/* Format a floating-point value using the shortest representation that round-trips at
  * `bit_size` (32 or 64). Used by both builtins (print, to_string) and strconv
  * (from_float). */
-int gray_fmt_shortest_float(char *buf, size_t buffer_size, double value, int bit_size);
+int gray_fmt_shortest_float(char *buffer, size_t buffer_size, double value, int bit_size);
 
 /* Type to string conversions */
 GrayString gray_strconv_from_int(GrayArena *arena, int64_t value);
@@ -123,7 +123,7 @@ GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value);
  *   println(strconv.format_int(-10, 2))
  *@end
  */
-GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base);
+GrayString gray_strconv_format_int(GrayArena *arena, int64_t value, int64_t base);
 
 /*@man format_uint
  *@module strconv
@@ -135,7 +135,7 @@ GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base);
  *   println(strconv.format_uint(255, 16))
  *@end
  */
-GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t n, int64_t base);
+GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t value, int64_t base);
 
 /*@man from_float
  *@module strconv
@@ -171,7 +171,7 @@ GrayString gray_strconv_from_bool(bool value);
  *   println(strconv.quote(raw_text))
  *@end
  */
-GrayString gray_strconv_quote(GrayArena *arena, GrayString str);
+GrayString gray_strconv_quote(GrayArena *arena, GrayString string);
 
 /*@man unquote
  *@module strconv
@@ -183,8 +183,8 @@ GrayString gray_strconv_quote(GrayArena *arena, GrayString str);
  *   mut s, err = strconv.unquote(quoted)
  *@end
  */
-GrayString gray_strconv_unquote(GrayArena *arena, GrayString str);
-GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString str);
+GrayString gray_strconv_unquote(GrayArena *arena, GrayString string);
+GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString string);
 
 /*@man is_numeric
  *@module strconv
@@ -198,7 +198,7 @@ GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString str);
  *@end
  */
 /* Query functions */
-bool gray_strconv_is_numeric(GrayString str);
+bool gray_strconv_is_numeric(GrayString string);
 
 /*@man is_integer
  *@module strconv
@@ -211,7 +211,7 @@ bool gray_strconv_is_numeric(GrayString str);
  *   println(strconv.is_integer("3.14"))
  *@end
  */
-bool gray_strconv_is_integer(GrayString str);
+bool gray_strconv_is_integer(GrayString string);
 
 /*@man BASE_2
  *@module strconv

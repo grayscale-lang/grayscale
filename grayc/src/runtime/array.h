@@ -15,7 +15,7 @@
 #include "atomic.h"
 #include <string.h>
 
-#define GRAY_ARRAY_MIN_CAP            4
+#define GRAY_ARRAY_MIN_CAPACITY            4
 
 /* What an array's (or a map's keys' or values') elements are. Stdlib code
  * reads, writes and compares elements by this kind, through the gray_elem_*
@@ -33,18 +33,18 @@ typedef struct {
     void *data;
     GrayArena *arena;           /* arena owning data; NULL if unknown */
     int32_t len;
-    int32_t cap;
+    int32_t capacity;
     int32_t elem_size;
     int32_t iterating;          /* >0 while a for_each is active */
     int32_t elem_kind;          /* GrayElemKind */
 } GrayArray;
 
 /* Create an empty array of elem_kind elements elem_size bytes wide */
-GrayArray gray_array_new(GrayArena *arena, int32_t elem_size, int32_t initial_cap, int32_t elem_kind);
+GrayArray gray_array_new(GrayArena *arena, int32_t element_size, int32_t initial_capacity, int32_t element_kind);
 
 /* Create an array from a C literal (copies data into arena) */
-GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size, int32_t count,
-                          int32_t elem_kind);
+GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t element_size, int32_t count,
+                          int32_t element_kind);
 
 /* The GrayElemKind of C element type T. Generated code creates every array
  * through GRAY_ARRAY_NEW_OF / GRAY_ARRAY_FROM_OF, naming the element's C type,
@@ -53,7 +53,7 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
  * string, array or map struct its own; anything else (a struct, a pointer)
  * is OTHER. Expanded only in generated code, which includes bigint.h and
  * map.h for the wide-integer and map types it names. */
-#define GRAY_ELEM_KIND_OF(T) _Generic((T){0}, \
+#define GRAY_ELEM_KIND_OF(ELEMENT_TYPE) _Generic((ELEMENT_TYPE){0}, \
     signed char: GRAY_ELEM_I8, short: GRAY_ELEM_I16, int: GRAY_ELEM_I32, \
     long: (sizeof(long) == 8 ? GRAY_ELEM_I64 : GRAY_ELEM_I32), long long: GRAY_ELEM_I64, \
     unsigned char: GRAY_ELEM_U8, unsigned short: GRAY_ELEM_U16, unsigned int: GRAY_ELEM_U32, \
@@ -65,48 +65,48 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
     GrayString: GRAY_ELEM_STRING, GrayArray: GRAY_ELEM_ARRAY, GrayMap: GRAY_ELEM_MAP, \
     default: GRAY_ELEM_OTHER)
 
-#define GRAY_ARRAY_NEW_OF(arena, T, cap) \
-    gray_array_new((arena), (int32_t)sizeof(T), (cap), GRAY_ELEM_KIND_OF(T))
-#define GRAY_ARRAY_FROM_OF(arena, T, data, count) \
-    gray_array_from((arena), (data), (int32_t)sizeof(T), (count), GRAY_ELEM_KIND_OF(T))
-#define GRAY_MAP_NEW_OF(arena, K, V, cap) \
-    gray_map_new_kind((arena), (int32_t)sizeof(K), (int32_t)sizeof(V), (cap), \
-                      GRAY_ELEM_KIND_OF(K), GRAY_ELEM_KIND_OF(V))
+#define GRAY_ARRAY_NEW_OF(arena, ELEMENT_TYPE, capacity) \
+    gray_array_new((arena), (int32_t)sizeof(ELEMENT_TYPE), (capacity), GRAY_ELEM_KIND_OF(ELEMENT_TYPE))
+#define GRAY_ARRAY_FROM_OF(arena, ELEMENT_TYPE, data, count) \
+    gray_array_from((arena), (data), (int32_t)sizeof(ELEMENT_TYPE), (count), GRAY_ELEM_KIND_OF(ELEMENT_TYPE))
+#define GRAY_MAP_NEW_OF(arena, KEY_TYPE, VALUE_TYPE, capacity) \
+    gray_map_new_kind((arena), (int32_t)sizeof(KEY_TYPE), (int32_t)sizeof(VALUE_TYPE), (capacity), \
+                      GRAY_ELEM_KIND_OF(KEY_TYPE), GRAY_ELEM_KIND_OF(VALUE_TYPE))
 
 /* The element helpers. Each takes the elements' kind and, for a kind whose
  * width it cannot know (OTHER, ARRAY, MAP), their size. */
 
 /* <0, 0 or >0 as a orders before, with or after b: numbers by value, strings
  * by bytes then length, false before true, anything else by bytes. */
-int gray_elem_compare(int32_t kind, int32_t size, const void *a, const void *b);
+int gray_elem_compare(int32_t kind, int32_t size, const void *left, const void *right);
 
 /* Whether a equals b: numbers by value (so 0.0 equals -0.0), strings by
  * content, anything else by bytes. */
-bool gray_elem_equal(int32_t kind, int32_t size, const void *a, const void *b);
+bool gray_elem_equal(int32_t kind, int32_t size, const void *left_element, const void *right_element);
 
 /* A hash consistent with gray_elem_equal. */
-uint32_t gray_elem_hash(int32_t kind, int32_t size, const void *p);
+uint32_t gray_elem_hash(int32_t kind, int32_t size, const void *element);
 
 /* *acc += *value in the element type, panicking on overflow the way `+` on
  * that type does. */
-void gray_elem_add(int32_t kind, void *acc, const void *value, const char *file, int line);
+void gray_elem_add(int32_t kind, void *accumulator, const void *value, const char *file, int line);
 
 /* The number element at p as a double. */
-double gray_elem_to_double(int32_t kind, const void *p);
+double gray_elem_to_double(int32_t kind, const void *element);
 
 /* The integer element at p (no wider than 64 bits) as an int64_t or a
- * uint64_t; a float element converts, bool and char read as integers. */
-int64_t gray_elem_to_i64(int32_t kind, const void *p);
-uint64_t gray_elem_to_u64(int32_t kind, const void *p);
+ * uint64_t; a floating-point element converts, bool and char read as integers. */
+int64_t gray_elem_to_i64(int32_t kind, const void *element);
+uint64_t gray_elem_to_u64(int32_t kind, const void *element);
 
 /* Get a pointer to element at index (with bounds checking) */
-void *gray_array_get_ptr(GrayArray *arr, int64_t index, const char *file, int line);
+void *gray_array_get_ptr(GrayArray *array, int64_t index, const char *file, int line);
 
 /* Set element at index (with bounds checking) */
-void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char *file, int line);
+void gray_array_set(GrayArray *array, int64_t index, const void *value, const char *file, int line);
 
 /* Panic paths of the index macros, out of line so the inline check stays small */
-void gray_array_oob_panic(int64_t index, int32_t len, const char *file, int line)
+void gray_array_oob_panic(int64_t index, int32_t length, const char *file, int line)
     __attribute__((noreturn, cold));
 void gray_array_iterating_panic(const char *file, int line)
     __attribute__((noreturn, cold));
@@ -118,53 +118,53 @@ void gray_array_iterating_panic(const char *file, int line)
  * reference does not end up backed by a shorter-lived scope arena.
  * file/line locate the P0130 panic on capacity overflow; pass NULL/0 for
  * a panic without a source location. */
-void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int line);
+void gray_array_grow(GrayArena *arena, GrayArray *array, const char *file, int line);
 
 /* Append an element (may reallocate on the arena) */
-void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line);
+void gray_array_push(GrayArena *arena, GrayArray *array, const void *value, const char *file, int line);
 
 /* Convenience macro for stdlib callers (uses C file/line) */
-#define GRAY_ARRAY_PUSH(arena, arr, val) gray_array_push((arena), (arr), (val), __FILE__, __LINE__)
+#define GRAY_ARRAY_PUSH(arena, array, value) gray_array_push((arena), (array), (value), __FILE__, __LINE__)
 
 /* Deep copy an array */
-GrayArray gray_array_copy(GrayArena *arena, GrayArray *src);
+GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
 
 /* Typed access macros — stdlib callers (use C file/line) */
-#define GRAY_ARRAY_GET(arr, type, i) (*(type *)gray_array_get_ptr(&(arr), (i), __FILE__, __LINE__))
-#define GRAY_ARRAY_SET(arr, type, i, val) do { type _v = (val); gray_array_set(&(arr), (i), &_v, __FILE__, __LINE__); } while(0)
+#define GRAY_ARRAY_GET(array, type, index) (*(type *)gray_array_get_ptr(&(array), (index), __FILE__, __LINE__))
+#define GRAY_ARRAY_SET(array, type, index, value) do { type gray_macro_value_ = (value); gray_array_set(&(array), (index), &gray_macro_value_, __FILE__, __LINE__); } while(0)
 
 /* Typed access macros — codegen callers (pass Grayscale source location).
  * The bounds check is inline; SET stores sizeof(type) bytes when the array's
  * elem_size matches, and elem_size bytes otherwise, as gray_array_set does. */
-#define GRAY_ARRAY_GET_AT(arr, type, i, f, l) \
+#define GRAY_ARRAY_GET_AT(array, type, index, file, line) \
     (*(type *)({ \
-        GrayArray *_ga = &(arr); int64_t _gi = (i); \
-        if (__builtin_expect(_gi < 0 || _gi >= _ga->len, 0)) \
-            gray_array_oob_panic(_gi, _ga->len, (f), (l)); \
-        (void *)((char *)_ga->data + (size_t)_gi * (size_t)_ga->elem_size); \
+        GrayArray *gray_macro_array_ = &(array); int64_t gray_macro_index_ = (index); \
+        if (__builtin_expect(gray_macro_index_ < 0 || gray_macro_index_ >= gray_macro_array_->len, 0)) \
+            gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
+        (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
-#define GRAY_ARRAY_SET_AT(arr, type, i, val, f, l) do { \
-        type _v = (val); GrayArray *_ga = &(arr); int64_t _gi = (i); \
-        if (__builtin_expect(__atomic_load_n(&_ga->iterating, __ATOMIC_RELAXED) > 0, 0)) \
-            gray_array_iterating_panic((f), (l)); \
-        if (__builtin_expect(_gi < 0 || _gi >= _ga->len, 0)) \
-            gray_array_oob_panic(_gi, _ga->len, (f), (l)); \
-        char *_gp = (char *)_ga->data + (size_t)_gi * (size_t)_ga->elem_size; \
-        if (_ga->elem_size == (int32_t)sizeof(type)) memcpy(_gp, &_v, sizeof(type)); \
-        else memcpy(_gp, &_v, (size_t)_ga->elem_size); \
+#define GRAY_ARRAY_SET_AT(array, type, index, value, file, line) do { \
+        type gray_macro_value_ = (value); GrayArray *gray_macro_array_ = &(array); int64_t gray_macro_index_ = (index); \
+        if (__builtin_expect(__atomic_load_n(&gray_macro_array_->iterating, __ATOMIC_RELAXED) > 0, 0)) \
+            gray_array_iterating_panic((file), (line)); \
+        if (__builtin_expect(gray_macro_index_ < 0 || gray_macro_index_ >= gray_macro_array_->len, 0)) \
+            gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
+        char *gray_macro_element_ = (char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size; \
+        if (gray_macro_array_->elem_size == (int32_t)sizeof(type)) memcpy(gray_macro_element_, &gray_macro_value_, sizeof(type)); \
+        else memcpy(gray_macro_element_, &gray_macro_value_, (size_t)gray_macro_array_->elem_size); \
     } while(0)
 
 /* Pointer to element i for a read-modify-write (`xs[i] += v`), making the
  * same no-mutation-during-for_each and bounds checks GRAY_ARRAY_SET_AT
- * makes. `arr_ptr` is a GrayArray *. */
-#define GRAY_ARRAY_PTR_FOR_WRITE(arr_ptr, type, i, f, l) \
+ * makes. `array_pointer` is a GrayArray *. */
+#define GRAY_ARRAY_PTR_FOR_WRITE(array_pointer, type, index, file, line) \
     ((type *)({ \
-        GrayArray *_ga = (arr_ptr); int64_t _gi = (i); \
-        if (__builtin_expect(__atomic_load_n(&_ga->iterating, __ATOMIC_RELAXED) > 0, 0)) \
-            gray_array_iterating_panic((f), (l)); \
-        if (__builtin_expect(_gi < 0 || _gi >= _ga->len, 0)) \
-            gray_array_oob_panic(_gi, _ga->len, (f), (l)); \
-        (void *)((char *)_ga->data + (size_t)_gi * (size_t)_ga->elem_size); \
+        GrayArray *gray_macro_array_ = (array_pointer); int64_t gray_macro_index_ = (index); \
+        if (__builtin_expect(__atomic_load_n(&gray_macro_array_->iterating, __ATOMIC_RELAXED) > 0, 0)) \
+            gray_array_iterating_panic((file), (line)); \
+        if (__builtin_expect(gray_macro_index_ < 0 || gray_macro_index_ >= gray_macro_array_->len, 0)) \
+            gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
+        (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
 
 /* Create from typed literal — helper macros */

@@ -13,90 +13,90 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-static void grow_buffer(Buf *buffer, size_t needed) {
-    if (buffer->len + needed + 1 <= buffer->cap) return;
-    size_t new_cap = buffer->cap * 2;
-    if (new_cap < buffer->len + needed + 1) {
-        new_cap = buffer->len + needed + 1;
+static void grow_buffer(StringBuffer *buffer, size_t needed) {
+    if (buffer->length + needed + 1 <= buffer->capacity) return;
+    size_t new_capacity = buffer->capacity * 2;
+    if (new_capacity < buffer->length + needed + 1) {
+        new_capacity = buffer->length + needed + 1;
     }
-    buffer->data = realloc(buffer->data, new_cap);
+    buffer->data = realloc(buffer->data, new_capacity);
     if (!buffer->data) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
-    buffer->cap = new_cap;
+    buffer->capacity = new_capacity;
 }
 
-Buf buffer_create(size_t initial_cap) {
-    Buf buffer;
-    buffer.data = malloc(initial_cap);
+StringBuffer buffer_create(size_t initial_capacity) {
+    StringBuffer buffer;
+    buffer.data = malloc(initial_capacity);
     if (!buffer.data) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
     buffer.data[0] = '\0';
-    buffer.len = 0;
-    buffer.cap = initial_cap;
+    buffer.length = 0;
+    buffer.capacity = initial_capacity;
     return buffer;
 }
 
-void append_string_to_buffer(Buf *buffer, const char *string) {
-    size_t len = strlen(string);
-    append_bytes_to_buffer(buffer, string, len);
+void append_string_to_buffer(StringBuffer *buffer, const char *string) {
+    size_t length = strlen(string);
+    append_bytes_to_buffer(buffer, string, length);
 }
 
-void append_bytes_to_buffer(Buf *buffer, const char *data, size_t len) {
-    grow_buffer(buffer, len);
-    memcpy(buffer->data + buffer->len, data, len);
-    buffer->len += len;
-    buffer->data[buffer->len] = '\0';
+void append_bytes_to_buffer(StringBuffer *buffer, const char *data, size_t length) {
+    grow_buffer(buffer, length);
+    memcpy(buffer->data + buffer->length, data, length);
+    buffer->length += length;
+    buffer->data[buffer->length] = '\0';
 }
 
-void append_format_to_buffer(Buf *buffer, const char *format, ...) {
-    va_list args;
+void append_format_to_buffer(StringBuffer *buffer, const char *format, ...) {
+    va_list arguments;
 
-    va_start(args, format);
-    int needed = vsnprintf(NULL, 0, format, args);
-    va_end(args);
+    va_start(arguments, format);
+    int needed = vsnprintf(NULL, 0, format, arguments);
+    va_end(arguments);
 
     if (needed < 0) return;
 
     grow_buffer(buffer, (size_t)needed);
 
-    va_start(args, format);
-    vsnprintf(buffer->data + buffer->len, (size_t)needed + 1, format, args);
-    va_end(args);
+    va_start(arguments, format);
+    vsnprintf(buffer->data + buffer->length, (size_t)needed + 1, format, arguments);
+    va_end(arguments);
 
-    buffer->len += (size_t)needed;
+    buffer->length += (size_t)needed;
 }
 
-void append_char_to_buffer(Buf *buffer, char character) {
+void append_char_to_buffer(StringBuffer *buffer, char character) {
     grow_buffer(buffer, 1);
-    buffer->data[buffer->len++] = character;
-    buffer->data[buffer->len] = '\0';
+    buffer->data[buffer->length++] = character;
+    buffer->data[buffer->length] = '\0';
 }
 
-#define BUF_INDENT_WIDTH 4
+#define BUFFER_INDENT_WIDTH 4
 
-void append_indent_to_buffer(Buf *buffer, int depth) {
+void append_indent_to_buffer(StringBuffer *buffer, int depth) {
     static const char spaces[] =
         "                                                                ";
-    int n = depth * BUF_INDENT_WIDTH;
-    if (n < (int)sizeof(spaces)) {
-        append_bytes_to_buffer(buffer, spaces, (size_t)n);
+    int space_count = depth * BUFFER_INDENT_WIDTH;
+    if (space_count < (int)sizeof(spaces)) {
+        append_bytes_to_buffer(buffer, spaces, (size_t)space_count);
     } else {
         for (int i = 0; i < depth; i++)
-            append_bytes_to_buffer(buffer, spaces, BUF_INDENT_WIDTH);
+            append_bytes_to_buffer(buffer, spaces, BUFFER_INDENT_WIDTH);
     }
 }
 
-const char *buffer_to_string(Buf *buffer) {
+const char *buffer_to_string(StringBuffer *buffer) {
     return buffer->data;
 }
 
-void buffer_destroy(Buf *buffer) {
+void buffer_destroy(StringBuffer *buffer) {
     free(buffer->data);
     buffer->data = NULL;
-    buffer->len = 0;
-    buffer->cap = 0;
+    buffer->length = 0;
+    buffer->capacity = 0;
 }

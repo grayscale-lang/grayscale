@@ -43,7 +43,7 @@ GrayChannel gray_channels_open(int64_t capacity);
  *@end
  */
 /* Send a value into the channel. Blocks if full. */
-void gray_channels_send(GrayChannel ch, int64_t value);
+void gray_channels_send(GrayChannel handle, int64_t value);
 
 /*@man receive
  *@module channels
@@ -56,7 +56,7 @@ void gray_channels_send(GrayChannel ch, int64_t value);
  *@end
  */
 /* Receive a value from the channel. Blocks if empty. */
-int64_t gray_channels_receive(GrayChannel ch);
+int64_t gray_channels_receive(GrayChannel handle);
 
 /*@man close
  *@module channels
@@ -69,7 +69,7 @@ int64_t gray_channels_receive(GrayChannel ch);
  *@end
  */
 /* Close a channel. */
-void gray_channels_close(GrayChannel ch);
+void gray_channels_close(GrayChannel handle);
 
 /*@man try_send
  *@module channels
@@ -83,7 +83,7 @@ void gray_channels_close(GrayChannel ch);
  *   }
  *@end
  */
-bool gray_channels_try_send(GrayChannel ch, int64_t value);
+bool gray_channels_try_send(GrayChannel handle, int64_t value);
 
 /*@man try_receive
  *@module channels
@@ -97,6 +97,6 @@ bool gray_channels_try_send(GrayChannel ch, int64_t value);
  *@end
  */
 typedef struct { int64_t v0; bool v1; } GrayChannelTryRecv;
-GrayChannelTryRecv gray_channels_try_receive(GrayChannel ch);
+GrayChannelTryRecv gray_channels_try_receive(GrayChannel handle);
 
 #endif

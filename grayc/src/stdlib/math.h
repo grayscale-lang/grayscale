@@ -44,9 +44,9 @@
  *   println(math.abs(-3.14))
  *@end
  */
-static inline int64_t  gray_math_abs_i64(int64_t n) { return n < 0 ? -n : n; }
-static inline uint64_t gray_math_abs_u64(uint64_t n) { return n; }
-static inline double   gray_math_abs_f64(double n) { return fabs(n); }
+static inline int64_t  gray_math_abs_i64(int64_t value) { return value < 0 ? -value : value; }
+static inline uint64_t gray_math_abs_u64(uint64_t value) { return value; }
+static inline double   gray_math_abs_f64(double value) { return fabs(value); }
 
 /*@man neg
  *@module math
@@ -73,57 +73,57 @@ static inline double   gray_math_abs_f64(double n) { return fabs(n); }
  *   println(math.sign(3))
  *@end
  */
-static inline int64_t gray_math_sign(int64_t n) { return n > 0 ? 1 : (n < 0 ? -1 : 0); }
+static inline int64_t gray_math_sign(int64_t value) { return value > 0 ? 1 : (value < 0 ? -1 : 0); }
 
 /*@man min
  *@module math
  *@group Min/Max/Clamp
  *@sig min(a T, b T) -> T
- *@desc Returns the smaller of two values. Works on every integer and float type; the arguments share one type, which is the result type.
+ *@desc Returns the smaller of two values. Works on every integer and floating-point type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.min(3, 7))
  *   println(math.min(1.5, 2.5))
  *@end
  */
-static inline int64_t  gray_math_min_i64(int64_t a, int64_t b) { return a < b ? a : b; }
-static inline uint64_t gray_math_min_u64(uint64_t a, uint64_t b) { return a < b ? a : b; }
-static inline double   gray_math_min_f64(double a, double b) { return a < b ? a : b; }
+static inline int64_t  gray_math_min_i64(int64_t left, int64_t right) { return left < right ? left : right; }
+static inline uint64_t gray_math_min_u64(uint64_t left, uint64_t right) { return left < right ? left : right; }
+static inline double   gray_math_min_f64(double left, double right) { return left < right ? left : right; }
 
 /*@man max
  *@module math
  *@group Min/Max/Clamp
  *@sig max(a T, b T) -> T
- *@desc Returns the larger of two values. Works on every integer and float type; the arguments share one type, which is the result type.
+ *@desc Returns the larger of two values. Works on every integer and floating-point type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.max(3, 7))
  *   println(math.max(1.5, 2.5))
  *@end
  */
-static inline int64_t  gray_math_max_i64(int64_t a, int64_t b) { return a > b ? a : b; }
-static inline uint64_t gray_math_max_u64(uint64_t a, uint64_t b) { return a > b ? a : b; }
-static inline double   gray_math_max_f64(double a, double b) { return a > b ? a : b; }
+static inline int64_t  gray_math_max_i64(int64_t left, int64_t right) { return left > right ? left : right; }
+static inline uint64_t gray_math_max_u64(uint64_t left, uint64_t right) { return left > right ? left : right; }
+static inline double   gray_math_max_f64(double left, double right) { return left > right ? left : right; }
 
 /*@man clamp
  *@module math
  *@group Min/Max/Clamp
  *@sig clamp(value T, min T, max T) -> T
- *@desc Clamps value to the range [min, max]. Works on every integer and float type; the arguments share one type, which is the result type.
+ *@desc Clamps value to the range [min, max]. Works on every integer and floating-point type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.clamp(15, 1, 10))
  *   println(math.clamp(1.5, 0.0, 1.0))
  *@end
  */
-static inline int64_t gray_math_clamp_i64(int64_t v, int64_t lo, int64_t hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+static inline int64_t gray_math_clamp_i64(int64_t value, int64_t low, int64_t high) {
+    return value < low ? low : (value > high ? high : value);
 }
-static inline uint64_t gray_math_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+static inline uint64_t gray_math_clamp_u64(uint64_t value, uint64_t low, uint64_t high) {
+    return value < low ? low : (value > high ? high : value);
 }
-static inline double  gray_math_clamp_f64(double v, double lo, double hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+static inline double  gray_math_clamp_f64(double value, double low, double high) {
+    return value < low ? low : (value > high ? high : value);
 }
 
 /*@man floor
@@ -137,7 +137,7 @@ static inline double  gray_math_clamp_f64(double v, double lo, double hi) {
  *   println(math.floor(-1.2))
  *@end
  */
-static inline double gray_math_floor(double n) { return floor(n); }
+static inline double gray_math_floor(double value) { return floor(value); }
 
 /*@man ceil
  *@module math
@@ -150,7 +150,7 @@ static inline double gray_math_floor(double n) { return floor(n); }
  *   println(math.ceil(-1.8))
  *@end
  */
-static inline double gray_math_ceil(double n) { return ceil(n); }
+static inline double gray_math_ceil(double value) { return ceil(value); }
 
 /*@man round
  *@module math
@@ -163,7 +163,7 @@ static inline double gray_math_ceil(double n) { return ceil(n); }
  *   println(math.round(3.4))
  *@end
  */
-static inline double gray_math_round(double n) { return round(n); }
+static inline double gray_math_round(double value) { return round(value); }
 
 /*@man trunc
  *@module math
@@ -176,7 +176,7 @@ static inline double gray_math_round(double n) { return round(n); }
  *   println(math.trunc(-3.9))
  *@end
  */
-static inline double gray_math_trunc(double n) { return trunc(n); }
+static inline double gray_math_trunc(double value) { return trunc(value); }
 
 /*@man pow
  *@module math
@@ -188,7 +188,7 @@ static inline double gray_math_trunc(double n) { return trunc(n); }
  *   println(math.pow(2.0, 10.0))
  *@end
  */
-static inline double gray_math_pow(double b, double e) { return pow(b, e); }
+static inline double gray_math_pow(double base, double exponent) { return pow(base, exponent); }
 
 /*@man sqrt
  *@module math
@@ -201,9 +201,9 @@ static inline double gray_math_pow(double b, double e) { return pow(b, e); }
  *   println(math.sqrt(2.0))
  *@end
  */
-static inline double gray_math_sqrt(double n) {
-    if (n < 0) gray_panic_code("P0064", "math.sqrt() requires a non-negative number, got %g", n);
-    return sqrt(n);
+static inline double gray_math_sqrt(double value) {
+    if (value < 0) gray_panic_code("P0064", "math.sqrt() requires a non-negative number, got %g", value);
+    return sqrt(value);
 }
 
 /*@man cbrt
@@ -216,7 +216,7 @@ static inline double gray_math_sqrt(double n) {
  *   println(math.cbrt(27.0))
  *@end
  */
-static inline double gray_math_cbrt(double n) { return cbrt(n); }
+static inline double gray_math_cbrt(double value) { return cbrt(value); }
 
 /*@man hypot
  *@module math
@@ -228,7 +228,7 @@ static inline double gray_math_cbrt(double n) { return cbrt(n); }
  *   println(math.hypot(3.0, 4.0))
  *@end
  */
-static inline double gray_math_hypot(double x, double y) { return hypot(x, y); }
+static inline double gray_math_hypot(double x_length, double y_length) { return hypot(x_length, y_length); }
 
 /*@man exp
  *@module math
@@ -240,7 +240,7 @@ static inline double gray_math_hypot(double x, double y) { return hypot(x, y); }
  *   println(math.exp(1.0))
  *@end
  */
-static inline double gray_math_exp(double n) { return exp(n); }
+static inline double gray_math_exp(double value) { return exp(value); }
 
 /*@man exp2
  *@module math
@@ -252,7 +252,7 @@ static inline double gray_math_exp(double n) { return exp(n); }
  *   println(math.exp2(8.0))
  *@end
  */
-static inline double gray_math_exp2(double n) { return exp2(n); }
+static inline double gray_math_exp2(double value) { return exp2(value); }
 
 /*@man log
  *@module math
@@ -264,9 +264,9 @@ static inline double gray_math_exp2(double n) { return exp2(n); }
  *   println(math.log(math.E))
  *@end
  */
-static inline double gray_math_log(double n) {
-    if (n <= 0) gray_panic_code("P0065", "math.log() requires a positive number, got %g", n);
-    return log(n);
+static inline double gray_math_log(double value) {
+    if (value <= 0) gray_panic_code("P0065", "math.log() requires a positive number, got %g", value);
+    return log(value);
 }
 
 /*@man log2
@@ -279,9 +279,9 @@ static inline double gray_math_log(double n) {
  *   println(math.log2(8.0))
  *@end
  */
-static inline double gray_math_log2(double n) {
-    if (n <= 0) gray_panic_code("P0066", "math.log2() requires a positive number, got %g", n);
-    return log2(n);
+static inline double gray_math_log2(double value) {
+    if (value <= 0) gray_panic_code("P0066", "math.log2() requires a positive number, got %g", value);
+    return log2(value);
 }
 
 /*@man log10
@@ -294,9 +294,9 @@ static inline double gray_math_log2(double n) {
  *   println(math.log10(100.0))
  *@end
  */
-static inline double gray_math_log10(double n) {
-    if (n <= 0) gray_panic_code("P0067", "math.log10() requires a positive number, got %g", n);
-    return log10(n);
+static inline double gray_math_log10(double value) {
+    if (value <= 0) gray_panic_code("P0067", "math.log10() requires a positive number, got %g", value);
+    return log10(value);
 }
 
 /*@man log_base
@@ -309,7 +309,7 @@ static inline double gray_math_log10(double n) {
  *   println(math.log_base(8.0, 2.0))
  *@end
  */
-static inline double gray_math_log_base(double v, double b) { return log(v) / log(b); }
+static inline double gray_math_log_base(double value, double base) { return log(value) / log(base); }
 
 /*@man sin
  *@module math
@@ -321,7 +321,7 @@ static inline double gray_math_log_base(double v, double b) { return log(v) / lo
  *   println(math.sin(math.PI / 2.0))
  *@end
  */
-static inline double gray_math_sin(double r) { return sin(r); }
+static inline double gray_math_sin(double radians) { return sin(radians); }
 
 /*@man cos
  *@module math
@@ -333,7 +333,7 @@ static inline double gray_math_sin(double r) { return sin(r); }
  *   println(math.cos(0.0))
  *@end
  */
-static inline double gray_math_cos(double r) { return cos(r); }
+static inline double gray_math_cos(double radians) { return cos(radians); }
 
 /*@man tan
  *@module math
@@ -345,7 +345,7 @@ static inline double gray_math_cos(double r) { return cos(r); }
  *   println(math.tan(math.PI / 4.0))
  *@end
  */
-static inline double gray_math_tan(double r) { return tan(r); }
+static inline double gray_math_tan(double radians) { return tan(radians); }
 
 /*@man asin
  *@module math
@@ -357,9 +357,9 @@ static inline double gray_math_tan(double r) { return tan(r); }
  *   println(math.asin(1.0))
  *@end
  */
-static inline double gray_math_asin(double n) {
-    if (n < -1.0 || n > 1.0) gray_panic_code("P0068", "math.asin() requires value in [-1, 1], got %g", n);
-    return asin(n);
+static inline double gray_math_asin(double value) {
+    if (value < -1.0 || value > 1.0) gray_panic_code("P0068", "math.asin() requires value in [-1, 1], got %g", value);
+    return asin(value);
 }
 
 /*@man acos
@@ -372,9 +372,9 @@ static inline double gray_math_asin(double n) {
  *   println(math.acos(1.0))
  *@end
  */
-static inline double gray_math_acos(double n) {
-    if (n < -1.0 || n > 1.0) gray_panic_code("P0069", "math.acos() requires value in [-1, 1], got %g", n);
-    return acos(n);
+static inline double gray_math_acos(double value) {
+    if (value < -1.0 || value > 1.0) gray_panic_code("P0069", "math.acos() requires value in [-1, 1], got %g", value);
+    return acos(value);
 }
 
 /*@man atan
@@ -387,7 +387,7 @@ static inline double gray_math_acos(double n) {
  *   println(math.atan(1.0))
  *@end
  */
-static inline double gray_math_atan(double n) { return atan(n); }
+static inline double gray_math_atan(double value) { return atan(value); }
 
 /*@man atan2
  *@module math
@@ -399,7 +399,7 @@ static inline double gray_math_atan(double n) { return atan(n); }
  *   println(math.atan2(1.0, 1.0))
  *@end
  */
-static inline double gray_math_atan2(double y, double x) { return atan2(y, x); }
+static inline double gray_math_atan2(double y_coordinate, double x_coordinate) { return atan2(y_coordinate, x_coordinate); }
 
 /*@man sinh
  *@module math
@@ -411,7 +411,7 @@ static inline double gray_math_atan2(double y, double x) { return atan2(y, x); }
  *   println(math.sinh(1.0))
  *@end
  */
-static inline double gray_math_sinh(double n) { return sinh(n); }
+static inline double gray_math_sinh(double value) { return sinh(value); }
 
 /*@man cosh
  *@module math
@@ -423,7 +423,7 @@ static inline double gray_math_sinh(double n) { return sinh(n); }
  *   println(math.cosh(0.0))
  *@end
  */
-static inline double gray_math_cosh(double n) { return cosh(n); }
+static inline double gray_math_cosh(double value) { return cosh(value); }
 
 /*@man tanh
  *@module math
@@ -435,7 +435,7 @@ static inline double gray_math_cosh(double n) { return cosh(n); }
  *   println(math.tanh(1.0))
  *@end
  */
-static inline double gray_math_tanh(double n) { return tanh(n); }
+static inline double gray_math_tanh(double value) { return tanh(value); }
 
 /*@man deg_to_rad
  *@module math
@@ -447,7 +447,7 @@ static inline double gray_math_tanh(double n) { return tanh(n); }
  *   println(math.deg_to_rad(180.0))
  *@end
  */
-static inline double gray_math_deg_to_rad(double d) { return d * 3.14159265358979323846 / 180.0; }
+static inline double gray_math_deg_to_rad(double degrees) { return degrees * 3.14159265358979323846 / 180.0; }
 
 /*@man rad_to_deg
  *@module math
@@ -459,7 +459,7 @@ static inline double gray_math_deg_to_rad(double d) { return d * 3.1415926535897
  *   println(math.rad_to_deg(math.PI))
  *@end
  */
-static inline double gray_math_rad_to_deg(double r) { return r * 180.0 / 3.14159265358979323846; }
+static inline double gray_math_rad_to_deg(double radians) { return radians * 180.0 / 3.14159265358979323846; }
 
 /*@man is_even
  *@module math
@@ -471,7 +471,7 @@ static inline double gray_math_rad_to_deg(double r) { return r * 180.0 / 3.14159
  *   println(math.is_even(4))
  *@end
  */
-static inline bool gray_math_is_even(int64_t n) { return n % 2 == 0; }
+static inline bool gray_math_is_even(int64_t value) { return value % 2 == 0; }
 
 /*@man is_odd
  *@module math
@@ -483,7 +483,7 @@ static inline bool gray_math_is_even(int64_t n) { return n % 2 == 0; }
  *   println(math.is_odd(3))
  *@end
  */
-static inline bool gray_math_is_odd(int64_t n) { return n % 2 != 0; }
+static inline bool gray_math_is_odd(int64_t value) { return value % 2 != 0; }
 
 /*@man is_infinite
  *@module math
@@ -495,7 +495,7 @@ static inline bool gray_math_is_odd(int64_t n) { return n % 2 != 0; }
  *   println(math.is_infinite(math.INF))
  *@end
  */
-static inline bool gray_math_is_infinite(double n) { return isinf(n); }
+static inline bool gray_math_is_infinite(double value) { return isinf(value); }
 
 /*@man is_nan
  *@module math
@@ -508,7 +508,7 @@ static inline bool gray_math_is_infinite(double n) { return isinf(n); }
  *   println(math.is_nan(nan_val))
  *@end
  */
-static inline bool gray_math_is_nan(double n) { return isnan(n); }
+static inline bool gray_math_is_nan(double value) { return isnan(value); }
 
 /*@man is_finite
  *@module math
@@ -520,7 +520,7 @@ static inline bool gray_math_is_nan(double n) { return isnan(n); }
  *   println(math.is_finite(3.14))
  *@end
  */
-static inline bool gray_math_is_finite(double n) { return !isinf(n) && !isnan(n); }
+static inline bool gray_math_is_finite(double value) { return !isinf(value) && !isnan(value); }
 
 /*@man factorial
  *@module math
@@ -532,7 +532,7 @@ static inline bool gray_math_is_finite(double n) { return !isinf(n) && !isnan(n)
  *   println(math.factorial(5))
  *@end
  */
-int64_t gray_math_factorial(int64_t n);
+int64_t gray_math_factorial(int64_t number);
 
 /*@man gcd
  *@module math
@@ -550,8 +550,8 @@ int64_t gray_math_gcd(int64_t left, int64_t right);
  * targets these); @random's own generator backs random.rand_int/rand_float
  * instead. Declared here only so the linked, existing symbols are callable
  * for testing. */
-int64_t gray_math_random_int(int64_t min, int64_t max);
-double gray_math_random_float(double min, double max);
+int64_t gray_math_random_int(int64_t minimum, int64_t maximum);
+double gray_math_random_float(double minimum, double maximum);
 
 /*@man lcm
  *@module math
@@ -576,7 +576,7 @@ int64_t gray_math_lcm(int64_t left, int64_t right);
  *   println(math.is_prime(9))
  *@end
  */
-bool gray_math_is_prime(int64_t n);
+bool gray_math_is_prime(int64_t number);
 
 /*@man lerp
  *@module math
@@ -588,7 +588,7 @@ bool gray_math_is_prime(int64_t n);
  *   println(math.lerp(0.0, 10.0, 0.5))
  *@end
  */
-static inline double gray_math_lerp(double a, double b, double t) { return a + (b - a) * t; }
+static inline double gray_math_lerp(double start, double end, double fraction) { return start + (end - start) * fraction; }
 
 /*@man remap
  *@module math
@@ -600,12 +600,12 @@ static inline double gray_math_lerp(double a, double b, double t) { return a + (
  *   println(math.remap(5.0, 0.0, 10.0, 0.0, 100.0))
  *@end
  */
-static inline double gray_math_remap(double v, double in_lo, double in_hi,
+static inline double gray_math_remap(double value, double in_lo, double in_hi,
                                      double out_lo, double out_hi) {
     if (in_lo == in_hi) {
         gray_panic_code("P0122", "math.remap: input range is empty (in_lo == in_hi)");
     }
-    return out_lo + (v - in_lo) * (out_hi - out_lo) / (in_hi - in_lo);
+    return out_lo + (value - in_lo) * (out_hi - out_lo) / (in_hi - in_lo);
 }
 
 /*@man approx_equal
@@ -618,8 +618,8 @@ static inline double gray_math_remap(double v, double in_lo, double in_hi,
  *   println(math.approx_equal(0.1 + 0.2, 0.3, 0.0001))
  *@end
  */
-static inline bool gray_math_approx_equal(double a, double b, double epsilon) {
-    return fabs(a - b) <= epsilon;
+static inline bool gray_math_approx_equal(double left, double right, double epsilon) {
+    return fabs(left - right) <= epsilon;
 }
 
 /*@man distance
@@ -632,8 +632,8 @@ static inline bool gray_math_approx_equal(double a, double b, double epsilon) {
  *   println(math.distance(0.0, 0.0, 3.0, 4.0))
  *@end
  */
-static inline double gray_math_distance(double x1, double y1, double x2, double y2) {
-    return hypot(x2 - x1, y2 - y1);
+static inline double gray_math_distance(double first_x, double first_y, double second_x, double second_y) {
+    return hypot(second_x - first_x, second_y - first_y);
 }
 
 /*@man mod
@@ -646,8 +646,8 @@ static inline double gray_math_distance(double x1, double y1, double x2, double 
  *   println(math.mod(7.5, 2.0))
  *@end
  */
-static inline double gray_math_mod(double x, double y) {
-    return fmod(x, y);
+static inline double gray_math_mod(double dividend, double divisor) {
+    return fmod(dividend, divisor);
 }
 
 /*@man copysign
@@ -660,8 +660,8 @@ static inline double gray_math_mod(double x, double y) {
  *   println(math.copysign(3.0, -1.0))
  *@end
  */
-static inline double gray_math_copysign(double x, double y) {
-    return copysign(x, y);
+static inline double gray_math_copysign(double magnitude, double sign_source) {
+    return copysign(magnitude, sign_source);
 }
 
 /*@man fma
@@ -674,11 +674,11 @@ static inline double gray_math_copysign(double x, double y) {
  *   println(math.fma(2.0, 3.0, 1.0))
  *@end
  */
-static inline double gray_math_fma(double x, double y, double z) {
-    return fma(x, y, z);
+static inline double gray_math_fma(double multiplicand, double multiplier, double addend) {
+    return fma(multiplicand, multiplier, addend);
 }
 
-/* Integer and fractional halves of a float, in destructuring order. */
+/* Integer and fractional halves of a floating-point value, in destructuring order. */
 typedef struct { double v0; double v1; } GrayMathModf;
 
 /*@man modf
@@ -705,7 +705,7 @@ GrayMathModf gray_math_modf(double value);
  *   println(math.is_power_of_two(64))
  *@end
  */
-bool gray_math_is_power_of_two(int64_t n);
+bool gray_math_is_power_of_two(int64_t number);
 
 /*@man next_power_of_two
  *@module math
@@ -717,7 +717,7 @@ bool gray_math_is_power_of_two(int64_t n);
  *   println(math.next_power_of_two(100))
  *@end
  */
-int64_t gray_math_next_power_of_two(int64_t n);
+int64_t gray_math_next_power_of_two(int64_t number);
 
 /*@man PI
  *@module math

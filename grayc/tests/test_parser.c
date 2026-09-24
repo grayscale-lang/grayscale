@@ -18,7 +18,7 @@ static DiagnosticList *diagnostics;
 
 static AstNode *parse_test_input(const char *input) {
     diagnostics = diagnostic_create();
-    diagnostics->use_color = false;
+    diagnostics->should_use_color = false;
     Lexer *lexer = lexer_create(arena, input, "test.gray");
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     return parser_parse_program(parser);
@@ -26,207 +26,207 @@ static AstNode *parse_test_input(const char *input) {
 
 static AstNode *first_statement(AstNode *program) {
     if (!program || program->kind != NODE_PROGRAM) return NULL;
-    if (program->data.program.stmt_count == 0) return NULL;
-    return program->data.program.stmts[0];
+    if (program->data.program.statement_count == 0) return NULL;
+    return program->data.program.statements[0];
 }
 
 static void test_parse_variable_declaration(void) {
     AstNode *program = parse_test_input("mut x i64 = 42");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT_STR_EQ(statement->data.var_decl.name, "x");
-    ASSERT_STR_EQ(statement->data.var_decl.type_name, "i64");
-    ASSERT(statement->data.var_decl.mutable);
-    ASSERT_NOT_NULL(statement->data.var_decl.value);
-    ASSERT_EQ(statement->data.var_decl.value->kind, NODE_INT_VALUE);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT_STR_EQ(statement->data.variable_declaration.name, "x");
+    ASSERT_STR_EQ(statement->data.variable_declaration.type_name, "i64");
+    ASSERT(statement->data.variable_declaration.is_mutable);
+    ASSERT_NOT_NULL(statement->data.variable_declaration.value);
+    ASSERT_EQ(statement->data.variable_declaration.value->kind, NODE_INTEGER_LITERAL);
 }
 
 static void test_parse_constant_declaration(void) {
     AstNode *program = parse_test_input("const PI f64 = 3.14");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(!statement->data.var_decl.mutable);
-    ASSERT_STR_EQ(statement->data.var_decl.name, "PI");
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(!statement->data.variable_declaration.is_mutable);
+    ASSERT_STR_EQ(statement->data.variable_declaration.name, "PI");
 }
 
 static void test_parse_function_declaration(void) {
     AstNode *program = parse_test_input("do add(a i64, b i64) -> i64 { return a + b }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
-    ASSERT_STR_EQ(statement->data.func_decl.name, "add");
-    ASSERT_EQ(statement->data.func_decl.param_count, 2);
-    ASSERT_EQ(statement->data.func_decl.return_type_count, 1);
-    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "i64");
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_STR_EQ(statement->data.function_declaration.name, "add");
+    ASSERT_EQ(statement->data.function_declaration.parameter_count, 2);
+    ASSERT_EQ(statement->data.function_declaration.return_type_count, 1);
+    ASSERT_STR_EQ(statement->data.function_declaration.return_types[0], "i64");
 }
 
 static void test_parse_function_no_return(void) {
     AstNode *program = parse_test_input("do greet() { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
-    ASSERT_STR_EQ(statement->data.func_decl.name, "greet");
-    ASSERT_EQ(statement->data.func_decl.param_count, 0);
-    ASSERT_EQ(statement->data.func_decl.return_type_count, 0);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_STR_EQ(statement->data.function_declaration.name, "greet");
+    ASSERT_EQ(statement->data.function_declaration.parameter_count, 0);
+    ASSERT_EQ(statement->data.function_declaration.return_type_count, 0);
 }
 
 static void test_parse_import_single(void) {
     AstNode *program = parse_test_input("import @math");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_IMPORT_STMT);
-    ASSERT_EQ(statement->data.import_stmt.count, 1);
-    ASSERT(statement->data.import_stmt.items[0].is_stdlib);
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].module, "math");
+    ASSERT_EQ(statement->kind, NODE_IMPORT_STATEMENT);
+    ASSERT_EQ(statement->data.import_statement.count, 1);
+    ASSERT(statement->data.import_statement.items[0].is_stdlib);
+    ASSERT_STR_EQ(statement->data.import_statement.items[0].module, "math");
 }
 
 static void test_parse_import_multi(void) {
     AstNode *program = parse_test_input("import @math, @strings");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_IMPORT_STMT);
-    ASSERT_EQ(statement->data.import_stmt.count, 2);
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].module, "math");
-    ASSERT_STR_EQ(statement->data.import_stmt.items[1].module, "strings");
+    ASSERT_EQ(statement->kind, NODE_IMPORT_STATEMENT);
+    ASSERT_EQ(statement->data.import_statement.count, 2);
+    ASSERT_STR_EQ(statement->data.import_statement.items[0].module, "math");
+    ASSERT_STR_EQ(statement->data.import_statement.items[1].module, "strings");
 }
 
 static void test_parse_if_or_otherwise(void) {
     AstNode *program = parse_test_input("if x > 0 { } or x == 0 { } otherwise { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_IF_STMT);
-    ASSERT_NOT_NULL(statement->data.if_stmt.consequence);
-    ASSERT_NOT_NULL(statement->data.if_stmt.alternative);
-    ASSERT_EQ(statement->data.if_stmt.alternative->kind, NODE_IF_STMT);
+    ASSERT_EQ(statement->kind, NODE_IF_STATEMENT);
+    ASSERT_NOT_NULL(statement->data.if_statement.consequence);
+    ASSERT_NOT_NULL(statement->data.if_statement.alternative);
+    ASSERT_EQ(statement->data.if_statement.alternative->kind, NODE_IF_STATEMENT);
 }
 
 static void test_parse_for_range(void) {
     AstNode *program = parse_test_input("for i in range(0, 10) { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FOR_STMT);
-    ASSERT_STR_EQ(statement->data.for_stmt.var_name, "i");
-    ASSERT_NOT_NULL(statement->data.for_stmt.iterable);
-    ASSERT_EQ(statement->data.for_stmt.iterable->kind, NODE_RANGE_EXPR);
+    ASSERT_EQ(statement->kind, NODE_FOR_STATEMENT);
+    ASSERT_STR_EQ(statement->data.for_statement.variable_name, "i");
+    ASSERT_NOT_NULL(statement->data.for_statement.iterable);
+    ASSERT_EQ(statement->data.for_statement.iterable->kind, NODE_RANGE_EXPRESSION);
 }
 
 static void test_parse_while(void) {
     AstNode *program = parse_test_input("as_long_as x < 10 { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_WHILE_STMT);
+    ASSERT_EQ(statement->kind, NODE_WHILE_STATEMENT);
 }
 
 static void test_parse_loop(void) {
     AstNode *program = parse_test_input("loop { break }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_LOOP_STMT);
+    ASSERT_EQ(statement->kind, NODE_LOOP_STATEMENT);
 }
 
 static void test_parse_struct_declaration(void) {
     AstNode *program = parse_test_input("const Person struct { name string\n age i64 }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
-    ASSERT_STR_EQ(statement->data.struct_decl.name, "Person");
-    ASSERT_EQ(statement->data.struct_decl.field_count, 2);
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECLARATION);
+    ASSERT_STR_EQ(statement->data.struct_declaration.name, "Person");
+    ASSERT_EQ(statement->data.struct_declaration.field_count, 2);
 }
 
 static void test_parse_enum_declaration(void) {
     AstNode *program = parse_test_input("const Color enum { RED\n GREEN\n BLUE }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT_STR_EQ(statement->data.enum_decl.name, "Color");
-    ASSERT_EQ(statement->data.enum_decl.value_count, 3);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT_STR_EQ(statement->data.enum_declaration.name, "Color");
+    ASSERT_EQ(statement->data.enum_declaration.value_count, 3);
 }
 
 static void test_parse_struct_literal(void) {
     AstNode *program = parse_test_input("mut p = Person{name: \"Alice\", age: 30}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT_NOT_NULL(statement->data.var_decl.value);
-    ASSERT_EQ(statement->data.var_decl.value->kind, NODE_STRUCT_VALUE);
-    ASSERT_EQ(statement->data.var_decl.value->data.struct_value.count, 2);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT_NOT_NULL(statement->data.variable_declaration.value);
+    ASSERT_EQ(statement->data.variable_declaration.value->kind, NODE_STRUCT_VALUE);
+    ASSERT_EQ(statement->data.variable_declaration.value->data.struct_value.count, 2);
 }
 
 static void test_parse_array_literal(void) {
     AstNode *program = parse_test_input("mut nums [i64] = {1, 2, 3}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT_STR_EQ(statement->data.var_decl.type_name, "[i64]");
-    ASSERT_NOT_NULL(statement->data.var_decl.value);
-    ASSERT_EQ(statement->data.var_decl.value->kind, NODE_ARRAY_VALUE);
-    ASSERT_EQ(statement->data.var_decl.value->data.array_value.count, 3);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT_STR_EQ(statement->data.variable_declaration.type_name, "[i64]");
+    ASSERT_NOT_NULL(statement->data.variable_declaration.value);
+    ASSERT_EQ(statement->data.variable_declaration.value->kind, NODE_ARRAY_VALUE);
+    ASSERT_EQ(statement->data.variable_declaration.value->data.array_value.count, 3);
 }
 
 static void test_parse_ensure(void) {
     AstNode *program = parse_test_input("ensure cleanup()");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENSURE_STMT);
+    ASSERT_EQ(statement->kind, NODE_ENSURE_STATEMENT);
 }
 
 static void test_parse_when(void) {
     AstNode *program = parse_test_input("when x { is 1 { } is 2 { } default { } }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_WHEN_STMT);
-    ASSERT_EQ(statement->data.when_stmt.case_count, 2);
-    ASSERT_NOT_NULL(statement->data.when_stmt.default_body);
+    ASSERT_EQ(statement->kind, NODE_WHEN_STATEMENT);
+    ASSERT_EQ(statement->data.when_statement.case_count, 2);
+    ASSERT_NOT_NULL(statement->data.when_statement.default_body);
 }
 
 static void test_parse_default_params(void) {
     AstNode *program = parse_test_input("do greet(name string = \"World\") { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(statement->data.func_decl.param_count, 1);
-    ASSERT_NOT_NULL(statement->data.func_decl.params[0].default_value);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(statement->data.function_declaration.parameter_count, 1);
+    ASSERT_NOT_NULL(statement->data.function_declaration.parameters[0].default_value);
 }
 
 static void test_parse_hex_int(void) {
     AstNode *program = parse_test_input("mut x i64 = 0xFF");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->data.var_decl.value->kind, NODE_INT_VALUE);
-    ASSERT_EQ(statement->data.var_decl.value->data.int_value.value, 255);
+    ASSERT_EQ(statement->data.variable_declaration.value->kind, NODE_INTEGER_LITERAL);
+    ASSERT_EQ(statement->data.variable_declaration.value->data.integer_literal.value, 255);
 }
 
 static void test_parse_octal_int(void) {
     AstNode *program = parse_test_input("mut x i64 = 0o10");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->data.var_decl.value->data.int_value.value, 8);
+    ASSERT_EQ(statement->data.variable_declaration.value->data.integer_literal.value, 8);
 }
 
 static void test_parse_binary_int(void) {
     AstNode *program = parse_test_input("mut x i64 = 0b1010");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->data.var_decl.value->data.int_value.value, 10);
+    ASSERT_EQ(statement->data.variable_declaration.value->data.integer_literal.value, 10);
 }
 
 static void test_parse_mut_keyword(void) {
     AstNode *program = parse_test_input("mut x i64 = 42");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(statement->data.var_decl.mutable);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(statement->data.variable_declaration.is_mutable);
 }
 
 static void test_parse_array_return_type(void) {
     AstNode *program = parse_test_input("do get() -> [i64] { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(statement->data.func_decl.return_type_count, 1);
-    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "[i64]");
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(statement->data.function_declaration.return_type_count, 1);
+    ASSERT_STR_EQ(statement->data.function_declaration.return_types[0], "[i64]");
 }
 
 static void test_parse_error_reports(void) {
@@ -239,7 +239,7 @@ static void test_parse_function_reference(void) {
     AstNode *program = parse_test_input("do main() { mut f = ()double }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
 }
 
 static void test_parse_struct_function(void) {
@@ -250,9 +250,9 @@ static void test_parse_struct_function(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
-    ASSERT_EQ(statement->data.struct_decl.field_count, 1);
-    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECLARATION);
+    ASSERT_EQ(statement->data.struct_declaration.field_count, 1);
+    ASSERT_EQ(statement->data.struct_declaration.function_count, 1);
 }
 
 static void test_parse_or_return(void) {
@@ -263,7 +263,7 @@ static void test_parse_or_return(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
 }
 
 static void test_parse_flags_enum(void) {
@@ -272,8 +272,8 @@ static void test_parse_flags_enum(void) {
         "const Perms enum { READ\n WRITE\n EXEC }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT(statement->data.enum_decl.is_flags);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT(statement->data.enum_declaration.is_flags);
 }
 
 static void test_parse_string_enum(void) {
@@ -284,32 +284,32 @@ static void test_parse_string_enum(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT_EQ(statement->data.enum_declaration.value_count, 2);
 }
 
 static void test_parse_map_type(void) {
     AstNode *program = parse_test_input("mut m map[string:i64] = {:}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(strstr(statement->data.var_decl.type_name, "map") != NULL);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(strstr(statement->data.variable_declaration.type_name, "map") != NULL);
 }
 
 static void test_parse_fixed_array(void) {
     AstNode *program = parse_test_input("const arr [i64, 3] = {1, 2, 3}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(strstr(statement->data.var_decl.type_name, "i64,3") != NULL);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(strstr(statement->data.variable_declaration.type_name, "i64,3") != NULL);
 }
 
 static void test_parse_nested_array(void) {
     AstNode *program = parse_test_input("mut m [[i64]] = {{1}, {2}}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(strstr(statement->data.var_decl.type_name, "[[i64]]") != NULL);
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(strstr(statement->data.variable_declaration.type_name, "[[i64]]") != NULL);
 }
 
 static void test_parse_private_struct_function(void) {
@@ -320,8 +320,8 @@ static void test_parse_private_struct_function(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
-    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECLARATION);
+    ASSERT_EQ(statement->data.struct_declaration.function_count, 1);
 }
 
 static void test_parse_for_each_index(void) {
@@ -331,24 +331,24 @@ static void test_parse_for_each_index(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
 }
 
 /* Helper: get the first statement inside main()'s body */
 static AstNode *body_statement(AstNode *program, int index) {
     AstNode *function = first_statement(program);
-    if (!function || function->kind != NODE_FUNC_DECL) return NULL;
-    AstNode *body = function->data.func_decl.body;
-    if (!body || body->kind != NODE_BLOCK_STMT) return NULL;
+    if (!function || function->kind != NODE_FUNCTION_DECLARATION) return NULL;
+    AstNode *body = function->data.function_declaration.body;
+    if (!body || body->kind != NODE_BLOCK_STATEMENT) return NULL;
     if (index >= body->data.block.count) return NULL;
-    return body->data.block.stmts[index];
+    return body->data.block.statements[index];
 }
 
 /* Helper: get the value expression from first var decl in main */
 static AstNode *variable_value(AstNode *program) {
     AstNode *statement = body_statement(program, 0);
-    if (!statement || statement->kind != NODE_VAR_DECL) return NULL;
-    return statement->data.var_decl.value;
+    if (!statement || statement->kind != NODE_VARIABLE_DECLARATION) return NULL;
+    return statement->data.variable_declaration.value;
 }
 
 /* --- Expression AST Tests --- */
@@ -357,29 +357,29 @@ static void test_parse_infix_expression(void) {
     AstNode *program = parse_test_input("do main() { mut x = 1 + 2 * 3 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_INFIX_EXPR);
+    ASSERT_EQ(value->kind, NODE_INFIX_EXPRESSION);
     /* 1 + (2 * 3) — left is 1, right is 2*3 */
-    ASSERT_EQ(value->data.infix.op, TOK_PLUS);
-    ASSERT_EQ(value->data.infix.left->kind, NODE_INT_VALUE);
-    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.right->data.infix.op, TOK_ASTERISK);
+    ASSERT_EQ(value->data.infix.operator, TOKEN_PLUS);
+    ASSERT_EQ(value->data.infix.left->kind, NODE_INTEGER_LITERAL);
+    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.right->data.infix.operator, TOKEN_ASTERISK);
 }
 
 static void test_parse_prefix_expression(void) {
     AstNode *program = parse_test_input("do main() { mut x = -42 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_PREFIX_EXPR);
-    ASSERT_EQ(value->data.prefix.op, TOK_MINUS);
-    ASSERT_EQ(value->data.prefix.right->kind, NODE_INT_VALUE);
+    ASSERT_EQ(value->kind, NODE_PREFIX_EXPRESSION);
+    ASSERT_EQ(value->data.prefix.operator, TOKEN_MINUS);
+    ASSERT_EQ(value->data.prefix.right->kind, NODE_INTEGER_LITERAL);
 }
 
 static void test_parse_not_expression(void) {
     AstNode *program = parse_test_input("do main() { mut x = !true }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_PREFIX_EXPR);
-    ASSERT_EQ(value->data.prefix.op, TOK_BANG);
+    ASSERT_EQ(value->kind, NODE_PREFIX_EXPRESSION);
+    ASSERT_EQ(value->data.prefix.operator, TOKEN_BANG);
     ASSERT_EQ(value->data.prefix.right->kind, NODE_BOOL_VALUE);
 }
 
@@ -387,17 +387,17 @@ static void test_parse_postfix_expression(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 0\n x++ }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_EXPR_STMT);
-    ASSERT_EQ(statement->data.expr_stmt.expr->kind, NODE_POSTFIX_EXPR);
-    ASSERT_EQ(statement->data.expr_stmt.expr->data.postfix.op, TOK_INCREMENT);
+    ASSERT_EQ(statement->kind, NODE_EXPRESSION_STATEMENT);
+    ASSERT_EQ(statement->data.expression_statement.expression->kind, NODE_POSTFIX_EXPRESSION);
+    ASSERT_EQ(statement->data.expression_statement.expression->data.postfix.operator, TOKEN_INCREMENT);
 }
 
 static void test_parse_index_expression(void) {
     AstNode *program = parse_test_input("do main() { mut a [i64] = {1,2,3}\n mut x = a[1] }");
     AstNode *value = body_statement(program, 1);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_VAR_DECL);
-    ASSERT_EQ(value->data.var_decl.value->kind, NODE_INDEX_EXPR);
+    ASSERT_EQ(value->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT_EQ(value->data.variable_declaration.value->kind, NODE_INDEX_EXPRESSION);
 }
 
 static void test_parse_member_expression(void) {
@@ -405,26 +405,26 @@ static void test_parse_member_expression(void) {
         "const P struct { x i64 }\n"
         "do main() { mut p P = P{x: 1}\n mut v = p.x }");
     /* main is stmt[1] (after struct) */
-    AstNode *function = program->data.program.stmts[1];
+    AstNode *function = program->data.program.statements[1];
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[1];
-    ASSERT_EQ(var_declaration->data.var_decl.value->kind, NODE_MEMBER_EXPR);
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    AstNode *var_declaration = function->data.function_declaration.body->data.block.statements[1];
+    ASSERT_EQ(var_declaration->data.variable_declaration.value->kind, NODE_MEMBER_EXPRESSION);
 }
 
 static void test_parse_call_expression(void) {
     AstNode *program = parse_test_input("do foo() -> i64 { return 1 }\n do main() { mut x = foo() }");
-    AstNode *function = program->data.program.stmts[1];
-    AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[0];
+    AstNode *function = program->data.program.statements[1];
+    AstNode *var_declaration = function->data.function_declaration.body->data.block.statements[0];
     ASSERT_NOT_NULL(var_declaration);
-    ASSERT_EQ(var_declaration->data.var_decl.value->kind, NODE_CALL_EXPR);
+    ASSERT_EQ(var_declaration->data.variable_declaration.value->kind, NODE_CALL_EXPRESSION);
 }
 
 static void test_parse_cast_expression(void) {
     AstNode *program = parse_test_input("do main() { mut x = cast(42, u8) }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_CAST_EXPR);
+    ASSERT_EQ(value->kind, NODE_CAST_EXPRESSION);
     ASSERT_STR_EQ(value->data.cast.target_type, "u8");
 }
 
@@ -432,28 +432,28 @@ static void test_parse_new_expression(void) {
     AstNode *program = parse_test_input(
         "const Foo struct { x i64 }\n"
         "do main() { mut p = new(Foo) }");
-    AstNode *function = program->data.program.stmts[1];
-    AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[0];
+    AstNode *function = program->data.program.statements[1];
+    AstNode *var_declaration = function->data.function_declaration.body->data.block.statements[0];
     ASSERT_NOT_NULL(var_declaration);
-    ASSERT_EQ(var_declaration->data.var_decl.value->kind, NODE_NEW_EXPR);
-    ASSERT_STR_EQ(var_declaration->data.var_decl.value->data.new_expr.type_name, "Foo");
+    ASSERT_EQ(var_declaration->data.variable_declaration.value->kind, NODE_NEW_EXPRESSION);
+    ASSERT_STR_EQ(var_declaration->data.variable_declaration.value->data.new_expression.type_name, "Foo");
 }
 
 static void test_parse_comparison_operators(void) {
     AstNode *program = parse_test_input("do main() { mut x = 1 < 2 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.op, TOK_LT);
+    ASSERT_EQ(value->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.operator, TOKEN_LESS_THAN);
 }
 
 static void test_parse_logical_and_or(void) {
     AstNode *program = parse_test_input("do main() { mut x = true && false || true }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_INFIX_EXPR);
+    ASSERT_EQ(value->kind, NODE_INFIX_EXPRESSION);
     /* || has lower precedence than && */
-    ASSERT_EQ(value->data.infix.op, TOK_OR);
+    ASSERT_EQ(value->data.infix.operator, TOKEN_OR);
 }
 
 /* --- Literal AST Tests --- */
@@ -469,7 +469,7 @@ static void test_parse_float_literal(void) {
     AstNode *program = parse_test_input("do main() { mut x = 3.14 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_FLOAT_VALUE);
+    ASSERT_EQ(value->kind, NODE_FLOATING_POINT_LITERAL);
 }
 
 static void test_parse_string_literal(void) {
@@ -499,30 +499,30 @@ static void test_parse_assign_statement(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 1\n x = 2 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
+    ASSERT_EQ(statement->kind, NODE_ASSIGN_STATEMENT);
 }
 
 static void test_parse_compound_assign(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 1\n x += 5 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
+    ASSERT_EQ(statement->kind, NODE_ASSIGN_STATEMENT);
 }
 
 static void test_parse_break_continue(void) {
     AstNode *program = parse_test_input("do main() { loop { break } }");
     AstNode *loop = body_statement(program, 0);
     ASSERT_NOT_NULL(loop);
-    ASSERT_EQ(loop->kind, NODE_LOOP_STMT);
-    AstNode *break_statement = loop->data.loop_stmt.body->data.block.stmts[0];
-    ASSERT_EQ(break_statement->kind, NODE_BREAK_STMT);
+    ASSERT_EQ(loop->kind, NODE_LOOP_STATEMENT);
+    AstNode *break_statement = loop->data.loop_statement.body->data.block.statements[0];
+    ASSERT_EQ(break_statement->kind, NODE_BREAK_STATEMENT);
 }
 
 static void test_parse_continue_statement(void) {
     AstNode *program = parse_test_input("do main() { loop { continue } }");
     AstNode *loop = body_statement(program, 0);
-    AstNode *continue_statement = loop->data.loop_stmt.body->data.block.stmts[0];
-    ASSERT_EQ(continue_statement->kind, NODE_CONTINUE_STMT);
+    AstNode *continue_statement = loop->data.loop_statement.body->data.block.statements[0];
+    ASSERT_EQ(continue_statement->kind, NODE_CONTINUE_STATEMENT);
 }
 
 static void test_parse_map_literal(void) {
@@ -536,23 +536,23 @@ static void test_parse_multi_return(void) {
     AstNode *program = parse_test_input("do pair() -> (i64, i64) { return 1, 2 }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(function->data.func_decl.return_type_count, 2);
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(function->data.function_declaration.return_type_count, 2);
 }
 
 static void test_parse_using_statement(void) {
     AstNode *program = parse_test_input("import @math\n using math");
     /* using should be stmt[1] */
-    ASSERT(program->data.program.stmt_count >= 2);
-    ASSERT_EQ(program->data.program.stmts[1]->kind, NODE_USING_STMT);
+    ASSERT(program->data.program.statement_count >= 2);
+    ASSERT_EQ(program->data.program.statements[1]->kind, NODE_USING_STATEMENT);
 }
 
 static void test_parse_blank_identifier(void) {
     AstNode *program = parse_test_input("do pair() -> (i64, i64) { return 1, 2 }\n do main() { mut _, b = pair() }");
-    AstNode *function = program->data.program.stmts[1];
+    AstNode *function = program->data.program.statements[1];
     /* Just check it parses without crashing */
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
 }
 
 /* --- P3: Remaining parser coverage gaps --- */
@@ -561,25 +561,25 @@ static void test_parse_range_with_step(void) {
     AstNode *program = parse_test_input("for i in range(0, 10, 2) { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FOR_STMT);
-    AstNode *range = statement->data.for_stmt.iterable;
-    ASSERT_EQ(range->kind, NODE_RANGE_EXPR);
-    ASSERT_NOT_NULL(range->data.range_expr.start);
-    ASSERT_NOT_NULL(range->data.range_expr.end);
-    ASSERT_NOT_NULL(range->data.range_expr.step);
-    ASSERT_EQ(range->data.range_expr.step->kind, NODE_INT_VALUE);
-    ASSERT_EQ(range->data.range_expr.step->data.int_value.value, 2);
+    ASSERT_EQ(statement->kind, NODE_FOR_STATEMENT);
+    AstNode *range = statement->data.for_statement.iterable;
+    ASSERT_EQ(range->kind, NODE_RANGE_EXPRESSION);
+    ASSERT_NOT_NULL(range->data.range_expression.start);
+    ASSERT_NOT_NULL(range->data.range_expression.end);
+    ASSERT_NOT_NULL(range->data.range_expression.step);
+    ASSERT_EQ(range->data.range_expression.step->kind, NODE_INTEGER_LITERAL);
+    ASSERT_EQ(range->data.range_expression.step->data.integer_literal.value, 2);
 }
 
 static void test_parse_pointer_deref(void) {
     AstNode *program = parse_test_input(
         "const Node struct { val i64 }\n"
         "do main() { mut p = new(Node)\n mut v = p^.val }");
-    AstNode *function = program->data.program.stmts[1];
-    AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[1];
+    AstNode *function = program->data.program.statements[1];
+    AstNode *var_declaration = function->data.function_declaration.body->data.block.statements[1];
     ASSERT_NOT_NULL(var_declaration);
     /* p^.val — should parse as member access on a deref */
-    ASSERT_EQ(var_declaration->data.var_decl.value->kind, NODE_MEMBER_EXPR);
+    ASSERT_EQ(var_declaration->data.variable_declaration.value->kind, NODE_MEMBER_EXPRESSION);
 }
 
 /* module keyword removed in v3.0 — test removed */
@@ -588,9 +588,9 @@ static void test_parse_local_import(void) {
     AstNode *program = parse_test_input("import \"./mylib\"");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_IMPORT_STMT);
-    ASSERT(!statement->data.import_stmt.items[0].is_stdlib);
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].path, "./mylib");
+    ASSERT_EQ(statement->kind, NODE_IMPORT_STATEMENT);
+    ASSERT(!statement->data.import_statement.items[0].is_stdlib);
+    ASSERT_STR_EQ(statement->data.import_statement.items[0].path, "./mylib");
 }
 
 
@@ -599,12 +599,12 @@ static void test_parse_precedence_add_mul(void) {
     AstNode *program = parse_test_input("do main() { mut x = 1 + 2 * 3 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.op, TOK_PLUS);
-    ASSERT_EQ(value->data.infix.left->kind, NODE_INT_VALUE);
-    ASSERT_EQ(value->data.infix.left->data.int_value.value, 1);
-    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.right->data.infix.op, TOK_ASTERISK);
+    ASSERT_EQ(value->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.operator, TOKEN_PLUS);
+    ASSERT_EQ(value->data.infix.left->kind, NODE_INTEGER_LITERAL);
+    ASSERT_EQ(value->data.infix.left->data.integer_literal.value, 1);
+    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.right->data.infix.operator, TOKEN_ASTERISK);
 }
 
 static void test_parse_precedence_comparison_logical(void) {
@@ -612,22 +612,22 @@ static void test_parse_precedence_comparison_logical(void) {
     AstNode *program = parse_test_input("do main() { mut x = 1 > 0 && 2 < 10 }");
     AstNode *value = variable_value(program);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.op, TOK_AND);
-    ASSERT_EQ(value->data.infix.left->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.left->data.infix.op, TOK_GT);
-    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.infix.right->data.infix.op, TOK_LT);
+    ASSERT_EQ(value->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.operator, TOKEN_AND);
+    ASSERT_EQ(value->data.infix.left->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.left->data.infix.operator, TOKEN_GREATER_THAN);
+    ASSERT_EQ(value->data.infix.right->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.infix.right->data.infix.operator, TOKEN_LESS_THAN);
 }
 
 static void test_parse_named_return(void) {
     AstNode *program = parse_test_input("do foo() -> (name string, age i64) { }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(function->data.func_decl.return_type_count, 2);
-    ASSERT_STR_EQ(function->data.func_decl.return_names[0], "name");
-    ASSERT_STR_EQ(function->data.func_decl.return_names[1], "age");
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(function->data.function_declaration.return_type_count, 2);
+    ASSERT_STR_EQ(function->data.function_declaration.return_names[0], "name");
+    ASSERT_STR_EQ(function->data.function_declaration.return_names[1], "age");
 }
 
 static void test_parse_error_bad_var_decl(void) {
@@ -648,7 +648,7 @@ static void test_parse_for_each_statement(void) {
     AstNode *program = parse_test_input("do main() { mut arr [i64] = {1,2,3}\n for_each x in arr { } }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FOR_EACH_STMT);
+    ASSERT_EQ(statement->kind, NODE_FOR_EACH_STATEMENT);
 }
 
 static void test_parse_while_alias(void) {
@@ -656,48 +656,48 @@ static void test_parse_while_alias(void) {
     AstNode *program = parse_test_input("while true { break }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_WHILE_STMT);
+    ASSERT_EQ(statement->kind, NODE_WHILE_STATEMENT);
 }
 
 static void test_parse_empty_block(void) {
     AstNode *program = parse_test_input("do main() { }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    ASSERT_NOT_NULL(function->data.func_decl.body);
-    ASSERT_EQ(function->data.func_decl.body->kind, NODE_BLOCK_STMT);
-    ASSERT_EQ(function->data.func_decl.body->data.block.count, 0);
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_NOT_NULL(function->data.function_declaration.body);
+    ASSERT_EQ(function->data.function_declaration.body->kind, NODE_BLOCK_STATEMENT);
+    ASSERT_EQ(function->data.function_declaration.body->data.block.count, 0);
 }
 
 static void test_parse_grouped_params(void) {
     AstNode *program = parse_test_input("do add(a, b i64) -> i64 { return a + b }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(function->data.func_decl.param_count, 2);
-    ASSERT_STR_EQ(function->data.func_decl.params[0].type_name, "i64");
-    ASSERT_STR_EQ(function->data.func_decl.params[1].type_name, "i64");
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(function->data.function_declaration.parameter_count, 2);
+    ASSERT_STR_EQ(function->data.function_declaration.parameters[0].type_name, "i64");
+    ASSERT_STR_EQ(function->data.function_declaration.parameters[1].type_name, "i64");
 }
 
 static void test_parse_compound_assign_mul(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 2\n x *= 5 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
+    ASSERT_EQ(statement->kind, NODE_ASSIGN_STATEMENT);
 }
 
 static void test_parse_compound_assign_div(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 10\n x /= 2 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
+    ASSERT_EQ(statement->kind, NODE_ASSIGN_STATEMENT);
 }
 
 static void test_parse_compound_assign_mod(void) {
     AstNode *program = parse_test_input("do main() { mut x i64 = 10\n x %= 3 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
+    ASSERT_EQ(statement->kind, NODE_ASSIGN_STATEMENT);
 }
 
 static void test_parse_multiple_when_cases(void) {
@@ -705,8 +705,8 @@ static void test_parse_multiple_when_cases(void) {
         "when x { is 1 { } is 2 { } is 3 { } is 4 { } default { } }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_WHEN_STMT);
-    ASSERT_EQ(statement->data.when_stmt.case_count, 4);
+    ASSERT_EQ(statement->kind, NODE_WHEN_STATEMENT);
+    ASSERT_EQ(statement->data.when_statement.case_count, 4);
 }
 
 static void test_parse_switch_case(void) {
@@ -715,38 +715,38 @@ static void test_parse_switch_case(void) {
         "switch x { case 1 { } case 2 { } default { } }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_WHEN_STMT);
-    ASSERT_EQ(statement->data.when_stmt.case_count, 2);
-    ASSERT_NOT_NULL(statement->data.when_stmt.default_body);
+    ASSERT_EQ(statement->kind, NODE_WHEN_STATEMENT);
+    ASSERT_EQ(statement->data.when_statement.case_count, 2);
+    ASSERT_NOT_NULL(statement->data.when_statement.default_body);
 }
 
 static void test_parse_alias_primitive(void) {
     AstNode *program = parse_test_input("alias Meters = f64");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
-    ASSERT_STR_EQ(statement->data.alias_decl.name, "Meters");
-    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "f64");
-    ASSERT(!statement->data.alias_decl.is_private);
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECLARATION);
+    ASSERT_STR_EQ(statement->data.alias_declaration.name, "Meters");
+    ASSERT_STR_EQ(statement->data.alias_declaration.target_type, "f64");
+    ASSERT(!statement->data.alias_declaration.is_private);
 }
 
 static void test_parse_alias_private(void) {
     AstNode *program = parse_test_input("private alias InternalID = i64");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
-    ASSERT_STR_EQ(statement->data.alias_decl.name, "InternalID");
-    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "i64");
-    ASSERT(statement->data.alias_decl.is_private);
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECLARATION);
+    ASSERT_STR_EQ(statement->data.alias_declaration.name, "InternalID");
+    ASSERT_STR_EQ(statement->data.alias_declaration.target_type, "i64");
+    ASSERT(statement->data.alias_declaration.is_private);
 }
 
 static void test_parse_alias_array_type(void) {
     AstNode *program = parse_test_input("alias Names = [string]");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
-    ASSERT_STR_EQ(statement->data.alias_decl.name, "Names");
-    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "[string]");
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECLARATION);
+    ASSERT_STR_EQ(statement->data.alias_declaration.name, "Names");
+    ASSERT_STR_EQ(statement->data.alias_declaration.target_type, "[string]");
 }
 
 static void test_parse_nested_if(void) {
@@ -758,29 +758,29 @@ static void test_parse_nested_if(void) {
         "}");
     AstNode *outer_if = body_statement(program, 0);
     ASSERT_NOT_NULL(outer_if);
-    ASSERT_EQ(outer_if->kind, NODE_IF_STMT);
+    ASSERT_EQ(outer_if->kind, NODE_IF_STATEMENT);
     /* The inner if is inside the consequence block */
-    AstNode *inner = outer_if->data.if_stmt.consequence->data.block.stmts[0];
-    ASSERT_EQ(inner->kind, NODE_IF_STMT);
+    AstNode *inner = outer_if->data.if_statement.consequence->data.block.statements[0];
+    ASSERT_EQ(inner->kind, NODE_IF_STATEMENT);
 }
 
 static void test_parse_struct_nested_field(void) {
     AstNode *program = parse_test_input(
         "const Inner struct { val i64 }\n"
         "const Outer struct { inner Inner }");
-    ASSERT_EQ(program->data.program.stmt_count, 2);
-    AstNode *outer = program->data.program.stmts[1];
-    ASSERT_EQ(outer->kind, NODE_STRUCT_DECL);
-    ASSERT_STR_EQ(outer->data.struct_decl.fields[0].type_name, "Inner");
+    ASSERT_EQ(program->data.program.statement_count, 2);
+    AstNode *outer = program->data.program.statements[1];
+    ASSERT_EQ(outer->kind, NODE_STRUCT_DECLARATION);
+    ASSERT_STR_EQ(outer->data.struct_declaration.fields[0].type_name, "Inner");
 }
 
 static void test_parse_in_operator(void) {
     AstNode *program = parse_test_input("do main() { mut arr [i64] = {1,2,3}\n mut x = 1 in arr }");
     AstNode *value = body_statement(program, 1);
     ASSERT_NOT_NULL(value);
-    ASSERT_EQ(value->kind, NODE_VAR_DECL);
-    ASSERT_EQ(value->data.var_decl.value->kind, NODE_INFIX_EXPR);
-    ASSERT_EQ(value->data.var_decl.value->data.infix.op, TOK_IN);
+    ASSERT_EQ(value->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT_EQ(value->data.variable_declaration.value->kind, NODE_INFIX_EXPRESSION);
+    ASSERT_EQ(value->data.variable_declaration.value->data.infix.operator, TOKEN_IN);
 }
 
 
@@ -791,10 +791,10 @@ static void test_parse_return_multiple_values(void) {
         "}");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
-    ASSERT_EQ(function->kind, NODE_FUNC_DECL);
-    ASSERT_EQ(function->data.func_decl.return_type_count, 2);
-    ASSERT_STR_EQ(function->data.func_decl.return_types[0], "i64");
-    ASSERT_STR_EQ(function->data.func_decl.return_types[1], "string");
+    ASSERT_EQ(function->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT_EQ(function->data.function_declaration.return_type_count, 2);
+    ASSERT_STR_EQ(function->data.function_declaration.return_types[0], "i64");
+    ASSERT_STR_EQ(function->data.function_declaration.return_types[1], "string");
 }
 
 static void test_parse_import_alias(void) {
@@ -802,9 +802,9 @@ static void test_parse_import_alias(void) {
     AstNode *program = parse_test_input("import m \"./mylib\"");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_IMPORT_STMT);
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].path, "./mylib");
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].alias, "m");
+    ASSERT_EQ(statement->kind, NODE_IMPORT_STATEMENT);
+    ASSERT_STR_EQ(statement->data.import_statement.items[0].path, "./mylib");
+    ASSERT_STR_EQ(statement->data.import_statement.items[0].alias, "m");
 }
 
 static void test_parse_enum_with_values(void) {
@@ -816,8 +816,8 @@ static void test_parse_enum_with_values(void) {
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT_EQ(statement->data.enum_decl.value_count, 3);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT_EQ(statement->data.enum_declaration.value_count, 3);
 }
 
 /* Helper: check if a specific error code was emitted */
@@ -998,12 +998,12 @@ static void test_parse_error_deprecated_on_struct_field(void) {
     AstNode *statement = first_statement(program);
     ASSERT(parser_has_code(diagnostics, "E2094"));
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
-    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
-    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECLARATION);
+    ASSERT_EQ(statement->data.struct_declaration.function_count, 1);
+    AstNode *fn = statement->data.struct_declaration.functions[0].function_declaration;
     ASSERT_NOT_NULL(fn);
-    ASSERT(!fn->data.func_decl.is_deprecated);
-    ASSERT(fn->data.func_decl.deprecated_message == NULL);
+    ASSERT(!fn->data.function_declaration.is_deprecated);
+    ASSERT(fn->data.function_declaration.deprecated_message == NULL);
 }
 
 /* Neither attribute belongs on an enum variant, and both were being read as
@@ -1014,17 +1014,17 @@ static void test_parse_error_attributes_on_enum_variant(void) {
     AstNode *statement = first_statement(program);
     ASSERT(parser_has_code(diagnostics, "E2094"));
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
-    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "RED");
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT_EQ(statement->data.enum_declaration.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_declaration.values[0].name, "RED");
 
     program = parse_test_input("const Flag enum {\n #discard\n ON\n OFF\n}");
     statement = first_statement(program);
     ASSERT(parser_has_code(diagnostics, "E2089"));
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
-    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
-    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "ON");
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECLARATION);
+    ASSERT_EQ(statement->data.enum_declaration.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_declaration.values[0].name, "ON");
 }
 
 /* The attributes must keep working where they are legal: on the struct
@@ -1035,11 +1035,11 @@ static void test_parse_deprecated_on_struct_func(void) {
     AstNode *statement = first_statement(program);
     ASSERT(!parser_has_code(diagnostics, "E2002"));
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
-    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_EQ(statement->data.struct_declaration.function_count, 1);
+    AstNode *fn = statement->data.struct_declaration.functions[0].function_declaration;
     ASSERT_NOT_NULL(fn);
-    ASSERT(fn->data.func_decl.is_deprecated);
-    ASSERT_STR_EQ(fn->data.func_decl.deprecated_message, "use add");
+    ASSERT(fn->data.function_declaration.is_deprecated);
+    ASSERT_STR_EQ(fn->data.function_declaration.deprecated_message, "use add");
 }
 
 /* #test on a top-level function sets is_test; on anything else it's E2002. */
@@ -1048,8 +1048,8 @@ static void test_parse_test_attribute(void) {
     AstNode *statement = first_statement(program);
     ASSERT(!parser_has_code(diagnostics, "E2002"));
     ASSERT_NOT_NULL(statement);
-    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
-    ASSERT(statement->data.func_decl.is_test);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT(statement->data.function_declaration.is_test);
 }
 
 static void test_parse_test_attribute_on_struct_is_error(void) {

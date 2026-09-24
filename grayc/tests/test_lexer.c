@@ -25,135 +25,135 @@ static Token next_token(Lexer *lexer) {
 static void test_empty_input(void) {
     Lexer *lexer = create_test_lexer("");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_EOF);
+    ASSERT_EQ(token.type, TOKEN_END_OF_FILE);
 }
 
 static void test_single_char_tokens(void) {
     Lexer *lexer = create_test_lexer("(){}[],.:@");
-    ASSERT_EQ(next_token(lexer).type, TOK_LPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_RPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_LBRACE);
-    ASSERT_EQ(next_token(lexer).type, TOK_RBRACE);
-    ASSERT_EQ(next_token(lexer).type, TOK_LBRACKET);
-    ASSERT_EQ(next_token(lexer).type, TOK_RBRACKET);
-    ASSERT_EQ(next_token(lexer).type, TOK_COMMA);
-    ASSERT_EQ(next_token(lexer).type, TOK_DOT);
-    ASSERT_EQ(next_token(lexer).type, TOK_COLON);
-    ASSERT_EQ(next_token(lexer).type, TOK_AT);
-    ASSERT_EQ(next_token(lexer).type, TOK_EOF);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_BRACE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_BRACE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_BRACKET);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_BRACKET);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_COMMA);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DOT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_COLON);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_AT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_END_OF_FILE);
 }
 
 static void test_two_char_tokens(void) {
     Lexer *lexer = create_test_lexer("== != <= >= += -= *= /= ++ -- -> && ||");
-    ASSERT_EQ(next_token(lexer).type, TOK_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_NOT_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_LT_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_GT_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_PLUS_ASSIGN);
-    ASSERT_EQ(next_token(lexer).type, TOK_MINUS_ASSIGN);
-    ASSERT_EQ(next_token(lexer).type, TOK_ASTERISK_ASSIGN);
-    ASSERT_EQ(next_token(lexer).type, TOK_SLASH_ASSIGN);
-    ASSERT_EQ(next_token(lexer).type, TOK_INCREMENT);
-    ASSERT_EQ(next_token(lexer).type, TOK_DECREMENT);
-    ASSERT_EQ(next_token(lexer).type, TOK_ARROW);
-    ASSERT_EQ(next_token(lexer).type, TOK_AND);
-    ASSERT_EQ(next_token(lexer).type, TOK_OR);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NOT_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LESS_THAN_OR_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_GREATER_THAN_OR_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_PLUS_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MINUS_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASTERISK_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_SLASH_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_INCREMENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DECREMENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ARROW);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_AND);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_OR);
 }
 
 static void test_integer_literal(void) {
     Lexer *lexer = create_test_lexer("42");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "42");
 }
 
 static void test_integer_with_separators(void) {
     Lexer *lexer = create_test_lexer("1_000_000");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "1_000_000");
 }
 
 static void test_float_literal(void) {
     Lexer *lexer = create_test_lexer("3.14");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_FLOAT);
+    ASSERT_EQ(token.type, TOKEN_FLOATING_POINT_LITERAL);
     ASSERT_STR_EQ(token.literal, "3.14");
 }
 
 static void test_string_literal(void) {
     Lexer *lexer = create_test_lexer("\"hello world\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_STRING);
+    ASSERT_EQ(token.type, TOKEN_STRING);
     ASSERT_STR_EQ(token.literal, "hello world");
 }
 
 static void test_string_with_escapes(void) {
     Lexer *lexer = create_test_lexer("\"hello\\nworld\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_STRING);
+    ASSERT_EQ(token.type, TOKEN_STRING);
     ASSERT_STR_EQ(token.literal, "hello\\nworld");
 }
 
 static void test_char_literal(void) {
     Lexer *lexer = create_test_lexer("'A'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_CHAR);
+    ASSERT_EQ(token.type, TOKEN_CHAR);
     ASSERT_STR_EQ(token.literal, "A");
 }
 
 static void test_raw_string(void) {
     Lexer *lexer = create_test_lexer("`raw string`");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_RAW_STRING);
+    ASSERT_EQ(token.type, TOKEN_RAW_STRING);
     ASSERT_STR_EQ(token.literal, "raw string");
 }
 
 static void test_keywords(void) {
     Lexer *lexer = create_test_lexer("mut const do return if or otherwise for for_each as_long_as loop break continue");
-    ASSERT_EQ(next_token(lexer).type, TOK_MUT);
-    ASSERT_EQ(next_token(lexer).type, TOK_CONST);
-    ASSERT_EQ(next_token(lexer).type, TOK_DO);
-    ASSERT_EQ(next_token(lexer).type, TOK_RETURN);
-    ASSERT_EQ(next_token(lexer).type, TOK_IF);
-    ASSERT_EQ(next_token(lexer).type, TOK_OR_KW);
-    ASSERT_EQ(next_token(lexer).type, TOK_OTHERWISE);
-    ASSERT_EQ(next_token(lexer).type, TOK_FOR);
-    ASSERT_EQ(next_token(lexer).type, TOK_FOR_EACH);
-    ASSERT_EQ(next_token(lexer).type, TOK_AS_LONG_AS);
-    ASSERT_EQ(next_token(lexer).type, TOK_LOOP);
-    ASSERT_EQ(next_token(lexer).type, TOK_BREAK);
-    ASSERT_EQ(next_token(lexer).type, TOK_CONTINUE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MUT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_CONST);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DO);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RETURN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IF);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_OR_KEYWORD);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_OTHERWISE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_FOR);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_FOR_EACH);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_AS_LONG_AS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LOOP);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_BREAK);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_CONTINUE);
 }
 
 static void test_more_keywords(void) {
     Lexer *lexer = create_test_lexer("import using struct enum nil new true false when is default cast ensure private");
-    ASSERT_EQ(next_token(lexer).type, TOK_IMPORT);
-    ASSERT_EQ(next_token(lexer).type, TOK_USING);
-    ASSERT_EQ(next_token(lexer).type, TOK_STRUCT);
-    ASSERT_EQ(next_token(lexer).type, TOK_ENUM);
-    ASSERT_EQ(next_token(lexer).type, TOK_NIL);
-    ASSERT_EQ(next_token(lexer).type, TOK_NEW);
-    ASSERT_EQ(next_token(lexer).type, TOK_TRUE);
-    ASSERT_EQ(next_token(lexer).type, TOK_FALSE);
-    ASSERT_EQ(next_token(lexer).type, TOK_WHEN);
-    ASSERT_EQ(next_token(lexer).type, TOK_IS);
-    ASSERT_EQ(next_token(lexer).type, TOK_DEFAULT);
-    ASSERT_EQ(next_token(lexer).type, TOK_CAST);
-    ASSERT_EQ(next_token(lexer).type, TOK_ENSURE);
-    ASSERT_EQ(next_token(lexer).type, TOK_PRIVATE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IMPORT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_USING);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_STRUCT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ENUM);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NIL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NEW);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_TRUE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_FALSE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_WHEN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DEFAULT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_CAST);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ENSURE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_PRIVATE);
 }
 
 static void test_identifiers(void) {
     Lexer *lexer = create_test_lexer("foo bar_baz count123");
     Token token1 = next_token(lexer);
-    ASSERT_EQ(token1.type, TOK_IDENT);
+    ASSERT_EQ(token1.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token1.literal, "foo");
     Token token2 = next_token(lexer);
-    ASSERT_EQ(token2.type, TOK_IDENT);
+    ASSERT_EQ(token2.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token2.literal, "bar_baz");
     Token token3 = next_token(lexer);
-    ASSERT_EQ(token3.type, TOK_IDENT);
+    ASSERT_EQ(token3.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token3.literal, "count123");
 }
 
@@ -163,18 +163,18 @@ static void test_identifiers(void) {
 static void test_identifier_interning(void) {
     Lexer *lexer = create_test_lexer("count count count total count");
     Token first = next_token(lexer);
-    ASSERT_EQ(first.type, TOK_IDENT);
+    ASSERT_EQ(first.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(first.literal, "count");
 
     Token second = next_token(lexer);
-    ASSERT_EQ(second.type, TOK_IDENT);
+    ASSERT_EQ(second.type, TOKEN_IDENTIFIER);
     ASSERT_EQ((long long)(intptr_t)second.literal, (long long)(intptr_t)first.literal);
 
     Token third = next_token(lexer);
     ASSERT_EQ((long long)(intptr_t)third.literal, (long long)(intptr_t)first.literal);
 
     Token distinct = next_token(lexer);
-    ASSERT_EQ(distinct.type, TOK_IDENT);
+    ASSERT_EQ(distinct.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(distinct.literal, "total");
     ASSERT_NE((long long)(intptr_t)distinct.literal, (long long)(intptr_t)first.literal);
 
@@ -190,8 +190,8 @@ static void test_identifier_interning_across_lexers(void) {
     Lexer *lexer_b = create_test_lexer("shared_name");
     Token from_a = next_token(lexer_a);
     Token from_b = next_token(lexer_b);
-    ASSERT_EQ(from_a.type, TOK_IDENT);
-    ASSERT_EQ(from_b.type, TOK_IDENT);
+    ASSERT_EQ(from_a.type, TOKEN_IDENTIFIER);
+    ASSERT_EQ(from_b.type, TOKEN_IDENTIFIER);
     ASSERT_EQ((long long)(intptr_t)from_b.literal, (long long)(intptr_t)from_a.literal);
 }
 
@@ -201,25 +201,25 @@ static void test_identifier_interning_across_lexers(void) {
 static void test_keyword_bypasses_arena(void) {
     Lexer *lexer = create_test_lexer("return return if");
     Token first_return = next_token(lexer);
-    ASSERT_EQ(first_return.type, TOK_RETURN);
+    ASSERT_EQ(first_return.type, TOKEN_RETURN);
     ASSERT_STR_EQ(first_return.literal, "return");
 
     Token second_return = next_token(lexer);
-    ASSERT_EQ(second_return.type, TOK_RETURN);
+    ASSERT_EQ(second_return.type, TOKEN_RETURN);
     ASSERT_EQ((long long)(intptr_t)second_return.literal, (long long)(intptr_t)first_return.literal);
 
     Token if_tok = next_token(lexer);
-    ASSERT_EQ(if_tok.type, TOK_IF);
+    ASSERT_EQ(if_tok.type, TOKEN_IF);
     ASSERT_STR_EQ(if_tok.literal, "if");
 }
 
 static void test_skip_comments(void) {
     Lexer *lexer = create_test_lexer("a // line comment\nb");
     Token token1 = next_token(lexer);
-    ASSERT_EQ(token1.type, TOK_IDENT);
+    ASSERT_EQ(token1.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token1.literal, "a");
     Token token2 = next_token(lexer);
-    ASSERT_EQ(token2.type, TOK_IDENT);
+    ASSERT_EQ(token2.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token2.literal, "b");
 }
 
@@ -243,32 +243,32 @@ static void test_line_tracking(void) {
 
 static void test_hash_attributes(void) {
     Lexer *lexer = create_test_lexer("#strict #flags #doc #test");
-    ASSERT_EQ(next_token(lexer).type, TOK_STRICT);
-    ASSERT_EQ(next_token(lexer).type, TOK_FLAGS);
-    ASSERT_EQ(next_token(lexer).type, TOK_DOC);
-    ASSERT_EQ(next_token(lexer).type, TOK_TEST);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_STRICT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_FLAGS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DOC);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_TEST);
 }
 
 static void test_hello_world_tokens(void) {
     Lexer *lexer = create_test_lexer("do main() {\n    println(\"Hello\")\n}");
-    ASSERT_EQ(next_token(lexer).type, TOK_DO);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);  /* main */
-    ASSERT_EQ(next_token(lexer).type, TOK_LPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_RPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_LBRACE);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);  /* println */
-    ASSERT_EQ(next_token(lexer).type, TOK_LPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_STRING); /* "Hello" */
-    ASSERT_EQ(next_token(lexer).type, TOK_RPAREN);
-    ASSERT_EQ(next_token(lexer).type, TOK_RBRACE);
-    ASSERT_EQ(next_token(lexer).type, TOK_EOF);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DO);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);  /* main */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_BRACE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);  /* println */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LEFT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_STRING); /* "Hello" */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_PARENTHESIS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RIGHT_BRACE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_END_OF_FILE);
 }
 
 static void test_v3_keyword_aliases(void) {
-    /* mut maps to TOK_MUT, while maps to TOK_AS_LONG_AS */
+    /* mut maps to TOKEN_MUT, while maps to TOKEN_AS_LONG_AS */
     Lexer *lexer = create_test_lexer("mut while");
-    ASSERT_EQ(next_token(lexer).type, TOK_MUT);
-    ASSERT_EQ(next_token(lexer).type, TOK_AS_LONG_AS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MUT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_AS_LONG_AS);
 }
 
 static void test_v3_keywords_coexist(void) {
@@ -281,53 +281,53 @@ static void test_v3_keywords_coexist(void) {
 
 static void test_not_in_operator(void) {
     Lexer *lexer = create_test_lexer("!in");
-    ASSERT_EQ(next_token(lexer).type, TOK_NOT_IN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NOT_IN);
 }
 
 static void test_not_in_vs_bang(void) {
     /* !in should be NOT_IN, !inside should be BANG + IDENT */
     Lexer *lexer = create_test_lexer("!in !inside");
-    ASSERT_EQ(next_token(lexer).type, TOK_NOT_IN);
-    ASSERT_EQ(next_token(lexer).type, TOK_BANG);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NOT_IN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_BANG);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);
 }
 
 static void test_hex_literal(void) {
     Lexer *lexer = create_test_lexer("0xFF");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "0xFF");
 }
 
 static void test_octal_literal(void) {
     Lexer *lexer = create_test_lexer("0o77");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "0o77");
 }
 
 static void test_binary_literal(void) {
     Lexer *lexer = create_test_lexer("0b1010");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "0b1010");
 }
 
 static void test_or_return_keyword(void) {
     Lexer *lexer = create_test_lexer("or_return");
-    ASSERT_EQ(next_token(lexer).type, TOK_OR_RETURN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_OR_RETURN);
 }
 
 static void test_caret_token(void) {
     Lexer *lexer = create_test_lexer("^i64");
-    ASSERT_EQ(next_token(lexer).type, TOK_CARET);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_CARET);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);
 }
 
 static void test_float_with_underscores(void) {
     Lexer *lexer = create_test_lexer("3.141_592_653");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_FLOAT);
+    ASSERT_EQ(token.type, TOKEN_FLOATING_POINT_LITERAL);
     ASSERT_STR_EQ(token.literal, "3.141_592_653");
 }
 
@@ -335,16 +335,16 @@ static void test_interpolation_tokens(void) {
     /* Interpolated string starts as a string token */
     Lexer *lexer = create_test_lexer("\"hello ${name}\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_STRING);
+    ASSERT_EQ(token.type, TOKEN_STRING);
 }
 
 static void test_bang_in_vs_bang(void) {
     /* !in should be NOT_IN, ! alone should be BANG */
     Lexer *lexer = create_test_lexer("!in x !y");
-    ASSERT_EQ(next_token(lexer).type, TOK_NOT_IN);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT); /* x */
-    ASSERT_EQ(next_token(lexer).type, TOK_BANG);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT); /* y */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NOT_IN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER); /* x */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_BANG);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER); /* y */
 }
 
 /* --- Lexer Error Path Tests --- */
@@ -352,7 +352,7 @@ static void test_bang_in_vs_bang(void) {
 static void test_error_E1003_unclosed_comment(void) {
     Lexer *lexer = create_test_lexer("/* unclosed comment");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1003");
 }
@@ -360,7 +360,7 @@ static void test_error_E1003_unclosed_comment(void) {
 static void test_error_E1005_unclosed_char(void) {
     Lexer *lexer = create_test_lexer("'a");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1005");
 }
@@ -368,7 +368,7 @@ static void test_error_E1005_unclosed_char(void) {
 static void test_error_E1006_bad_escape_string(void) {
     Lexer *lexer = create_test_lexer("\"hello\\q\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1006");
 }
@@ -376,7 +376,7 @@ static void test_error_E1006_bad_escape_string(void) {
 static void test_error_E1007_bad_escape_char(void) {
     Lexer *lexer = create_test_lexer("'\\q'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1007");
 }
@@ -384,7 +384,7 @@ static void test_error_E1007_bad_escape_char(void) {
 static void test_error_E1018_empty_char(void) {
     Lexer *lexer = create_test_lexer("''");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1018");
 }
@@ -392,7 +392,7 @@ static void test_error_E1018_empty_char(void) {
 static void test_error_E1018_multichar(void) {
     Lexer *lexer = create_test_lexer("'ab'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1018");
 }
@@ -400,7 +400,7 @@ static void test_error_E1018_multichar(void) {
 static void test_error_E1010_bad_number_format(void) {
     Lexer *lexer = create_test_lexer("0x");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1010");
 }
@@ -408,7 +408,7 @@ static void test_error_E1010_bad_number_format(void) {
 static void test_error_E1011_consecutive_underscores(void) {
     Lexer *lexer = create_test_lexer("1__000");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1011");
 }
@@ -416,7 +416,7 @@ static void test_error_E1011_consecutive_underscores(void) {
 static void test_error_E1013_trailing_underscore(void) {
     Lexer *lexer = create_test_lexer("100_");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1013");
 }
@@ -424,7 +424,7 @@ static void test_error_E1013_trailing_underscore(void) {
 static void test_error_E1014_underscore_before_decimal(void) {
     Lexer *lexer = create_test_lexer("1_.5");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1014");
 }
@@ -432,7 +432,7 @@ static void test_error_E1014_underscore_before_decimal(void) {
 static void test_error_E1017_unclosed_raw_string(void) {
     Lexer *lexer = create_test_lexer("`unclosed raw");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1017");
 }
@@ -440,7 +440,7 @@ static void test_error_E1017_unclosed_raw_string(void) {
 static void test_error_E1010_bad_octal(void) {
     Lexer *lexer = create_test_lexer("0o");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1010");
 }
@@ -448,7 +448,7 @@ static void test_error_E1010_bad_octal(void) {
 static void test_error_E1010_bad_binary(void) {
     Lexer *lexer = create_test_lexer("0b");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1010");
 }
@@ -457,58 +457,58 @@ static void test_error_E1010_bad_binary(void) {
 
 static void test_single_operators(void) {
     Lexer *lexer = create_test_lexer("+ - * / % < > =");
-    ASSERT_EQ(next_token(lexer).type, TOK_PLUS);
-    ASSERT_EQ(next_token(lexer).type, TOK_MINUS);
-    ASSERT_EQ(next_token(lexer).type, TOK_ASTERISK);
-    ASSERT_EQ(next_token(lexer).type, TOK_SLASH);
-    ASSERT_EQ(next_token(lexer).type, TOK_PERCENT);
-    ASSERT_EQ(next_token(lexer).type, TOK_LT);
-    ASSERT_EQ(next_token(lexer).type, TOK_GT);
-    ASSERT_EQ(next_token(lexer).type, TOK_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_PLUS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MINUS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASTERISK);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_SLASH);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_PERCENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LESS_THAN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_GREATER_THAN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASSIGN);
 }
 
 static void test_double_asterisk(void) {
     Lexer *lexer = create_test_lexer("**");
-    ASSERT_EQ(next_token(lexer).type, TOK_ASTERISK);
-    ASSERT_EQ(next_token(lexer).type, TOK_ASTERISK);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASTERISK);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASTERISK);
 }
 
 static void test_percent_assign(void) {
     Lexer *lexer = create_test_lexer("%=");
-    ASSERT_EQ(next_token(lexer).type, TOK_PERCENT_ASSIGN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_PERCENT_ASSIGN);
 }
 
 static void test_ampersand(void) {
     Lexer *lexer = create_test_lexer("&x");
-    ASSERT_EQ(next_token(lexer).type, TOK_AMPERSAND);
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_AMPERSAND);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);
 }
 
 static void test_semicolon(void) {
     Lexer *lexer = create_test_lexer(";");
-    ASSERT_EQ(next_token(lexer).type, TOK_SEMICOLON);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_SEMICOLON);
 }
 
 /* --- Missing keyword tokens --- */
 
 static void test_keyword_in(void) {
     Lexer *lexer = create_test_lexer("in");
-    ASSERT_EQ(next_token(lexer).type, TOK_IN);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IN);
 }
 
 static void test_keyword_range(void) {
     Lexer *lexer = create_test_lexer("range");
-    ASSERT_EQ(next_token(lexer).type, TOK_RANGE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_RANGE);
 }
 
 static void test_keyword_use(void) {
     Lexer *lexer = create_test_lexer("use");
-    ASSERT_EQ(next_token(lexer).type, TOK_USE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_USE);
 }
 
 static void test_keyword_blank(void) {
     Lexer *lexer = create_test_lexer("_");
-    ASSERT_EQ(next_token(lexer).type, TOK_BLANK);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_BLANK);
 }
 
 
@@ -543,14 +543,14 @@ static void test_column_resets_on_newline(void) {
 static void test_char_escape_newline(void) {
     Lexer *lexer = create_test_lexer("'\\n'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_CHAR);
+    ASSERT_EQ(token.type, TOKEN_CHAR);
     ASSERT_STR_EQ(token.literal, "\\n");
 }
 
 static void test_char_escape_tab(void) {
     Lexer *lexer = create_test_lexer("'\\t'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_CHAR);
+    ASSERT_EQ(token.type, TOKEN_CHAR);
     ASSERT_STR_EQ(token.literal, "\\t");
 }
 
@@ -559,103 +559,103 @@ static void test_char_escape_tab(void) {
 static void test_zero_literal(void) {
     Lexer *lexer = create_test_lexer("0");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "0");
 }
 
 static void test_negative_float_tokens(void) {
     /* -3.14 should tokenize as MINUS then FLOAT */
     Lexer *lexer = create_test_lexer("-3.14");
-    ASSERT_EQ(next_token(lexer).type, TOK_MINUS);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MINUS);
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_FLOAT);
+    ASSERT_EQ(token.type, TOKEN_FLOATING_POINT_LITERAL);
     ASSERT_STR_EQ(token.literal, "3.14");
 }
 
 static void test_adjacent_operators(void) {
     /* >= should be GT_EQ, not GT + ASSIGN */
     Lexer *lexer = create_test_lexer(">= <= == !=");
-    ASSERT_EQ(next_token(lexer).type, TOK_GT_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_LT_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_EQ);
-    ASSERT_EQ(next_token(lexer).type, TOK_NOT_EQ);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_GREATER_THAN_OR_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_LESS_THAN_OR_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_EQUAL);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_NOT_EQUAL);
 }
 
 static void test_arrow_vs_minus(void) {
     /* -> should be ARROW, - > should be MINUS GT */
     Lexer *lexer = create_test_lexer("->");
-    ASSERT_EQ(next_token(lexer).type, TOK_ARROW);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ARROW);
 }
 
 static void test_string_with_interpolation_marker(void) {
     /* String containing ${...} is still a string token */
     Lexer *lexer = create_test_lexer("\"hello ${name} world\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_STRING);
+    ASSERT_EQ(token.type, TOKEN_STRING);
 }
 
 static void test_multiline_block_comment(void) {
     Lexer *lexer = create_test_lexer("a /* this is\na multiline\ncomment */ b");
     Token token1 = next_token(lexer);
-    ASSERT_EQ(token1.type, TOK_IDENT);
+    ASSERT_EQ(token1.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token1.literal, "a");
     Token token2 = next_token(lexer);
-    ASSERT_EQ(token2.type, TOK_IDENT);
+    ASSERT_EQ(token2.type, TOKEN_IDENTIFIER);
     ASSERT_STR_EQ(token2.literal, "b");
 }
 
 static void test_empty_string(void) {
     Lexer *lexer = create_test_lexer("\"\"");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_STRING);
+    ASSERT_EQ(token.type, TOKEN_STRING);
     ASSERT_STR_EQ(token.literal, "");
 }
 
 static void test_multiple_strings(void) {
     Lexer *lexer = create_test_lexer("\"hello\" \"world\"");
     Token token1 = next_token(lexer);
-    ASSERT_EQ(token1.type, TOK_STRING);
+    ASSERT_EQ(token1.type, TOKEN_STRING);
     ASSERT_STR_EQ(token1.literal, "hello");
     Token token2 = next_token(lexer);
-    ASSERT_EQ(token2.type, TOK_STRING);
+    ASSERT_EQ(token2.type, TOKEN_STRING);
     ASSERT_STR_EQ(token2.literal, "world");
 }
 
 static void test_consecutive_operators(void) {
     /* ++ -- should not be confused */
     Lexer *lexer = create_test_lexer("++ --");
-    ASSERT_EQ(next_token(lexer).type, TOK_INCREMENT);
-    ASSERT_EQ(next_token(lexer).type, TOK_DECREMENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_INCREMENT);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_DECREMENT);
 }
 
 static void test_large_integer_literal(void) {
     Lexer *lexer = create_test_lexer("9999999999");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "9999999999");
 }
 
 static void test_char_single_quote(void) {
     Lexer *lexer = create_test_lexer("'x'");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_CHAR);
+    ASSERT_EQ(token.type, TOKEN_CHAR);
     ASSERT_STR_EQ(token.literal, "x");
 }
 
 static void test_keyword_panic(void) {
     Lexer *lexer = create_test_lexer("panic");
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT); /* panic is a builtin func, not keyword */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER); /* panic is a builtin func, not keyword */
 }
 
 static void test_mixed_tokens_line(void) {
     /* Realistic code line */
     Lexer *lexer = create_test_lexer("mut x i64 = 42");
-    ASSERT_EQ(next_token(lexer).type, TOK_MUT);      /* mut */
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);     /* x */
-    ASSERT_EQ(next_token(lexer).type, TOK_IDENT);     /* int */
-    ASSERT_EQ(next_token(lexer).type, TOK_ASSIGN);    /* = */
-    ASSERT_EQ(next_token(lexer).type, TOK_INT);       /* 42 */
-    ASSERT_EQ(next_token(lexer).type, TOK_EOF);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_MUT);      /* mut */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);     /* x */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_IDENTIFIER);     /* int */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_ASSIGN);    /* = */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_INTEGER_LITERAL);       /* 42 */
+    ASSERT_EQ(next_token(lexer).type, TOKEN_END_OF_FILE);
 }
 
 static void test_line_tracking_with_comment(void) {
@@ -671,7 +671,7 @@ static void test_line_tracking_with_comment(void) {
 static void test_hex_upper_lower(void) {
     Lexer *lexer = create_test_lexer("0xABCD");
     Token token = next_token(lexer);
-    ASSERT_EQ(token.type, TOK_INT);
+    ASSERT_EQ(token.type, TOKEN_INTEGER_LITERAL);
     ASSERT_STR_EQ(token.literal, "0xABCD");
 }
 

@@ -71,7 +71,7 @@ GrayString gray_crypto_sha1(GrayArena *arena, GrayString data);
 
 /* Raw 20-byte SHA-1 digest, for callers that need the bytes rather than hex
  * (uuid.generate_v5). Same broken-collision-resistance caveat as sha1. */
-void gray_crypto_sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[20]);
+void gray_crypto_sha1_raw(GrayArena *arena, const uint8_t *data, size_t length, uint8_t output[20]);
 
 /*@man sha512
  *@module crypto
@@ -119,7 +119,7 @@ GrayString gray_crypto_hmac_sha1(GrayArena *arena, GrayString key, GrayString da
  *   if crypto.constant_time_equal(token, expected) { println("ok") }
  *@end
  */
-bool gray_crypto_constant_time_equal(GrayString a, GrayString b);
+bool gray_crypto_constant_time_equal(GrayString left, GrayString right);
 
 /*@man crc32
  *@module crypto

@@ -15,20 +15,20 @@
 /* Number of source-file slots in the diagnostic source cache.
  * Slot 0 is the primary entry file (set via diagnostic_set_source, never evicted).
  * Slots 1+ are LRU-managed for imported files read on-demand. */
-#define DIAG_FILE_CACHE_SIZE 4
+#define DIAGNOSTIC_FILE_CACHE_SIZE 4
 
 typedef struct {
     const char *path;
     const char *source;
     const char **line_offsets; /* line_offsets[i-1] = start of line i */
     int line_count;
-    bool owned;                /* true if source was allocated by diag (disk read) */
+    bool is_owned;             /* true if source was allocated by the diagnostic list (disk read) */
     unsigned int last_use;     /* LRU clock value; 0 = empty slot */
-} DiagSourceSlot;
+} DiagnosticSourceSlot;
 
 typedef enum {
-    SEV_ERROR,
-    SEV_WARNING,
+    SEVERITY_ERROR,
+    SEVERITY_WARNING,
 } Severity;
 
 typedef struct {
@@ -46,28 +46,28 @@ typedef struct {
 typedef struct {
     Diagnostic *items;
     int count;
-    int cap;
+    int capacity;
 
     /* Cached counts — incremented in diagnostic_add for O(1) queries */
     int error_count;
     int warning_count;
 
     /* Multi-slot source cache: slot 0 = entry file (caller-owned, never evicted);
-     * slots 1..DIAG_FILE_CACHE_SIZE-1 = LRU-managed disk-read files. */
-    DiagSourceSlot file_cache[DIAG_FILE_CACHE_SIZE];
+     * slots 1..DIAGNOSTIC_FILE_CACHE_SIZE-1 = LRU-managed disk-read files. */
+    DiagnosticSourceSlot file_cache[DIAGNOSTIC_FILE_CACHE_SIZE];
     unsigned int cache_clock;
 
     /* Options */
-    bool use_color;
+    bool should_use_color;
 
     /* While set, a diagnostic identical to one already recorded (same
      * severity, code, message and location) is dropped. Used while a generic
      * function body is re-checked per instantiation, so a problem the
      * declaration pass already reported is not reported again. */
-    bool skip_duplicates;
+    bool should_skip_duplicates;
 
     /* Warning suppression (-q / --quiet) */
-    bool suppress_all_warnings;
+    bool should_suppress_all_warnings;
     const char **suppressed_codes;
     int suppressed_count;
 } DiagnosticList;
@@ -78,7 +78,7 @@ void diagnostic_destroy(DiagnosticList *diagnostics);
 
 /* Add diagnostics */
 void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col, const char *help);
+    const char *file, int line, int start_column, int end_column, const char *help);
 
 /* Code-aware emission. Every new emission site should pick one of:
  *
@@ -89,30 +89,30 @@ void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const 
  *                                             and the site adds context,
  *                                             e.g. most parser syntax errors. */
 void diagnostic_error_code(DiagnosticList *diagnostics, const char *code,
-    const char *file, int line, int col, int end_col);
+    const char *file, int line, int start_column, int end_column);
 
 /* Same shape as diagnostic_error_code, plus an actionable hint shown as `= help:`
  * under the diagnostic. Use this when the registry message states the
  * problem and the hint tells the user how to fix it. */
 void diagnostic_error_code_help(DiagnosticList *diagnostics, const char *code,
-    const char *file, int line, int col, int end_col, const char *help);
+    const char *file, int line, int start_column, int end_column, const char *help);
 
 /* Registry template + args, plus an actionable hint shown as `= help:`.
  * The formatted counterpart of diagnostic_error_code_help. */
 void diagnostic_error_code_formatted_help(DiagnosticList *diagnostics, const char *code,
-    const char *file, int line, int col_start, int end_col, const char *help, ...);
+    const char *file, int line, int start_column, int end_column, const char *help, ...);
 
 void diagnostic_error_code_formatted(DiagnosticList *diagnostics, const char *code,
-    const char *file, int line, int col, int end_col, ...);
+    const char *file, int line, int start_column, int end_column, ...);
 
 void diagnostic_error_message(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col);
+    const char *file, int line, int start_column, int end_column);
 
 void diagnostic_warning_code(DiagnosticList *diagnostics, const char *code,
-    const char *file, int line, int col, int end_col);
+    const char *file, int line, int start_column, int end_column);
 
 void diagnostic_warning_message(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col);
+    const char *file, int line, int start_column, int end_column);
 
 /* Set the source text for a file (avoids re-reading from disk) */
 void diagnostic_set_source(DiagnosticList *diagnostics, const char *file, const char *source);

@@ -239,6 +239,6 @@ void gray_os_init(int argc, char **argv);
  */
 /* os.exec(cmd, args) — run a process, capture stdout and stderr, return (exit_code, stdout, stderr, ok) */
 typedef struct { int64_t v0; GrayString v1; GrayString v2; bool v3; } GrayOsExecResult;
-GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args);
+GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args);
 
 #endif

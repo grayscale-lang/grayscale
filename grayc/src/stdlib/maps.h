@@ -103,7 +103,7 @@ bool gray_maps_contains_value(GrayMap *map, const void *value);
  * str_values: true if values are GrayString (compare contents, not blob)
  * Composite key/value types (nested arrays, maps, structs) are rejected
  * at typecheck and never reach this function. */
-bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_values);
+bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool has_string_keys, bool has_string_values);
 
 /*@man merge
  *@module maps

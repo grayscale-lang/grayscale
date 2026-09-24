@@ -1190,7 +1190,7 @@ static void test_e2e_sized_float_f32(void) {
     ASSERT_STR_EQ(output, "f32");
 }
 
-static void test_e2e_byte_type(void) {
+static void test_e2e_u8_type(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
@@ -1199,7 +1199,7 @@ static void test_e2e_byte_type(void) {
         "  println(type_of(b))\n"
         "}");
     ASSERT_NOT_NULL(output);
-    ASSERT_STR_EQ(output, "255\nbyte");
+    ASSERT_STR_EQ(output, "255\nu8");
 }
 
 /* ===== Cast Expression ===== */
@@ -3082,7 +3082,7 @@ int main(void) {
     RUN_TEST(test_e2e_sized_int_i32);
     RUN_TEST(test_e2e_sized_int_u64);
     RUN_TEST(test_e2e_sized_float_f32);
-    RUN_TEST(test_e2e_byte_type);
+    RUN_TEST(test_e2e_u8_type);
 
     /* Cast expression */
     RUN_TEST(test_e2e_cast);

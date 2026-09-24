@@ -19,85 +19,85 @@ typedef struct {
 
 /* Sorted by keyword for binary search */
 static const KeywordEntry keywords[] = {
-    {"_",               TOK_BLANK},
-    {"alias",           TOK_ALIAS},
-    {"as_long_as",      TOK_AS_LONG_AS},
-    {"bit_and",         TOK_BIT_AND},
-    {"bit_not",         TOK_BIT_NOT},
-    {"bit_or",          TOK_BIT_OR},
-    {"bit_shift_left",  TOK_BIT_SHIFT_LEFT},
-    {"bit_shift_right", TOK_BIT_SHIFT_RIGHT},
-    {"bit_xor",         TOK_BIT_XOR},
-    {"break",           TOK_BREAK},
-    {"case",        TOK_IS},
-    {"cast",        TOK_CAST},
-    {"const",       TOK_CONST},
-    {"continue",    TOK_CONTINUE},
-    {"default",     TOK_DEFAULT},
-    {"defer",       TOK_ENSURE},
-    {"do",          TOK_DO},
-    {"elif",        TOK_OR_KW},
-    {"else",        TOK_OTHERWISE},
-    {"ensure",      TOK_ENSURE},
-    {"enum",        TOK_ENUM},
-    {"extern",      TOK_EXTERN},
-    {"false",       TOK_FALSE},
-    {"fn",          TOK_DO},
-    {"for",         TOK_FOR},
-    {"for_each",    TOK_FOR_EACH},
-    {"if",          TOK_IF},
-    {"import",      TOK_IMPORT},
-    {"in",          TOK_IN},
-    {"is",          TOK_IS},
-    {"loop",        TOK_LOOP},
-    {"mut",         TOK_MUT},
-    {"new",         TOK_NEW},
-    {"nil",         TOK_NIL},
-    {"not_in",      TOK_NOT_IN},
-    {"or",          TOK_OR_KW},
-    {"or_return",   TOK_OR_RETURN},
-    {"otherwise",   TOK_OTHERWISE},
-    {"private",     TOK_PRIVATE},
-    {"range",       TOK_RANGE},
-    {"return",      TOK_RETURN},
-    {"struct",      TOK_STRUCT},
-    {"switch",      TOK_WHEN},
-    {"true",        TOK_TRUE},
-    {"use",         TOK_USE},
-    {"using",       TOK_USING},
-    {"when",        TOK_WHEN},
-    {"while",       TOK_AS_LONG_AS},
+    {"_",               TOKEN_BLANK},
+    {"alias",           TOKEN_ALIAS},
+    {"as_long_as",      TOKEN_AS_LONG_AS},
+    {"bit_and",         TOKEN_BIT_AND},
+    {"bit_not",         TOKEN_BIT_NOT},
+    {"bit_or",          TOKEN_BIT_OR},
+    {"bit_shift_left",  TOKEN_BIT_SHIFT_LEFT},
+    {"bit_shift_right", TOKEN_BIT_SHIFT_RIGHT},
+    {"bit_xor",         TOKEN_BIT_XOR},
+    {"break",           TOKEN_BREAK},
+    {"case",        TOKEN_IS},
+    {"cast",        TOKEN_CAST},
+    {"const",       TOKEN_CONST},
+    {"continue",    TOKEN_CONTINUE},
+    {"default",     TOKEN_DEFAULT},
+    {"defer",       TOKEN_ENSURE},
+    {"do",          TOKEN_DO},
+    {"elif",        TOKEN_OR_KEYWORD},
+    {"else",        TOKEN_OTHERWISE},
+    {"ensure",      TOKEN_ENSURE},
+    {"enum",        TOKEN_ENUM},
+    {"extern",      TOKEN_EXTERN},
+    {"false",       TOKEN_FALSE},
+    {"fn",          TOKEN_DO},
+    {"for",         TOKEN_FOR},
+    {"for_each",    TOKEN_FOR_EACH},
+    {"if",          TOKEN_IF},
+    {"import",      TOKEN_IMPORT},
+    {"in",          TOKEN_IN},
+    {"is",          TOKEN_IS},
+    {"loop",        TOKEN_LOOP},
+    {"mut",         TOKEN_MUT},
+    {"new",         TOKEN_NEW},
+    {"nil",         TOKEN_NIL},
+    {"not_in",      TOKEN_NOT_IN},
+    {"or",          TOKEN_OR_KEYWORD},
+    {"or_return",   TOKEN_OR_RETURN},
+    {"otherwise",   TOKEN_OTHERWISE},
+    {"private",     TOKEN_PRIVATE},
+    {"range",       TOKEN_RANGE},
+    {"return",      TOKEN_RETURN},
+    {"struct",      TOKEN_STRUCT},
+    {"switch",      TOKEN_WHEN},
+    {"true",        TOKEN_TRUE},
+    {"use",         TOKEN_USE},
+    {"using",       TOKEN_USING},
+    {"when",        TOKEN_WHEN},
+    {"while",       TOKEN_AS_LONG_AS},
 };
 
 #define KEYWORD_COUNT (sizeof(keywords) / sizeof(keywords[0]))
 
 /* Compares a length-bounded source span against a NUL-terminated keyword, in
  * the same lexical order strcmp would give if the span were NUL-terminated
- * at span_len. Lets the binary search below run before the span has been
+ * at span_length. Lets the binary search below run before the span has been
  * copied anywhere. */
-static int keyword_span_cmp(const char *span, int span_len, const char *keyword) {
-    for (int i = 0; i < span_len; i++) {
-        unsigned char span_ch = (unsigned char)span[i];
-        unsigned char keyword_ch = (unsigned char)keyword[i];
-        if (keyword_ch == '\0') return 1;
-        if (span_ch != keyword_ch) return (int)span_ch - (int)keyword_ch;
+static int keyword_span_compare(const char *span, int span_length, const char *keyword) {
+    for (int i = 0; i < span_length; i++) {
+        unsigned char span_character = (unsigned char)span[i];
+        unsigned char keyword_character = (unsigned char)keyword[i];
+        if (keyword_character == '\0') return 1;
+        if (span_character != keyword_character) return (int)span_character - (int)keyword_character;
     }
-    return keyword[span_len] == '\0' ? 0 : -1;
+    return keyword[span_length] == '\0' ? 0 : -1;
 }
 
-bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword) {
-    int lo = 0;
-    int hi = (int)KEYWORD_COUNT - 1;
-    while (lo <= hi) {
-        int mid = (lo + hi) / 2;
-        int cmp = keyword_span_cmp(ident, len, keywords[mid].keyword);
-        if (cmp == 0) {
-            *out_type = keywords[mid].type;
-            *out_keyword = keywords[mid].keyword;
+bool token_lookup_keyword_with_length(const char *identifier, int length, TokenType *out_type, const char **out_keyword) {
+    int low = 0;
+    int high = (int)KEYWORD_COUNT - 1;
+    while (low <= high) {
+        int middle = (low + high) / 2;
+        int comparison = keyword_span_compare(identifier, length, keywords[middle].keyword);
+        if (comparison == 0) {
+            *out_type = keywords[middle].type;
+            *out_keyword = keywords[middle].keyword;
             return true;
         }
-        if (cmp < 0) hi = mid - 1;
-        else lo = mid + 1;
+        if (comparison < 0) high = middle - 1;
+        else low = middle + 1;
     }
     return false;
 }
@@ -116,119 +116,119 @@ bool token_type_is_keyword(TokenType type) {
  * round-trips back to the same token type confirms the literal is a real
  * keyword spelling; everything else (identifiers, punctuation, EOF) falls
  * back to the token type's name. */
-const char *token_display_name(Token tok) {
-    if (tok.literal) {
+const char *token_display_name(Token token) {
+    if (token.literal) {
         TokenType keyword_type;
         const char *keyword_text;
-        size_t len = strlen(tok.literal);
-        if (len <= INT_MAX &&
-            token_lookup_keyword_n(tok.literal, (int)len, &keyword_type, &keyword_text) &&
-            keyword_type == tok.type) {
-            return tok.literal;
+        size_t length = strlen(token.literal);
+        if (length <= INT_MAX &&
+            token_lookup_keyword_with_length(token.literal, (int)length, &keyword_type, &keyword_text) &&
+            keyword_type == token.type) {
+            return token.literal;
         }
     }
-    return token_type_name(tok.type);
+    return token_type_name(token.type);
 }
 
 const char *token_type_name(TokenType type) {
     switch (type) {
-    case TOK_ILLEGAL:        return "ILLEGAL";
-    case TOK_EOF:            return "EOF";
-    case TOK_IDENT:          return "IDENT";
-    case TOK_INT:            return "INT";
-    case TOK_FLOAT:          return "FLOAT";
-    case TOK_STRING:         return "STRING";
-    case TOK_RAW_STRING:     return "RAW_STRING";
-    case TOK_CHAR:           return "CHAR";
-    case TOK_ASSIGN:         return "=";
-    case TOK_PLUS:           return "+";
-    case TOK_MINUS:          return "-";
-    case TOK_BANG:           return "!";
-    case TOK_ASTERISK:       return "*";
-    case TOK_SLASH:          return "/";
-    case TOK_PERCENT:        return "%";
-    case TOK_LT:             return "<";
-    case TOK_GT:             return ">";
-    case TOK_EQ:             return "==";
-    case TOK_NOT_EQ:         return "!=";
-    case TOK_LT_EQ:          return "<=";
-    case TOK_GT_EQ:          return ">=";
-    case TOK_PLUS_ASSIGN:    return "+=";
-    case TOK_MINUS_ASSIGN:   return "-=";
-    case TOK_ASTERISK_ASSIGN:return "*=";
-    case TOK_SLASH_ASSIGN:   return "/=";
-    case TOK_PERCENT_ASSIGN: return "%=";
-    case TOK_INCREMENT:      return "++";
-    case TOK_DECREMENT:      return "--";
-    case TOK_AND:            return "&&";
-    case TOK_OR:             return "||";
-    case TOK_COMMA:          return ",";
-    case TOK_COLON:          return ":";
-    case TOK_SEMICOLON:      return ";";
-    case TOK_NEWLINE:        return "NEWLINE";
-    case TOK_LPAREN:         return "(";
-    case TOK_RPAREN:         return ")";
-    case TOK_LBRACE:         return "{";
-    case TOK_RBRACE:         return "}";
-    case TOK_LBRACKET:       return "[";
-    case TOK_RBRACKET:       return "]";
-    case TOK_ARROW:          return "->";
-    case TOK_DOT:            return ".";
-    case TOK_AT:             return "@";
-    case TOK_CARET:          return "^";
-    case TOK_AMPERSAND:      return "&";
-    case TOK_QUESTION:       return "?";
-    case TOK_HASH_LBRACKET:  return "#[";
-    case TOK_STRICT:         return "#strict";
-    case TOK_FLAGS:          return "#flags";
-    case TOK_DOC:            return "#doc";
-    case TOK_JSON_ATTR:      return "#json";
-    case TOK_DISCARD:        return "#discard";
-    case TOK_DEPRECATED:     return "#deprecated";
-    case TOK_TEST:           return "#test";
-    case TOK_ERROR_CODE_ATTR: return "#error_code";
-    case TOK_MUT:            return "mut";
-    case TOK_CONST:          return "const";
-    case TOK_DO:             return "do";
-    case TOK_RETURN:         return "return";
-    case TOK_IF:             return "if";
-    case TOK_OR_KW:          return "or";
-    case TOK_OTHERWISE:      return "otherwise";
-    case TOK_FOR:            return "for";
-    case TOK_FOR_EACH:       return "for_each";
-    case TOK_AS_LONG_AS:     return "as_long_as";
-    case TOK_LOOP:           return "loop";
-    case TOK_BREAK:          return "break";
-    case TOK_CONTINUE:       return "continue";
-    case TOK_IN:             return "in";
-    case TOK_NOT_IN:         return "not_in";
-    case TOK_RANGE:          return "range";
-    case TOK_IMPORT:         return "import";
-    case TOK_USING:          return "using";
-    case TOK_STRUCT:         return "struct";
-    case TOK_ENUM:           return "enum";
-    case TOK_NIL:            return "nil";
-    case TOK_NEW:            return "new";
-    case TOK_TRUE:           return "true";
-    case TOK_FALSE:          return "false";
-    case TOK_BLANK:          return "_";
-    case TOK_ENSURE:         return "ensure";
-    case TOK_OR_RETURN:      return "or_return";
-    case TOK_EXTERN:         return "extern";
-    case TOK_PRIVATE:        return "private";
-    case TOK_USE:            return "use";
-    case TOK_WHEN:           return "when";
-    case TOK_IS:             return "is";
-    case TOK_DEFAULT:        return "default";
-    case TOK_ALIAS:          return "alias";
-    case TOK_CAST:           return "cast";
-    case TOK_BIT_AND:        return "bit_and";
-    case TOK_BIT_OR:         return "bit_or";
-    case TOK_BIT_XOR:        return "bit_xor";
-    case TOK_BIT_NOT:        return "bit_not";
-    case TOK_BIT_SHIFT_LEFT: return "bit_shift_left";
-    case TOK_BIT_SHIFT_RIGHT:return "bit_shift_right";
-    case TOK_COUNT:          return "COUNT";
+    case TOKEN_ILLEGAL:        return "ILLEGAL";
+    case TOKEN_END_OF_FILE:            return "EOF";
+    case TOKEN_IDENTIFIER:          return "IDENT";
+    case TOKEN_INTEGER_LITERAL:            return "INT";
+    case TOKEN_FLOATING_POINT_LITERAL:          return "FLOAT";
+    case TOKEN_STRING:         return "STRING";
+    case TOKEN_RAW_STRING:     return "RAW_STRING";
+    case TOKEN_CHAR:           return "CHAR";
+    case TOKEN_ASSIGN:         return "=";
+    case TOKEN_PLUS:           return "+";
+    case TOKEN_MINUS:          return "-";
+    case TOKEN_BANG:           return "!";
+    case TOKEN_ASTERISK:       return "*";
+    case TOKEN_SLASH:          return "/";
+    case TOKEN_PERCENT:        return "%";
+    case TOKEN_LESS_THAN:             return "<";
+    case TOKEN_GREATER_THAN:             return ">";
+    case TOKEN_EQUAL:             return "==";
+    case TOKEN_NOT_EQUAL:         return "!=";
+    case TOKEN_LESS_THAN_OR_EQUAL:          return "<=";
+    case TOKEN_GREATER_THAN_OR_EQUAL:          return ">=";
+    case TOKEN_PLUS_ASSIGN:    return "+=";
+    case TOKEN_MINUS_ASSIGN:   return "-=";
+    case TOKEN_ASTERISK_ASSIGN:return "*=";
+    case TOKEN_SLASH_ASSIGN:   return "/=";
+    case TOKEN_PERCENT_ASSIGN: return "%=";
+    case TOKEN_INCREMENT:      return "++";
+    case TOKEN_DECREMENT:      return "--";
+    case TOKEN_AND:            return "&&";
+    case TOKEN_OR:             return "||";
+    case TOKEN_COMMA:          return ",";
+    case TOKEN_COLON:          return ":";
+    case TOKEN_SEMICOLON:      return ";";
+    case TOKEN_NEWLINE:        return "NEWLINE";
+    case TOKEN_LEFT_PARENTHESIS:         return "(";
+    case TOKEN_RIGHT_PARENTHESIS:         return ")";
+    case TOKEN_LEFT_BRACE:         return "{";
+    case TOKEN_RIGHT_BRACE:         return "}";
+    case TOKEN_LEFT_BRACKET:       return "[";
+    case TOKEN_RIGHT_BRACKET:       return "]";
+    case TOKEN_ARROW:          return "->";
+    case TOKEN_DOT:            return ".";
+    case TOKEN_AT:             return "@";
+    case TOKEN_CARET:          return "^";
+    case TOKEN_AMPERSAND:      return "&";
+    case TOKEN_QUESTION:       return "?";
+    case TOKEN_HASH_LEFT_BRACKET:  return "#[";
+    case TOKEN_STRICT:         return "#strict";
+    case TOKEN_FLAGS:          return "#flags";
+    case TOKEN_DOC:            return "#doc";
+    case TOKEN_JSON_ATTRIBUTE:      return "#json";
+    case TOKEN_DISCARD:        return "#discard";
+    case TOKEN_DEPRECATED:     return "#deprecated";
+    case TOKEN_TEST:           return "#test";
+    case TOKEN_ERROR_CODE_ATTRIBUTE: return "#error_code";
+    case TOKEN_MUT:            return "mut";
+    case TOKEN_CONST:          return "const";
+    case TOKEN_DO:             return "do";
+    case TOKEN_RETURN:         return "return";
+    case TOKEN_IF:             return "if";
+    case TOKEN_OR_KEYWORD:          return "or";
+    case TOKEN_OTHERWISE:      return "otherwise";
+    case TOKEN_FOR:            return "for";
+    case TOKEN_FOR_EACH:       return "for_each";
+    case TOKEN_AS_LONG_AS:     return "as_long_as";
+    case TOKEN_LOOP:           return "loop";
+    case TOKEN_BREAK:          return "break";
+    case TOKEN_CONTINUE:       return "continue";
+    case TOKEN_IN:             return "in";
+    case TOKEN_NOT_IN:         return "not_in";
+    case TOKEN_RANGE:          return "range";
+    case TOKEN_IMPORT:         return "import";
+    case TOKEN_USING:          return "using";
+    case TOKEN_STRUCT:         return "struct";
+    case TOKEN_ENUM:           return "enum";
+    case TOKEN_NIL:            return "nil";
+    case TOKEN_NEW:            return "new";
+    case TOKEN_TRUE:           return "true";
+    case TOKEN_FALSE:          return "false";
+    case TOKEN_BLANK:          return "_";
+    case TOKEN_ENSURE:         return "ensure";
+    case TOKEN_OR_RETURN:      return "or_return";
+    case TOKEN_EXTERN:         return "extern";
+    case TOKEN_PRIVATE:        return "private";
+    case TOKEN_USE:            return "use";
+    case TOKEN_WHEN:           return "when";
+    case TOKEN_IS:             return "is";
+    case TOKEN_DEFAULT:        return "default";
+    case TOKEN_ALIAS:          return "alias";
+    case TOKEN_CAST:           return "cast";
+    case TOKEN_BIT_AND:        return "bit_and";
+    case TOKEN_BIT_OR:         return "bit_or";
+    case TOKEN_BIT_XOR:        return "bit_xor";
+    case TOKEN_BIT_NOT:        return "bit_not";
+    case TOKEN_BIT_SHIFT_LEFT: return "bit_shift_left";
+    case TOKEN_BIT_SHIFT_RIGHT:return "bit_shift_right";
+    case TOKEN_COUNT:          return "COUNT";
     }
     return "UNKNOWN";
 }

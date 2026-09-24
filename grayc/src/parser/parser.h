@@ -21,18 +21,18 @@
 typedef struct {
     Lexer *lexer;
     Arena *arena;
-    Token cur_token;
+    Token current_token;
     Token peek_token;
     const char *file;
-    DiagnosticList *diag;
+    DiagnosticList *diagnostics;
     int depth;
-    bool no_struct_literal; /* suppress struct literal parsing (RHS of in/not_in) */
-    bool in_interp;         /* true when parsing a ${...} sub-expression */
-    AstNode *current_func;  /* enclosing function node (for or_return) */
-    uint32_t attr_seen_mask; /* attributes already applied to the declaration being parsed */
+    bool should_suppress_struct_literal; /* suppress struct literal parsing (right side of in/not_in) */
+    bool is_in_interpolation; /* true when parsing a ${...} sub-expression */
+    AstNode *current_function; /* enclosing function node (for or_return) */
+    uint32_t seen_attribute_mask; /* attributes already applied to the declaration being parsed */
 } Parser;
 
-Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticList *diag);
+Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticList *diagnostics);
 AstNode *parser_parse_program(Parser *parser);
 
 #endif

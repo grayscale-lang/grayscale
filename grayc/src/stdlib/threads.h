@@ -58,7 +58,7 @@ typedef struct {
  * The function pointer must match: void (*fn)(void) or void (*fn)(int64_t)
  * Returns a thread handle for joining. */
 GrayThread gray_threads_spawn(void (*fn)(void));
-GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg);
+GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t argument);
 
 /*@man join
  *@module threads
@@ -143,7 +143,7 @@ void gray_threads_yield(void);
  *@end
  */
 /* Sleep the current thread for `ms` milliseconds. */
-void gray_threads_sleep(int64_t ms);
+void gray_threads_sleep(int64_t milliseconds);
 
 /*@man thread_count
  *@module threads

@@ -204,24 +204,24 @@
  */
 
 /* String encoding functions */
-GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_url_encode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString str);
-GrayString gray_encoding_html_escape(GrayArena *arena, GrayString str);
-GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString str);
-GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString str);
+GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_url_encode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_url_decode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString string);
+GrayString gray_encoding_html_escape(GrayArena *arena, GrayString string);
+GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString string);
+GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string);
 
 /* Byte conversion functions (formerly @bytes module) */
-GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str);
+GrayArray gray_encoding_from_string(GrayArena *arena, GrayString string);
 GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes);
-GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex);
+GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex_text);
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes);
-GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString b64);
+GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString base64_text);
 GrayString gray_encoding_to_base64(GrayArena *arena, GrayArray *bytes);
 
 #endif

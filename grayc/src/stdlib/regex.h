@@ -158,7 +158,7 @@ int64_t gray_regex_count(GrayString pattern, GrayString text);
  *@end
  */
 /* regex.escape(s) -> string */
-GrayString gray_regex_escape(GrayArena *arena, GrayString str);
+GrayString gray_regex_escape(GrayArena *arena, GrayString string);
 
 /* _result variants */
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text);

@@ -14,9 +14,9 @@
  *
  * NOTE: Lexer errors are NOT emitted via diagnostic_error_message() inside lexer.c.
  * Instead, when the lexer encounters an invalid token it sets two fields
- * on the Lexer struct: error_code (e.g. "E1010") and error_msg, and
- * returns a TOK_ILLEGAL token. The parser's next_token() helper in
- * parser.c detects TOK_ILLEGAL and surfaces the error via diagnostic_error_message()
+ * on the Lexer struct: error_code (e.g. "E1010") and error_message, and
+ * returns a TOKEN_ILLEGAL token. The parser's next_token() helper in
+ * parser.c detects TOKEN_ILLEGAL and surfaces the error via diagnostic_error_message()
  * at that point. This keeps the lexer free of diagnostic dependencies.
  * All E1xxx codes defined here are emitted through that single path.
  */

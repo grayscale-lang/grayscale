@@ -15,20 +15,20 @@
 #include <stdlib.h>
 
 #define GRAY_HTTP_DEFAULT_PORT    80
-#define GRAY_HTTP_TIMEOUT_MS      10000
-#define GRAY_HTTP_URL_BUF         4096
-#define GRAY_HTTP_HOST_BUF        256
-#define GRAY_HTTP_PATH_BUF        2048
-#define GRAY_HTTP_HDR_BUF         4096
-#define GRAY_HTTP_RESP_BUF        1048576
-#define GRAY_HTTP_MIN_RESP_LEN    12
+#define GRAY_HTTP_TIMEOUT_MILLISECONDS      10000
+#define GRAY_HTTP_URL_BUFFER_SIZE         4096
+#define GRAY_HTTP_HOST_BUFFER_SIZE        256
+#define GRAY_HTTP_PATH_BUFFER_SIZE        2048
+#define GRAY_HTTP_HEADER_BUFFER_SIZE         4096
+#define GRAY_HTTP_RESPONSE_BUFFER_SIZE        1048576
+#define GRAY_HTTP_MINIMUM_RESPONSE_LENGTH    12
 
 
 /* Parse a URL into host, port, and path components */
-static bool parse_url(const char *url, char *host, size_t host_sz,
-                      int *port, char *path, size_t path_sz) {
+static bool parse_url(const char *url_text, char *host, size_t host_size,
+                      int *port, char *path, size_t path_size) {
     /* Require http:// or https:// scheme */
-    const char *cursor = url;
+    const char *cursor = url_text;
     if (strncmp(cursor, "http://", 7) == 0) {
         cursor += 7;
     } else if (strncmp(cursor, "https://", 8) == 0) {
@@ -39,8 +39,8 @@ static bool parse_url(const char *url, char *host, size_t host_sz,
 
     /* Reject empty host or host containing characters that would break HTTP headers */
     if (*cursor == '\0' || *cursor == '/' || *cursor == ':') return false;
-    for (const char *c = cursor; *c && *c != '/' && *c != ':'; c++) {
-        if (*c == ' ' || *c == '\t' || *c == '\r' || *c == '\n') return false;
+    for (const char *scan_cursor = cursor; *scan_cursor && *scan_cursor != '/' && *scan_cursor != ':'; scan_cursor++) {
+        if (*scan_cursor == ' ' || *scan_cursor == '\t' || *scan_cursor == '\r' || *scan_cursor == '\n') return false;
     }
 
     /* Extract host[:port] */
@@ -50,14 +50,14 @@ static bool parse_url(const char *url, char *host, size_t host_sz,
     if (colon && (!slash || colon < slash)) {
         /* host:port */
         size_t host_length = (size_t)(colon - cursor);
-        if (host_length >= host_sz) host_length = host_sz - 1;
+        if (host_length >= host_size) host_length = host_size - 1;
         memcpy(host, cursor, host_length);
         host[host_length] = '\0';
         *port = atoi(colon + 1);
     } else {
         /* host only */
         size_t host_length = slash ? (size_t)(slash - cursor) : strlen(cursor);
-        if (host_length >= host_sz) host_length = host_sz - 1;
+        if (host_length >= host_size) host_length = host_size - 1;
         memcpy(host, cursor, host_length);
         host[host_length] = '\0';
         *port = GRAY_HTTP_DEFAULT_PORT;
@@ -66,7 +66,7 @@ static bool parse_url(const char *url, char *host, size_t host_sz,
     /* Path — reject CR/LF to prevent header injection via request line */
     if (slash) {
         size_t path_length = strlen(slash);
-        if (path_length >= path_sz) path_length = path_sz - 1;
+        if (path_length >= path_size) path_length = path_size - 1;
         memcpy(path, slash, path_length);
         path[path_length] = '\0';
         for (size_t i = 0; i < path_length; i++) {
@@ -81,18 +81,18 @@ static bool parse_url(const char *url, char *host, size_t host_sz,
 }
 
 /* Parse HTTP response: extract status code, headers, body */
-static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int data_len) {
+static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int data_length) {
     GrayHttpResponse resp;
     resp.status = 0;
     resp.body = (GrayString){"", 0};
     resp.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 16, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
-    if (data_len < GRAY_HTTP_MIN_RESP_LEN) return resp;
+    if (data_length < GRAY_HTTP_MINIMUM_RESPONSE_LENGTH) return resp;
 
     /* Parse status line: HTTP/1.1 200 OK */
     if (strncmp(data, "HTTP/", 5) == 0) {
-        const char *sp = strchr(data, ' ');
-        if (sp) resp.status = atoi(sp + 1);
+        const char *space_position = strchr(data, ' ');
+        if (space_position) resp.status = atoi(space_position + 1);
     }
 
     /* Find header/body separator */
@@ -115,21 +115,21 @@ static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int d
         const char *colon = memchr(line, ':', (size_t)(end_of_line - line));
         if (colon) {
             int32_t key_length = (int32_t)(colon - line);
-            const char *vstart = colon + 1;
-            while (*vstart == ' ') vstart++;
-            int32_t value_length = (int32_t)(end_of_line - vstart);
-            if (value_length > 0 && vstart[value_length - 1] == '\r') value_length--;
+            const char *value_start = colon + 1;
+            while (*value_start == ' ') value_start++;
+            int32_t value_length = (int32_t)(end_of_line - value_start);
+            if (value_length > 0 && value_start[value_length - 1] == '\r') value_length--;
 
             GrayString key = gray_string_new(arena, line, key_length);
-            GrayString val = gray_string_new(arena, vstart, value_length);
-            GRAY_MAP_SET(arena, &resp.headers, &key, &val);
+            GrayString value = gray_string_new(arena, value_start, value_length);
+            GRAY_MAP_SET(arena, &resp.headers, &key, &value);
         }
         line = end_of_line + 1;
     }
 
     /* Body */
     if (body_start) {
-        int32_t body_length = (int32_t)(data_len - (int)(body_start - data));
+        int32_t body_length = (int32_t)(data_length - (int)(body_start - data));
         if (body_length > 0) {
             resp.body = gray_string_new(arena, body_start, body_length);
         }
@@ -141,41 +141,41 @@ static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int d
 /* Core HTTP request function */
 static GrayHttpResponse do_request(GrayArena *arena, const char *method,
                                   GrayString url, GrayString body, GrayMap *custom_headers) {
-    GrayHttpResponse err_resp;
-    err_resp.status = 0;
-    err_resp.body = (GrayString){"", 0};
-    err_resp.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 4, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
+    GrayHttpResponse error_response;
+    error_response.status = 0;
+    error_response.body = (GrayString){"", 0};
+    error_response.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 4, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
-    char url_buf[GRAY_HTTP_URL_BUF];
-    gray_cstr(url, url_buf, sizeof(url_buf));
+    char url_buffer[GRAY_HTTP_URL_BUFFER_SIZE];
+    gray_cstr(url, url_buffer, sizeof(url_buffer));
 
-    if (strncmp(url_buf, "https://", 8) == 0) {
+    if (strncmp(url_buffer, "https://", 8) == 0) {
         const char *detail = "https:// is not supported; use http://";
-        err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
-        return err_resp;
+        error_response.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+        return error_response;
     }
 
-    char host[GRAY_HTTP_HOST_BUF], path[GRAY_HTTP_PATH_BUF];
+    char host[GRAY_HTTP_HOST_BUFFER_SIZE], path[GRAY_HTTP_PATH_BUFFER_SIZE];
     int port;
-    if (!parse_url(url_buf, host, sizeof(host), &port, path, sizeof(path))) {
+    if (!parse_url(url_buffer, host, sizeof(host), &port, path, sizeof(path))) {
         const char *detail = "invalid URL: expected http:// scheme";
-        err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
-        return err_resp;
+        error_response.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+        return error_response;
     }
 
     /* Connect */
-    GrayString host_str = gray_string_new(arena, host, (int32_t)strlen(host));
-    GraySocket sock = gray_net_dial(arena, host_str, port);
-    if (sock.fd < 0) {
-        err_resp.body = gray_string_new(arena, "connection failed", 17);
-        return err_resp;
+    GrayString host_text = gray_string_new(arena, host, (int32_t)strlen(host));
+    GraySocket sock = gray_net_dial(arena, host_text, port);
+    if (sock.file_descriptor < 0) {
+        error_response.body = gray_string_new(arena, "connection failed", 17);
+        return error_response;
     }
 
     /* Set 10s timeout */
-    gray_net_set_timeout(sock, GRAY_HTTP_TIMEOUT_MS);
+    gray_net_set_timeout(sock, GRAY_HTTP_TIMEOUT_MILLISECONDS);
 
     /* Build headers — body is sent separately to avoid truncation */
-    char header[GRAY_HTTP_HDR_BUF];
+    char header[GRAY_HTTP_HEADER_BUFFER_SIZE];
     int header_length;
 
     if (body.data && body.len > 0) {
@@ -199,25 +199,25 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
         for (int32_t i = 0; i < custom_headers->order_len; i++) {
             int32_t slot = custom_headers->order[i];
             if (slot < 0) continue;
-            GrayString *k = (GrayString *)gray_map_key_at(custom_headers, slot);
-            GrayString *v = (GrayString *)gray_map_value_at(custom_headers, slot);
-            if (!k || !v) continue;
+            GrayString *header_key = (GrayString *)gray_map_key_at(custom_headers, slot);
+            GrayString *header_value = (GrayString *)gray_map_value_at(custom_headers, slot);
+            if (!header_key || !header_value) continue;
             int remaining = (int)(sizeof(header)) - header_length;
             if (remaining <= 0) {
                 gray_net_close(sock);
                 const char *detail = "request headers too large";
-                err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
-                return err_resp;
+                error_response.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+                return error_response;
             }
-            int n = snprintf(header + header_length, (size_t)remaining,
-                "%.*s: %.*s\r\n", (int)k->len, k->data, (int)v->len, v->data);
-            if (n < 0 || n >= remaining) {
+            int bytes_received = snprintf(header + header_length, (size_t)remaining,
+                "%.*s: %.*s\r\n", (int)header_key->len, header_key->data, (int)header_value->len, header_value->data);
+            if (bytes_received < 0 || bytes_received >= remaining) {
                 gray_net_close(sock);
                 const char *detail = "request headers too large";
-                err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
-                return err_resp;
+                error_response.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+                return error_response;
             }
-            header_length += n;
+            header_length += bytes_received;
         }
     }
 
@@ -230,25 +230,25 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
     if (header_length <= 0 || (size_t)header_length >= sizeof(header)) {
         gray_net_close(sock);
         const char *detail = "request URL or path too long";
-        err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
-        return err_resp;
+        error_response.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+        return error_response;
     }
 
-    GrayString hdr_str = {header, (int32_t)header_length};
-    gray_net_send(sock, hdr_str);
+    GrayString header_text = {header, (int32_t)header_length};
+    gray_net_send(sock, header_text);
     if (body.data && body.len > 0) {
         gray_net_send(sock, body);
     }
 
     /* Receive response (up to 1MB) — heap-allocated to avoid stack overflow */
-    char *response_buffer = malloc(GRAY_HTTP_RESP_BUF);
+    char *response_buffer = malloc(GRAY_HTTP_RESPONSE_BUFFER_SIZE);
     if (!response_buffer) {
         gray_net_close(sock);
-        return err_resp;
+        return error_response;
     }
     int total = 0;
-    while (total < GRAY_HTTP_RESP_BUF - 1) {
-        GrayString chunk = gray_net_recv(arena, sock, GRAY_HTTP_RESP_BUF - total);
+    while (total < GRAY_HTTP_RESPONSE_BUFFER_SIZE - 1) {
+        GrayString chunk = gray_net_recv(arena, sock, GRAY_HTTP_RESPONSE_BUFFER_SIZE - total);
         if (chunk.len <= 0) break;
         memcpy(response_buffer + total, chunk.data, (size_t)chunk.len);
         total += chunk.len;
@@ -289,15 +289,15 @@ GrayHttpResponse gray_http_patch(GrayArena *arena, GrayString url, GrayString bo
 /* _result variants — status==0 indicates connection/request failure */
 
 static GrayResult_http http_result(GrayArena *arena, GrayHttpResponse resp, const char *method, GrayString url) {
-    GrayResult_http r;
-    r.v0 = resp;
+    GrayResult_http result;
+    result.v0 = resp;
     if (resp.status == 0) {
-        r.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "HTTP %s failed: %.*s",
+        result.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "HTTP %s failed: %.*s",
             method, resp.body.len, resp.body.data));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GrayResult_http gray_http_get_result(GrayArena *arena, GrayString url, GrayMap *headers) {

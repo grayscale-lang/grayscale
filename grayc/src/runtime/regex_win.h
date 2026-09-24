@@ -48,40 +48,40 @@ typedef struct {
  * costs time rather than stack. */
 
 typedef enum {
-    GRX_CHAR,  /* one literal character */
-    GRX_ANY,   /* .            */
-    GRX_CLASS, /* [...]        */
-    GRX_GROUP, /* (...)        */
-    GRX_BOL,   /* ^            */
-    GRX_EOL    /* $            */
-} GrxKind;
+    GRAY_REGEX_CHARACTER,  /* one literal character */
+    GRAY_REGEX_ANY,   /* .            */
+    GRAY_REGEX_CLASS, /* [...]        */
+    GRAY_REGEX_GROUP, /* (...)        */
+    GRAY_REGEX_BEGINNING_OF_LINE,   /* ^            */
+    GRAY_REGEX_END_OF_LINE    /* $            */
+} GrayRegexKind;
 
-typedef struct GrxNode GrxNode;
-typedef struct GrxAlt GrxAlt;
+typedef struct GrayRegexNode GrayRegexNode;
+typedef struct GrayRegexAlternation GrayRegexAlternation;
 
-struct GrxNode {
-    GrxKind kind;
-    char ch;              /* GRX_CHAR */
-    bool negated;         /* GRX_CLASS */
-    unsigned char set[32]; /* GRX_CLASS bitmap, 256 bits */
-    GrxAlt *group;        /* GRX_GROUP */
-    int min, max;         /* quantifier; max < 0 means unbounded */
+struct GrayRegexNode {
+    GrayRegexKind kind;
+    char character;       /* GRAY_REGEX_CHARACTER */
+    bool is_negated;      /* GRAY_REGEX_CLASS */
+    unsigned char character_set[32]; /* GRAY_REGEX_CLASS bitmap, 256 bits */
+    GrayRegexAlternation *group;        /* GRAY_REGEX_GROUP */
+    int minimum_repeat, maximum_repeat; /* quantifier; maximum_repeat < 0 means unbounded */
 };
 
 /* One alternative is a sequence of nodes; a pattern is a list of alternatives. */
 typedef struct {
-    GrxNode *nodes;
+    GrayRegexNode *nodes;
     int count;
-} GrxSeq;
+} GrayRegexSequence;
 
-struct GrxAlt {
-    GrxSeq *seqs;
+struct GrayRegexAlternation {
+    GrayRegexSequence *sequences;
     int count;
 };
 
 typedef struct {
-    GrxAlt *root;
-    bool nosub;
+    GrayRegexAlternation *root;
+    bool has_no_submatches;
 } regex_t;
 
 /* --- Parser --- */
@@ -89,33 +89,33 @@ typedef struct {
 typedef struct {
     const char *cursor;
     bool failed;
-} GrxParser;
+} GrayRegexParser;
 
-static GrxAlt *grx_parse_alt(GrxParser *ps);
+static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parser);
 
-static void grx_set_add(unsigned char *set, unsigned char c) {
-    set[c >> 3] |= (unsigned char)(1u << (c & 7));
+static void gray_regex_set_add(unsigned char *character_set, unsigned char character) {
+    character_set[character >> 3] |= (unsigned char)(1u << (character & 7));
 }
 
-static bool grx_set_has(const unsigned char *set, unsigned char c) {
-    return (set[c >> 3] & (1u << (c & 7))) != 0;
+static bool gray_regex_set_has(const unsigned char *character_set, unsigned char character) {
+    return (character_set[character >> 3] & (1u << (character & 7))) != 0;
 }
 
 /* Expand the escapes users reach for most often. POSIX ERE does not define
  * \d, \w or \s, but patterns in the wild assume them. */
-static bool grx_escape_class(char e, unsigned char *set) {
-    switch (e) {
+static bool gray_regex_escape_class(char escape_character, unsigned char *character_set) {
+    switch (escape_character) {
     case 'd':
-        for (int c = '0'; c <= '9'; c++) grx_set_add(set, (unsigned char)c);
+        for (int character = '0'; character <= '9'; character++) gray_regex_set_add(character_set, (unsigned char)character);
         return true;
     case 'w':
-        for (int c = 0; c < 256; c++) {
-            if (isalnum(c) || c == '_') grx_set_add(set, (unsigned char)c);
+        for (int character = 0; character < 256; character++) {
+            if (isalnum(character) || character == '_') gray_regex_set_add(character_set, (unsigned char)character);
         }
         return true;
     case 's':
-        for (int c = 0; c < 256; c++) {
-            if (isspace(c)) grx_set_add(set, (unsigned char)c);
+        for (int character = 0; character < 256; character++) {
+            if (isspace(character)) gray_regex_set_add(character_set, (unsigned char)character);
         }
         return true;
     default:
@@ -123,153 +123,153 @@ static bool grx_escape_class(char e, unsigned char *set) {
     }
 }
 
-static char grx_escape_char(char e) {
-    switch (e) {
+static char gray_regex_escape_character(char escape_character) {
+    switch (escape_character) {
     case 'n': return '\n';
     case 't': return '\t';
     case 'r': return '\r';
     case 'f': return '\f';
     case 'v': return '\v';
     case '0': return '\0';
-    default: return e;
+    default: return escape_character;
     }
 }
 
-static void grx_parse_bracket(GrxParser *ps, GrxNode *node) {
-    node->kind = GRX_CLASS;
-    memset(node->set, 0, sizeof(node->set));
-    node->negated = false;
+static void gray_regex_parse_bracket(GrayRegexParser *parser, GrayRegexNode *node) {
+    node->kind = GRAY_REGEX_CLASS;
+    memset(node->character_set, 0, sizeof(node->character_set));
+    node->is_negated = false;
 
-    if (*ps->cursor == '^') {
-        node->negated = true;
-        ps->cursor++;
+    if (*parser->cursor == '^') {
+        node->is_negated = true;
+        parser->cursor++;
     }
     /* A ']' first is a literal, per POSIX. */
     bool first = true;
 
-    while (*ps->cursor && (*ps->cursor != ']' || first)) {
+    while (*parser->cursor && (*parser->cursor != ']' || first)) {
         first = false;
 
         /* [:alpha:] and friends */
-        if (ps->cursor[0] == '[' && ps->cursor[1] == ':') {
-            const char *close = strstr(ps->cursor + 2, ":]");
+        if (parser->cursor[0] == '[' && parser->cursor[1] == ':') {
+            const char *close = strstr(parser->cursor + 2, ":]");
             if (close) {
-                size_t n = (size_t)(close - (ps->cursor + 2));
+                size_t count = (size_t)(close - (parser->cursor + 2));
                 char name[16] = {0};
-                if (n < sizeof(name)) memcpy(name, ps->cursor + 2, n);
-                for (int c = 0; c < 256; c++) {
-                    bool in = false;
-                    if (!strcmp(name, "alpha")) in = isalpha(c);
-                    else if (!strcmp(name, "digit")) in = isdigit(c);
-                    else if (!strcmp(name, "alnum")) in = isalnum(c);
-                    else if (!strcmp(name, "space")) in = isspace(c);
-                    else if (!strcmp(name, "upper")) in = isupper(c);
-                    else if (!strcmp(name, "lower")) in = islower(c);
-                    else if (!strcmp(name, "punct")) in = ispunct(c);
-                    else if (!strcmp(name, "xdigit")) in = isxdigit(c);
-                    if (in) grx_set_add(node->set, (unsigned char)c);
+                if (count < sizeof(name)) memcpy(name, parser->cursor + 2, count);
+                for (int character = 0; character < 256; character++) {
+                    bool is_negated = false;
+                    if (!strcmp(name, "alpha")) is_negated = isalpha(character);
+                    else if (!strcmp(name, "digit")) is_negated = isdigit(character);
+                    else if (!strcmp(name, "alnum")) is_negated = isalnum(character);
+                    else if (!strcmp(name, "space")) is_negated = isspace(character);
+                    else if (!strcmp(name, "upper")) is_negated = isupper(character);
+                    else if (!strcmp(name, "lower")) is_negated = islower(character);
+                    else if (!strcmp(name, "punct")) is_negated = ispunct(character);
+                    else if (!strcmp(name, "xdigit")) is_negated = isxdigit(character);
+                    if (is_negated) gray_regex_set_add(node->character_set, (unsigned char)character);
                 }
-                ps->cursor = close + 2;
+                parser->cursor = close + 2;
                 continue;
             }
         }
 
-        char lo;
-        if (*ps->cursor == '\\' && ps->cursor[1]) {
-            ps->cursor++;
-            if (grx_escape_class(*ps->cursor, node->set)) {
-                ps->cursor++;
+        char range_low;
+        if (*parser->cursor == '\\' && parser->cursor[1]) {
+            parser->cursor++;
+            if (gray_regex_escape_class(*parser->cursor, node->character_set)) {
+                parser->cursor++;
                 continue;
             }
-            lo = grx_escape_char(*ps->cursor++);
+            range_low = gray_regex_escape_character(*parser->cursor++);
         } else {
-            lo = *ps->cursor++;
+            range_low = *parser->cursor++;
         }
 
         /* range: a-z, but a trailing '-' before ']' is literal */
-        if (*ps->cursor == '-' && ps->cursor[1] && ps->cursor[1] != ']') {
-            ps->cursor++;
-            char hi = (*ps->cursor == '\\' && ps->cursor[1]) ? (ps->cursor++, grx_escape_char(*ps->cursor++)) : *ps->cursor++;
-            for (int c = (unsigned char)lo; c <= (unsigned char)hi; c++) {
-                grx_set_add(node->set, (unsigned char)c);
+        if (*parser->cursor == '-' && parser->cursor[1] && parser->cursor[1] != ']') {
+            parser->cursor++;
+            char range_high = (*parser->cursor == '\\' && parser->cursor[1]) ? (parser->cursor++, gray_regex_escape_character(*parser->cursor++)) : *parser->cursor++;
+            for (int character = (unsigned char)range_low; character <= (unsigned char)range_high; character++) {
+                gray_regex_set_add(node->character_set, (unsigned char)character);
             }
         } else {
-            grx_set_add(node->set, (unsigned char)lo);
+            gray_regex_set_add(node->character_set, (unsigned char)range_low);
         }
     }
 
-    if (*ps->cursor == ']') ps->cursor++;
-    else ps->failed = true;
+    if (*parser->cursor == ']') parser->cursor++;
+    else parser->failed = true;
 }
 
 /* Parse one atom plus any quantifier that follows it. */
-static bool grx_parse_atom(GrxParser *ps, GrxNode *node) {
+static bool gray_regex_parse_atom(GrayRegexParser *parser, GrayRegexNode *node) {
     memset(node, 0, sizeof(*node));
-    node->min = 1;
-    node->max = 1;
+    node->minimum_repeat = 1;
+    node->maximum_repeat = 1;
 
-    char c = *ps->cursor;
-    if (c == '\0' || c == '|' || c == ')') return false;
+    char character = *parser->cursor;
+    if (character == '\0' || character == '|' || character == ')') return false;
 
-    if (c == '(') {
-        ps->cursor++;
-        node->kind = GRX_GROUP;
-        node->group = grx_parse_alt(ps);
-        if (*ps->cursor == ')') ps->cursor++;
-        else ps->failed = true;
-    } else if (c == '[') {
-        ps->cursor++;
-        grx_parse_bracket(ps, node);
-    } else if (c == '.') {
-        ps->cursor++;
-        node->kind = GRX_ANY;
-    } else if (c == '^') {
-        ps->cursor++;
-        node->kind = GRX_BOL;
+    if (character == '(') {
+        parser->cursor++;
+        node->kind = GRAY_REGEX_GROUP;
+        node->group = gray_regex_parse_alternation(parser);
+        if (*parser->cursor == ')') parser->cursor++;
+        else parser->failed = true;
+    } else if (character == '[') {
+        parser->cursor++;
+        gray_regex_parse_bracket(parser, node);
+    } else if (character == '.') {
+        parser->cursor++;
+        node->kind = GRAY_REGEX_ANY;
+    } else if (character == '^') {
+        parser->cursor++;
+        node->kind = GRAY_REGEX_BEGINNING_OF_LINE;
         return true; /* anchors take no quantifier */
-    } else if (c == '$') {
-        ps->cursor++;
-        node->kind = GRX_EOL;
+    } else if (character == '$') {
+        parser->cursor++;
+        node->kind = GRAY_REGEX_END_OF_LINE;
         return true;
-    } else if (c == '\\' && ps->cursor[1]) {
-        ps->cursor++;
-        unsigned char set[32] = {0};
-        if (grx_escape_class(*ps->cursor, set)) {
-            node->kind = GRX_CLASS;
-            node->negated = false;
-            memcpy(node->set, set, sizeof(set));
-            ps->cursor++;
+    } else if (character == '\\' && parser->cursor[1]) {
+        parser->cursor++;
+        unsigned char character_set[32] = {0};
+        if (gray_regex_escape_class(*parser->cursor, character_set)) {
+            node->kind = GRAY_REGEX_CLASS;
+            node->is_negated = false;
+            memcpy(node->character_set, character_set, sizeof(character_set));
+            parser->cursor++;
         } else {
-            node->kind = GRX_CHAR;
-            node->ch = grx_escape_char(*ps->cursor++);
+            node->kind = GRAY_REGEX_CHARACTER;
+            node->character = gray_regex_escape_character(*parser->cursor++);
         }
     } else {
-        node->kind = GRX_CHAR;
-        node->ch = *ps->cursor++;
+        node->kind = GRAY_REGEX_CHARACTER;
+        node->character = *parser->cursor++;
     }
 
-    switch (*ps->cursor) {
-    case '*': ps->cursor++; node->min = 0; node->max = -1; break;
-    case '+': ps->cursor++; node->min = 1; node->max = -1; break;
-    case '?': ps->cursor++; node->min = 0; node->max = 1;  break;
+    switch (*parser->cursor) {
+    case '*': parser->cursor++; node->minimum_repeat = 0; node->maximum_repeat = -1; break;
+    case '+': parser->cursor++; node->minimum_repeat = 1; node->maximum_repeat = -1; break;
+    case '?': parser->cursor++; node->minimum_repeat = 0; node->maximum_repeat = 1;  break;
     case '{': {
-        const char *save = ps->cursor;
-        ps->cursor++;
-        if (!isdigit((unsigned char)*ps->cursor)) { ps->cursor = save; break; }
-        int lo = 0;
-        while (isdigit((unsigned char)*ps->cursor)) lo = lo * 10 + (*ps->cursor++ - '0');
-        int hi = lo;
-        if (*ps->cursor == ',') {
-            ps->cursor++;
-            if (isdigit((unsigned char)*ps->cursor)) {
-                hi = 0;
-                while (isdigit((unsigned char)*ps->cursor)) hi = hi * 10 + (*ps->cursor++ - '0');
+        const char *save = parser->cursor;
+        parser->cursor++;
+        if (!isdigit((unsigned char)*parser->cursor)) { parser->cursor = save; break; }
+        int repeat_low = 0;
+        while (isdigit((unsigned char)*parser->cursor)) repeat_low = repeat_low * 10 + (*parser->cursor++ - '0');
+        int repeat_high = repeat_low;
+        if (*parser->cursor == ',') {
+            parser->cursor++;
+            if (isdigit((unsigned char)*parser->cursor)) {
+                repeat_high = 0;
+                while (isdigit((unsigned char)*parser->cursor)) repeat_high = repeat_high * 10 + (*parser->cursor++ - '0');
             } else {
-                hi = -1;
+                repeat_high = -1;
             }
         }
-        if (*ps->cursor == '}') { ps->cursor++; node->min = lo; node->max = hi; }
-        else ps->cursor = save;
+        if (*parser->cursor == '}') { parser->cursor++; node->minimum_repeat = repeat_low; node->maximum_repeat = repeat_high; }
+        else parser->cursor = save;
         break;
     }
     default: break;
@@ -277,158 +277,158 @@ static bool grx_parse_atom(GrxParser *ps, GrxNode *node) {
     return true;
 }
 
-static GrxSeq grx_parse_seq(GrxParser *ps) {
-    GrxSeq seq = {NULL, 0};
-    int cap = 0;
-    GrxNode node;
-    while (!ps->failed && grx_parse_atom(ps, &node)) {
-        if (seq.count == cap) {
-            cap = cap ? cap * 2 : 8;
-            GrxNode *grown = (GrxNode *)realloc(seq.nodes, (size_t)cap * sizeof(GrxNode));
-            if (!grown) { ps->failed = true; break; }
-            seq.nodes = grown;
+static GrayRegexSequence gray_regex_parse_sequence(GrayRegexParser *parser) {
+    GrayRegexSequence sequence = {NULL, 0};
+    int capacity = 0;
+    GrayRegexNode node;
+    while (!parser->failed && gray_regex_parse_atom(parser, &node)) {
+        if (sequence.count == capacity) {
+            capacity = capacity ? capacity * 2 : 8;
+            GrayRegexNode *grown = (GrayRegexNode *)realloc(sequence.nodes, (size_t)capacity * sizeof(GrayRegexNode));
+            if (!grown) { parser->failed = true; break; }
+            sequence.nodes = grown;
         }
-        seq.nodes[seq.count++] = node;
+        sequence.nodes[sequence.count++] = node;
     }
-    return seq;
+    return sequence;
 }
 
-static GrxAlt *grx_parse_alt(GrxParser *ps) {
-    GrxAlt *alt = (GrxAlt *)calloc(1, sizeof(GrxAlt));
-    if (!alt) { ps->failed = true; return NULL; }
-    int cap = 0;
+static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parser) {
+    GrayRegexAlternation *alternation = (GrayRegexAlternation *)calloc(1, sizeof(GrayRegexAlternation));
+    if (!alternation) { parser->failed = true; return NULL; }
+    int capacity = 0;
     for (;;) {
-        GrxSeq seq = grx_parse_seq(ps);
-        if (alt->count == cap) {
-            cap = cap ? cap * 2 : 4;
-            GrxSeq *grown = (GrxSeq *)realloc(alt->seqs, (size_t)cap * sizeof(GrxSeq));
-            if (!grown) { ps->failed = true; return alt; }
-            alt->seqs = grown;
+        GrayRegexSequence sequence = gray_regex_parse_sequence(parser);
+        if (alternation->count == capacity) {
+            capacity = capacity ? capacity * 2 : 4;
+            GrayRegexSequence *grown = (GrayRegexSequence *)realloc(alternation->sequences, (size_t)capacity * sizeof(GrayRegexSequence));
+            if (!grown) { parser->failed = true; return alternation; }
+            alternation->sequences = grown;
         }
-        alt->seqs[alt->count++] = seq;
-        if (*ps->cursor == '|') { ps->cursor++; continue; }
+        alternation->sequences[alternation->count++] = sequence;
+        if (*parser->cursor == '|') { parser->cursor++; continue; }
         break;
     }
-    return alt;
+    return alternation;
 }
 
-static void grx_free_alt(GrxAlt *alt);
+static void gray_regex_free_alternation(GrayRegexAlternation *alternation);
 
-static void grx_free_seq(GrxSeq *seq) {
-    for (int i = 0; i < seq->count; i++) {
-        if (seq->nodes[i].kind == GRX_GROUP) grx_free_alt(seq->nodes[i].group);
+static void gray_regex_free_sequence(GrayRegexSequence *sequence) {
+    for (int i = 0; i < sequence->count; i++) {
+        if (sequence->nodes[i].kind == GRAY_REGEX_GROUP) gray_regex_free_alternation(sequence->nodes[i].group);
     }
-    free(seq->nodes);
+    free(sequence->nodes);
 }
 
-static void grx_free_alt(GrxAlt *alt) {
-    if (!alt) return;
-    for (int i = 0; i < alt->count; i++) grx_free_seq(&alt->seqs[i]);
-    free(alt->seqs);
-    free(alt);
+static void gray_regex_free_alternation(GrayRegexAlternation *alternation) {
+    if (!alternation) return;
+    for (int i = 0; i < alternation->count; i++) gray_regex_free_sequence(&alternation->sequences[i]);
+    free(alternation->sequences);
+    free(alternation);
 }
 
 /* --- Matcher --- */
 
 typedef struct {
     const char *begin; /* start of subject, for '^' */
-    bool notbol;       /* REG_NOTBOL: '^' must not match at begin */
-} GrxCtx;
+    bool is_not_beginning_of_line; /* REG_NOTBOL: '^' must not match at begin */
+} GrayRegexContext;
 
-static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *scan_position);
-static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *scan_position);
+static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayRegexAlternation *alternation, const char *scan_position);
+static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRegexSequence *sequence, int index, const char *scan_position);
 
 /* Does one atom match at scan_position, ignoring its quantifier? Returns the position
  * after it, or NULL. */
-static const char *grx_match_one(GrxCtx *ctx, GrxNode *node, const char *scan_position) {
+static const char *gray_regex_match_one(GrayRegexContext *context, GrayRegexNode *node, const char *scan_position) {
     switch (node->kind) {
-    case GRX_BOL: return (scan_position == ctx->begin && !ctx->notbol) ? scan_position : NULL;
-    case GRX_EOL: return (*scan_position == '\0') ? scan_position : NULL;
-    case GRX_ANY: return *scan_position ? scan_position + 1 : NULL;
-    case GRX_CHAR: return (*scan_position == node->ch && *scan_position) ? scan_position + 1 : NULL;
-    case GRX_CLASS: {
+    case GRAY_REGEX_BEGINNING_OF_LINE: return (scan_position == context->begin && !context->is_not_beginning_of_line) ? scan_position : NULL;
+    case GRAY_REGEX_END_OF_LINE: return (*scan_position == '\0') ? scan_position : NULL;
+    case GRAY_REGEX_ANY: return *scan_position ? scan_position + 1 : NULL;
+    case GRAY_REGEX_CHARACTER: return (*scan_position == node->character && *scan_position) ? scan_position + 1 : NULL;
+    case GRAY_REGEX_CLASS: {
         if (!*scan_position) return NULL;
-        bool in = grx_set_has(node->set, (unsigned char)*scan_position);
-        return (in != node->negated) ? scan_position + 1 : NULL;
+        bool is_negated = gray_regex_set_has(node->character_set, (unsigned char)*scan_position);
+        return (is_negated != node->is_negated) ? scan_position + 1 : NULL;
     }
-    case GRX_GROUP: return grx_match_alt(ctx, node->group, scan_position);
+    case GRAY_REGEX_GROUP: return gray_regex_match_alternation(context, node->group, scan_position);
     }
     return NULL;
 }
 
 /* Match seq->nodes[idx..] at scan_position. Greedy, with backtracking on the quantifier. */
-static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *scan_position) {
-    if (idx == seq->count) return scan_position;
+static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRegexSequence *sequence, int index, const char *scan_position) {
+    if (index == sequence->count) return scan_position;
 
-    GrxNode *node = &seq->nodes[idx];
+    GrayRegexNode *node = &sequence->nodes[index];
 
     /* Fixed single occurrence: the common case, kept allocation-free. */
-    if (node->min == 1 && node->max == 1) {
-        const char *next = grx_match_one(ctx, node, scan_position);
+    if (node->minimum_repeat == 1 && node->maximum_repeat == 1) {
+        const char *next = gray_regex_match_one(context, node, scan_position);
         if (!next) return NULL;
-        return grx_match_seq(ctx, seq, idx + 1, next);
+        return gray_regex_match_sequence(context, sequence, index + 1, next);
     }
 
     /* Record how far the atom can repeat, then give ground from the longest
      * run back to the minimum until the rest of the sequence fits. */
-    enum { GRX_MAX_REPEAT = 8192 };
-    const char *stack[GRX_MAX_REPEAT + 1];
+    enum { GRAY_REGEX_MAX_REPEAT = 8192 };
+    const char *stack[GRAY_REGEX_MAX_REPEAT + 1];
     int depth = 0;
     stack[0] = scan_position;
-    const char *cur = scan_position;
-    while ((node->max < 0 || depth < node->max) && depth < GRX_MAX_REPEAT) {
-        const char *next = grx_match_one(ctx, node, cur);
-        if (!next || next == cur) break; /* no progress: stop, or '*' spins */
-        cur = next;
-        stack[++depth] = cur;
+    const char *cursor = scan_position;
+    while ((node->maximum_repeat < 0 || depth < node->maximum_repeat) && depth < GRAY_REGEX_MAX_REPEAT) {
+        const char *next = gray_regex_match_one(context, node, cursor);
+        if (!next || next == cursor) break; /* no progress: stop, or '*' spins */
+        cursor = next;
+        stack[++depth] = cursor;
     }
 
-    for (int take = depth; take >= node->min; take--) {
-        const char *rest = grx_match_seq(ctx, seq, idx + 1, stack[take]);
+    for (int take = depth; take >= node->minimum_repeat; take--) {
+        const char *rest = gray_regex_match_sequence(context, sequence, index + 1, stack[take]);
         if (rest) return rest;
     }
     return NULL;
 }
 
-static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *scan_position) {
-    if (!alt) return NULL;
-    for (int i = 0; i < alt->count; i++) {
-        const char *end = grx_match_seq(ctx, &alt->seqs[i], 0, scan_position);
-        if (end) return end;
+static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayRegexAlternation *alternation, const char *scan_position) {
+    if (!alternation) return NULL;
+    for (int i = 0; i < alternation->count; i++) {
+        const char *end_cursor = gray_regex_match_sequence(context, &alternation->sequences[i], 0, scan_position);
+        if (end_cursor) return end_cursor;
     }
     return NULL;
 }
 
 /* --- POSIX-shaped entry points --- */
 
-static int regcomp(regex_t *re, const char *pattern, int flags) {
-    GrxParser ps;
-    ps.cursor = pattern;
-    ps.failed = false;
-    re->root = grx_parse_alt(&ps);
-    re->nosub = (flags & REG_NOSUB) != 0;
-    if (ps.failed || *ps.cursor != '\0') {
-        grx_free_alt(re->root);
-        re->root = NULL;
+static int regcomp(regex_t *regex, const char *pattern, int flags) {
+    GrayRegexParser parser;
+    parser.cursor = pattern;
+    parser.failed = false;
+    regex->root = gray_regex_parse_alternation(&parser);
+    regex->has_no_submatches = (flags & REG_NOSUB) != 0;
+    if (parser.failed || *parser.cursor != '\0') {
+        gray_regex_free_alternation(regex->root);
+        regex->root = NULL;
         return REG_BADPAT;
     }
     return 0;
 }
 
-static int regexec(const regex_t *re, const char *string, size_t nmatch, regmatch_t *pmatch,
+static int regexec(const regex_t *regex, const char *string, size_t nmatch, regmatch_t *pmatch,
                    int eflags) {
-    if (!re->root) return REG_NOMATCH;
+    if (!regex->root) return REG_NOMATCH;
 
-    GrxCtx ctx;
-    ctx.begin = string;
-    ctx.notbol = (eflags & REG_NOTBOL) != 0;
+    GrayRegexContext context;
+    context.begin = string;
+    context.is_not_beginning_of_line = (eflags & REG_NOTBOL) != 0;
 
     for (const char *start = string;; start++) {
-        const char *end = grx_match_alt(&ctx, re->root, start);
-        if (end) {
+        const char *end_cursor = gray_regex_match_alternation(&context, regex->root, start);
+        if (end_cursor) {
             if (nmatch > 0 && pmatch) {
                 pmatch[0].rm_so = (long)(start - string);
-                pmatch[0].rm_eo = (long)(end - string);
+                pmatch[0].rm_eo = (long)(end_cursor - string);
             }
             return 0;
         }
@@ -437,9 +437,9 @@ static int regexec(const regex_t *re, const char *string, size_t nmatch, regmatc
     return REG_NOMATCH;
 }
 
-static void regfree(regex_t *re) {
-    grx_free_alt(re->root);
-    re->root = NULL;
+static void regfree(regex_t *regex) {
+    gray_regex_free_alternation(regex->root);
+    regex->root = NULL;
 }
 
 #endif

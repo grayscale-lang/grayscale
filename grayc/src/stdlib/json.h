@@ -16,15 +16,15 @@
 #include "../runtime/map.h"
 
 /* JSON string escaping helpers (used by generated #json struct code) */
-size_t json_escaped_len(GrayString str);
-void json_append_escaped(char *buf, int *pos, GrayString str);
+size_t json_escaped_len(GrayString string);
+void json_append_escaped(char *buffer, int *position, GrayString string);
 
 /* Enum field helpers (used by generated #json struct code). raw is the
  * JSON value's original text, kept only to name it in the P0129 panic if
  * it matches no variant of the backing enum. */
-int64_t gray_json_enum_from_number(GrayString raw, int64_t value,
+int64_t gray_json_enum_from_number(GrayString raw_text, int64_t value,
     const int64_t *variants, int32_t count, const char *type_name);
-GrayString gray_json_enum_from_str(GrayString raw,
+GrayString gray_json_enum_from_str(GrayString raw_text,
     const GrayString *variants, int32_t count, const char *type_name);
 
 /*@man encode
@@ -45,14 +45,14 @@ GrayString gray_json_enum_from_str(GrayString raw,
 /* json.encode(value) — convert map to JSON string */
 GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map);
 
-/* json.encode(array) — convert typed arrays to JSON. The signed/unsigned/float
+/* json.encode(array) — convert typed arrays to JSON. The signed/unsigned/floating-point
  * encoders read each slot at its real width (u8, i16, f32, ...). */
-GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr);
-GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr);
-GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr);
-GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *arr);
-GrayString gray_json_encode_string(GrayArena *arena, GrayString str);
-GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr);
+GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_string(GrayArena *arena, GrayString string);
+GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *array);
 
 /* json.encode(map) — convert typed maps to JSON */
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map);
@@ -149,7 +149,7 @@ GrayArray gray_json_split_array(GrayArena *arena, GrayString text);
 /* A #json struct's number field, of element kind `kind`: decode its JSON
  * text into *out at that type, panicking on a malformed value or one out of
  * the type's range; render *value as JSON text. */
-void gray_json_field_decode(GrayString text, int32_t kind, void *out, const char *file, int line);
+void gray_json_field_decode(GrayString text, int32_t kind, void *output, const char *file, int line);
 GrayString gray_json_number_text(GrayArena *arena, int32_t kind, const void *value);
 
 /* _result variant */

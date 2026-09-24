@@ -14,9 +14,9 @@
 #include "../runtime/net_rt.h"
 #include <errno.h>
 
-#define GRAY_NET_HOST_BUF         256
-#define GRAY_NET_PORT_BUF         16
-#define GRAY_NET_MAX_RECV_BUF     1048576
+#define GRAY_NET_HOST_BUFFER_SIZE         256
+#define GRAY_NET_PORT_BUFFER_SIZE         16
+#define GRAY_NET_MAX_RECEIVE_BUFFER_SIZE     1048576
 #define GRAY_NET_LISTEN_BACKLOG   128
 
 
@@ -25,63 +25,63 @@ GraySocket gray_net_dial(GrayArena *arena, GrayString host, int64_t port) {
     gray_net_startup();
     GraySocket sock = {-1};
 
-    char host_buf[GRAY_NET_HOST_BUF];
-    gray_cstr(host, host_buf, sizeof(host_buf));
+    char host_buffer[GRAY_NET_HOST_BUFFER_SIZE];
+    gray_cstr(host, host_buffer, sizeof(host_buffer));
 
     /* Resolve hostname */
-    struct addrinfo hints, *res;
+    struct addrinfo hints, *address_results;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    char port_str[GRAY_NET_PORT_BUF];
-    snprintf(port_str, sizeof(port_str), "%d", (int)port);
+    char port_text[GRAY_NET_PORT_BUFFER_SIZE];
+    snprintf(port_text, sizeof(port_text), "%d", (int)port);
 
-    if (getaddrinfo(host_buf, port_str, &hints, &res) != 0) {
+    if (getaddrinfo(host_buffer, port_text, &hints, &address_results) != 0) {
         return sock;
     }
 
-    int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd < 0) {
-        freeaddrinfo(res);
+    int file_descriptor = socket(address_results->ai_family, address_results->ai_socktype, address_results->ai_protocol);
+    if (file_descriptor < 0) {
+        freeaddrinfo(address_results);
         return sock;
     }
 
-    if (connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
-        gray_sock_close(fd);
-        freeaddrinfo(res);
+    if (connect(file_descriptor, address_results->ai_addr, address_results->ai_addrlen) != 0) {
+        gray_sock_close(file_descriptor);
+        freeaddrinfo(address_results);
         return sock;
     }
 
-    freeaddrinfo(res);
-    sock.fd = fd;
+    freeaddrinfo(address_results);
+    sock.file_descriptor = file_descriptor;
     return sock;
 }
 
 void gray_net_close(GraySocket sock) {
-    if (sock.fd >= 0) {
-        gray_sock_close(sock.fd);
+    if (sock.file_descriptor >= 0) {
+        gray_sock_close(sock.file_descriptor);
     }
 }
 
 int64_t gray_net_send(GraySocket sock, GrayString data) {
-    if (sock.fd < 0 || !data.data) return -1;
-    int64_t sent = (int64_t)send(sock.fd, data.data, (int)data.len, 0);
+    if (sock.file_descriptor < 0 || !data.data) return -1;
+    int64_t sent = (int64_t)send(sock.file_descriptor, data.data, (int)data.len, 0);
     return (int64_t)sent;
 }
 
-GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t max_bytes) {
-    if (sock.fd < 0 || max_bytes <= 0) return (GrayString){"", 0};
+GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t maximum_bytes) {
+    if (sock.file_descriptor < 0 || maximum_bytes <= 0) return (GrayString){"", 0};
 
-    size_t buffer_size = (size_t)max_bytes;
-    if (buffer_size > GRAY_NET_MAX_RECV_BUF) buffer_size = GRAY_NET_MAX_RECV_BUF; /* cap at 1MB */
-    char *buf = gray_arena_alloc_uninitialized(arena, buffer_size + 1);
+    size_t buffer_size = (size_t)maximum_bytes;
+    if (buffer_size > GRAY_NET_MAX_RECEIVE_BUFFER_SIZE) buffer_size = GRAY_NET_MAX_RECEIVE_BUFFER_SIZE; /* cap at 1MB */
+    char *buffer = gray_arena_alloc_uninitialized(arena, buffer_size + 1);
 
-    int64_t n = (int64_t)recv(sock.fd, buf, (int)buffer_size, 0);
-    if (n <= 0) return (GrayString){"", 0};
+    int64_t bytes_received = (int64_t)recv(sock.file_descriptor, buffer, (int)buffer_size, 0);
+    if (bytes_received <= 0) return (GrayString){"", 0};
 
-    buf[n] = '\0';
-    return (GrayString){buf, (int32_t)n};
+    buffer[bytes_received] = '\0';
+    return (GrayString){buffer, (int32_t)bytes_received};
 }
 
 GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
@@ -89,12 +89,12 @@ GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
     gray_net_startup();
     GraySocket sock = {-1};
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return sock;
+    int file_descriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (file_descriptor < 0) return sock;
 
     /* Allow port reuse */
-    int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+    int option = 1;
+    setsockopt(file_descriptor, SOL_SOCKET, SO_REUSEADDR, (const char *)&option, sizeof(option));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -102,76 +102,76 @@ GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons((uint16_t)port);
 
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        gray_sock_close(fd);
+    if (bind(file_descriptor, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        gray_sock_close(file_descriptor);
         return sock;
     }
 
-    if (listen(fd, GRAY_NET_LISTEN_BACKLOG) != 0) {
-        gray_sock_close(fd);
+    if (listen(file_descriptor, GRAY_NET_LISTEN_BACKLOG) != 0) {
+        gray_sock_close(file_descriptor);
         return sock;
     }
 
-    sock.fd = fd;
+    sock.file_descriptor = file_descriptor;
     return sock;
 }
 
 GraySocket gray_net_accept(GrayArena *arena, GraySocket listener) {
     (void)arena;
     GraySocket sock = {-1};
-    if (listener.fd < 0) return sock;
+    if (listener.file_descriptor < 0) return sock;
 
     struct sockaddr_in client_addr;
-    gray_socklen_t client_len = sizeof(client_addr);
-    int fd = accept(listener.fd, (struct sockaddr *)&client_addr, &client_len);
-    if (fd < 0) return sock;
+    gray_socklen_t client_length = sizeof(client_addr);
+    int file_descriptor = accept(listener.file_descriptor, (struct sockaddr *)&client_addr, &client_length);
+    if (file_descriptor < 0) return sock;
 
-    sock.fd = fd;
+    sock.file_descriptor = file_descriptor;
     return sock;
 }
 
 void gray_net_set_timeout(GraySocket sock, int64_t milliseconds) {
-    if (sock.fd < 0) return;
-    GRAY_SOCK_TIMEOUT_TYPE tv;
-    gray_sock_timeout_value(milliseconds, &tv);
-    setsockopt(sock.fd, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(tv), sizeof(tv));
-    setsockopt(sock.fd, SOL_SOCKET, SO_SNDTIMEO, gray_sock_timeout_arg(tv), sizeof(tv));
+    if (sock.file_descriptor < 0) return;
+    GRAY_SOCK_TIMEOUT_TYPE timeout_value;
+    gray_sock_timeout_value(milliseconds, &timeout_value);
+    setsockopt(sock.file_descriptor, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(timeout_value), sizeof(timeout_value));
+    setsockopt(sock.file_descriptor, SOL_SOCKET, SO_SNDTIMEO, gray_sock_timeout_arg(timeout_value), sizeof(timeout_value));
 }
 
 GrayString gray_net_resolve(GrayArena *arena, GrayString hostname) {
     gray_net_startup();
-    char host_buf[GRAY_NET_HOST_BUF];
-    gray_cstr(hostname, host_buf, sizeof(host_buf));
+    char host_buffer[GRAY_NET_HOST_BUFFER_SIZE];
+    gray_cstr(hostname, host_buffer, sizeof(host_buffer));
 
-    struct addrinfo hints, *res;
+    struct addrinfo hints, *address_results;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
 
-    if (getaddrinfo(host_buf, NULL, &hints, &res) != 0) {
+    if (getaddrinfo(host_buffer, NULL, &hints, &address_results) != 0) {
         return (GrayString){"", 0};
     }
 
-    struct sockaddr_in *addr = (struct sockaddr_in *)res->ai_addr;
-    char ip_buf[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &addr->sin_addr, ip_buf, sizeof(ip_buf));
+    struct sockaddr_in *addr = (struct sockaddr_in *)address_results->ai_addr;
+    char ip_buffer[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &addr->sin_addr, ip_buffer, sizeof(ip_buffer));
 
-    GrayString result = gray_string_new(arena, ip_buf, (int32_t)strlen(ip_buf));
-    freeaddrinfo(res);
+    GrayString result = gray_string_new(arena, ip_buffer, (int32_t)strlen(ip_buffer));
+    freeaddrinfo(address_results);
     return result;
 }
 
 /* _result variants */
 
 GrayResult_socket gray_net_dial_result(GrayArena *arena, GrayString host, int64_t port) {
-    GrayResult_socket r;
-    r.v0 = gray_net_dial(arena, host, port);
-    if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot connect to '%.*s:%lld'",
+    GrayResult_socket result;
+    result.v0 = gray_net_dial(arena, host, port);
+    if (result.v0.file_descriptor < 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot connect to '%.*s:%lld'",
             host.len, host.data, (long long)port));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port) {
@@ -179,104 +179,104 @@ GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port)
     gray_net_startup();
     GraySocket sock = {-1};
 
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (fd < 0) return sock;
+    int file_descriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (file_descriptor < 0) return sock;
 
-    int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
+    int option = 1;
+    setsockopt(file_descriptor, SOL_SOCKET, SO_REUSEADDR, (const char *)&option, sizeof(option));
 
-    char host_buf[GRAY_NET_HOST_BUF];
-    gray_cstr(host, host_buf, sizeof(host_buf));
+    char host_buffer[GRAY_NET_HOST_BUFFER_SIZE];
+    gray_cstr(host, host_buffer, sizeof(host_buffer));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons((uint16_t)port);
 
-    if (inet_pton(AF_INET, host_buf, &addr.sin_addr) != 1) {
-        gray_sock_close(fd);
+    if (inet_pton(AF_INET, host_buffer, &addr.sin_addr) != 1) {
+        gray_sock_close(file_descriptor);
         return sock;
     }
 
-    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        gray_sock_close(fd);
+    if (bind(file_descriptor, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        gray_sock_close(file_descriptor);
         return sock;
     }
 
-    if (listen(fd, GRAY_NET_LISTEN_BACKLOG) != 0) {
-        gray_sock_close(fd);
+    if (listen(file_descriptor, GRAY_NET_LISTEN_BACKLOG) != 0) {
+        gray_sock_close(file_descriptor);
         return sock;
     }
 
-    sock.fd = fd;
+    sock.file_descriptor = file_descriptor;
     return sock;
 }
 
 GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port) {
-    GrayResult_socket r;
-    r.v0 = gray_net_listen(arena, port);
-    if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on port %lld",
+    GrayResult_socket result;
+    result.v0 = gray_net_listen(arena, port);
+    if (result.v0.file_descriptor < 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on port %lld",
             (long long)port));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GrayResult_socket gray_net_listen_host_result(GrayArena *arena, GrayString host, int64_t port) {
-    GrayResult_socket r;
-    r.v0 = gray_net_listen_host(arena, host, port);
-    if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on %.*s:%lld",
+    GrayResult_socket result;
+    result.v0 = gray_net_listen_host(arena, host, port);
+    if (result.v0.file_descriptor < 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on %.*s:%lld",
             host.len, host.data, (long long)port));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GrayResult_socket gray_net_accept_result(GrayArena *arena, GraySocket listener) {
-    GrayResult_socket r;
-    r.v0 = gray_net_accept(arena, listener);
-    if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "accept failed on fd %d", listener.fd));
+    GrayResult_socket result;
+    result.v0 = gray_net_accept(arena, listener);
+    if (result.v0.file_descriptor < 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "accept failed on fd %d", listener.file_descriptor));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GrayResult_i64 gray_net_send_result(GrayArena *arena, GraySocket sock, GrayString data) {
-    GrayResult_i64 r;
-    r.v0 = gray_net_send(sock, data);
-    if (r.v0 < 0) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "send failed on fd %d", sock.fd));
+    GrayResult_i64 result;
+    result.v0 = gray_net_send(sock, data);
+    if (result.v0 < 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "send failed on fd %d", sock.file_descriptor));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
-GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_t max_bytes) {
-    GrayResult_string r;
-    r.v0 = gray_net_recv(arena, sock, max_bytes);
-    if (r.v0.len == 0 && sock.fd >= 0) {
-        r.v1 = gray_error_new(arena, GRAY_ERR_Closed, gray_string_format(arena, "recv returned no data on fd %d", sock.fd));
+GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_t maximum_bytes) {
+    GrayResult_string result;
+    result.v0 = gray_net_recv(arena, sock, maximum_bytes);
+    if (result.v0.len == 0 && sock.file_descriptor >= 0) {
+        result.v1 = gray_error_new(arena, GRAY_ERR_Closed, gray_string_format(arena, "recv returned no data on fd %d", sock.file_descriptor));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }
 
 GrayResult_string gray_net_resolve_result(GrayArena *arena, GrayString hostname) {
-    GrayResult_string r;
-    r.v0 = gray_net_resolve(arena, hostname);
-    if (r.v0.len == 0) {
-        r.v1 = gray_error_new(arena, GRAY_ERR_NotFound, gray_string_format(arena, "cannot resolve '%.*s'",
+    GrayResult_string result;
+    result.v0 = gray_net_resolve(arena, hostname);
+    if (result.v0.len == 0) {
+        result.v1 = gray_error_new(arena, GRAY_ERR_NotFound, gray_string_format(arena, "cannot resolve '%.*s'",
             hostname.len, hostname.data));
     } else {
-        r.v1 = NULL;
+        result.v1 = NULL;
     }
-    return r;
+    return result;
 }

@@ -107,27 +107,27 @@ typedef struct {
 GraySqlite *gray_sqlite_open(GrayArena *arena, GrayString path);
 
 /* sqlite.close(db) — close database */
-void gray_sqlite_close(GraySqlite *db);
+void gray_sqlite_close(GraySqlite *database);
 
 /* sqlite.exec(db, sql) — execute statement, return success */
-bool gray_sqlite_exec(GraySqlite *db, GrayString sql);
+bool gray_sqlite_exec(GraySqlite *database, GrayString sql_text);
 
 /* sqlite.exec_params(db, sql, params) — execute parameterized statement */
-bool gray_sqlite_exec_params(GraySqlite *db, GrayString sql, GrayArray params);
+bool gray_sqlite_exec_params(GraySqlite *database, GrayString sql_text, GrayArray parameters);
 
 /* sqlite.query(db, sql) — execute query, return array of maps */
-GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *db, GrayString sql);
+GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *database, GrayString sql_text);
 
 /* sqlite.query_params(db, sql, params) — execute parameterized query */
-GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
+GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters);
 
 /* _result variants */
 typedef struct { GraySqlite *v0; GrayError *v1; } GrayResult_sqlite;
 
 GrayResult_sqlite gray_sqlite_open_result(GrayArena *arena, GrayString path);
-GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *db, GrayString sql);
-GrayResult_bool gray_sqlite_exec_params_result(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
-GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *db, GrayString sql);
-GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
+GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *database, GrayString sql_text);
+GrayResult_bool gray_sqlite_exec_params_result(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters);
+GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *database, GrayString sql_text);
+GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters);
 
 #endif

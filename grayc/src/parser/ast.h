@@ -18,20 +18,20 @@
 
 /* Compiler-generated synthetic variable prefixes.
  * The parser creates these; the typechecker and codegen check for them. */
-#define GRAY_SYNTH_PREFIX  "_gray_"
-#define GRAY_SYNTH_TMP     "_gray_tmp"
-#define GRAY_SYNTH_OR      "_gray_or"
+#define GRAY_SYNTHETIC_PREFIX  "_gray_"
+#define GRAY_SYNTHETIC_TEMPORARY     "_gray_tmp"
+#define GRAY_SYNTHETIC_OR      "_gray_or"
 
 /* Sentinel member name for the or_return propagation guard's error access.
  * The parser emits `_gray_orN.verr`; the typechecker rewrites it to the
  * concrete trailing-Error slot (v1, v2, ...) once the call's arity is known. */
-#define OR_RETURN_ERR_SLOT "verr"
+#define OR_RETURN_ERROR_SLOT "verr"
 
 typedef enum {
     /* Expressions */
     NODE_LABEL,
-    NODE_INT_VALUE,
-    NODE_FLOAT_VALUE,
+    NODE_INTEGER_LITERAL,
+    NODE_FLOATING_POINT_LITERAL,
     NODE_STRING_VALUE,
     NODE_INTERPOLATED_STRING,
     NODE_CHAR_VALUE,
@@ -40,41 +40,41 @@ typedef enum {
     NODE_ARRAY_VALUE,
     NODE_MAP_VALUE,
     NODE_STRUCT_VALUE,
-    NODE_PREFIX_EXPR,
-    NODE_INFIX_EXPR,
-    NODE_POSTFIX_EXPR,
-    NODE_CALL_EXPR,
-    NODE_INDEX_EXPR,
-    NODE_MEMBER_EXPR,
-    NODE_NEW_EXPR,
-    NODE_RANGE_EXPR,
-    NODE_CAST_EXPR,
-    NODE_FUNC_REF,
+    NODE_PREFIX_EXPRESSION,
+    NODE_INFIX_EXPRESSION,
+    NODE_POSTFIX_EXPRESSION,
+    NODE_CALL_EXPRESSION,
+    NODE_INDEX_EXPRESSION,
+    NODE_MEMBER_EXPRESSION,
+    NODE_NEW_EXPRESSION,
+    NODE_RANGE_EXPRESSION,
+    NODE_CAST_EXPRESSION,
+    NODE_FUNCTION_REFERENCE,
     NODE_IMPLICIT_ENUM,
     NODE_WHEN_PATTERN,
 
     /* Statements */
-    NODE_VAR_DECL,
-    NODE_ASSIGN_STMT,
-    NODE_RETURN_STMT,
-    NODE_ENSURE_STMT,
-    NODE_EXPR_STMT,
-    NODE_BLOCK_STMT,
-    NODE_IF_STMT,
-    NODE_WHEN_STMT,
-    NODE_FOR_STMT,
-    NODE_FOR_EACH_STMT,
-    NODE_WHILE_STMT,
-    NODE_LOOP_STMT,
-    NODE_BREAK_STMT,
-    NODE_CONTINUE_STMT,
-    NODE_FUNC_DECL,
-    NODE_IMPORT_STMT,
-    NODE_USING_STMT,
-    NODE_STRUCT_DECL,
-    NODE_ENUM_DECL,
-    NODE_ALIAS_DECL,
-    NODE_MODULE_DECL,
+    NODE_VARIABLE_DECLARATION,
+    NODE_ASSIGN_STATEMENT,
+    NODE_RETURN_STATEMENT,
+    NODE_ENSURE_STATEMENT,
+    NODE_EXPRESSION_STATEMENT,
+    NODE_BLOCK_STATEMENT,
+    NODE_IF_STATEMENT,
+    NODE_WHEN_STATEMENT,
+    NODE_FOR_STATEMENT,
+    NODE_FOR_EACH_STATEMENT,
+    NODE_WHILE_STATEMENT,
+    NODE_LOOP_STATEMENT,
+    NODE_BREAK_STATEMENT,
+    NODE_CONTINUE_STATEMENT,
+    NODE_FUNCTION_DECLARATION,
+    NODE_IMPORT_STATEMENT,
+    NODE_USING_STATEMENT,
+    NODE_STRUCT_DECLARATION,
+    NODE_ENUM_DECLARATION,
+    NODE_ALIAS_DECLARATION,
+    NODE_MODULE_DECLARATION,
     NODE_PROGRAM,
 } NodeKind;
 
@@ -85,10 +85,10 @@ typedef struct AstNode AstNode;
 typedef struct {
     const char *name;
     const char *type_name;
-    bool mutable;
-    bool is_type_param;    /* true when declared with <?> syntax */
+    bool is_mutable;
+    bool is_type_parameter; /* true when declared with <?> syntax */
     AstNode *default_value;
-} Param;
+} Parameter;
 
 /* Field in struct declaration */
 typedef struct {
@@ -104,9 +104,9 @@ typedef struct {
 
 /* Function in struct declaration (namespaced free function) */
 typedef struct {
-    AstNode *func_decl; /* NODE_FUNC_DECL */
+    AstNode *function_declaration; /* NODE_FUNCTION_DECLARATION */
     bool is_private;
-} StructFunc;
+} StructFunction;
 
 /* Enum value */
 typedef struct {
@@ -114,7 +114,7 @@ typedef struct {
     AstNode *value;              /* optional explicit value (plain enums only) */
     const char **payload_types;  /* NULL if no payload */
     int payload_count;           /* 0 for plain variants */
-} EnumVal;
+} EnumValue;
 
 /* Import item */
 typedef struct {
@@ -123,7 +123,7 @@ typedef struct {
     const char *path;
     bool is_stdlib;
     bool is_c_import;   /* extern import "header.h" — raw C header include */
-    const char *source_dir; /* directory of the file containing this import (for transitive resolution) */
+    const char *source_directory; /* directory of the file containing this import (for transitive resolution) */
     Token token;        /* the header-path string literal, for diagnostics (C imports only) */
 } ImportItem;
 
@@ -133,7 +133,7 @@ typedef struct {
     int value_count;
     AstNode *body;
     bool is_range;
-    Token kw_token;              /* preserves is/case keyword */
+    Token keyword_token;         /* preserves is/case keyword */
 } WhenCase;
 
 /* AST Node - tagged union */
@@ -145,7 +145,7 @@ struct AstNode {
      * it. Codegen reads it rather than resolving the name a second time.
      * NULL on nodes that name no declaration. Opaque here: ast.h is included
      * by the parser, which has no symbol table. */
-    struct DeclEntry_ *resolved_decl;
+    struct DeclarationEntry_ *resolved_declaration;
 
     /* Set by the type checker on a value stored into a fixed-size [T,N]
      * struct field when the value's length can't be proven at compile time:
@@ -180,32 +180,32 @@ struct AstNode {
              * a global a gray_g_ prefix so a name like `log` or `index`
              * cannot collide with a libc identifier from the runtime
              * headers. */
-            bool refers_to_file_global;
+            bool is_file_global_reference;
             /* Set by the type checker when this name resolves to a local,
              * parameter, loop variable, or pattern binding. Such a binding
              * hides a same-named member a `using` brings in, so codegen
              * must emit it as written rather than resolve it as a module
              * member. */
-            bool refers_to_local;
+            bool is_local_reference;
         } label;
 
-        /* NODE_INT_VALUE
+        /* NODE_INTEGER_LITERAL
          * value: low 64 bits of the literal as a signed bit pattern
          *        (cast to uint64_t to recover the original positive value
-         *         when overflow=true)
-         * overflow:     literal exceeds INT64_MAX (still ≤ UINT64_MAX)
-         * overflow_u64: literal exceeds UINT64_MAX entirely
+         *         when is_above_i64_maximum=true)
+         * is_above_i64_maximum: literal exceeds INT64_MAX (still ≤ UINT64_MAX)
+         * is_above_u64_maximum: literal exceeds UINT64_MAX entirely
          * literal:      the digits as decimal text ('_' kept for a decimal
          *               literal; a hex/octal/binary literal is converted) */
         struct {
             int64_t value;
             const char *literal;
-            bool overflow;
-            bool overflow_u64;
-        } int_value;
+            bool is_above_i64_maximum;
+            bool is_above_u64_maximum;
+        } integer_literal;
 
-        /* NODE_FLOAT_VALUE */
-        struct { double value; } float_value;
+        /* NODE_FLOATING_POINT_LITERAL */
+        struct { double value; } floating_point_literal;
 
         /* NODE_STRING_VALUE */
         struct { const char *value; bool is_raw; } string_value;
@@ -240,34 +240,34 @@ struct AstNode {
             /* E3127 already reported for this literal. A return value is
              * resolved twice — once for the statement, once against the
              * declared return type — and one bad literal is one error. */
-            bool type_param_rejected;
+            bool was_type_parameter_rejected;
         } struct_value;
 
-        /* NODE_PREFIX_EXPR */
-        struct { TokenType op; AstNode *right; } prefix;
+        /* NODE_PREFIX_EXPRESSION */
+        struct { TokenType operator; AstNode *right; } prefix;
 
-        /* NODE_INFIX_EXPR */
-        struct { AstNode *left; TokenType op; AstNode *right; } infix;
+        /* NODE_INFIX_EXPRESSION */
+        struct { AstNode *left; TokenType operator; AstNode *right; } infix;
 
-        /* NODE_POSTFIX_EXPR */
-        struct { AstNode *left; TokenType op; } postfix;
+        /* NODE_POSTFIX_EXPRESSION */
+        struct { AstNode *left; TokenType operator; } postfix;
 
-        /* NODE_CALL_EXPR */
-        struct { AstNode *function; AstNode **args; int arg_count; const char **arg_names; } call;
+        /* NODE_CALL_EXPRESSION */
+        struct { AstNode *function; AstNode **arguments; int argument_count; const char **argument_names; } call;
 
-        /* NODE_INDEX_EXPR */
-        struct { AstNode *left; AstNode *index; } index_expr;
+        /* NODE_INDEX_EXPRESSION */
+        struct { AstNode *left; AstNode *index; } index_expression;
 
-        /* NODE_MEMBER_EXPR */
+        /* NODE_MEMBER_EXPRESSION */
         struct { AstNode *object; const char *member; } member;
 
-        /* NODE_NEW_EXPR */
-        struct { const char *type_name; } new_expr;
+        /* NODE_NEW_EXPRESSION */
+        struct { const char *type_name; } new_expression;
 
-        /* NODE_RANGE_EXPR */
-        struct { AstNode *start; AstNode *end; AstNode *step; } range_expr;
+        /* NODE_RANGE_EXPRESSION */
+        struct { AstNode *start; AstNode *end; AstNode *step; } range_expression;
 
-        /* NODE_CAST_EXPR */
+        /* NODE_CAST_EXPRESSION */
         struct {
             AstNode *value;
             const char *target_type;
@@ -275,8 +275,8 @@ struct AstNode {
             const char *element_type;
         } cast;
 
-        /* NODE_FUNC_REF — ()func_name */
-        struct { AstNode *function; } func_ref;
+        /* NODE_FUNCTION_REFERENCE — ()func_name */
+        struct { AstNode *function; } function_reference;
 
         /* NODE_IMPLICIT_ENUM — .VARIANT (resolved by typechecker) */
         struct { const char *variant; const char *resolved_enum; } implicit_enum;
@@ -290,89 +290,89 @@ struct AstNode {
             bool is_implicit;          /* true if .Circle(r) form */
         } when_pattern;
 
-        /* NODE_VAR_DECL */
+        /* NODE_VARIABLE_DECLARATION */
         struct {
             const char *name;
             const char *original_name; /* pre-prefix name for error messages */
             const char *type_name;
             AstNode *value;
-            bool mutable;
+            bool is_mutable;
             bool is_private;
-            bool synthetic;            /* parser-generated temp, not user-written */
-        } var_decl;
+            bool is_synthetic;         /* parser-generated temporary, not user-written */
+        } variable_declaration;
 
-        /* NODE_ASSIGN_STMT */
+        /* NODE_ASSIGN_STATEMENT */
         struct {
             AstNode *target;
-            TokenType op;
+            TokenType operator;
             AstNode *value;
-            bool is_decl;  /* true when typechecker promotes to implicit declaration */
+            bool is_declaration;  /* true when typechecker promotes to implicit declaration */
         } assign;
 
-        /* NODE_RETURN_STMT */
-        struct { AstNode **values; int count; } return_stmt;
+        /* NODE_RETURN_STATEMENT */
+        struct { AstNode **values; int count; } return_statement;
 
-        /* NODE_ENSURE_STMT */
-        struct { AstNode *expr; } ensure_stmt;
+        /* NODE_ENSURE_STATEMENT */
+        struct { AstNode *expression; } ensure_statement;
 
-        /* NODE_EXPR_STMT */
-        struct { AstNode *expr; } expr_stmt;
+        /* NODE_EXPRESSION_STATEMENT */
+        struct { AstNode *expression; } expression_statement;
 
-        /* NODE_BLOCK_STMT */
-        struct { AstNode **stmts; int count; int cap; } block;
+        /* NODE_BLOCK_STATEMENT */
+        struct { AstNode **statements; int count; int capacity; } block;
 
-        /* NODE_IF_STMT */
+        /* NODE_IF_STATEMENT */
         struct {
             AstNode *condition;
             AstNode *consequence;
             AstNode *alternative; /* can be another if_stmt or block */
             Token else_token;     /* preserves else/otherwise keyword */
-        } if_stmt;
+        } if_statement;
 
-        /* NODE_WHEN_STMT */
+        /* NODE_WHEN_STATEMENT */
         struct {
             AstNode *value;
             WhenCase *cases;
             int case_count;
             AstNode *default_body;
             bool is_strict;
-        } when_stmt;
+        } when_statement;
 
-        /* NODE_FOR_STMT */
+        /* NODE_FOR_STATEMENT */
         struct {
-            const char *var_name;
-            const char *var_type;
+            const char *variable_name;
+            const char *variable_type;
             AstNode *iterable;
             AstNode *body;
-        } for_stmt;
+        } for_statement;
 
-        /* NODE_FOR_EACH_STMT */
+        /* NODE_FOR_EACH_STATEMENT */
         struct {
             const char *index_name;
-            const char *var_name;
+            const char *variable_name;
             AstNode *collection;
             AstNode *body;
         } for_each;
 
-        /* NODE_WHILE_STMT */
-        struct { AstNode *condition; AstNode *body; } while_stmt;
+        /* NODE_WHILE_STATEMENT */
+        struct { AstNode *condition; AstNode *body; } while_statement;
 
-        /* NODE_LOOP_STMT */
-        struct { AstNode *body; } loop_stmt;
+        /* NODE_LOOP_STATEMENT */
+        struct { AstNode *body; } loop_statement;
 
-        /* NODE_FUNC_DECL */
+        /* NODE_FUNCTION_DECLARATION */
         struct {
             const char *name;
             const char *original_name; /* pre-prefix name for error messages */
-            Param *params;
-            int param_count;
+            Parameter *parameters;
+            int parameter_count;
             const char **return_types;
             const char **return_names; /* Named return params (NULL if unnamed) */
             int return_type_count;
             AstNode *body;
             bool is_private;
             bool is_discard;
-            bool is_test;                    /* #test attribute — test-only fn */
+            bool is_test;                    /* #test attribute — test-only function */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             /* Wildcard generics concrete type bindings recorded
@@ -381,43 +381,43 @@ struct AstNode {
              * non-generic functions. */
             const char **instantiations;
             int instantiation_count;
-        } func_decl;
+        } function_declaration;
 
-        /* NODE_IMPORT_STMT */
+        /* NODE_IMPORT_STATEMENT */
         struct {
             ImportItem *items;
             int count;
-            bool auto_use;
-        } import_stmt;
+            bool should_auto_use;
+        } import_statement;
 
-        /* NODE_USING_STMT */
+        /* NODE_USING_STATEMENT */
         struct {
             const char **modules;
             int count;
-        } using_stmt;
+        } using_statement;
 
-        /* NODE_STRUCT_DECL */
+        /* NODE_STRUCT_DECLARATION */
         struct {
             const char *name;
             const char *original_name; /* pre-prefix name for error messages */
             StructField *fields;
             int field_count;
-            StructFunc *funcs;
-            int func_count;
-            bool is_json; /* #json attribute — enables JSON ser/deser */
+            StructFunction *functions;
+            int function_count;
+            bool is_json; /* #json attribute — enables JSON serialization and deserialization */
             bool is_generic; /* has ? in at least one field type */
             const char **instantiations; /* concrete bindings */
             int instantiation_count;
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             bool is_private;
-        } struct_decl;
+        } struct_declaration;
 
-        /* NODE_ENUM_DECL */
+        /* NODE_ENUM_DECLARATION */
         struct {
             const char *name;
             const char *original_name; /* pre-prefix name for error messages */
-            EnumVal *values;
+            EnumValue *values;
             int value_count;
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
@@ -425,36 +425,36 @@ struct AstNode {
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             bool is_private;
-        } enum_decl;
+        } enum_declaration;
 
-        /* NODE_ALIAS_DECL */
+        /* NODE_ALIAS_DECLARATION */
         struct {
             const char *name;
             const char *target_type;
             bool is_private;
-        } alias_decl;
+        } alias_declaration;
 
-        /* NODE_MODULE_DECL */
-        struct { const char *name; } module_decl;
+        /* NODE_MODULE_DECLARATION */
+        struct { const char *name; } module_declaration;
 
         /* NODE_PROGRAM */
         struct {
-            AstNode *module_decl;
-            AstNode **using_stmts;
+            AstNode *module_declaration;
+            AstNode **using_statements;
             int using_count;
-            AstNode **stmts;
-            int stmt_count;
-            int stmt_cap;
+            AstNode **statements;
+            int statement_count;
+            int statement_capacity;
         } program;
     } data;
 };
 
 /* Node constructor helpers */
-AstNode *ast_alloc(Arena *arena, NodeKind kind, Token token);
+AstNode *ast_allocate(Arena *arena, NodeKind kind, Token token);
 
 /* --- member expression shape accessors ---------------------------------
  *
- * `a.b` is a NODE_MEMBER_EXPR whose object says what `a` is: a module, a
+ * `a.b` is a NODE_MEMBER_EXPRESSION whose object says what `a` is: a module, a
  * struct type, an enum type, a local, or another qualified name. Every phase
  * needs the written qualifier before it can decide which; these are the one
  * place the shape is tested, so a phase asks for the qualifier instead of

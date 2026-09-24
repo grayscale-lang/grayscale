@@ -42,7 +42,7 @@ $Skipped = [ordered]@{
 
 # One shared dependency list for every suite. test_util needs fewer objects,
 # but linking the superset is harmless and removes a list that can drift.
-# platform.c is mandatory: error.c calls gray_stderr_is_tty().
+# platform.c is mandatory: error.c calls gray_stderr_is_terminal().
 $Deps = @(
     'util\arena.c', 'util\buf.c', 'util\error.c', 'util\error_codes.c', 'util\platform.c',
     'lexer\token.c', 'lexer\lexer.c',

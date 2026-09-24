@@ -41,10 +41,10 @@ static const char *module_file(const char *module) {
     return arena_copy_string(arena, buf);
 }
 
-static DeclEntry *define(ModuleTable *table, const char *module,
+static DeclarationEntry *define(ModuleTable *table, const char *module,
                          const char *name, Visibility vis) {
     ModuleScope *scope = module_table_find(table, module);
-    return module_scope_define(table, scope, DECL_FUNC, name, NULL,
+    return module_scope_define(table, scope, DECLARATION_FUNCTION, name, NULL,
                                module_file(module), 1, vis);
 }
 
@@ -52,14 +52,14 @@ static DeclEntry *define(ModuleTable *table, const char *module,
 
 static void test_define_and_lookup(void) {
     ModuleTable *table = table_with_modules();
-    define(table, "lib", "helper", VIS_PUBLIC);
+    define(table, "lib", "helper", VISIBILITY_PUBLIC);
 
-    DeclEntry *entry = module_scope_lookup(module_table_find(table, "lib"), "helper");
+    DeclarationEntry *entry = module_scope_lookup(module_table_find(table, "lib"), "helper");
     ASSERT_NOT_NULL(entry);
     ASSERT_STR_EQ(entry->name, "helper");
     ASSERT_STR_EQ(entry->module_name, "lib");
-    ASSERT_EQ(entry->kind, DECL_FUNC);
-    ASSERT(!entry->module_is_entry);
+    ASSERT_EQ(entry->kind, DECLARATION_FUNCTION);
+    ASSERT(!entry->is_module_entry);
 }
 
 static void test_lookup_miss_returns_null(void) {
@@ -69,10 +69,10 @@ static void test_lookup_miss_returns_null(void) {
 
 static void test_redefinition_keeps_first(void) {
     ModuleTable *table = table_with_modules();
-    DeclEntry *first = define(table, "lib", "dup", VIS_PUBLIC);
-    DeclEntry *second = define(table, "lib", "dup", VIS_PRIVATE);
+    DeclarationEntry *first = define(table, "lib", "dup", VISIBILITY_PUBLIC);
+    DeclarationEntry *second = define(table, "lib", "dup", VISIBILITY_PRIVATE);
     ASSERT(first == second);
-    ASSERT_EQ(first->visibility, VIS_PUBLIC);
+    ASSERT_EQ(first->visibility, VISIBILITY_PUBLIC);
     ASSERT_EQ(module_table_find(table, "lib")->count, 1);
 }
 
@@ -93,8 +93,8 @@ static void test_directory_module_merges_files(void) {
     ASSERT_STR_EQ(module_table_module_for_file(table, "pkg/types.gray"), "pkg");
     ASSERT_STR_EQ(module_table_module_for_file(table, "pkg/logic.gray"), "pkg");
 
-    define(table, "pkg", "Item", VIS_PUBLIC);
-    define(table, "pkg", "process", VIS_PUBLIC);
+    define(table, "pkg", "Item", VISIBILITY_PUBLIC);
+    define(table, "pkg", "process", VISIBILITY_PUBLIC);
     ASSERT_EQ(module_table_find(table, "pkg")->count, 2);
 }
 
@@ -111,7 +111,7 @@ static void test_growth_preserves_all_entries(void) {
     char name[32];
     for (int i = 0; i < 200; i++) {
         snprintf(name, sizeof(name), "sym%d", i);
-        define(table, "lib", name, VIS_PUBLIC);
+        define(table, "lib", name, VISIBILITY_PUBLIC);
     }
     ASSERT_EQ(module_table_find(table, "lib")->count, 200);
     for (int i = 0; i < 200; i++) {
@@ -142,8 +142,8 @@ static void test_imported_module_may_share_entry_basename(void) {
     module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "sub/main.gray", "main", false);
 
-    define(table, MODULE_ENTRY_NAME, "shared", VIS_PUBLIC);
-    define(table, "main", "shared", VIS_PUBLIC);
+    define(table, MODULE_ENTRY_NAME, "shared", VISIBILITY_PUBLIC);
+    define(table, "main", "shared", VISIBILITY_PUBLIC);
 
     ASSERT_EQ(module_table_find(table, MODULE_ENTRY_NAME)->count, 1);
     ASSERT_EQ(module_table_find(table, "main")->count, 1);
@@ -157,10 +157,10 @@ static void test_imported_module_may_share_entry_basename(void) {
  * qualifier must not reach into its declarations. */
 static void test_entry_module_is_not_a_qualifier(void) {
     ModuleTable *table = table_with_modules();
-    define(table, MODULE_ENTRY_NAME, "helper", VIS_PUBLIC);
+    define(table, MODULE_ENTRY_NAME, "helper", VISIBILITY_PUBLIC);
     ResolveStatus status;
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    DeclEntry *found = module_resolve_qualified(table, &sc,
+    DeclarationEntry *found = module_resolve_qualified(table, &sc,
                                                 MODULE_ENTRY_NAME, "helper", &status);
     ASSERT_EQ(status, RESOLVE_NO_MODULE);
     ASSERT(found == NULL);
@@ -174,10 +174,10 @@ static void test_node_index(void) {
     AstNode fake_a;
     AstNode fake_b;
     ModuleScope *lib = module_table_find(table, "lib");
-    DeclEntry *a = module_scope_define(table, lib, DECL_FUNC, "a", &fake_a,
-                                       "lib.gray", 1, VIS_PUBLIC);
-    DeclEntry *b = module_scope_define(table, lib, DECL_FUNC, "b", &fake_b,
-                                       "lib.gray", 2, VIS_PUBLIC);
+    DeclarationEntry *a = module_scope_define(table, lib, DECLARATION_FUNCTION, "a", &fake_a,
+                                       "lib.gray", 1, VISIBILITY_PUBLIC);
+    DeclarationEntry *b = module_scope_define(table, lib, DECLARATION_FUNCTION, "b", &fake_b,
+                                       "lib.gray", 2, VISIBILITY_PUBLIC);
 
     ASSERT(module_table_entry_for_node(table, &fake_a) == a);
     ASSERT(module_table_entry_for_node(table, &fake_b) == b);
@@ -196,11 +196,11 @@ static void test_node_index_growth(void) {
     char name[32];
     for (int i = 0; i < 300; i++) {
         snprintf(name, sizeof(name), "n%d", i);
-        module_scope_define(table, lib, DECL_FUNC, name, &nodes[i], "lib.gray", i, VIS_PUBLIC);
+        module_scope_define(table, lib, DECLARATION_FUNCTION, name, &nodes[i], "lib.gray", i, VISIBILITY_PUBLIC);
     }
     for (int i = 0; i < 300; i++) {
         snprintf(name, sizeof(name), "n%d", i);
-        DeclEntry *e = module_table_entry_for_node(table, &nodes[i]);
+        DeclarationEntry *e = module_table_entry_for_node(table, &nodes[i]);
         ASSERT_NOT_NULL(e);
         ASSERT_STR_EQ(e->name, name);
     }
@@ -211,10 +211,10 @@ static void test_node_index_growth(void) {
 static void test_resolve_qualified_ok(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    DeclEntry *declared = define(table, "lib", "helper", VIS_PUBLIC);
+    DeclarationEntry *declared = define(table, "lib", "helper", VISIBILITY_PUBLIC);
 
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "helper", &status);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "lib", "helper", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT(found == declared);
 }
@@ -223,7 +223,7 @@ static void test_resolve_qualified_unknown_module(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "nosuch", "helper", &status);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "nosuch", "helper", &status);
     ASSERT_EQ(status, RESOLVE_NO_MODULE);
     ASSERT(found == NULL);
 }
@@ -231,10 +231,10 @@ static void test_resolve_qualified_unknown_module(void) {
 static void test_resolve_qualified_unknown_member(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    define(table, "lib", "helper", VIS_PUBLIC);
+    define(table, "lib", "helper", VISIBILITY_PUBLIC);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "absent", &status);
-    ASSERT_EQ(status, RESOLVE_NO_DECL);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "lib", "absent", &status);
+    ASSERT_EQ(status, RESOLVE_NO_DECLARATION);
     ASSERT(found == NULL);
 }
 
@@ -243,9 +243,9 @@ static void test_resolve_qualified_unknown_member(void) {
 static void test_resolve_qualified_private_from_outside(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    DeclEntry *declared = define(table, "lib", "secret", VIS_PRIVATE);
+    DeclarationEntry *declared = define(table, "lib", "secret", VISIBILITY_PRIVATE);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
     ASSERT_EQ(status, RESOLVE_PRIVATE);
     ASSERT(found == declared);
 }
@@ -253,9 +253,9 @@ static void test_resolve_qualified_private_from_outside(void) {
 static void test_resolve_qualified_private_from_own_module(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
-    define(table, "lib", "secret", VIS_PRIVATE);
+    define(table, "lib", "secret", VISIBILITY_PRIVATE);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT_NOT_NULL(found);
 }
@@ -263,7 +263,7 @@ static void test_resolve_qualified_private_from_own_module(void) {
 static void test_resolve_qualified_null_status_allowed(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    define(table, "lib", "helper", VIS_PUBLIC);
+    define(table, "lib", "helper", VISIBILITY_PUBLIC);
     ASSERT_NOT_NULL(module_resolve_qualified(table, &sc, "lib", "helper", NULL));
 }
 
@@ -275,8 +275,8 @@ static void test_private_is_file_scoped_within_a_module(void) {
     module_table_map_file(table, "pkg/a.gray", "pkg", false);
     module_table_map_file(table, "pkg/b.gray", "pkg", false);
     ModuleScope *pkg = module_table_find(table, "pkg");
-    module_scope_define(table, pkg, DECL_FUNC, "secret", NULL,
-                        "pkg/a.gray", 1, VIS_PRIVATE);
+    module_scope_define(table, pkg, DECLARATION_FUNCTION, "secret", NULL,
+                        "pkg/a.gray", 1, VISIBILITY_PRIVATE);
 
     ResolveScope same = scope_of("pkg", "pkg/a.gray", NULL, 0);
     ResolveScope sibling = scope_of("pkg", "pkg/b.gray", NULL, 0);
@@ -294,11 +294,11 @@ static void test_alias_resolves_to_module(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     module_table_add_alias(table, "l", "lib");
-    define(table, "lib", "helper", VIS_PUBLIC);
+    define(table, "lib", "helper", VISIBILITY_PUBLIC);
 
     ASSERT_STR_EQ(module_table_resolve_alias(table, "l"), "lib");
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, &sc, "l", "helper", &status);
+    DeclarationEntry *found = module_resolve_qualified(table, &sc, "l", "helper", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT_NOT_NULL(found);
     ASSERT_STR_EQ(found->module_name, "lib");
@@ -319,29 +319,29 @@ static void test_self_alias_ignored(void) {
 
 static void test_unqualified_prefers_current_module(void) {
     ModuleTable *table = table_with_modules();
-    DeclEntry *own = define(table, MODULE_ENTRY_NAME, "name", VIS_PUBLIC);
-    define(table, "lib", "name", VIS_PUBLIC);
+    DeclarationEntry *own = define(table, MODULE_ENTRY_NAME, "name", VISIBILITY_PUBLIC);
+    define(table, "lib", "name", VISIBILITY_PUBLIC);
 
     const char *using_list[] = {"lib"};
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
     const char *ambiguous = NULL;
-    DeclEntry *found = module_resolve_unqualified(table, &sc, "name", &ambiguous);
+    DeclarationEntry *found = module_resolve_unqualified(table, &sc, "name", &ambiguous);
     ASSERT(found == own);
     ASSERT(ambiguous == NULL);
 }
 
 static void test_unqualified_finds_using_module(void) {
     ModuleTable *table = table_with_modules();
-    DeclEntry *declared = define(table, "lib", "helper", VIS_PUBLIC);
+    DeclarationEntry *declared = define(table, "lib", "helper", VISIBILITY_PUBLIC);
     const char *using_list[] = {"lib"};
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
-    DeclEntry *found = module_resolve_unqualified(table, &sc, "helper", NULL);
+    DeclarationEntry *found = module_resolve_unqualified(table, &sc, "helper", NULL);
     ASSERT(found == declared);
 }
 
 static void test_unqualified_skips_private(void) {
     ModuleTable *table = table_with_modules();
-    define(table, "lib", "secret", VIS_PRIVATE);
+    define(table, "lib", "secret", VISIBILITY_PRIVATE);
     const char *using_list[] = {"lib"};
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
     ASSERT(module_resolve_unqualified(table, &sc, "secret", NULL) == NULL);
@@ -352,13 +352,13 @@ static void test_unqualified_skips_private(void) {
 static void test_unqualified_ambiguity_reported(void) {
     ModuleTable *table = table_with_modules();
     module_table_map_file(table, "other.gray", "other", false);
-    define(table, "lib", "shared", VIS_PUBLIC);
-    define(table, "other", "shared", VIS_PUBLIC);
+    define(table, "lib", "shared", VISIBILITY_PUBLIC);
+    define(table, "other", "shared", VISIBILITY_PUBLIC);
 
     const char *using_list[] = {"lib", "other"};
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
     const char *ambiguous = NULL;
-    DeclEntry *found = module_resolve_unqualified(table, &sc, "shared", &ambiguous);
+    DeclarationEntry *found = module_resolve_unqualified(table, &sc, "shared", &ambiguous);
     ASSERT(found == NULL);
     ASSERT_NOT_NULL(ambiguous);
     ASSERT_STR_EQ(ambiguous, "other");
@@ -368,8 +368,8 @@ static void test_unqualified_ambiguity_reported(void) {
 static void test_unqualified_first_match_without_slot(void) {
     ModuleTable *table = table_with_modules();
     module_table_map_file(table, "other.gray", "other", false);
-    DeclEntry *first = define(table, "lib", "shared", VIS_PUBLIC);
-    define(table, "other", "shared", VIS_PUBLIC);
+    DeclarationEntry *first = define(table, "lib", "shared", VISIBILITY_PUBLIC);
+    define(table, "other", "shared", VISIBILITY_PUBLIC);
 
     const char *using_list[] = {"lib", "other"};
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
@@ -390,17 +390,17 @@ static ModuleTable *typed_table(void) {
     module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "lib.gray", "lib", false);
     ModuleScope *lib = module_table_find(table, "lib");
-    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, module_file("lib"), 1, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, module_file("lib"), 2, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, module_file("lib"), 3, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, module_file("lib"), 4, VIS_PUBLIC);
+    module_scope_define(table, lib, DECLARATION_STRUCT, "Point", NULL, module_file("lib"), 1, VISIBILITY_PUBLIC);
+    module_scope_define(table, lib, DECLARATION_ENUM, "Color", NULL, module_file("lib"), 2, VISIBILITY_PUBLIC);
+    module_scope_define(table, lib, DECLARATION_ALIAS, "Score", NULL, module_file("lib"), 3, VISIBILITY_PUBLIC);
+    module_scope_define(table, lib, DECLARATION_FUNCTION, "helper", NULL, module_file("lib"), 4, VISIBILITY_PUBLIC);
     return table;
 }
 
 static void test_resolve_written_qualified(void) {
     ModuleTable *table = typed_table();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    DeclEntry *e = module_resolve_written(table, &sc, "lib.Point");
+    DeclarationEntry *e = module_resolve_written(table, &sc, "lib.Point");
     ASSERT_NOT_NULL(e);
     ASSERT_STR_EQ(e->name, "Point");
     ASSERT_STR_EQ(e->module_name, "lib");
@@ -411,7 +411,7 @@ static void test_resolve_written_qualified(void) {
 static void test_resolve_written_bare_in_own_module(void) {
     ModuleTable *table = typed_table();
     ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
-    DeclEntry *e = module_resolve_written(table, &sc, "Point");
+    DeclarationEntry *e = module_resolve_written(table, &sc, "Point");
     ASSERT_NOT_NULL(e);
     ASSERT_STR_EQ(e->module_name, "lib");
 }
@@ -487,8 +487,8 @@ static void test_type_name_unresolvable_unchanged(void) {
 
 static void test_mangle_imported_and_entry(void) {
     ModuleTable *table = table_with_modules();
-    DeclEntry *imported = define(table, "lib", "Point", VIS_PUBLIC);
-    DeclEntry *local = define(table, MODULE_ENTRY_NAME, "main", VIS_PUBLIC);
+    DeclarationEntry *imported = define(table, "lib", "Point", VISIBILITY_PUBLIC);
+    DeclarationEntry *local = define(table, MODULE_ENTRY_NAME, "main", VISIBILITY_PUBLIC);
 
     ASSERT_STR_EQ(module_mangle(table, imported), "lib_Point");
     ASSERT_STR_EQ(module_mangle(table, local), "main");

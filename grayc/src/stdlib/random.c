@@ -1,6 +1,6 @@
 /*
  * random.c — Implementation of the random stdlib module.
- * Provides pseudo-random number generation for floats and integers,
+ * Provides pseudo-random number generation for floating-point numbers and integers,
  * array shuffling, random element selection, and manual seeding.
  *
  * Author:  Marshall A Burns (@SchoolyB)
@@ -62,8 +62,8 @@ double gray_random_f64_unit(void) {
     return (double)rand() / RAND_MAX;
 }
 
-double gray_random_float_range(double min, double max) {
-    return min + gray_random_f64_unit() * (max - min);
+double gray_random_float_range(double minimum, double maximum) {
+    return minimum + gray_random_f64_unit() * (maximum - minimum);
 }
 
 /* Generate a uniform random uint64_t across the full 64-bit range.
@@ -79,9 +79,9 @@ static uint64_t rand64(void) {
 #if defined(__APPLE__) || defined(__FreeBSD__)
     arc4random_buf(&bits, sizeof(bits));
 #elif defined(_WIN32)
-    unsigned int hi, lo;
-    if (rand_s(&hi) == 0 && rand_s(&lo) == 0) {
-        bits = ((uint64_t)hi << 32) | lo;
+    unsigned int high_bits, lo;
+    if (rand_s(&high_bits) == 0 && rand_s(&lo) == 0) {
+        bits = ((uint64_t)high_bits << 32) | lo;
     } else {
         bits = ((uint64_t)(unsigned)rand() << 33) ^
             ((uint64_t)(unsigned)rand() << 2)  ^
@@ -99,16 +99,16 @@ static uint64_t rand64(void) {
     return bits;
 }
 
-int64_t gray_random_int_max(int64_t max) {
+int64_t gray_random_int_max(int64_t maximum) {
     ensure_seed();
-    if (max <= 0) return 0;
-    return (int64_t)(rand64() % (uint64_t)max);
+    if (maximum <= 0) return 0;
+    return (int64_t)(rand64() % (uint64_t)maximum);
 }
 
-int64_t gray_random_int_range(int64_t min, int64_t max) {
+int64_t gray_random_int_range(int64_t minimum, int64_t maximum) {
     ensure_seed();
-    if (min >= max) return min;
-    return min + (int64_t)(rand64() % (uint64_t)(max - min));
+    if (minimum >= maximum) return minimum;
+    return minimum + (int64_t)(rand64() % (uint64_t)(maximum - minimum));
 }
 
 bool gray_random_bool(void) {
@@ -126,10 +126,10 @@ int32_t gray_random_char(void) {
     return (int32_t)(32 + rand() % 95); /* printable ASCII */
 }
 
-int32_t gray_random_char_range(int32_t min, int32_t max) {
+int32_t gray_random_char_range(int32_t minimum, int32_t maximum) {
     ensure_seed();
-    if (min >= max) return min;
-    return min + (int32_t)(rand() % (max - min));
+    if (minimum >= maximum) return minimum;
+    return minimum + (int32_t)(rand() % (maximum - minimum));
 }
 
 GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alphabet) {
@@ -139,17 +139,17 @@ GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alpha
             "random.rand_string: alphabet is empty but length is %lld", (long long)length);
     }
     ensure_seed();
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
     for (int64_t i = 0; i < length; i++) {
-        buf[i] = alphabet.data[rand() % alphabet.len];
+        buffer[i] = alphabet.data[rand() % alphabet.len];
     }
-    buf[length] = '\0';
-    return gray_string_new(arena, buf, (int32_t)length);
+    buffer[length] = '\0';
+    return gray_string_new(arena, buffer, (int32_t)length);
 }
 
-GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
+GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *array) {
     ensure_seed();
-    GrayArray result = gray_array_copy(arena, arr);
+    GrayArray result = gray_array_copy(arena, array);
     char *data = (char *)result.data;
     size_t element_size = (size_t)result.elem_size;
     /* Scratch slot sized to the actual element width. The previous
@@ -165,12 +165,12 @@ GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int64_t count) {
-    if (count > arr->len)
-        gray_panic_code("P0062", "random.sample() count %lld exceeds array length %d", (long long)count, (int)arr->len);
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *array, int64_t count) {
+    if (count > array->len)
+        gray_panic_code("P0062", "random.sample() count %lld exceeds array length %d", (long long)count, (int)array->len);
     if (count < 0)
         gray_panic_code("P0063", "random.sample() count cannot be negative (%lld)", (long long)count);
-    GrayArray shuffled = gray_random_shuffle(arena, arr);
+    GrayArray shuffled = gray_random_shuffle(arena, array);
     shuffled.len = (int32_t)count;
     return shuffled;
 }

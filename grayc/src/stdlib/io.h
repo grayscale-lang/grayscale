@@ -242,7 +242,7 @@ bool gray_io_rename_file(GrayString old_path, GrayString new_path);
  *   mut ok, _ = io.copy_file("src.txt", "dst.txt")
  *@end
  */
-bool gray_io_copy_file(GrayString src, GrayString dst);
+bool gray_io_copy_file(GrayString source, GrayString destination);
 
 /*@man move_file
  *@module io
@@ -254,7 +254,7 @@ bool gray_io_copy_file(GrayString src, GrayString dst);
  *   mut ok, _ = io.move_file("tmp/file.txt", "final/file.txt")
  *@end
  */
-bool gray_io_move_file(GrayString src, GrayString dst);
+bool gray_io_move_file(GrayString source, GrayString destination);
 
 /* Directory operations */
 
@@ -467,8 +467,8 @@ GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, Gra
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path, GrayString new_path);
-GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayString dst);
-GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayString dst);
+GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString source, GrayString destination);
+GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString source, GrayString destination);
 GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern);
 GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_make_dir_result(GrayArena *arena, GrayString path);

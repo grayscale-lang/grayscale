@@ -28,7 +28,7 @@
  *   println(nums)
  *@end
  */
-void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value);
+void gray_arrays_append(GrayArena *arena, GrayArray *array, const void *value);
 
 /*@man insert_at
  *@module arrays
@@ -42,7 +42,7 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value);
  *   println(nums)
  *@end
  */
-void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, const void *value);
+void gray_arrays_insert_at(GrayArena *arena, GrayArray *array, int64_t index, const void *value);
 
 /*@man prepend
  *@module arrays
@@ -56,7 +56,7 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, cons
  *   println(nums)
  *@end
  */
-void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value);
+void gray_arrays_prepend(GrayArena *arena, GrayArray *array, const void *value);
 
 /*@man remove_at
  *@module arrays
@@ -70,7 +70,7 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value);
  *   println(nums)
  *@end
  */
-void gray_arrays_remove_at(GrayArray *arr, int64_t index);
+void gray_arrays_remove_at(GrayArray *array, int64_t index);
 
 /*@man remove
  *@module arrays
@@ -84,7 +84,7 @@ void gray_arrays_remove_at(GrayArray *arr, int64_t index);
  *   println(nums)
  *@end
  */
-void gray_arrays_remove(GrayArray *arr, const void *value);
+void gray_arrays_remove(GrayArray *array, const void *value);
 
 /*@man clear
  *@module arrays
@@ -98,7 +98,7 @@ void gray_arrays_remove(GrayArray *arr, const void *value);
  *   println(nums)
  *@end
  */
-void gray_arrays_clear(GrayArray *arr);
+void gray_arrays_clear(GrayArray *array);
 
 /*@man fill
  *@module arrays
@@ -112,7 +112,7 @@ void gray_arrays_clear(GrayArray *arr);
  *   println(nums)
  *@end
  */
-void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count);
+void gray_arrays_fill(GrayArena *arena, GrayArray *array, const void *value, int64_t count);
 
 /* Access — typed via codegen cast */
 
@@ -127,7 +127,7 @@ void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64
  *   println(arrays.get_first(nums))
  *@end
  */
-void *gray_arrays_first_ptr(GrayArray *arr);
+void *gray_arrays_first_ptr(GrayArray *array);
 
 /*@man get_last
  *@module arrays
@@ -140,7 +140,7 @@ void *gray_arrays_first_ptr(GrayArray *arr);
  *   println(arrays.get_last(nums))
  *@end
  */
-void *gray_arrays_last_ptr(GrayArray *arr);
+void *gray_arrays_last_ptr(GrayArray *array);
 
 /*@man remove_first
  *@module arrays
@@ -154,7 +154,7 @@ void *gray_arrays_last_ptr(GrayArray *arr);
  *   println(val)
  *@end
  */
-void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
+void  gray_arrays_remove_first_raw(GrayArray *array, void *output);
 
 /*@man remove_last
  *@module arrays
@@ -168,7 +168,7 @@ void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
  *   println(val)
  *@end
  */
-void  gray_arrays_remove_last_raw(GrayArray *arr, void *out);
+void  gray_arrays_remove_last_raw(GrayArray *array, void *output);
 
 /* Access — int64_t variants for internal use */
 
@@ -185,7 +185,7 @@ void  gray_arrays_remove_last_raw(GrayArray *arr, void *out);
  *   println(arrays.is_empty(nums))
  *@end
  */
-bool gray_arrays_is_empty(GrayArray *arr);
+bool gray_arrays_is_empty(GrayArray *array);
 
 /*@man contains
  *@module arrays
@@ -198,7 +198,7 @@ bool gray_arrays_is_empty(GrayArray *arr);
  *   println(arrays.contains(nums, 2))
  *@end
  */
-bool gray_arrays_contains(GrayArray *arr, const void *value);
+bool gray_arrays_contains(GrayArray *array, const void *value);
 
 /*@man index_of
  *@module arrays
@@ -211,7 +211,7 @@ bool gray_arrays_contains(GrayArray *arr, const void *value);
  *   println(arrays.index_of(nums, 20))
  *@end
  */
-int64_t gray_arrays_index_of(GrayArray *arr, const void *value);
+int64_t gray_arrays_index_of(GrayArray *array, const void *value);
 
 /*@man count
  *@module arrays
@@ -224,7 +224,7 @@ int64_t gray_arrays_index_of(GrayArray *arr, const void *value);
  *   println(arrays.count(nums, 2))
  *@end
  */
-int64_t gray_arrays_count(GrayArray *arr, const void *value);
+int64_t gray_arrays_count(GrayArray *array, const void *value);
 
 /*@man is_equal
  *@module arrays
@@ -251,7 +251,7 @@ bool gray_arrays_is_equal(GrayArray *left, GrayArray *right);
  *   println(arrays.is_sorted(nums))
  *@end
  */
-bool gray_arrays_is_sorted(GrayArray *arr);
+bool gray_arrays_is_sorted(GrayArray *array);
 
 /*@man binary_search
  *@module arrays
@@ -264,7 +264,7 @@ bool gray_arrays_is_sorted(GrayArray *arr);
  *   println(arrays.binary_search(nums, 7))
  *@end
  */
-int64_t gray_arrays_binary_search(GrayArray *arr, const void *value);
+int64_t gray_arrays_binary_search(GrayArray *array, const void *value);
 
 /* Transformation */
 
@@ -279,7 +279,7 @@ int64_t gray_arrays_binary_search(GrayArray *arr, const void *value);
  *   println(arrays.reverse(nums))
  *@end
  */
-GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *array);
 
 /*@man slice
  *@module arrays
@@ -292,7 +292,7 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr);
  *   println(arrays.slice(nums, 1, 3))
  *@end
  */
-GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int64_t end);
+GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *array, int64_t start, int64_t end_index);
 
 /*@man concat
  *@module arrays
@@ -319,7 +319,7 @@ GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *left, GrayArray *right
  *   println(arrays.deduplicate(nums))
  *@end
  */
-GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *array);
 
 /*@man flatten
  *@module arrays
@@ -332,7 +332,7 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr);
  *   println(arrays.flatten(nested))
  *@end
  */
-GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *array);
 
 /*@man split_every
  *@module arrays
@@ -345,7 +345,7 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr);
  *   println(arrays.split_every(nums, 2))
  *@end
  */
-GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size);
+GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *array, int64_t size);
 
 /*@man pair
  *@module arrays
@@ -372,7 +372,7 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right);
  *   println(arrays.rotate(nums, 2))
  *@end
  */
-GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *array, int64_t shift_count);
 
 /* Computation */
 
@@ -387,7 +387,7 @@ GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
  *   println(arrays.get_sum(nums))
  *@end
  */
-void gray_arrays_get_sum(GrayArray *arr, void *out, const char *file, int line);
+void gray_arrays_get_sum(GrayArray *array, void *output, const char *file, int line);
 
 /*@man get_min
  *@module arrays
@@ -400,7 +400,7 @@ void gray_arrays_get_sum(GrayArray *arr, void *out, const char *file, int line);
  *   println(arrays.get_min(nums))
  *@end
  */
-void gray_arrays_get_min(GrayArray *arr, void *out);
+void gray_arrays_get_min(GrayArray *array, void *output);
 
 /*@man get_max
  *@module arrays
@@ -413,7 +413,7 @@ void gray_arrays_get_min(GrayArray *arr, void *out);
  *   println(arrays.get_max(nums))
  *@end
  */
-void gray_arrays_get_max(GrayArray *arr, void *out);
+void gray_arrays_get_max(GrayArray *array, void *output);
 
 /*@man min_index
  *@module arrays
@@ -426,7 +426,7 @@ void gray_arrays_get_max(GrayArray *arr, void *out);
  *   println(arrays.min_index(nums))
  *@end
  */
-int64_t gray_arrays_min_index(GrayArray *arr);
+int64_t gray_arrays_min_index(GrayArray *array);
 
 /*@man max_index
  *@module arrays
@@ -439,7 +439,7 @@ int64_t gray_arrays_min_index(GrayArray *arr);
  *   println(arrays.max_index(nums))
  *@end
  */
-int64_t gray_arrays_max_index(GrayArray *arr);
+int64_t gray_arrays_max_index(GrayArray *array);
 
 /* Sort */
 
@@ -455,7 +455,7 @@ int64_t gray_arrays_max_index(GrayArray *arr);
  *   println(nums)
  *@end
  */
-void gray_arrays_sort(GrayArray *arr, bool descending);
+void gray_arrays_sort(GrayArray *array, bool descending);
 
 /*@man sort_desc
  *@module arrays
@@ -482,7 +482,7 @@ void gray_arrays_sort(GrayArray *arr, bool descending);
  *   println(nums)
  *@end
  */
-void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
+void gray_arrays_swap(GrayArray *array, int64_t i, int64_t j);
 
 /* Higher-Order */
 
@@ -497,7 +497,7 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *   println(arrays.average(nums))
  *@end
  */
-double gray_arrays_average(GrayArray *arr, const char *file, int line);
+double gray_arrays_average(GrayArray *array, const char *file, int line);
 
 /*@man find
  *@module arrays

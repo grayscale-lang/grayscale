@@ -178,16 +178,16 @@ typedef struct {
 
 GrayUUID gray_uuid_generate(GrayArena *arena);
 GrayUUID gray_uuid_generate_v5(GrayArena *arena, GrayUUID namespace_id, GrayString name);
-GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id);
+GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID uuid);
 GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes);
-int64_t gray_uuid_version(GrayUUID id);
-GrayUuidTimestamp gray_uuid_timestamp(GrayUUID id);
-GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id);
+int64_t gray_uuid_version(GrayUUID uuid);
+GrayUuidTimestamp gray_uuid_timestamp(GrayUUID uuid);
+GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID uuid);
 GrayUUID gray_uuid_generate_random(GrayArena *arena);
 GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena);
-bool gray_uuid_is_valid(GrayString str);
-GrayUUID gray_uuid_parse(GrayArena *arena, GrayString str);
-GrayString gray_uuid_to_string(GrayUUID id);
+bool gray_uuid_is_valid(GrayString string);
+GrayUUID gray_uuid_parse(GrayArena *arena, GrayString string);
+GrayString gray_uuid_to_string(GrayUUID uuid);
 GrayUUID gray_uuid_nil(void);
 
 #endif

@@ -106,7 +106,7 @@
  *   println(fmt.pad_left("42", 5, '0'))
  *@end
  */
-GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
 /*@man pad_right
  *@module fmt
@@ -118,7 +118,7 @@ GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, in
  *   println(fmt.pad_right("hi", 6, '.'))
  *@end
  */
-GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_pad_right(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
 /*@man center
  *@module fmt
@@ -130,7 +130,7 @@ GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, i
  *   println(fmt.center("hi", 8, '-'))
  *@end
  */
-GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
 /*@man int_to_hex
  *@module fmt

@@ -23,27 +23,27 @@
 #define MODULE_ENTRY_NAME ""
 
 typedef enum {
-    DECL_STRUCT,
-    DECL_ENUM,
-    DECL_FUNC,
-    DECL_ALIAS,
-    DECL_CONST,
-} DeclKind;
+    DECLARATION_STRUCT,
+    DECLARATION_ENUM,
+    DECLARATION_FUNCTION,
+    DECLARATION_ALIAS,
+    DECLARATION_CONST,
+} DeclarationKind;
 
 typedef enum {
-    VIS_PUBLIC,
-    VIS_PRIVATE,
+    VISIBILITY_PUBLIC,
+    VISIBILITY_PRIVATE,
 } Visibility;
 
 /* One top-level declaration, keyed in its owning module under the name as
  * written in source. Entries are allocated individually from the compiler
- * arena so a DeclEntry* cached on an AST node stays valid as the owning
+ * arena so a DeclarationEntry* cached on an AST node stays valid as the owning
  * module grows. */
-typedef struct DeclEntry_ {
-    DeclKind kind;
+typedef struct DeclarationEntry_ {
+    DeclarationKind kind;
     const char *name;         /* as written in source — never mangled */
     const char *module_name;  /* owning module; back-pointer for mangling */
-    bool module_is_entry;     /* owning module is the entry file: emits unprefixed */
+    bool is_module_entry;     /* owning module is the entry file: emits unprefixed */
     AstNode *ast_node;        /* original, unrenamed declaration node */
     const char *origin_file;
     int origin_line;
@@ -51,7 +51,7 @@ typedef struct DeclEntry_ {
     /* Declared by the compiler rather than by Grayscale source: a stdlib
      * function or opaque type. It resolves like anything else, but its C name
      * is produced by the stdlib emitter, not by mangling this entry. */
-    bool external;
+    bool is_external;
     /* Where this declaration's details live in the registry for its kind
      * (struct fields, function signature, enum variants), or -1 before they
      * are registered. Resolving a name yields the entry, and the entry yields
@@ -60,19 +60,19 @@ typedef struct DeclEntry_ {
     /* The mangled C name, arena-allocated on first request and reused after.
      * The spelling is fixed by kind/name/module, so every later resolution of
      * this declaration returns the same pointer instead of a fresh copy. */
-    const char *mangled_cache;
-} DeclEntry;
+    const char *cached_mangled_name;
+} DeclarationEntry;
 
 typedef struct {
     const char *name;  /* NULL = empty slot */
-    int idx;           /* index into the owning array */
+    int index;         /* index into the owning array */
 } ModuleHashEntry;
 
 /* Reverse index: declaration node -> its entry. Lets a later phase recover a
  * declaration's module from the node alone, without a name to look up. */
 typedef struct {
     const AstNode *node;  /* NULL = empty slot */
-    DeclEntry *entry;
+    DeclarationEntry *entry;
 } ModuleNodeEntry;
 
 /* The declarations of one module. Every .gray file of a directory-merged
@@ -81,11 +81,11 @@ typedef struct {
 typedef struct {
     const char *name;
     bool is_entry;     /* the entry file's module — its symbols emit unprefixed */
-    DeclEntry **entries;
+    DeclarationEntry **entries;
     int count;
-    int cap;
+    int capacity;
     ModuleHashEntry *hash;  /* open addressing; NULL until first insert */
-    int hash_cap;           /* always a power of 2 */
+    int hash_capacity;           /* always a power of 2 */
 } ModuleScope;
 
 typedef struct {
@@ -93,37 +93,37 @@ typedef struct {
     const char *entry_module;  /* the entry file's module; NULL until mapped */
     ModuleScope **modules;
     int count;
-    int cap;
+    int capacity;
     ModuleHashEntry *hash;
-    int hash_cap;
+    int hash_capacity;
 
     /* import alias -> real module name */
     const char **alias_names;
     const char **alias_modules;
     int alias_count;
-    int alias_cap;
+    int alias_capacity;
 
     /* source file -> owning module. A declaration belongs to the module of
      * the file it was written in, which is what makes every .gray file of a
      * directory-merged module land in one ModuleScope. */
     ModuleNodeEntry *node_index;
     int node_count;
-    int node_hash_cap;
+    int node_hash_capacity;
 
     /* Mangled C name -> entry. One index replacing the per-registry sorted
      * name arrays each phase used to keep. */
     ModuleHashEntry *mangled_index;
-    DeclEntry **mangled_entries;
+    DeclarationEntry **mangled_entries;
     int mangled_count;
-    int mangled_cap;
-    int mangled_hash_cap;
+    int mangled_capacity;
+    int mangled_hash_capacity;
 
     const char **file_paths;
     const char **file_modules;
     ModuleHashEntry *file_hash;
     int file_count;
-    int file_cap;
-    int file_hash_cap;
+    int file_capacity;
+    int file_hash_capacity;
 } ModuleTable;
 
 /* Where a name is being resolved from. `module` scopes an unqualified
@@ -142,7 +142,7 @@ typedef struct {
 typedef enum {
     RESOLVE_OK,
     RESOLVE_NO_MODULE,  /* the qualifier names no known module or alias */
-    RESOLVE_NO_DECL,    /* the module exists but declares no such name */
+    RESOLVE_NO_DECLARATION,    /* the module exists but declares no such name */
     RESOLVE_PRIVATE,    /* declared, but private to a different module */
 } ResolveStatus;
 
@@ -168,29 +168,29 @@ ModuleScope *module_table_find(ModuleTable *table, const char *module_name);
 
 /* Insert a declaration into a module. Returns the stored entry, or the
  * existing entry (unmodified) if `name` is already declared in that module. */
-DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
-                               DeclKind kind, const char *name,
+DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
+                               DeclarationKind kind, const char *name,
                                AstNode *ast_node,
                                const char *origin_file, int origin_line,
                                Visibility visibility);
 
 /* Look a name up in one module, ignoring visibility. */
-DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name);
+DeclarationEntry *module_scope_lookup(ModuleScope *scope, const char *name);
 
 /* The entry declared by this AST node, or NULL. The module a declaration
  * belongs to is a property of the declaration, so a phase holding the node
  * needs no name and no file of its own to recover it. */
-DeclEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node);
+DeclarationEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node);
 
 /* The entry whose mangled C name is `mangled`, or NULL. For lookups that
  * already hold the emitted name rather than the name as written. */
-DeclEntry *module_table_find_mangled(ModuleTable *table, const char *mangled);
+DeclarationEntry *module_table_find_mangled(ModuleTable *table, const char *mangled);
 
 /* Declare something that has no source declaration node of its own — a
  * struct function, namespaced under its struct, or a compiler-provided type.
  * It joins the mangled index so it resolves like anything else. */
-DeclEntry *module_table_declare_synthetic(ModuleTable *table, const char *module_name,
-                                          DeclKind kind, const char *name,
+DeclarationEntry *module_table_declare_synthetic(ModuleTable *table, const char *module_name,
+                                          DeclarationKind kind, const char *name,
                                           const char *origin_file);
 
 void module_table_add_alias(ModuleTable *table, const char *alias,
@@ -203,7 +203,7 @@ const char *module_table_resolve_alias(ModuleTable *table, const char *alias);
 /* Resolve `module_or_alias.name` as seen from `scope`, applying the
  * visibility rule. `out_status` may be NULL. On RESOLVE_PRIVATE the entry is
  * still returned so the caller can report where it was declared. */
-DeclEntry *module_resolve_qualified(ModuleTable *table,
+DeclarationEntry *module_resolve_qualified(ModuleTable *table,
                                     const ResolveScope *scope,
                                     const char *module_or_alias,
                                     const char *name,
@@ -213,19 +213,19 @@ DeclEntry *module_resolve_qualified(ModuleTable *table,
  * module in declared order. A name found in more than one using'd module is
  * ambiguous — *out_ambiguous_with receives the second module's name and the
  * result is NULL. Pass NULL for out_ambiguous_with to take the first match. */
-DeclEntry *module_resolve_unqualified(ModuleTable *table,
+DeclarationEntry *module_resolve_unqualified(ModuleTable *table,
                                       const ResolveScope *scope,
                                       const char *name,
                                       const char **out_ambiguous_with);
 
 /* Is `entry` reachable from `scope`? The single visibility rule. */
-bool module_decl_visible(const ResolveScope *scope, const DeclEntry *entry);
+bool is_module_declaration_visible(const ResolveScope *scope, const DeclarationEntry *entry);
 
 /* Resolve a name as written in source — "lib.Score" or a bare "Score" — as
  * seen from inside `current_module`. A qualified name goes to the module its
  * qualifier names; a bare name tries the current module first, then each
  * using'd module in declared order. */
-DeclEntry *module_resolve_written(ModuleTable *table, const ResolveScope *scope,
+DeclarationEntry *module_resolve_written(ModuleTable *table, const ResolveScope *scope,
                                   const char *written);
 
 /* The mangled spelling of a written type name, with every leaf identifier
@@ -243,8 +243,8 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
  * caching it on the entry so repeat calls share one copy; module_mangle_into
  * writes to a caller buffer, for lookup keys that do not outlive the call.
  * Both return their result. */
-const char *module_mangle(ModuleTable *table, DeclEntry *entry);
-const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen);
+const char *module_mangle(ModuleTable *table, DeclarationEntry *entry);
+const char *module_mangle_into(const DeclarationEntry *entry, char *name_buffer, size_t buffer_length);
 
 /* Split "lib.Score" into ("lib", "Score"). Returns false when `spelling` has
  * no dot, leaving *out_module NULL and *out_name == spelling. */

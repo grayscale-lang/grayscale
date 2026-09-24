@@ -14,17 +14,17 @@
 
 typedef struct {
     char *data;
-    size_t len;
-    size_t cap;
-} Buf;
+    size_t length;
+    size_t capacity;
+} StringBuffer;
 
-Buf buffer_create(size_t initial_cap);
-void append_string_to_buffer(Buf *buffer, const char *string);
-void append_bytes_to_buffer(Buf *buffer, const char *data, size_t len);
-void append_format_to_buffer(Buf *buffer, const char *format, ...) __attribute__((format(printf, 2, 3)));
-void append_char_to_buffer(Buf *buffer, char character);
-void append_indent_to_buffer(Buf *buffer, int depth);
-const char *buffer_to_string(Buf *buffer);
-void buffer_destroy(Buf *buffer);
+StringBuffer buffer_create(size_t initial_capacity);
+void append_string_to_buffer(StringBuffer *buffer, const char *string);
+void append_bytes_to_buffer(StringBuffer *buffer, const char *data, size_t length);
+void append_format_to_buffer(StringBuffer *buffer, const char *format, ...) __attribute__((format(printf, 2, 3)));
+void append_char_to_buffer(StringBuffer *buffer, char character);
+void append_indent_to_buffer(StringBuffer *buffer, int depth);
+const char *buffer_to_string(StringBuffer *buffer);
+void buffer_destroy(StringBuffer *buffer);
 
 #endif

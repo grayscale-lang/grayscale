@@ -20,12 +20,12 @@
 #define GRAY_PLATFORM_RT_H
 
 #ifdef _WIN32
-#define GRAY_RT_WINDOWS 1
+#define GRAY_RUNTIME_WINDOWS 1
 #else
-#define GRAY_RT_WINDOWS 0
+#define GRAY_RUNTIME_WINDOWS 0
 #endif
 
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
 
 #include <direct.h>
 #include <io.h>
@@ -33,20 +33,20 @@
 
 /* Windows has no permission bits, so _mkdir takes no mode. Wrap it so callers
  * can keep passing the POSIX mode they would use everywhere else. */
-#define gray_rt_mkdir(path, mode) _mkdir(path)
+#define gray_runtime_mkdir(path, mode) _mkdir(path)
 
-#define gray_rt_isatty(fd)      _isatty(fd)
-#define gray_rt_stderr_fileno() _fileno(stderr)
+#define gray_runtime_isatty(file_descriptor)      _isatty(file_descriptor)
+#define gray_runtime_stderr_fileno() _fileno(stderr)
 
 #else
 
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define gray_rt_mkdir(path, mode) mkdir((path), (mode))
+#define gray_runtime_mkdir(path, mode) mkdir((path), (mode))
 
-#define gray_rt_isatty(fd)      isatty(fd)
-#define gray_rt_stderr_fileno() STDERR_FILENO
+#define gray_runtime_isatty(file_descriptor)      isatty(file_descriptor)
+#define gray_runtime_stderr_fileno() STDERR_FILENO
 
 #endif
 

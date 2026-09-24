@@ -134,18 +134,18 @@ GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alpha
  *@end
  */
 
-double gray_random_float_range(double min, double max);
+double gray_random_float_range(double minimum, double maximum);
 double gray_random_f64_unit(void);
-int64_t gray_random_int_range(int64_t min, int64_t max);
-int64_t gray_random_int_max(int64_t max);
+int64_t gray_random_int_range(int64_t minimum, int64_t maximum);
+int64_t gray_random_int_max(int64_t maximum);
 bool gray_random_bool(void);
 uint8_t gray_random_byte(void);
 int32_t gray_random_char(void);
-int32_t gray_random_char_range(int32_t min, int32_t max);
+int32_t gray_random_char_range(int32_t minimum, int32_t maximum);
 
 /* Array operations */
-GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr);
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int64_t count);
+GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *array);
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *array, int64_t count);
 
 /* Explicit seeding */
 void gray_random_seed(int64_t value);

@@ -112,15 +112,15 @@ typedef struct {
  *@end
  */
 /* 64-bit atomics */
-int64_t gray_atomic_mod_load(int64_t *ptr);
-void    gray_atomic_mod_store(int64_t *ptr, int64_t val);
-int64_t gray_atomic_mod_add(int64_t *ptr, int64_t val);
-int64_t gray_atomic_mod_sub(int64_t *ptr, int64_t val);
-int64_t gray_atomic_mod_exchange(int64_t *ptr, int64_t val);
-bool    gray_atomic_mod_cas(int64_t *ptr, int64_t expected, int64_t desired);
-int64_t gray_atomic_mod_and(int64_t *ptr, int64_t val);
-int64_t gray_atomic_mod_or(int64_t *ptr, int64_t val);
-int64_t gray_atomic_mod_xor(int64_t *ptr, int64_t val);
+int64_t gray_atomic_mod_load(int64_t *target);
+void    gray_atomic_mod_store(int64_t *target, int64_t value);
+int64_t gray_atomic_mod_add(int64_t *target, int64_t value);
+int64_t gray_atomic_mod_sub(int64_t *target, int64_t value);
+int64_t gray_atomic_mod_exchange(int64_t *target, int64_t value);
+bool    gray_atomic_mod_cas(int64_t *target, int64_t expected, int64_t desired);
+int64_t gray_atomic_mod_and(int64_t *target, int64_t value);
+int64_t gray_atomic_mod_or(int64_t *target, int64_t value);
+int64_t gray_atomic_mod_xor(int64_t *target, int64_t value);
 
 /*@man spinlock
  *@module atomic
@@ -180,10 +180,10 @@ int64_t gray_atomic_mod_xor(int64_t *ptr, int64_t val);
 
 /* Spinlock */
 GraySpinLock gray_atomic_mod_spinlock(void);
-void       gray_atomic_mod_spinlock_destroy(GraySpinLock *lk);
-void       gray_atomic_mod_spin_lock(GraySpinLock lk);
-bool       gray_atomic_mod_spin_trylock(GraySpinLock lk);
-void       gray_atomic_mod_spin_unlock(GraySpinLock lk);
+void       gray_atomic_mod_spinlock_destroy(GraySpinLock *lock);
+void       gray_atomic_mod_spin_lock(GraySpinLock lock);
+bool       gray_atomic_mod_spin_trylock(GraySpinLock lock);
+void       gray_atomic_mod_spin_unlock(GraySpinLock lock);
 
 /*@man fence
  *@module atomic

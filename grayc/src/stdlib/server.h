@@ -73,7 +73,7 @@ typedef struct {
 } GrayRoute;
 
 /* Middleware function pointer */
-typedef void (*GrayMiddleware)(GrayRequest *req, GrayResponse *resp);
+typedef void (*GrayMiddleware)(GrayRequest *request, GrayResponse *response);
 
 /*@man Router
  *@module server
@@ -94,8 +94,8 @@ typedef struct {
     int capacity;
     const char *cors_origin;    /* NULL = no CORS */
     GrayMiddleware *middlewares;
-    int mw_count;
-    int mw_capacity;
+    int middleware_count;
+    int middleware_capacity;
 } GrayRouter;
 
 /*@man add_router
@@ -171,7 +171,7 @@ void gray_server_cors(GrayRouter *router, GrayString origin);
  *@end
  */
 /* Register a middleware function */
-void gray_server_use(GrayRouter *router, GrayMiddleware fn);
+void gray_server_use(GrayRouter *router, GrayMiddleware middleware);
 
 /*@man text
  *@module server

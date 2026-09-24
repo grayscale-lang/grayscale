@@ -19,9 +19,9 @@ typedef struct {
     const char *name;
     GrayType *type;
     const char *declared_type; /* original declared type name (e.g., "u64", "i8") */
-    bool mutable;
-    bool is_ref;         /* true if created via ref() — transparent reference */
-    bool const_source;   /* true if pointer was taken from a const variable via addr() */
+    bool is_mutable;
+    bool is_reference;   /* true if created via ref() — transparent reference */
+    bool is_const_source; /* true if pointer was taken from a const variable via addr() */
     bool is_heap;        /* true if bound to a new() result — the pointee lives in
                             the heap arena and outlives every function scope */
     /* The extern C call a variable with no declared type was initialised
@@ -63,14 +63,14 @@ typedef struct {
      * mem.destroy()/mem.reset() reached through any alias update the one
      * shared ArenaLifetime, so E3164/E3165/E3166 fire regardless of which
      * name the lifecycle call went through. */
-    const char *arena_id;
-    bool used;           /* true if variable was read */
-    int def_line;        /* line where variable was defined */
-    int def_column;      /* column where variable was defined */
-    GrayType **ret_types;  /* for multi-return temps: all return types */
-    int ret_count;       /* number of return types */
-    bool ret_types_owned;  /* true if ret_types was xmalloc'd by the typechecker */
-    const char *func_ref_name; /* for func-typed vars: name of the referenced
+    const char *arena_identifier;
+    bool was_used;       /* true if variable was read */
+    int definition_line;   /* line where variable was defined */
+    int definition_column; /* column where variable was defined */
+    GrayType **return_types; /* for multi-return temporaries: all return types */
+    int return_count;    /* number of return types */
+    bool are_return_types_owned; /* true if return_types was xmalloc'd by the typechecker */
+    const char *function_reference_name; /* for func-typed variables: name of the referenced
                                   function, used for call-site arity/type
                                   validation (NULL if not assigned from a
                                   static func ref) */
@@ -80,13 +80,13 @@ typedef struct {
      * static func ref. Used by call-site type inference on
      * arr[const](...) expressions so struct return types survive the
      * trip through a type-erased void* array. */
-    const char **func_array_refs;
-    int func_array_ref_count;
+    const char **function_array_references;
+    int function_array_reference_count;
 } Symbol;
 
 typedef struct {
     const char *name;  /* NULL = empty slot */
-    int idx;           /* index into Scope.symbols[] */
+    int index;         /* index into Scope.symbols[] */
 } ScopeHashEntry;
 
 typedef struct Scope {
@@ -94,17 +94,17 @@ typedef struct Scope {
     int depth;         /* 0 for the root scope, parent->depth + 1 otherwise */
     Symbol *symbols;
     int count;
-    int cap;
+    int capacity;
     ScopeHashEntry *hash;  /* open-addressing hash table; NULL until first define */
-    int hash_cap;          /* always a power of 2 */
+    int hash_capacity;     /* always a power of 2 */
 } Scope;
 
 /* djb2 string hash, shared with the module symbol table. */
-uint32_t scope_str_hash(const char *string);
+uint32_t scope_string_hash(const char *string);
 
 Scope *scope_create(Scope *parent);
 void scope_destroy(Scope *scope);
-void scope_define(Scope *scope, const char *name, GrayType *type, bool mutable);
+void scope_define(Scope *scope, const char *name, GrayType *type, bool is_mutable);
 Symbol *scope_lookup(Scope *scope, const char *name);
 Symbol *scope_lookup_local(Scope *scope, const char *name);
 

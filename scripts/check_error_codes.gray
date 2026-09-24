@@ -10,7 +10,7 @@
 //   4. no E/W code is emitted from more than 15 distinct call sites
 //   5. no code is emitted from both parser.c and typechecker.c
 //   6. E3019, E3036 and E3155 (signedness crossing, literal out of range,
-//      narrowing) are emitted only from check_expr_as in typechecker.c —
+//      narrowing) are emitted only from check_expression_as in typechecker.c —
 //      the one function that applies the sized-type conversion rules
 //
 // P-codes (runtime panics) are checked for (1) and (3) only: many are
@@ -170,7 +170,7 @@ do main() {
             mut codes [string] = scan_line_codes(src)
             for_each code in codes {
                 if (code == "E3019" || code == "E3036" || code == "E3155") &&
-                        !(is_typechecker && current_function == "check_expr_as") {
+                        !(is_typechecker && current_function == "check_expression_as") {
                     arrays.append(sized_rule_sites, "${code} in ${path} (${current_function})")
                 }
                 if !arrays.contains(emitted, code) {
@@ -236,10 +236,10 @@ do main() {
         }
     }
 
-    // (6) a sized-type conversion code emitted outside check_expr_as
+    // (6) a sized-type conversion code emitted outside check_expression_as
     for_each site in sized_rule_sites {
         arrays.append(violations,
-            "${site}: E3019, E3036 and E3155 may only be emitted from check_expr_as")
+            "${site}: E3019, E3036 and E3155 may only be emitted from check_expression_as")
     }
 
     // --- 4. Report ---------------------------------------------------------

@@ -18,7 +18,7 @@ static Arena *arena;
 
 static TypeTable *typecheck_test_input(const char *input) {
     DiagnosticList *diagnostics = diagnostic_create();
-    diagnostics->use_color = false;
+    diagnostics->should_use_color = false;
     Lexer *lexer =lexer_create(arena, input, "test.gray");
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
@@ -33,7 +33,7 @@ static GrayType *expression_type(const char *expr_code) {
     snprintf(buffer, sizeof(buffer),
         "do main() { mut _result = %s }", expr_code);
     DiagnosticList *diagnostics = diagnostic_create();
-    diagnostics->use_color = false;
+    diagnostics->should_use_color = false;
     Lexer *lexer =lexer_create(arena, buffer, "test.gray");
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
@@ -42,10 +42,10 @@ static GrayType *expression_type(const char *expr_code) {
     TypeTable *table =typechecker_get_table(checker);
 
     /* Find the variable declaration's value and look up its type */
-    AstNode *main_function =program->data.program.stmts[0];
-    AstNode *var_decl = main_function->data.func_decl.body->data.block.stmts[0];
-    if (var_decl->kind == NODE_VAR_DECL && var_decl->data.var_decl.value) {
-        return typetable_get(table, var_decl->data.var_decl.value);
+    AstNode *main_function =program->data.program.statements[0];
+    AstNode *var_decl = main_function->data.function_declaration.body->data.block.statements[0];
+    if (var_decl->kind == NODE_VARIABLE_DECLARATION && var_decl->data.variable_declaration.value) {
+        return type_table_get(table, var_decl->data.variable_declaration.value);
     }
     return NULL;
 }
@@ -57,8 +57,8 @@ static void test_scope_define_lookup(void) {
     scope_define(scope, "x", &TYPE_I64, true);
     Symbol *symbol =scope_lookup(scope, "x");
     ASSERT_NOT_NULL(symbol);
-    ASSERT_EQ(symbol->type->kind, TK_INT);
-    ASSERT(symbol->mutable);
+    ASSERT_EQ(symbol->type->kind, TYPE_KIND_SIGNED_INTEGER);
+    ASSERT(symbol->is_mutable);
 }
 
 static void test_scope_nested(void) {
@@ -85,7 +85,7 @@ static void test_scope_shadow(void) {
     /* inner sees the shadowed string version */
     Symbol *symbol =scope_lookup_local(inner, "x");
     ASSERT_NOT_NULL(symbol);
-    ASSERT_EQ(symbol->type->kind, TK_STRING);
+    ASSERT_EQ(symbol->type->kind, TYPE_KIND_STRING);
 }
 
 static void test_scope_undefined(void) {
@@ -96,36 +96,36 @@ static void test_scope_undefined(void) {
 /* --- Type Constructors --- */
 
 static void test_type_from_name_primitives(void) {
-    ASSERT_EQ(type_from_name("i8")->kind, TK_INT);
-    ASSERT_EQ(type_from_name("i16")->kind, TK_INT);
-    ASSERT_EQ(type_from_name("i32")->kind, TK_INT);
-    ASSERT_EQ(type_from_name("i64")->kind, TK_INT);
-    ASSERT_EQ(type_from_name("u8")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("u16")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("u32")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("u64")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("f32")->kind, TK_FLOAT);
-    ASSERT_EQ(type_from_name("f64")->kind, TK_FLOAT);
-    ASSERT_EQ(type_from_name("bool")->kind, TK_BOOL);
-    ASSERT_EQ(type_from_name("char")->kind, TK_CHAR);
-    ASSERT_EQ(type_from_name("int")->kind, TK_UNKNOWN);
-    ASSERT_EQ(type_from_name("uint")->kind, TK_UNKNOWN);
-    ASSERT_EQ(type_from_name("float")->kind, TK_UNKNOWN);
-    ASSERT_EQ(type_from_name("byte")->kind, TK_UNKNOWN);
-    ASSERT_EQ(type_from_name("string")->kind, TK_STRING);
-    ASSERT_EQ(type_from_name("void")->kind, TK_VOID);
-    ASSERT_EQ(type_from_name("nil")->kind, TK_NIL);
+    ASSERT_EQ(type_from_name("i8")->kind, TYPE_KIND_SIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("i16")->kind, TYPE_KIND_SIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("i32")->kind, TYPE_KIND_SIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("i64")->kind, TYPE_KIND_SIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("u8")->kind, TYPE_KIND_UNSIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("u16")->kind, TYPE_KIND_UNSIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("u32")->kind, TYPE_KIND_UNSIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("u64")->kind, TYPE_KIND_UNSIGNED_INTEGER);
+    ASSERT_EQ(type_from_name("f32")->kind, TYPE_KIND_FLOATING_POINT);
+    ASSERT_EQ(type_from_name("f64")->kind, TYPE_KIND_FLOATING_POINT);
+    ASSERT_EQ(type_from_name("bool")->kind, TYPE_KIND_BOOL);
+    ASSERT_EQ(type_from_name("char")->kind, TYPE_KIND_CHAR);
+    ASSERT_EQ(type_from_name("int")->kind, TYPE_KIND_UNKNOWN);
+    ASSERT_EQ(type_from_name("uint")->kind, TYPE_KIND_UNKNOWN);
+    ASSERT_EQ(type_from_name("float")->kind, TYPE_KIND_UNKNOWN);
+    ASSERT_EQ(type_from_name("byte")->kind, TYPE_KIND_UNKNOWN);
+    ASSERT_EQ(type_from_name("string")->kind, TYPE_KIND_STRING);
+    ASSERT_EQ(type_from_name("void")->kind, TYPE_KIND_VOID);
+    ASSERT_EQ(type_from_name("nil")->kind, TYPE_KIND_NIL);
 }
 
 static void test_type_from_name_array(void) {
     GrayType *type =type_from_name("[i64]");
-    ASSERT_EQ(type->kind, TK_ARRAY);
+    ASSERT_EQ(type->kind, TYPE_KIND_ARRAY);
     ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_type_from_name_struct(void) {
     GrayType *type =type_from_name("Person");
-    ASSERT_EQ(type->kind, TK_STRUCT);
+    ASSERT_EQ(type->kind, TYPE_KIND_STRUCT);
     ASSERT_STR_EQ(type->name, "Person");
 }
 
@@ -143,73 +143,73 @@ static void test_type_is_numeric(void) {
 static void test_resolve_int_literal(void) {
     GrayType *type =expression_type("42");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_INT);
+    ASSERT_EQ(type->kind, TYPE_KIND_SIGNED_INTEGER);
 }
 
 static void test_resolve_float_literal(void) {
     GrayType *type =expression_type("3.14");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_FLOAT);
+    ASSERT_EQ(type->kind, TYPE_KIND_FLOATING_POINT);
 }
 
 static void test_resolve_string_literal(void) {
     GrayType *type =expression_type("\"hello\"");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_STRING);
+    ASSERT_EQ(type->kind, TYPE_KIND_STRING);
 }
 
 static void test_resolve_bool_literal(void) {
     GrayType *type =expression_type("true");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_nil(void) {
     GrayType *type =expression_type("nil");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_NIL);
+    ASSERT_EQ(type->kind, TYPE_KIND_NIL);
 }
 
 static void test_resolve_arithmetic(void) {
     GrayType *type =expression_type("1 + 2");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_INT);
+    ASSERT_EQ(type->kind, TYPE_KIND_SIGNED_INTEGER);
 }
 
 static void test_resolve_float_arithmetic(void) {
     GrayType *type =expression_type("1.0 + 2");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_FLOAT);
+    ASSERT_EQ(type->kind, TYPE_KIND_FLOATING_POINT);
 }
 
 static void test_resolve_comparison(void) {
     GrayType *type =expression_type("1 < 2");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_logical(void) {
     GrayType *type =expression_type("true && false");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_negation(void) {
     GrayType *type =expression_type("-42");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_INT);
+    ASSERT_EQ(type->kind, TYPE_KIND_SIGNED_INTEGER);
 }
 
 static void test_resolve_not(void) {
     GrayType *type =expression_type("!true");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_array_literal(void) {
     GrayType *type =expression_type("{1, 2, 3}");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_ARRAY);
+    ASSERT_EQ(type->kind, TYPE_KIND_ARRAY);
 }
 
 /* --- Variable Type Resolution --- */
@@ -230,19 +230,19 @@ static void test_resolve_typed_variable(void) {
 static void test_resolve_len(void) {
     GrayType *type =expression_type("len(\"hello\")");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_INT);
+    ASSERT_EQ(type->kind, TYPE_KIND_SIGNED_INTEGER);
 }
 
 static void test_resolve_type_of(void) {
     GrayType *type =expression_type("type_of(42)");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_STRING);
+    ASSERT_EQ(type->kind, TYPE_KIND_STRING);
 }
 
 static void test_resolve_to_float(void) {
     GrayType *type =expression_type("cast(42, f64)");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_FLOAT);
+    ASSERT_EQ(type->kind, TYPE_KIND_FLOATING_POINT);
 }
 
 /* --- Struct Type Resolution --- */
@@ -277,20 +277,20 @@ static void test_resolve_function_return(void) {
 
 static void test_type_from_name_pointer(void) {
     GrayType *type =type_from_name("^i64");
-    ASSERT_EQ(type->kind, TK_POINTER);
+    ASSERT_EQ(type->kind, TYPE_KIND_POINTER);
     ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_type_pointer_constructor(void) {
     GrayType *type =type_pointer("Person");
-    ASSERT_EQ(type->kind, TK_POINTER);
+    ASSERT_EQ(type->kind, TYPE_KIND_POINTER);
     ASSERT_STR_EQ(type->element_type, "Person");
 }
 
 static void test_resolve_addr(void) {
     GrayType *type =expression_type("addr(42)");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_POINTER);
+    ASSERT_EQ(type->kind, TYPE_KIND_POINTER);
 }
 
 /* Composite type names render through one shared ring of static buffers; two
@@ -310,7 +310,7 @@ static void test_type_name_composite_rendering(void) {
 /* Helper: parse and typecheck, return diagnostics */
 static DiagnosticList *typecheck_diagnostics(const char *input) {
     DiagnosticList *diagnostics = diagnostic_create();
-    diagnostics->use_color = false;
+    diagnostics->should_use_color = false;
     Lexer *lexer =lexer_create(arena, input, "test.gray");
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
@@ -322,7 +322,7 @@ static DiagnosticList *typecheck_diagnostics(const char *input) {
 /* Helper: parse and typecheck in --test mode (main() not required). */
 static DiagnosticList *typecheck_diagnostics_test_mode(const char *input) {
     DiagnosticList *diagnostics = diagnostic_create();
-    diagnostics->use_color = false;
+    diagnostics->should_use_color = false;
     Lexer *lexer = lexer_create(arena, input, "test.gray");
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
@@ -365,7 +365,7 @@ static void test_error_deref_non_pointer(void) {
 static void test_resolve_map_type(void) {
     GrayType *type =expression_type("{\"a\": 1}");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_MAP);
+    ASSERT_EQ(type->kind, TYPE_KIND_MAP);
 }
 
 static void test_resolve_string_enum(void) {
@@ -379,7 +379,7 @@ static void test_resolve_string_enum(void) {
 static void test_type_from_name_map(void) {
     GrayType *type =type_from_name("map[string:i64]");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_MAP);
+    ASSERT_EQ(type->kind, TYPE_KIND_MAP);
 }
 
 /* --- E3xxx: Type Error Detection --- */
@@ -1012,44 +1012,44 @@ static void test_warning_W3003_partial_array_init(void) {
 static void test_resolve_char_literal(void) {
     GrayType *type =expression_type("'A'");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_CHAR);
+    ASSERT_EQ(type->kind, TYPE_KIND_CHAR);
 }
 
 static void test_resolve_modulo(void) {
     GrayType *type =expression_type("10 % 3");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_INT);
+    ASSERT_EQ(type->kind, TYPE_KIND_SIGNED_INTEGER);
 }
 
 
 static void test_resolve_equality(void) {
     GrayType *type =expression_type("1 == 1");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_inequality(void) {
     GrayType *type =expression_type("1 != 2");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_or_logic(void) {
     GrayType *type =expression_type("true || false");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_string_comparison(void) {
     GrayType *type =expression_type("\"a\" == \"b\"");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_BOOL);
+    ASSERT_EQ(type->kind, TYPE_KIND_BOOL);
 }
 
 static void test_resolve_float_negation(void) {
     GrayType *type =expression_type("-3.14");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_FLOAT);
+    ASSERT_EQ(type->kind, TYPE_KIND_FLOATING_POINT);
 }
 
 static void test_scope_deeply_nested(void) {
@@ -1541,14 +1541,14 @@ static void test_error_E3051_map_no_type_annotation(void) {
 static void test_infer_mut_array_literal_element_type(void) {
     GrayType *type = expression_type("{1, 2, 3}");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_ARRAY);
+    ASSERT_EQ(type->kind, TYPE_KIND_ARRAY);
     ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_infer_mut_map_literal_kv_types(void) {
     GrayType *type = expression_type("{\"a\": 1, \"b\": 2}");
     ASSERT_NOT_NULL(type);
-    ASSERT_EQ(type->kind, TK_MAP);
+    ASSERT_EQ(type->kind, TYPE_KIND_MAP);
     ASSERT_STR_EQ(type->key_type, "string");
     ASSERT_STR_EQ(type->value_type, "i64");
 }
@@ -1697,7 +1697,8 @@ static void test_error_E3031_bare_function_name(void) {
 
 static void test_error_E3046_int_literal_overflow(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x i64 = 99999999999999999999 }");
+        "do main() { mut x u256 = "
+        "115792089237316195423570985008687907853269984665640564039457584007913129639936 }");
     ASSERT(has_error_code(diagnostics, "E3046"));
     diagnostic_destroy(diagnostics);
 }
@@ -2197,8 +2198,8 @@ static void test_no_false_positive_mem_arena_in_struct_field_read_before_destroy
 /* pc_mem_walk()'s parameter-index matching only recognized a bare parameter
  * name — a helper destroying an arena reached through a *field* of its own
  * struct parameter (mem.destroy(h.a) where h is the parameter) never set
- * destroys_param_arena at all, so the effect didn't propagate to a caller
- * that only passes h itself. mem_param_field[] plus pc_mem_param_index_for_key()
+ * destroys_parameter_arena at all, so the effect didn't propagate to a caller
+ * that only passes h itself. mem_parameter_field[] plus pc_mem_param_index_for_key()
  * recover the field suffix so it composes at the call site. */
 static void test_error_E3164_mem_use_after_cross_function_field_destroy(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
@@ -2236,7 +2237,7 @@ static void test_no_false_positive_mem_cross_function_field_destroy_read_before(
 
 /* pc_return_expr_mem_bits() only recognized a directly-returned mem.alloc()/
  * mem.init() result — one buried in a struct/array/map literal the function
- * returns was invisible, so returns_param_mem_alloc_field never got set and
+ * returns was invisible, so returns_parameter_mem_allocation_field never got set and
  * the caller's variable was never bound to the arena. */
 static void test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
@@ -2314,7 +2315,7 @@ static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(v
 
 /* Multi-return desugars `mut p, n = make(a)` into `mut _tmp = make(a); mut p
  * = _tmp.v0; mut n = _tmp.v1` — the second statement's value is a
- * NODE_MEMBER_EXPR, which pc_mem_pointer_in_expr didn't handle at all, so a
+ * NODE_MEMBER_EXPRESSION, which pc_mem_pointer_in_expr didn't handle at all, so a
  * @mem pointer returned alongside another value was never bound to `p`.
  * pc_bind_mem_pointer now binds a CALL_EXPR result to both mem_arena and
  * field_mem_arena, since a single-return call's result is the pointer
@@ -2748,8 +2749,8 @@ static void test_error_E3163_addr_escapes_through_func_ref_in_helper(void) {
 }
 
 /* A func-typed parameter's call (`f(p)` where `f func(T) -> T`) has no
- * FuncSig, so its escape-summary walk falls back to consulting the call's
- * already-resolved type via typetable_get() rather than resolving it fresh —
+ * FunctionSignature, so its escape-summary walk falls back to consulting the call's
+ * already-resolved type via type_table_get() rather than resolving it fresh —
  * resolving it fresh would run against whatever scope happens to be live
  * when the summary is first requested (often a different, unrelated
  * function's), misreporting the parameter and its argument as undefined. */

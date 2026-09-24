@@ -35,14 +35,14 @@ int64_t gray_mem_usage(GrayArena *arena) {
     return (int64_t)gray_arena_usage(arena);
 }
 
-void gray_mem_copy(void *dest, const void *src, int64_t byte_count) {
-    if (dest && src && byte_count > 0) memcpy(dest, src, (size_t)byte_count);
+void gray_mem_copy(void *dest, const void *source, int64_t byte_count) {
+    if (dest && source && byte_count > 0) memcpy(dest, source, (size_t)byte_count);
 }
 
-void gray_mem_zero(void *ptr, int64_t byte_count) {
-    if (ptr && byte_count > 0) memset(ptr, 0, (size_t)byte_count);
+void gray_mem_zero(void *pointer, int64_t byte_count) {
+    if (pointer && byte_count > 0) memset(pointer, 0, (size_t)byte_count);
 }
 
-void gray_mem_set(void *ptr, int64_t value, int64_t byte_count) {
-    if (ptr && byte_count > 0) memset(ptr, (int)value, (size_t)byte_count);
+void gray_mem_set(void *pointer, int64_t value, int64_t byte_count) {
+    if (pointer && byte_count > 0) memset(pointer, (int)value, (size_t)byte_count);
 }

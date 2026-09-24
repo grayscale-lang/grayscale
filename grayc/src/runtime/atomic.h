@@ -16,31 +16,31 @@
 
 // ── 64-bit Atomics ──────────────────────────────────────────────
 
-int64_t gray_atomic_load(int64_t *ptr);
-void    gray_atomic_store(int64_t *ptr, int64_t val);
-int64_t gray_atomic_add(int64_t *ptr, int64_t val);
-int64_t gray_atomic_sub(int64_t *ptr, int64_t val);
-int64_t gray_atomic_exchange(int64_t *ptr, int64_t val);
-bool    gray_atomic_cas(int64_t *ptr, int64_t expected, int64_t desired);
-int64_t gray_atomic_and(int64_t *ptr, int64_t val);
-int64_t gray_atomic_or(int64_t *ptr, int64_t val);
-int64_t gray_atomic_xor(int64_t *ptr, int64_t val);
+int64_t gray_atomic_load(int64_t *target);
+void    gray_atomic_store(int64_t *target, int64_t value);
+int64_t gray_atomic_add(int64_t *target, int64_t value);
+int64_t gray_atomic_sub(int64_t *target, int64_t value);
+int64_t gray_atomic_exchange(int64_t *target, int64_t value);
+bool    gray_atomic_cas(int64_t *target, int64_t expected, int64_t desired);
+int64_t gray_atomic_and(int64_t *target, int64_t value);
+int64_t gray_atomic_or(int64_t *target, int64_t value);
+int64_t gray_atomic_xor(int64_t *target, int64_t value);
 
 // ── 32-bit Atomics ──────────────────────────────────────────────
 
-int32_t gray_atomic_load32(int32_t *ptr);
-void    gray_atomic_store32(int32_t *ptr, int32_t val);
-int32_t gray_atomic_add32(int32_t *ptr, int32_t val);
-int32_t gray_atomic_sub32(int32_t *ptr, int32_t val);
-int32_t gray_atomic_exchange32(int32_t *ptr, int32_t val);
-bool    gray_atomic_cas32(int32_t *ptr, int32_t expected, int32_t desired);
+int32_t gray_atomic_load32(int32_t *target);
+void    gray_atomic_store32(int32_t *target, int32_t value);
+int32_t gray_atomic_add32(int32_t *target, int32_t value);
+int32_t gray_atomic_sub32(int32_t *target, int32_t value);
+int32_t gray_atomic_exchange32(int32_t *target, int32_t value);
+bool    gray_atomic_cas32(int32_t *target, int32_t expected, int32_t desired);
 
 // ── 8-bit Atomics ───────────────────────────────────────────────
 
-uint8_t gray_atomic_load8(uint8_t *ptr);
-void    gray_atomic_store8(uint8_t *ptr, uint8_t val);
-uint8_t gray_atomic_exchange8(uint8_t *ptr, uint8_t val);
-bool    gray_atomic_cas8(uint8_t *ptr, uint8_t expected, uint8_t desired);
+uint8_t gray_atomic_load8(uint8_t *target);
+void    gray_atomic_store8(uint8_t *target, uint8_t value);
+uint8_t gray_atomic_exchange8(uint8_t *target, uint8_t value);
+bool    gray_atomic_cas8(uint8_t *target, uint8_t expected, uint8_t desired);
 
 // ── Spinlock ────────────────────────────────────────────────────
 

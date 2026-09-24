@@ -39,11 +39,11 @@ typedef struct {
     GrayArenaBlock *first;
     GrayArenaBlock *current;
     size_t default_block_size;
-    size_t max_bytes;         /* 0 = unlimited (user arenas) */
+    size_t maximum_bytes;         /* 0 = unlimited (user arenas) */
     size_t total_allocated;   /* cumulative bytes across all blocks */
     size_t peak_bytes;        /* high-water mark of total_allocated */
     size_t alloc_count;       /* cumulative allocations on this arena */
-    bool destroyed;
+    bool is_destroyed;
 } GrayArena;
 
 GrayArena *gray_arena_create(size_t initial_size);
@@ -95,10 +95,10 @@ typedef struct {
 } GrayError;
 
 /* Create an error on the default arena */
-GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString msg);
+GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString message);
 
 /* Map a C errno value to the closest builtin ErrorCode slot. */
-int64_t gray_errno_code(int err);
+int64_t gray_errno_code(int error_number);
 
 /* gray_error_code_name(int64_t) — variant name for an ErrorCode slot — is
  * emitted per-program into the generated C (builtins + #error_code variants),
@@ -114,25 +114,25 @@ typedef struct {
 
 /* Create a string from a C string literal (no copy, points to static data) */
 static inline GrayString gray_string_lit(const char *text) {
-    GrayString str;
-    str.data = text;
-    str.len = (int32_t)strlen(text);
-    return str;
+    GrayString string;
+    string.data = text;
+    string.len = (int32_t)strlen(text);
+    return string;
 }
 
 /* String literal with explicit length — for strings containing null bytes */
-static inline GrayString gray_string_lit_len(const char *text, int32_t len) {
-    GrayString str;
-    str.data = text;
-    str.len = len;
-    return str;
+static inline GrayString gray_string_lit_len(const char *text, int32_t length) {
+    GrayString string;
+    string.data = text;
+    string.len = length;
+    return string;
 }
 
 /* Compile-time string literal — works at file scope (C11 compliant) */
 #define GRAY_STRING_LIT(s) ((GrayString){ (s), sizeof(s) - 1 })
 
 /* Create a string with a copy on the arena */
-GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len);
+GrayString gray_string_new(GrayArena *arena, const char *text, int32_t length);
 
 /* Create a Grayscale string from a C char* by copying onto the arena.
  * NULL input -> empty string. Length is clamped at INT32_MAX. The
@@ -141,15 +141,15 @@ GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len);
 GrayString gray_c_string_dup(GrayArena *arena, const char *text);
 
 /* String formatting (for interpolation) */
-GrayString gray_string_format(GrayArena *arena, const char *fmt, ...);
+GrayString gray_string_format(GrayArena *arena, const char *format, ...);
 
 /* Null-terminate a GrayString into a caller-provided buffer.
  * Truncates to buf_size-1 if needed. Returns buf for convenience. */
-static inline const char *gray_cstr(GrayString str, char *buf, size_t buf_size) {
-    size_t len = (size_t)str.len < buf_size - 1 ? (size_t)str.len : buf_size - 1;
-    memcpy(buf, str.data, len);
-    buf[len] = '\0';
-    return buf;
+static inline const char *gray_cstr(GrayString string, char *buffer, size_t buffer_size) {
+    size_t length = (size_t)string.len < buffer_size - 1 ? (size_t)string.len : buffer_size - 1;
+    memcpy(buffer, string.data, length);
+    buffer[length] = '\0';
+    return buffer;
 }
 
 /* String comparison */
@@ -200,10 +200,10 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
 extern _Thread_local const char *gray_panic_call_file;
 extern _Thread_local int gray_panic_call_line;
 
-void gray_panic_code(const char *code, const char *fmt, ...)
+void gray_panic_code(const char *code, const char *format, ...)
     __attribute__((format(printf, 2, 3), noreturn));
 
-void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...)
+void gray_panic_code_at(const char *file, int line, const char *code, const char *format, ...)
     __attribute__((format(printf, 4, 5), noreturn));
 
 /* --- Test-runner failure hook (see runtime/test.c) ---
@@ -215,17 +215,17 @@ extern bool gray_test_active;
 extern jmp_buf gray_test_env;
 
 _Noreturn void gray_test_vfail(const char *code, const char *file, int line,
-                               const char *fmt, va_list args);
+                               const char *format, va_list arguments);
 _Noreturn void gray_test_fail(const char *code, const char *file, int line,
-                              const char *fmt, ...)
+                              const char *format, ...)
     __attribute__((format(printf, 4, 5)));
 
 /* Nil-check a pointer and return it, so a checked dereference stays an
  * lvalue: `((T*)gray_ptr_check(ptr, f, l))->field` can be assigned, indexed,
  * or have its address taken, unlike a statement-expression wrapper. */
-static inline void *gray_ptr_check(void *ptr, const char *file, int line) {
-    if (!ptr) gray_panic_code_at(file, line, "P0080", "nil pointer dereference");
-    return ptr;
+static inline void *gray_ptr_check(void *allocation, const char *file, int line) {
+    if (!allocation) gray_panic_code_at(file, line, "P0080", "nil pointer dereference");
+    return allocation;
 }
 
 /* Arena-liveness check for a @mem pointer, composable the same way as
@@ -235,12 +235,12 @@ static inline void *gray_ptr_check(void *ptr, const char *file, int line) {
  * produced the pointer — see is_stable_arena_expr in codegen.c. Catches a
  * use-after-destroy/reset the compile-time pointer checker couldn't trace
  * (an arena reached other than by a plain parameter name — STANDARD 11.7). */
-static inline void *gray_mem_check_live(GrayArena *arena, void *ptr, const char *file, int line) {
-    if (arena && arena->destroyed) {
+static inline void *gray_mem_check_live(GrayArena *arena, void *allocation, const char *file, int line) {
+    if (arena && arena->is_destroyed) {
         gray_panic_code_at(file, line, "P0117",
             "dereferenced a pointer into an arena that has been destroyed or reset");
     }
-    return ptr;
+    return allocation;
 }
 
 /* --- Stack depth guard --- */
@@ -332,34 +332,34 @@ static inline uint64_t gray_umul_check(uint64_t left, uint64_t right, const char
 }
 
 /* Sized signed integer overflow checks (i8, i16, i32) */
-static inline int64_t gray_sized_add_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_add_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left + right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0011", "%s addition result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_sub_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_sub_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left - right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0012", "%s subtraction result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_mul_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_mul_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left * right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0013", "%s multiplication result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_neg_check(int64_t value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_neg_check(int64_t value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = -value;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0014", "%s negation result is too large; value exceeds the range of this type", type_name);
     return result;
 }
@@ -368,50 +368,50 @@ static inline int64_t gray_sized_neg_check(int64_t value, int64_t min_val, int64
  * Operands are int64_t so that signed operands (e.g. u8 + i64) are
  * handled correctly: a negative right-hand side must fire P0016, not
  * silently wrap to a large uint64 and trigger the wrong P0015 path. */
-static inline uint64_t gray_usized_add_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_add_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left + right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s addition result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0015", "%s addition result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
-static inline uint64_t gray_usized_sub_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_sub_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left - right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s subtraction result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0015", "%s subtraction result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
-static inline uint64_t gray_usized_mul_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_mul_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left * right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s multiplication result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0017", "%s multiplication result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
 /* Safe narrowing cast with overflow check */
-static inline int64_t gray_cast_check(int64_t value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_cast_check(int64_t value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value < min_val || value > max_val)
+    if (value < minimum_value || value > maximum_value)
         gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %lld is outside the valid range (%lld to %lld)",
-            type_name, (long long)value, (long long)min_val, (long long)max_val);
+            type_name, (long long)value, (long long)minimum_value, (long long)maximum_value);
     return value;
 }
 
-static inline uint64_t gray_ucast_check(int64_t value, uint64_t max_val,
+static inline uint64_t gray_ucast_check(int64_t value, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value < 0 || (uint64_t)value > max_val)
+    if (value < 0 || (uint64_t)value > maximum_value)
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %lld is outside the valid range (0 to %llu)",
-            type_name, (long long)value, (unsigned long long)max_val);
+            type_name, (long long)value, (unsigned long long)maximum_value);
     return (uint64_t)value;
 }
 
@@ -442,42 +442,42 @@ static inline int64_t gray_u64_to_i64_check(uint64_t value, const char *file, in
     return (int64_t)value;
 }
 
-/* Narrowing casts from a u64 or float source. gray_cast_check/gray_ucast_check
- * take an int64_t, so a u64 at or above 2^63 would turn negative and a float
+/* Narrowing casts from a u64 or floating-point source. gray_cast_check/gray_ucast_check
+ * take an int64_t, so a u64 at or above 2^63 would turn negative and a floating-point value
  * outside the int64 range (or NaN) would be undefined behavior before the
  * range check ever ran; these check the source value as it is. */
-static inline int64_t gray_cast_check_u64(uint64_t value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_cast_check_u64(uint64_t value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value > (uint64_t)max_val)
+    if (value > (uint64_t)maximum_value)
         gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %llu is outside the valid range (%lld to %lld)",
-            type_name, (unsigned long long)value, (long long)min_val, (long long)max_val);
+            type_name, (unsigned long long)value, (long long)minimum_value, (long long)maximum_value);
     return (int64_t)value;
 }
 
-static inline uint64_t gray_ucast_check_u64(uint64_t value, uint64_t max_val,
+static inline uint64_t gray_ucast_check_u64(uint64_t value, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value > max_val)
+    if (value > maximum_value)
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %llu is outside the valid range (0 to %llu)",
-            type_name, (unsigned long long)value, (unsigned long long)max_val);
+            type_name, (unsigned long long)value, (unsigned long long)maximum_value);
     return value;
 }
 
-/* A float source truncates toward zero, so it fits when it lies strictly
+/* A floating-point source truncates toward zero, so it fits when it lies strictly
  * between min - 1 and max + 1 (exact doubles for every sub-64-bit width).
  * NaN fails both comparisons and is reported as "value nan". */
-static inline int64_t gray_cast_check_f64(double value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_cast_check_f64(double value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (!(value > (double)min_val - 1.0 && value < (double)max_val + 1.0))
+    if (!(value > (double)minimum_value - 1.0 && value < (double)maximum_value + 1.0))
         gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %.17g is outside the valid range (%lld to %lld)",
-            type_name, value, (long long)min_val, (long long)max_val);
+            type_name, value, (long long)minimum_value, (long long)maximum_value);
     return (int64_t)value;
 }
 
-static inline uint64_t gray_ucast_check_f64(double value, uint64_t max_val,
+static inline uint64_t gray_ucast_check_f64(double value, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (!(value > -1.0 && value < (double)max_val + 1.0))
+    if (!(value > -1.0 && value < (double)maximum_value + 1.0))
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %.17g is outside the valid range (0 to %llu)",
-            type_name, value, (unsigned long long)max_val);
+            type_name, value, (unsigned long long)maximum_value);
     return (uint64_t)value;
 }
 
@@ -508,10 +508,10 @@ typedef struct { void *v0; GrayError *v1; } GrayResult_ptr;
 
 /* Wrap a bool-returning call into a GrayResult_bool.
  * Usage: GRAY_RESULT_WRAP_BOOL(arena, some_call(...), code, error_message); */
-#define GRAY_RESULT_WRAP_BOOL(arena, call, code, err_msg) \
-    do { GrayResult_bool _r; _r.v0 = (call); \
-         if (_r.v0) { _r.v1 = NULL; } \
-         else { _r.v1 = gray_error_new((arena), (code), (err_msg)); } \
-         return _r; } while (0)
+#define GRAY_RESULT_WRAP_BOOL(arena, call, code, error_message) \
+    do { GrayResult_bool gray_macro_result_; gray_macro_result_.v0 = (call); \
+         if (gray_macro_result_.v0) { gray_macro_result_.v1 = NULL; } \
+         else { gray_macro_result_.v1 = gray_error_new((arena), (code), (error_message)); } \
+         return gray_macro_result_; } while (0)
 
 #endif

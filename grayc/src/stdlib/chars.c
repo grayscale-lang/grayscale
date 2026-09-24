@@ -70,7 +70,7 @@ bool gray_chars_is_word_char(int32_t codepoint) {
  * Indic and other complex-script combining marks are future work; an
  * unlisted codepoint falls through to width 1.
  */
-typedef struct { int32_t lo, hi; } CharsWidthRange;
+typedef struct { int32_t low, high; } CharsWidthRange;
 
 static const CharsWidthRange CHARS_ZERO_WIDTH[] = {
     {0x0300, 0x036F}, {0x0483, 0x0489}, {0x0591, 0x05BD}, {0x05BF, 0x05BF},
@@ -96,12 +96,12 @@ static const CharsWidthRange CHARS_WIDE[] = {
 };
 #define CHARS_WIDE_COUNT (int)(sizeof(CHARS_WIDE) / sizeof(CHARS_WIDE[0]))
 
-static bool chars_width_range_has(const CharsWidthRange *ranges, int count, int32_t cp) {
-    int lo = 0, hi = count;
-    while (lo < hi) {
-        int mid = lo + (hi - lo) / 2;
-        if (cp < ranges[mid].lo) hi = mid;
-        else if (cp > ranges[mid].hi) lo = mid + 1;
+static bool chars_width_range_has(const CharsWidthRange *ranges, int count, int32_t codepoint) {
+    int low = 0, hi = count;
+    while (low < hi) {
+        int middle = low + (hi - low) / 2;
+        if (codepoint < ranges[middle].low) hi = middle;
+        else if (codepoint > ranges[middle].high) low = middle + 1;
         else return true;
     }
     return false;
@@ -118,55 +118,55 @@ int32_t gray_chars_width(int32_t codepoint) {
 
 /* Decode the next UTF-8 codepoint; returns bytes consumed (1-4). Mirrors
  * builtins.c's utf8_next, duplicated here to keep chars.c self-contained. */
-static int chars_utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
-    uint8_t b = *p;
-    int32_t cp;
+static int chars_utf8_next(const uint8_t *cursor, const uint8_t *end_cursor, int32_t *cp_out) {
+    uint8_t lead_byte = *cursor;
+    int32_t codepoint;
     int bytes;
-    if (b < 0x80) { *cp_out = b; return 1; }
-    else if ((b & 0xE0) == 0xC0) { cp = b & 0x1F; bytes = 2; }
-    else if ((b & 0xF0) == 0xE0) { cp = b & 0x0F; bytes = 3; }
-    else if ((b & 0xF8) == 0xF0) { cp = b & 0x07; bytes = 4; }
+    if (lead_byte < 0x80) { *cp_out = lead_byte; return 1; }
+    else if ((lead_byte & 0xE0) == 0xC0) { codepoint = lead_byte & 0x1F; bytes = 2; }
+    else if ((lead_byte & 0xF0) == 0xE0) { codepoint = lead_byte & 0x0F; bytes = 3; }
+    else if ((lead_byte & 0xF8) == 0xF0) { codepoint = lead_byte & 0x07; bytes = 4; }
     else { *cp_out = 0xFFFD; return 1; }
-    if (p + bytes > end) { *cp_out = 0xFFFD; return 1; }
+    if (cursor + bytes > end_cursor) { *cp_out = 0xFFFD; return 1; }
     for (int i = 1; i < bytes; i++) {
-        if ((p[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
-        cp = (cp << 6) | (p[i] & 0x3F);
+        if ((cursor[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
+        codepoint = (codepoint << 6) | (cursor[i] & 0x3F);
     }
-    *cp_out = cp;
+    *cp_out = codepoint;
     return bytes;
 }
 
-int64_t gray_chars_string_width(GrayString str) {
-    const uint8_t *p = (const uint8_t *)str.data;
-    const uint8_t *end = p + str.len;
+int64_t gray_chars_string_width(GrayString string) {
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
     int64_t total = 0;
-    while (p < end) {
-        int32_t cp;
-        p += chars_utf8_next(p, end, &cp);
-        int32_t w = gray_chars_width(cp);
-        if (w > 0) total += w;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        cursor += chars_utf8_next(cursor, end_cursor, &codepoint);
+        int32_t width = gray_chars_width(codepoint);
+        if (width > 0) total += width;
     }
     return total;
 }
 
 GrayString gray_chars_escape(GrayArena *arena, int32_t codepoint) {
-    char buf[16];
-    int n = 0;
+    char buffer[16];
+    int written_length = 0;
     switch (codepoint) {
-    case '\\': buf[n++] = '\\'; buf[n++] = '\\'; break;
-    case '\n': buf[n++] = '\\'; buf[n++] = 'n';  break;
-    case '\t': buf[n++] = '\\'; buf[n++] = 't';  break;
-    case '\r': buf[n++] = '\\'; buf[n++] = 'r';  break;
-    case '\0': buf[n++] = '\\'; buf[n++] = '0';  break;
+    case '\\': buffer[written_length++] = '\\'; buffer[written_length++] = '\\'; break;
+    case '\n': buffer[written_length++] = '\\'; buffer[written_length++] = 'n';  break;
+    case '\t': buffer[written_length++] = '\\'; buffer[written_length++] = 't';  break;
+    case '\r': buffer[written_length++] = '\\'; buffer[written_length++] = 'r';  break;
+    case '\0': buffer[written_length++] = '\\'; buffer[written_length++] = '0';  break;
     default:
         if (codepoint >= 0x20 && codepoint < 0x7F) {
-            buf[n++] = (char)codepoint;
+            buffer[written_length++] = (char)codepoint;
         } else if ((codepoint >= 0 && codepoint < 0x20) || codepoint == 0x7F) {
-            n = snprintf(buf, sizeof(buf), "\\x%02X", (unsigned)codepoint);
+            written_length = snprintf(buffer, sizeof(buffer), "\\x%02X", (unsigned)codepoint);
         } else {
-            n = snprintf(buf, sizeof(buf), "\\u{%X}", (unsigned)codepoint);
+            written_length = snprintf(buffer, sizeof(buffer), "\\u{%X}", (unsigned)codepoint);
         }
         break;
     }
-    return gray_string_new(arena, buf, n);
+    return gray_string_new(arena, buffer, written_length);
 }

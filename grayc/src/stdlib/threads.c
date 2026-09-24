@@ -25,22 +25,22 @@ typedef struct {
 
 static _Atomic int64_t gray_threads_live_count = 0;
 
-/* Unified thread wrapper: entry_no_arg is set for no-arg spawns, entry_with_arg for one-arg. */
+/* Unified thread wrapper: entry_without_argument is set for no-arg spawns, entry_with_argument for one-arg. */
 typedef struct {
-    void (*entry_no_arg)(void);
-    void (*entry_with_arg)(int64_t);
-    int64_t arg;
+    void (*entry_without_argument)(void);
+    void (*entry_with_argument)(int64_t);
+    int64_t argument;
     GrayThreadInternal *state;
 } ThreadArg;
 
-static void *thread_entry(void *raw) {
-    ThreadArg *thread_arg = (ThreadArg *)raw;
-    GrayThreadInternal *state = thread_arg->state;
+static void *thread_entry(void *raw_argument) {
+    ThreadArg *thread_argument = (ThreadArg *)raw_argument;
+    GrayThreadInternal *state = thread_argument->state;
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
-    if (thread_arg->entry_with_arg)
-        thread_arg->entry_with_arg(thread_arg->arg);
+    if (thread_argument->entry_with_argument)
+        thread_argument->entry_with_argument(thread_argument->argument);
     else
-        thread_arg->entry_no_arg();
+        thread_argument->entry_without_argument();
     gray_arena_destroy(gray_default_arena, __FILE__, __LINE__);
     free(gray_default_arena);
     gray_default_arena = NULL;
@@ -51,29 +51,29 @@ static void *thread_entry(void *raw) {
      * owns the free.  If join() is used instead, the increment is
      * harmless — join() frees after pthread_join returns. */
     if (atomic_fetch_add(&state->detached, 1) == 1) free(state);
-    free(thread_arg);
+    free(thread_argument);
     return NULL;
 }
 
-static GrayThread spawn_thread(ThreadArg *thread_arg) {
-    GrayThreadInternal *state = thread_arg->state;
+static GrayThread spawn_thread(ThreadArg *thread_argument) {
+    GrayThreadInternal *state = thread_argument->state;
     /* alive=1 set before pthread_create so is_alive() is true immediately
      * after spawn() returns; otherwise callers race the scheduler. The
      * thread wrapper clears it on exit. */
     atomic_store(&state->alive, 1);
     atomic_store(&state->detached, 0);
     atomic_fetch_add(&gray_threads_live_count, 1);
-    int rc = pthread_create(&state->posix_thread, NULL, thread_entry, thread_arg);
-    if (rc != 0) {
+    int result_code = pthread_create(&state->posix_thread, NULL, thread_entry, thread_argument);
+    if (result_code != 0) {
         /* thread_entry never runs, so unwind everything it would have owned:
          * the live count, the alive flag, and both allocations. */
         atomic_fetch_sub(&gray_threads_live_count, 1);
         atomic_store(&state->alive, 0);
         free(state);
-        free(thread_arg);
+        free(thread_argument);
         gray_panic_code("P0108",
             "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached",
-            strerror(rc));
+            strerror(result_code));
     }
     GrayThread thread;
     thread._internal = state;
@@ -82,28 +82,28 @@ static GrayThread spawn_thread(ThreadArg *thread_arg) {
 
 /* malloc that panics rather than returning NULL; thread state is small and
  * a failure here means the process is already out of memory. */
-static void *thread_alloc(size_t size) {
-    void *ptr = malloc(size);
-    if (!ptr) gray_panic_code("P0109", "threads.spawn: out of memory allocating thread state");
-    return ptr;
+static void *thread_allocate(size_t size) {
+    void *pointer = malloc(size);
+    if (!pointer) gray_panic_code("P0109", "threads.spawn: out of memory allocating thread state");
+    return pointer;
 }
 
-GrayThread gray_threads_spawn(void (*fn)(void)) {
-    ThreadArg *thread_arg = thread_alloc(sizeof(ThreadArg));
-    thread_arg->entry_no_arg = fn;
-    thread_arg->entry_with_arg = NULL;
-    thread_arg->arg = 0;
-    thread_arg->state = thread_alloc(sizeof(GrayThreadInternal));
-    return spawn_thread(thread_arg);
+GrayThread gray_threads_spawn(void (*entry)(void)) {
+    ThreadArg *thread_argument = thread_allocate(sizeof(ThreadArg));
+    thread_argument->entry_without_argument = entry;
+    thread_argument->entry_with_argument = NULL;
+    thread_argument->argument = 0;
+    thread_argument->state = thread_allocate(sizeof(GrayThreadInternal));
+    return spawn_thread(thread_argument);
 }
 
-GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg) {
-    ThreadArg *thread_arg = thread_alloc(sizeof(ThreadArg));
-    thread_arg->entry_no_arg = NULL;
-    thread_arg->entry_with_arg = fn;
-    thread_arg->arg = arg;
-    thread_arg->state = thread_alloc(sizeof(GrayThreadInternal));
-    return spawn_thread(thread_arg);
+GrayThread gray_threads_spawn_arg(void (*entry)(int64_t), int64_t argument) {
+    ThreadArg *thread_argument = thread_allocate(sizeof(ThreadArg));
+    thread_argument->entry_without_argument = NULL;
+    thread_argument->entry_with_argument = entry;
+    thread_argument->argument = argument;
+    thread_argument->state = thread_allocate(sizeof(GrayThreadInternal));
+    return spawn_thread(thread_argument);
 }
 
 void gray_threads_join(GrayThread thread) {
@@ -136,14 +136,14 @@ void gray_threads_yield(void) {
     sched_yield();
 }
 
-void gray_threads_sleep(int64_t ms) {
-    if (ms < 0) ms = 0;
-    struct timespec req;
-    req.tv_sec  = (time_t)(ms / 1000);
-    req.tv_nsec = (long)((ms % 1000) * 1000000L);
+void gray_threads_sleep(int64_t milliseconds) {
+    if (milliseconds < 0) milliseconds = 0;
+    struct timespec request_time;
+    request_time.tv_sec  = (time_t)(milliseconds / 1000);
+    request_time.tv_nsec = (long)((milliseconds % 1000) * 1000000L);
     /* Restart on signal interruption — the user asked for a sleep, not a
      * sleep-or-signal. */
-    while (nanosleep(&req, &req) == -1 && errno == EINTR) {}
+    while (nanosleep(&request_time, &request_time) == -1 && errno == EINTR) {}
 }
 
 int64_t gray_threads_thread_count(void) {

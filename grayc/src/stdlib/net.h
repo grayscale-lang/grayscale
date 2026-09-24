@@ -16,7 +16,7 @@
 
 /* Opaque socket handle */
 typedef struct {
-    int fd;
+    int file_descriptor;
 } GraySocket;
 
 /*@man connect
@@ -127,7 +127,7 @@ void gray_net_close(GraySocket sock);
 
 /* Send/receive raw data */
 int64_t gray_net_send(GraySocket sock, GrayString data);
-GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t max_bytes);
+GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t maximum_bytes);
 
 /* TCP server */
 GraySocket gray_net_listen(GrayArena *arena, int64_t port);
@@ -148,7 +148,7 @@ GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port);
 GrayResult_socket gray_net_listen_host_result(GrayArena *arena, GrayString host, int64_t port);
 GrayResult_socket gray_net_accept_result(GrayArena *arena, GraySocket listener);
 GrayResult_i64 gray_net_send_result(GrayArena *arena, GraySocket sock, GrayString data);
-GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_t max_bytes);
+GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_t maximum_bytes);
 GrayResult_string gray_net_resolve_result(GrayArena *arena, GrayString hostname);
 
 #endif

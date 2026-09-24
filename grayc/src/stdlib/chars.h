@@ -154,6 +154,6 @@ int32_t gray_chars_width(int32_t codepoint);
  *   println(chars.string_width("中文"))  // 4 (two wide CJK chars)
  *@end
  */
-int64_t gray_chars_string_width(GrayString str);
+int64_t gray_chars_string_width(GrayString string);
 
 #endif

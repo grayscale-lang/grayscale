@@ -74,7 +74,7 @@ int64_t gray_time_now_ns(void);     /* Nanoseconds since epoch */
  *   println(time.year(time.now()))
  *@end
  */
-int64_t gray_time_year(int64_t ts);
+int64_t gray_time_year(int64_t timestamp);
 
 /*@man month
  *@module time
@@ -86,7 +86,7 @@ int64_t gray_time_year(int64_t ts);
  *   println(time.month(time.now()))
  *@end
  */
-int64_t gray_time_month(int64_t ts);
+int64_t gray_time_month(int64_t timestamp);
 
 /*@man day
  *@module time
@@ -98,7 +98,7 @@ int64_t gray_time_month(int64_t ts);
  *   println(time.day(time.now()))
  *@end
  */
-int64_t gray_time_day(int64_t ts);
+int64_t gray_time_day(int64_t timestamp);
 
 /*@man hour
  *@module time
@@ -110,7 +110,7 @@ int64_t gray_time_day(int64_t ts);
  *   println(time.hour(time.now()))
  *@end
  */
-int64_t gray_time_hour(int64_t ts);
+int64_t gray_time_hour(int64_t timestamp);
 
 /*@man minute
  *@module time
@@ -122,7 +122,7 @@ int64_t gray_time_hour(int64_t ts);
  *   println(time.minute(time.now()))
  *@end
  */
-int64_t gray_time_minute(int64_t ts);
+int64_t gray_time_minute(int64_t timestamp);
 
 /*@man second
  *@module time
@@ -134,7 +134,7 @@ int64_t gray_time_minute(int64_t ts);
  *   println(time.second(time.now()))
  *@end
  */
-int64_t gray_time_second(int64_t ts);
+int64_t gray_time_second(int64_t timestamp);
 
 /*@man weekday
  *@module time
@@ -146,7 +146,7 @@ int64_t gray_time_second(int64_t ts);
  *   println(time.weekday(time.now()))
  *@end
  */
-int64_t gray_time_weekday(int64_t ts);
+int64_t gray_time_weekday(int64_t timestamp);
 
 /*@man is_leap_year
  *@module time
@@ -172,7 +172,7 @@ bool gray_time_is_leap_year(int64_t year);
  *   println(time.format("%Y-%m-%d", time.now()))
  *@end
  */
-GrayString gray_time_format(GrayArena *arena, GrayString fmt, int64_t ts);
+GrayString gray_time_format(GrayArena *arena, GrayString format, int64_t timestamp);
 
 /*@man to_iso
  *@module time
@@ -184,7 +184,7 @@ GrayString gray_time_format(GrayArena *arena, GrayString fmt, int64_t ts);
  *   println(time.to_iso(time.now()))
  *@end
  */
-GrayString gray_time_to_iso(GrayArena *arena, int64_t ts);
+GrayString gray_time_to_iso(GrayArena *arena, int64_t timestamp);
 
 /*@man date
  *@module time
@@ -196,7 +196,7 @@ GrayString gray_time_to_iso(GrayArena *arena, int64_t ts);
  *   println(time.date(time.now()))
  *@end
  */
-GrayString gray_time_date(GrayArena *arena, int64_t ts);
+GrayString gray_time_date(GrayArena *arena, int64_t timestamp);
 
 /*@man to_clock
  *@module time
@@ -208,7 +208,7 @@ GrayString gray_time_date(GrayArena *arena, int64_t ts);
  *   println(time.to_clock(time.now()))
  *@end
  */
-GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
+GrayString gray_time_to_clock(GrayArena *arena, int64_t timestamp);
 
 /* Parsing */
 
@@ -241,7 +241,7 @@ GrayResult_i64 gray_time_parse_result(GrayString text, GrayString layout);
  *   println(delta)
  *@end
  */
-int64_t gray_time_diff(int64_t start, int64_t end);
+int64_t gray_time_diff(int64_t start, int64_t end_index);
 
 /*@man since
  *@module time

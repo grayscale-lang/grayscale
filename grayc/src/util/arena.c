@@ -13,8 +13,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define ALIGN_UP(x, align) (((x) + (align) - 1) & ~((align) - 1))
-#define ARENA_INTERN_INITIAL_CAP 256
+#define ALIGN_UP(value, alignment) (((value) + (alignment) - 1) & ~((alignment) - 1))
+#define ARENA_INTERN_INITIAL_CAPACITY 256
 
 static ArenaBlock *arena_block_create(size_t size) {
     ArenaBlock *block = malloc(sizeof(ArenaBlock) + size);
@@ -39,11 +39,11 @@ Arena *arena_create(size_t initial_size) {
     arena->current = arena->first;
     arena->intern_table = NULL;
     arena->intern_count = 0;
-    arena->intern_cap = 0;
+    arena->intern_capacity = 0;
     return arena;
 }
 
-void *arena_alloc(Arena *arena, size_t size) {
+void *arena_allocate(Arena *arena, size_t size) {
     size = ALIGN_UP(size, 8);
 
     if (arena->current->used + size > arena->current->size) {
@@ -56,74 +56,74 @@ void *arena_alloc(Arena *arena, size_t size) {
         arena->current = block;
     }
 
-    void *ptr = arena->current->data + arena->current->used;
+    void *allocation = arena->current->data + arena->current->used;
     arena->current->used += size;
-    return ptr;
+    return allocation;
 }
 
 char *arena_copy_string(Arena *arena, const char *source) {
-    size_t len = strlen(source);
-    char *duplicated = arena_alloc(arena, len + 1);
-    memcpy(duplicated, source, len + 1);
+    size_t length = strlen(source);
+    char *duplicated = arena_allocate(arena, length + 1);
+    memcpy(duplicated, source, length + 1);
     return duplicated;
 }
 
-char *arena_copy_string_with_length(Arena *arena, const char *source, size_t len) {
-    char *duplicated = arena_alloc(arena, len + 1);
-    memcpy(duplicated, source, len);
-    duplicated[len] = '\0';
+char *arena_copy_string_with_length(Arena *arena, const char *source, size_t length) {
+    char *duplicated = arena_allocate(arena, length + 1);
+    memcpy(duplicated, source, length);
+    duplicated[length] = '\0';
     return duplicated;
 }
 
-static uint32_t intern_hash(const char *source, size_t len) {
-    uint32_t h = 5381u;
-    for (size_t i = 0; i < len; i++)
-        h = h * 33u ^ (uint32_t)(unsigned char)source[i];
-    return h;
+static uint32_t intern_hash(const char *source, size_t length) {
+    uint32_t hash = 5381u;
+    for (size_t i = 0; i < length; i++)
+        hash = hash * 33u ^ (uint32_t)(unsigned char)source[i];
+    return hash;
 }
 
 /* Rehash an existing (already-deduplicated) entry into the grown table.
  * Only used by intern_table_grow, which owns entries with no duplicates
  * to check for, so it skips straight to the first empty slot. */
-static void intern_table_insert(Arena *arena, const char *str, size_t len) {
-    uint32_t mask = (uint32_t)(arena->intern_cap - 1);
-    uint32_t h = intern_hash(str, len) & mask;
-    while (arena->intern_table[h].str) h = (h + 1) & mask;
-    arena->intern_table[h].str = str;
-    arena->intern_table[h].len = len;
+static void intern_table_insert(Arena *arena, const char *string, size_t length) {
+    uint32_t mask = (uint32_t)(arena->intern_capacity - 1);
+    uint32_t slot = intern_hash(string, length) & mask;
+    while (arena->intern_table[slot].string) slot = (slot + 1) & mask;
+    arena->intern_table[slot].string = string;
+    arena->intern_table[slot].length = length;
 }
 
 static void intern_table_grow(Arena *arena) {
     InternEntry *old_table = arena->intern_table;
-    int old_cap = arena->intern_cap;
-    arena->intern_cap = old_cap ? old_cap * 2 : ARENA_INTERN_INITIAL_CAP;
-    arena->intern_table = calloc((size_t)arena->intern_cap, sizeof(InternEntry));
+    int old_capacity = arena->intern_capacity;
+    arena->intern_capacity = old_capacity ? old_capacity * 2 : ARENA_INTERN_INITIAL_CAPACITY;
+    arena->intern_table = calloc((size_t)arena->intern_capacity, sizeof(InternEntry));
     if (!arena->intern_table) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
-    for (int i = 0; i < old_cap; i++) {
-        if (old_table[i].str) intern_table_insert(arena, old_table[i].str, old_table[i].len);
+    for (int i = 0; i < old_capacity; i++) {
+        if (old_table[i].string) intern_table_insert(arena, old_table[i].string, old_table[i].length);
     }
     free(old_table);
 }
 
-const char *arena_intern_string(Arena *arena, const char *source, size_t len) {
-    if ((arena->intern_count + 1) * 2 > arena->intern_cap) intern_table_grow(arena);
+const char *arena_intern_string(Arena *arena, const char *source, size_t length) {
+    if ((arena->intern_count + 1) * 2 > arena->intern_capacity) intern_table_grow(arena);
 
-    uint32_t mask = (uint32_t)(arena->intern_cap - 1);
-    uint32_t h = intern_hash(source, len) & mask;
+    uint32_t mask = (uint32_t)(arena->intern_capacity - 1);
+    uint32_t slot = intern_hash(source, length) & mask;
     for (;;) {
-        InternEntry *entry = &arena->intern_table[h];
-        if (!entry->str) {
-            char *copy = arena_copy_string_with_length(arena, source, len);
-            entry->str = copy;
-            entry->len = len;
+        InternEntry *entry = &arena->intern_table[slot];
+        if (!entry->string) {
+            char *copy = arena_copy_string_with_length(arena, source, length);
+            entry->string = copy;
+            entry->length = length;
             arena->intern_count++;
             return copy;
         }
-        if (entry->len == len && memcmp(entry->str, source, len) == 0) return entry->str;
-        h = (h + 1) & mask;
+        if (entry->length == length && memcmp(entry->string, source, length) == 0) return entry->string;
+        slot = (slot + 1) & mask;
     }
 }
 

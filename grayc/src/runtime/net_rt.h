@@ -15,7 +15,7 @@
 
 #include "platform_rt.h"
 
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
 
 /* winsock2.h must precede windows.h, which win32.h pulls in. */
 #include <winsock2.h>
@@ -30,16 +30,16 @@ typedef int gray_socklen_t;
  * not the struct timeval that POSIX expects. Passing a timeval here silently
  * configures a nonsense timeout. */
 #define GRAY_SOCK_TIMEOUT_TYPE DWORD
-#define gray_sock_timeout_value(ms, out) (*(out) = (DWORD)(ms))
-#define gray_sock_timeout_arg(t) ((const char *)&(t))
+#define gray_sock_timeout_value(milliseconds, out) (*(out) = (DWORD)(milliseconds))
+#define gray_sock_timeout_arg(timeout) ((const char *)&(timeout))
 
 /* Winsock needs process-wide initialization before any socket call, and every
  * public entry point in these modules may be the first one reached. */
 static inline void gray_net_startup(void) {
     static volatile LONG started = 0;
     if (InterlockedCompareExchange(&started, 1, 0) == 0) {
-        WSADATA wsa;
-        WSAStartup(MAKEWORD(2, 2), &wsa);
+        WSADATA winsock_data;
+        WSAStartup(MAKEWORD(2, 2), &winsock_data);
     }
 }
 
@@ -57,12 +57,12 @@ typedef socklen_t gray_socklen_t;
 #define gray_sock_close close
 
 #define GRAY_SOCK_TIMEOUT_TYPE struct timeval
-#define gray_sock_timeout_value(ms, out)                                                           \
+#define gray_sock_timeout_value(milliseconds, out)                                                           \
     do {                                                                                           \
-        (out)->tv_sec = (ms) / 1000;                                                               \
-        (out)->tv_usec = ((ms) % 1000) * 1000;                                                     \
+        (out)->tv_sec = (milliseconds) / 1000;                                                               \
+        (out)->tv_usec = ((milliseconds) % 1000) * 1000;                                                     \
     } while (0)
-#define gray_sock_timeout_arg(t) (&(t))
+#define gray_sock_timeout_arg(timeout) (&(timeout))
 
 static inline void gray_net_startup(void) {}
 

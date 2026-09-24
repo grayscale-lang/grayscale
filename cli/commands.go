@@ -374,7 +374,7 @@ func reportCCompiler() (path, version, triple string) {
 	}
 	if cc == "" && runtime.GOOS == "windows" {
 		// Mirror grayc's own fallback (grayc/src/util/platform.c,
-		// gray_find_cc_fallback): a toolchain in a well-known install
+		// gray_find_c_compiler_fallback): a toolchain in a well-known install
 		// location works for compiles even when it is not on PATH, and the
 		// report should describe what grayc will actually use.
 		wellKnown := []string{

@@ -1,6 +1,6 @@
 /*
  * binary.h — Public interface for the binary stdlib module.
- * Binary encoding/decoding for integers and floats in little-endian
+ * Binary encoding/decoding for integers and floating-point numbers in little-endian
  * and big-endian byte order.
  *
  * Author:  Marshall A Burns (@SchoolyB)
@@ -614,8 +614,8 @@
  */
 
 /* --- 8-bit --- */
-GrayArray gray_binary_encode_i8(GrayArena *arena, int8_t val);
-GrayArray gray_binary_encode_u8(GrayArena *arena, uint8_t val);
+GrayArray gray_binary_encode_i8(GrayArena *arena, int8_t value);
+GrayArray gray_binary_encode_u8(GrayArena *arena, uint8_t value);
 int8_t gray_binary_decode_i8(GrayArray *bytes, const char *file, int line);
 uint8_t gray_binary_decode_u8(GrayArray *bytes, const char *file, int line);
 

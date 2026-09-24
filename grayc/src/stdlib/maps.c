@@ -16,35 +16,35 @@
  * rather than a gray_array_push per entry. */
 
 GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map) {
-    GrayArray arr = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4, map->key_kind);
-    size_t ks = (size_t)map->key_size;
-    char *out = (char *)arr.data;
-    int32_t n = 0;
+    GrayArray array = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4, map->key_kind);
+    size_t entry_key_size = (size_t)map->key_size;
+    char *output = (char *)array.data;
+    int32_t entry_count = 0;
     for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
         int32_t slot = map->order[order_index];
         if (slot >= 0 && map->states[slot] == 1) {
-            memcpy(out + (size_t)n * ks, (char *)map->keys + (size_t)slot * ks, ks);
-            n++;
+            memcpy(output + (size_t)entry_count * entry_key_size, (char *)map->keys + (size_t)slot * entry_key_size, entry_key_size);
+            entry_count++;
         }
     }
-    arr.len = n;
-    return arr;
+    array.len = entry_count;
+    return array;
 }
 
 GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map) {
-    GrayArray arr = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4, map->value_kind);
-    size_t vs = (size_t)map->value_size;
-    char *out = (char *)arr.data;
-    int32_t n = 0;
+    GrayArray array = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4, map->value_kind);
+    size_t entry_value_size = (size_t)map->value_size;
+    char *output = (char *)array.data;
+    int32_t entry_count = 0;
     for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
         int32_t slot = map->order[order_index];
         if (slot >= 0 && map->states[slot] == 1) {
-            memcpy(out + (size_t)n * vs, (char *)map->values + (size_t)slot * vs, vs);
-            n++;
+            memcpy(output + (size_t)entry_count * entry_value_size, (char *)map->values + (size_t)slot * entry_value_size, entry_value_size);
+            entry_count++;
         }
     }
-    arr.len = n;
-    return arr;
+    array.len = entry_count;
+    return array;
 }
 
 bool gray_maps_has_key(GrayMap *map, const void *key) {
@@ -64,8 +64,8 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right) {
         int32_t slot = left->order[order_index];
         if (slot >= 0 && left->states[slot] == 1) {
             void *key = (char *)left->keys + (size_t)slot * (size_t)left->key_size;
-            void *val = (char *)left->values + (size_t)slot * (size_t)left->value_size;
-            GRAY_MAP_SET(arena, &result, key, val);
+            void *value = (char *)left->values + (size_t)slot * (size_t)left->value_size;
+            GRAY_MAP_SET(arena, &result, key, value);
         }
     }
     /* Copy all entries from right (overwrites left on conflict) */
@@ -73,8 +73,8 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right) {
         int32_t slot = right->order[order_index];
         if (slot >= 0 && right->states[slot] == 1) {
             void *key = (char *)right->keys + (size_t)slot * (size_t)right->key_size;
-            void *val = (char *)right->values + (size_t)slot * (size_t)right->value_size;
-            GRAY_MAP_SET(arena, &result, key, val);
+            void *value = (char *)right->values + (size_t)slot * (size_t)right->value_size;
+            GRAY_MAP_SET(arena, &result, key, value);
         }
     }
     return result;
@@ -84,14 +84,14 @@ bool gray_maps_contains_value(GrayMap *map, const void *value) {
     for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
         int32_t slot = map->order[order_index];
         if (slot >= 0 && map->states[slot] == 1) {
-            void *val = (char *)map->values + (size_t)slot * (size_t)map->value_size;
-            if (memcmp(val, value, (size_t)map->value_size) == 0) return true;
+            void *searched_value = (char *)map->values + (size_t)slot * (size_t)map->value_size;
+            if (memcmp(searched_value, value, (size_t)map->value_size) == 0) return true;
         }
     }
     return false;
 }
 
-bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_values) {
+bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool has_string_keys, bool has_string_values) {
     if (left->count != right->count) return false;
     if (left->key_size != right->key_size) return false;
     if (left->value_size != right->value_size) return false;
@@ -99,18 +99,18 @@ bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_v
         int32_t slot = left->order[order_index];
         if (slot < 0 || left->states[slot] != 1) continue;
         void *left_key = (char *)left->keys + (size_t)slot * (size_t)left->key_size;
-        void *left_val = (char *)left->values + (size_t)slot * (size_t)left->value_size;
-        void *right_val = str_keys
+        void *left_value = (char *)left->values + (size_t)slot * (size_t)left->value_size;
+        void *right_value = has_string_keys
             ? gray_map_get_str(right, *(GrayString *)left_key)
             : gray_map_get(right, left_key);
-        if (!right_val) return false;
-        if (str_values) {
-            GrayString *left_str = (GrayString *)left_val;
-            GrayString *right_str = (GrayString *)right_val;
-            if (left_str->len != right_str->len) return false;
-            if (left_str->len > 0 && memcmp(left_str->data, right_str->data, (size_t)left_str->len) != 0) return false;
+        if (!right_value) return false;
+        if (has_string_values) {
+            GrayString *left_string = (GrayString *)left_value;
+            GrayString *right_string = (GrayString *)right_value;
+            if (left_string->len != right_string->len) return false;
+            if (left_string->len > 0 && memcmp(left_string->data, right_string->data, (size_t)left_string->len) != 0) return false;
         } else {
-            if (memcmp(left_val, right_val, (size_t)left->value_size) != 0) return false;
+            if (memcmp(left_value, right_value, (size_t)left->value_size) != 0) return false;
         }
     }
     return true;

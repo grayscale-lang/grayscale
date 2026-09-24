@@ -20,7 +20,7 @@
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
 #include "../runtime/win32.h"
 #include <direct.h>
 #include <io.h>
@@ -32,21 +32,21 @@
 #include <sys/wait.h>
 #endif
 
-#define GRAY_HOSTNAME_BUF 256
+#define GRAY_HOSTNAME_BUFFER_SIZE 256
 #define GRAY_EXEC_OUTPUT_MAX (64 * 1024 * 1024) /* 64 MiB per stream */
 
 /* Grow an arena-backed byte buffer so it can take `add` more bytes on top of
  * `total`. The arena has no realloc, so growth is allocate-and-copy; the
  * `* 2 + add` step keeps the doubling from being defeated by a chunk larger
  * than the current capacity. */
-#define EXEC_BUF_GROW(arena, buf, total, cap, add) \
+#define EXEC_BUFFER_GROWTH(arena, buffer, total, capacity, additional) \
     do { \
-        if ((total) + (size_t)(add) > (cap)) { \
-            size_t exec_buf_cap_ = (cap) * 2 + (size_t)(add); \
-            char *exec_buf_grown_ = gray_arena_alloc_uninitialized((arena), exec_buf_cap_); \
-            memcpy(exec_buf_grown_, (buf), (total)); \
-            (buf) = exec_buf_grown_; \
-            (cap) = exec_buf_cap_; \
+        if ((total) + (size_t)(additional) > (capacity)) { \
+            size_t exec_buffer_capacity_ = (capacity) * 2 + (size_t)(additional); \
+            char *exec_buffer_grown_ = gray_arena_alloc_uninitialized((arena), exec_buffer_capacity_); \
+            memcpy(exec_buffer_grown_, (buffer), (total)); \
+            (buffer) = exec_buffer_grown_; \
+            (capacity) = exec_buffer_capacity_; \
         } \
     } while (0)
 
@@ -54,37 +54,37 @@
 #define PATH_MAX 4096
 #endif
 
-static int _os_argc = 0;
-static char **_os_argv = NULL;
+static int os_argument_count = 0;
+static char **os_argument_values = NULL;
 
 void gray_os_init(int argc, char **argv) {
-    _os_argc = argc;
-    _os_argv = argv;
+    os_argument_count = argc;
+    os_argument_values = argv;
 }
 
 GrayArray gray_os_args(GrayArena *arena) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), _os_argc > 0 ? _os_argc : 1, GRAY_ELEM_STRING);
-    for (int i = 0; i < _os_argc; i++) {
-        GrayString s = gray_string_new(arena, _os_argv[i], (int32_t)strlen(_os_argv[i]));
-        GRAY_ARRAY_PUSH(arena, &arr, &s);
+    GrayArray array = gray_array_new(arena, sizeof(GrayString), os_argument_count > 0 ? os_argument_count : 1, GRAY_ELEM_STRING);
+    for (int i = 0; i < os_argument_count; i++) {
+        GrayString argument_string = gray_string_new(arena, os_argument_values[i], (int32_t)strlen(os_argument_values[i]));
+        GRAY_ARRAY_PUSH(arena, &array, &argument_string);
     }
-    return arr;
+    return array;
 }
 
 GrayString gray_os_get_env(GrayArena *arena, GrayString name) {
-    const char *val = getenv(name.data);
-    if (!val) return gray_string_lit("");
-    return gray_string_new(arena, val, (int32_t)strlen(val));
+    const char *value = getenv(name.data);
+    if (!value) return gray_string_lit("");
+    return gray_string_new(arena, value, (int32_t)strlen(value));
 }
 
 GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
-    const char *val = getenv(name.data);
-    if (!val) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
-    return (GrayOsLookupEnvResult){gray_string_new(arena, val, (int32_t)strlen(val)), true};
+    const char *value = getenv(name.data);
+    if (!value) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
+    return (GrayOsLookupEnvResult){gray_string_new(arena, value, (int32_t)strlen(value)), true};
 }
 
 GrayArray gray_os_environ(GrayArena *arena) {
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     extern char **_environ;
     char **envp = _environ;
 #else
@@ -92,17 +92,17 @@ GrayArray gray_os_environ(GrayArena *arena) {
     char **envp = environ;
 #endif
     int count = 0;
-    for (char **e = envp; e && *e; e++) count++;
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), count > 0 ? count : 1, GRAY_ELEM_STRING);
+    for (char **entry = envp; entry && *entry; entry++) count++;
+    GrayArray array = gray_array_new(arena, sizeof(GrayString), count > 0 ? count : 1, GRAY_ELEM_STRING);
     for (int i = 0; i < count; i++) {
-        GrayString s = gray_string_new(arena, envp[i], (int32_t)strlen(envp[i]));
-        GRAY_ARRAY_PUSH(arena, &arr, &s);
+        GrayString entry_string = gray_string_new(arena, envp[i], (int32_t)strlen(envp[i]));
+        GRAY_ARRAY_PUSH(arena, &array, &entry_string);
     }
-    return arr;
+    return array;
 }
 
 void gray_os_set_env(GrayString name, GrayString value) {
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
      * block that child processes inherit. The two are separate on Windows, so
      * both are needed for get_env and exec to agree. */
@@ -114,7 +114,7 @@ void gray_os_set_env(GrayString name, GrayString value) {
 }
 
 void gray_os_unset_env(GrayString name) {
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     _putenv_s(name.data, "");
     SetEnvironmentVariableA(name.data, NULL);
 #else
@@ -123,38 +123,38 @@ void gray_os_unset_env(GrayString name) {
 }
 
 GrayString gray_os_cwd(GrayArena *arena) {
-    char buf[PATH_MAX];
-#if GRAY_RT_WINDOWS
-    if (_getcwd(buf, (int)sizeof(buf))) {
+    char buffer[PATH_MAX];
+#if GRAY_RUNTIME_WINDOWS
+    if (_getcwd(buffer, (int)sizeof(buffer))) {
 #else
-    if (getcwd(buf, sizeof(buf))) {
+    if (getcwd(buffer, sizeof(buffer))) {
 #endif
-        return gray_string_new(arena, buf, (int32_t)strlen(buf));
+        return gray_string_new(arena, buffer, (int32_t)strlen(buffer));
     }
     return gray_string_lit("");
 }
 
 GrayString gray_os_home_dir(GrayArena *arena) {
-#if GRAY_RT_WINDOWS
-    const char *val = getenv("USERPROFILE");
+#if GRAY_RUNTIME_WINDOWS
+    const char *profile_directory = getenv("USERPROFILE");
 #else
-    const char *val = getenv("HOME");
+    const char *profile_directory = getenv("HOME");
 #endif
-    if (!val) return gray_string_lit("");
-    return gray_string_new(arena, val, (int32_t)strlen(val));
+    if (!profile_directory) return gray_string_lit("");
+    return gray_string_new(arena, profile_directory, (int32_t)strlen(profile_directory));
 }
 
 GrayString gray_os_hostname(GrayArena *arena) {
-    char buf[GRAY_HOSTNAME_BUF];
-#if GRAY_RT_WINDOWS
+    char buffer[GRAY_HOSTNAME_BUFFER_SIZE];
+#if GRAY_RUNTIME_WINDOWS
     /* GetComputerNameEx avoids requiring Winsock to be started just for a name. */
-    DWORD len = (DWORD)sizeof(buf);
-    if (GetComputerNameExA(ComputerNameDnsHostname, buf, &len)) {
-        return gray_string_new(arena, buf, (int32_t)len);
+    DWORD length = (DWORD)sizeof(buffer);
+    if (GetComputerNameExA(ComputerNameDnsHostname, buffer, &length)) {
+        return gray_string_new(arena, buffer, (int32_t)length);
     }
 #else
-    if (gethostname(buf, sizeof(buf)) == 0) {
-        return gray_string_new(arena, buf, (int32_t)strlen(buf));
+    if (gethostname(buffer, sizeof(buffer)) == 0) {
+        return gray_string_new(arena, buffer, (int32_t)strlen(buffer));
     }
 #endif
     return gray_string_lit("");
@@ -187,7 +187,7 @@ GrayString gray_os_arch(void) {
 }
 
 int64_t gray_os_pid(void) {
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     return (int64_t)GetCurrentProcessId();
 #else
     return (int64_t)getpid();
@@ -195,10 +195,10 @@ int64_t gray_os_pid(void) {
 }
 
 int64_t gray_os_cpu_count(void) {
-#if GRAY_RT_WINDOWS
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    long n = (long)si.dwNumberOfProcessors;
+#if GRAY_RUNTIME_WINDOWS
+    SYSTEM_INFO system_info;
+    GetSystemInfo(&system_info);
+    long n = (long)system_info.dwNumberOfProcessors;
 #elif defined(_SC_NPROCESSORS_ONLN)
     long n = sysconf(_SC_NPROCESSORS_ONLN);
 #else
@@ -208,44 +208,44 @@ int64_t gray_os_cpu_count(void) {
 }
 
 bool gray_os_is_tty(void) {
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     return _isatty(_fileno(stdout)) != 0;
 #else
     return isatty(STDOUT_FILENO) != 0;
 #endif
 }
 
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
 
 /* Quote one argument the way the Microsoft C runtime parses argv, so the child
  * sees exactly the string we were handed. Backslashes are only special when
  * they immediately precede a quote, which is why the run length is counted
  * rather than every backslash being doubled. */
-static void append_quoted_arg(char *dst, size_t cap, size_t *len, const char *arg) {
-    size_t i = *len;
-    bool needs_quotes = (*arg == '\0') || strpbrk(arg, " \t\n\v\"") != NULL;
+static void append_quoted_argument(char *destination, size_t capacity, size_t *length, const char *argument) {
+    size_t i = *length;
+    bool needs_quotes = (*argument == '\0') || strpbrk(argument, " \t\n\v\"") != NULL;
 
-    if (i < cap && needs_quotes) dst[i++] = '"';
-    for (const char *p = arg; *p; p++) {
+    if (i < capacity && needs_quotes) destination[i++] = '"';
+    for (const char *cursor = argument; *cursor; cursor++) {
         size_t backslashes = 0;
-        while (*p == '\\') {
+        while (*cursor == '\\') {
             backslashes++;
-            p++;
+            cursor++;
         }
-        if (*p == '\0') {
+        if (*cursor == '\0') {
             /* Trailing run: doubled so the closing quote is not escaped. */
-            for (size_t n = 0; n < backslashes * 2 && i < cap; n++) dst[i++] = '\\';
+            for (size_t n = 0; n < backslashes * 2 && i < capacity; n++) destination[i++] = '\\';
             break;
         }
-        if (*p == '"') {
-            for (size_t n = 0; n < backslashes * 2 + 1 && i < cap; n++) dst[i++] = '\\';
+        if (*cursor == '"') {
+            for (size_t n = 0; n < backslashes * 2 + 1 && i < capacity; n++) destination[i++] = '\\';
         } else {
-            for (size_t n = 0; n < backslashes && i < cap; n++) dst[i++] = '\\';
+            for (size_t n = 0; n < backslashes && i < capacity; n++) destination[i++] = '\\';
         }
-        if (i < cap) dst[i++] = *p;
+        if (i < capacity) destination[i++] = *cursor;
     }
-    if (i < cap && needs_quotes) dst[i++] = '"';
-    *len = i;
+    if (i < capacity && needs_quotes) destination[i++] = '"';
+    *length = i;
 }
 
 /* Drain a pipe to end-of-stream, growing the arena buffer as needed. Each
@@ -256,30 +256,30 @@ static void append_quoted_arg(char *dst, size_t cap, size_t *len, const char *ar
 typedef struct {
     HANDLE pipe;
     GrayArena *arena;
-    char *buf;
+    char *buffer;
     size_t total;
-    size_t cap;
-    bool overflow;
+    size_t capacity;
+    bool has_overflowed;
 } PipeReader;
 
 static DWORD WINAPI drain_pipe(LPVOID param) {
-    PipeReader *r = (PipeReader *)param;
+    PipeReader *reader = (PipeReader *)param;
     char chunk[4096];
-    DWORD got = 0;
+    DWORD bytes_read = 0;
 
-    while (ReadFile(r->pipe, chunk, sizeof(chunk), &got, NULL) && got > 0) {
-        if (r->total + got > GRAY_EXEC_OUTPUT_MAX) {
-            r->overflow = true;
+    while (ReadFile(reader->pipe, chunk, sizeof(chunk), &bytes_read, NULL) && bytes_read > 0) {
+        if (reader->total + bytes_read > GRAY_EXEC_OUTPUT_MAX) {
+            reader->has_overflowed = true;
             break;
         }
-        EXEC_BUF_GROW(r->arena, r->buf, r->total, r->cap, got);
-        memcpy(r->buf + r->total, chunk, got);
-        r->total += got;
+        EXEC_BUFFER_GROWTH(reader->arena, reader->buffer, reader->total, reader->capacity, bytes_read);
+        memcpy(reader->buffer + reader->total, chunk, bytes_read);
+        reader->total += bytes_read;
     }
     return 0;
 }
 
-GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) {
+GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
@@ -289,84 +289,84 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     /* CreateProcess takes one flat command line rather than an argv array, so
      * rebuild it with MSVCRT quoting. */
     char cmdline[32768];
-    size_t len = 0;
-    append_quoted_arg(cmdline, sizeof(cmdline) - 1, &len, cmd.data);
+    size_t length = 0;
+    append_quoted_argument(cmdline, sizeof(cmdline) - 1, &length, command.data);
     for (int i = 0; i < args.len; i++) {
         GrayString s = GRAY_ARRAY_GET(args, GrayString, i);
-        if (len < sizeof(cmdline) - 1) cmdline[len++] = ' ';
-        append_quoted_arg(cmdline, sizeof(cmdline) - 1, &len, s.data);
+        if (length < sizeof(cmdline) - 1) cmdline[length++] = ' ';
+        append_quoted_argument(cmdline, sizeof(cmdline) - 1, &length, s.data);
     }
-    cmdline[len] = '\0';
+    cmdline[length] = '\0';
 
-    SECURITY_ATTRIBUTES sa;
-    sa.nLength = sizeof(sa);
-    sa.lpSecurityDescriptor = NULL;
-    sa.bInheritHandle = TRUE;
+    SECURITY_ATTRIBUTES security_attributes;
+    security_attributes.nLength = sizeof(security_attributes);
+    security_attributes.lpSecurityDescriptor = NULL;
+    security_attributes.bInheritHandle = TRUE;
 
-    HANDLE out_r = NULL, out_w = NULL, err_r = NULL, err_w = NULL;
-    if (!CreatePipe(&out_r, &out_w, &sa, 0)) return fail;
-    if (!CreatePipe(&err_r, &err_w, &sa, 0)) {
-        CloseHandle(out_r);
-        CloseHandle(out_w);
+    HANDLE stdout_read = NULL, stdout_write = NULL, stderr_read = NULL, stderr_write = NULL;
+    if (!CreatePipe(&stdout_read, &stdout_write, &security_attributes, 0)) return fail;
+    if (!CreatePipe(&stderr_read, &stderr_write, &security_attributes, 0)) {
+        CloseHandle(stdout_read);
+        CloseHandle(stdout_write);
         return fail;
     }
     /* Our read ends must not reach the child, or the pipes never report EOF. */
-    SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
-    SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(stdout_read, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(stderr_read, HANDLE_FLAG_INHERIT, 0);
 
-    STARTUPINFOA si;
-    memset(&si, 0, sizeof(si));
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = out_w;
-    si.hStdError = err_w;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    STARTUPINFOA startup_info;
+    memset(&startup_info, 0, sizeof(startup_info));
+    startup_info.cb = sizeof(startup_info);
+    startup_info.dwFlags = STARTF_USESTDHANDLES;
+    startup_info.hStdOutput = stdout_write;
+    startup_info.hStdError = stderr_write;
+    startup_info.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
 
-    PROCESS_INFORMATION pi;
-    memset(&pi, 0, sizeof(pi));
+    PROCESS_INFORMATION process_information;
+    memset(&process_information, 0, sizeof(process_information));
 
-    if (!CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
-        CloseHandle(out_r);
-        CloseHandle(out_w);
-        CloseHandle(err_r);
-        CloseHandle(err_w);
+    if (!CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &startup_info, &process_information)) {
+        CloseHandle(stdout_read);
+        CloseHandle(stdout_write);
+        CloseHandle(stderr_read);
+        CloseHandle(stderr_write);
         return fail;
     }
 
     /* Close the child's ends here so ReadFile sees EOF when it exits. */
-    CloseHandle(out_w);
-    CloseHandle(err_w);
+    CloseHandle(stdout_write);
+    CloseHandle(stderr_write);
 
-    PipeReader out_reader = {out_r, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
-    PipeReader err_reader = {err_r, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
+    PipeReader stdout_reader = {stdout_read, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
+    PipeReader stderr_reader = {stderr_read, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
 
-    HANDLE out_thread = CreateThread(NULL, 0, drain_pipe, &out_reader, 0, NULL);
-    drain_pipe(&err_reader);
+    HANDLE out_thread = CreateThread(NULL, 0, drain_pipe, &stdout_reader, 0, NULL);
+    drain_pipe(&stderr_reader);
     if (out_thread) {
         WaitForSingleObject(out_thread, INFINITE);
         CloseHandle(out_thread);
     }
 
-    if (out_reader.overflow || err_reader.overflow) TerminateProcess(pi.hProcess, 1);
+    if (stdout_reader.has_overflowed || stderr_reader.has_overflowed) TerminateProcess(process_information.hProcess, 1);
 
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    WaitForSingleObject(process_information.hProcess, INFINITE);
     DWORD exit_code = 0;
-    GetExitCodeProcess(pi.hProcess, &exit_code);
+    GetExitCodeProcess(process_information.hProcess, &exit_code);
 
-    CloseHandle(out_r);
-    CloseHandle(err_r);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
+    CloseHandle(stdout_read);
+    CloseHandle(stderr_read);
+    CloseHandle(process_information.hThread);
+    CloseHandle(process_information.hProcess);
 
-    GrayString stdout_str = gray_string_new(arena, out_reader.buf, (int32_t)out_reader.total);
-    GrayString stderr_str = gray_string_new(arena, err_reader.buf, (int32_t)err_reader.total);
-    GrayOsExecResult r = {(int64_t)exit_code, stdout_str, stderr_str, true};
-    return r;
+    GrayString stdout_text = gray_string_new(arena, stdout_reader.buffer, (int32_t)stdout_reader.total);
+    GrayString stderr_text = gray_string_new(arena, stderr_reader.buffer, (int32_t)stderr_reader.total);
+    GrayOsExecResult reader = {(int64_t)exit_code, stdout_text, stderr_text, true};
+    return reader;
 }
 
 #else
 
-GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) {
+GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
@@ -376,7 +376,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     /* Build null-terminated argv: argv[0] = cmd, argv[1..n] = args, argv[n+1] = NULL */
     int argc = 1 + args.len;
     char **argv = gray_arena_alloc_uninitialized(arena, sizeof(char *) * (size_t)(argc + 1));
-    argv[0] = (char *)cmd.data;
+    argv[0] = (char *)command.data;
     for (int i = 0; i < args.len; i++) {
         GrayString s = GRAY_ARRAY_GET(args, GrayString, i);
         argv[1 + i] = (char *)s.data;
@@ -405,7 +405,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
         dup2(stderr_pipe[1], STDERR_FILENO);
         close(stdout_pipe[1]);
         close(stderr_pipe[1]);
-        execvp(cmd.data, argv);
+        execvp(command.data, argv);
         /* execvp failed */
         _exit(127);
     }
@@ -415,59 +415,59 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     close(stdout_pipe[1]);
     close(stderr_pipe[1]);
 
-    char buf[4096];
-    size_t out_total = 0, err_total = 0;
-    size_t out_cap = sizeof(buf), err_cap = sizeof(buf);
-    char *out_buf = gray_arena_alloc_uninitialized(arena, out_cap);
-    char *err_buf = gray_arena_alloc_uninitialized(arena, err_cap);
-    int out_fd = stdout_pipe[0];
-    int err_fd = stderr_pipe[0];
-    bool out_done = false, err_done = false;
+    char buffer[4096];
+    size_t stdout_total = 0, stderr_total = 0;
+    size_t stdout_capacity = sizeof(buffer), stderr_capacity = sizeof(buffer);
+    char *stdout_buffer = gray_arena_alloc_uninitialized(arena, stdout_capacity);
+    char *stderr_buffer = gray_arena_alloc_uninitialized(arena, stderr_capacity);
+    int stdout_descriptor = stdout_pipe[0];
+    int stderr_descriptor = stderr_pipe[0];
+    bool is_stdout_done = false, is_stderr_done = false;
     bool truncated = false;
 
-    while (!out_done || !err_done) {
-        fd_set fds;
-        FD_ZERO(&fds);
-        if (!out_done) FD_SET(out_fd, &fds);
-        if (!err_done) FD_SET(err_fd, &fds);
-        int maxfd = (out_fd > err_fd ? out_fd : err_fd) + 1;
-        if (select(maxfd, &fds, NULL, NULL, NULL) < 0) break;
+    while (!is_stdout_done || !is_stderr_done) {
+        fd_set descriptor_set;
+        FD_ZERO(&descriptor_set);
+        if (!is_stdout_done) FD_SET(stdout_descriptor, &descriptor_set);
+        if (!is_stderr_done) FD_SET(stderr_descriptor, &descriptor_set);
+        int maxfd = (stdout_descriptor > stderr_descriptor ? stdout_descriptor : stderr_descriptor) + 1;
+        if (select(maxfd, &descriptor_set, NULL, NULL, NULL) < 0) break;
 
-        if (!out_done && FD_ISSET(out_fd, &fds)) {
-            ssize_t n = read(out_fd, buf, sizeof(buf));
+        if (!is_stdout_done && FD_ISSET(stdout_descriptor, &descriptor_set)) {
+            ssize_t n = read(stdout_descriptor, buffer, sizeof(buffer));
             if (n <= 0) {
-                out_done = true;
-            } else if (out_total + (size_t)n > GRAY_EXEC_OUTPUT_MAX) {
+                is_stdout_done = true;
+            } else if (stdout_total + (size_t)n > GRAY_EXEC_OUTPUT_MAX) {
                 kill(pid, SIGKILL);
-                out_done = true;
-                err_done = true;
+                is_stdout_done = true;
+                is_stderr_done = true;
                 truncated = true;
             } else {
-                EXEC_BUF_GROW(arena, out_buf, out_total, out_cap, n);
-                memcpy(out_buf + out_total, buf, (size_t)n);
-                out_total += (size_t)n;
+                EXEC_BUFFER_GROWTH(arena, stdout_buffer, stdout_total, stdout_capacity, n);
+                memcpy(stdout_buffer + stdout_total, buffer, (size_t)n);
+                stdout_total += (size_t)n;
             }
         }
 
-        if (!err_done && FD_ISSET(err_fd, &fds)) {
-            ssize_t n = read(err_fd, buf, sizeof(buf));
+        if (!is_stderr_done && FD_ISSET(stderr_descriptor, &descriptor_set)) {
+            ssize_t n = read(stderr_descriptor, buffer, sizeof(buffer));
             if (n <= 0) {
-                err_done = true;
-            } else if (err_total + (size_t)n > GRAY_EXEC_OUTPUT_MAX) {
+                is_stderr_done = true;
+            } else if (stderr_total + (size_t)n > GRAY_EXEC_OUTPUT_MAX) {
                 kill(pid, SIGKILL);
-                out_done = true;
-                err_done = true;
+                is_stdout_done = true;
+                is_stderr_done = true;
                 truncated = true;
             } else {
-                EXEC_BUF_GROW(arena, err_buf, err_total, err_cap, n);
-                memcpy(err_buf + err_total, buf, (size_t)n);
-                err_total += (size_t)n;
+                EXEC_BUFFER_GROWTH(arena, stderr_buffer, stderr_total, stderr_capacity, n);
+                memcpy(stderr_buffer + stderr_total, buffer, (size_t)n);
+                stderr_total += (size_t)n;
             }
         }
     }
 
-    close(out_fd);
-    close(err_fd);
+    close(stdout_descriptor);
+    close(stderr_descriptor);
 
     int status = 0;
     waitpid(pid, &status, 0);
@@ -482,11 +482,11 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     /* exit_code 127 means execvp failed (command not found / bad path) */
     if (exit_code == 127 || truncated) return fail;
 
-    GrayString stdout_str = gray_string_new(arena, out_buf, (int32_t)out_total);
-    GrayString stderr_str = gray_string_new(arena, err_buf, (int32_t)err_total);
-    GrayOsExecResult r = {(int64_t)exit_code, stdout_str, stderr_str, true};
-    return r;
+    GrayString stdout_text = gray_string_new(arena, stdout_buffer, (int32_t)stdout_total);
+    GrayString stderr_text = gray_string_new(arena, stderr_buffer, (int32_t)stderr_total);
+    GrayOsExecResult reader = {(int64_t)exit_code, stdout_text, stderr_text, true};
+    return reader;
 }
 
 
-#endif /* !GRAY_RT_WINDOWS */
+#endif /* !GRAY_RUNTIME_WINDOWS */

@@ -36,9 +36,9 @@ typedef struct {
 
 /* Resolve every import reachable from `program`, merging the declarations it
  * pulls in directly into `program`. Diagnostics for unresolvable imports,
- * module name collisions, and duplicate imports go to `diag`; the caller is
+ * module name collisions, and duplicate imports go to `diagnostics`; the caller is
  * expected to stop on errors before type checking. */
-void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
-                     const char *entry_file, ImportResolution *out);
+void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program,
+                     const char *input_file, ImportResolution *out);
 
 #endif

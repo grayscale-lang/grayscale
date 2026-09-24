@@ -18,7 +18,7 @@
 #include <errno.h>
 
 static inline int panic_use_color(void) {
-    return gray_rt_isatty(gray_rt_stderr_fileno()) && !getenv("NO_COLOR");
+    return gray_runtime_isatty(gray_runtime_stderr_fileno()) && !getenv("NO_COLOR");
 }
 
 /* --- Per-thread default arena --- */
@@ -61,16 +61,16 @@ GrayArena *gray_arena_create(size_t initial_size) {
     arena->default_block_size = initial_size;
     arena->first = gray_arena_block_create(initial_size);
     arena->current = arena->first;
-    arena->max_bytes = 0;
+    arena->maximum_bytes = 0;
     arena->total_allocated = initial_size;
     arena->peak_bytes = initial_size;
     arena->alloc_count = 0;
-    arena->destroyed = false;
+    arena->is_destroyed = false;
     return arena;
 }
 
 void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
-    if (arena->destroyed)
+    if (arena->is_destroyed)
         gray_panic_code("P0001", "cannot allocate from a destroyed arena; mem.destroy() was already called on this arena");
     arena->alloc_count++;
     if (arena == gray_default_arena || arena == gray_heap_arena) gray_total_alloc_count++;
@@ -78,11 +78,11 @@ void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
     if (size > arena->current->size - arena->current->used) {
         size_t block_size = arena->default_block_size;
         if (size > block_size) block_size = size;
-        if (arena->max_bytes > 0 &&
-            arena->total_allocated + block_size > arena->max_bytes) {
+        if (arena->maximum_bytes > 0 &&
+            arena->total_allocated + block_size > arena->maximum_bytes) {
             gray_panic_code("P0104",
                 "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes",
-                arena->max_bytes);
+                arena->maximum_bytes);
         }
         GrayArenaBlock *block = gray_arena_block_create(block_size);
         arena->current->next = block;
@@ -91,15 +91,15 @@ void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
         if (arena->total_allocated > arena->peak_bytes)
             arena->peak_bytes = arena->total_allocated;
     }
-    void *ptr = arena->current->data + arena->current->used;
+    void *allocation = arena->current->data + arena->current->used;
     arena->current->used += size;
-    return ptr;
+    return allocation;
 }
 
 void *gray_arena_alloc(GrayArena *arena, size_t size) {
-    void *ptr = gray_arena_alloc_uninitialized(arena, size);
-    memset(ptr, 0, ALIGN_UP(size, 8));
-    return ptr;
+    void *allocation = gray_arena_alloc_uninitialized(arena, size);
+    memset(allocation, 0, ALIGN_UP(size, 8));
+    return allocation;
 }
 
 void gray_arena_reset(GrayArena *arena) {
@@ -115,7 +115,7 @@ void gray_arena_reset(GrayArena *arena) {
 
 void gray_arena_destroy(GrayArena *arena, const char *file, int line) {
     if (!arena) return;
-    if (arena->destroyed)
+    if (arena->is_destroyed)
         gray_panic_code_at(file, line, "P0002", "mem.destroy() called on an arena that was already destroyed; each arena can only be destroyed once");
     GrayArenaBlock *block = arena->first;
     while (block) {
@@ -125,7 +125,7 @@ void gray_arena_destroy(GrayArena *arena, const char *file, int line) {
     }
     arena->first = NULL;
     arena->current = NULL;
-    arena->destroyed = true;
+    arena->is_destroyed = true;
     /* Don't free the arena struct — keep it alive so the destroyed flag
      * can be checked if the user calls destroy again. It will be cleaned
      * up at process exit. */
@@ -153,16 +153,16 @@ size_t gray_arena_block_count(GrayArena *arena) {
 
 /* --- Error --- */
 
-GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString msg) {
-    GrayError *err = (GrayError *)gray_arena_alloc(arena, sizeof(GrayError));
-    err->code = code;
-    err->msg = gray_string_new(arena, msg.data, msg.len);
-    return err;
+GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString message) {
+    GrayError *error = (GrayError *)gray_arena_alloc(arena, sizeof(GrayError));
+    error->code = code;
+    error->msg = gray_string_new(arena, message.data, message.len);
+    return error;
 }
 
 /* Map a C errno value to the closest builtin ErrorCode slot. */
-int64_t gray_errno_code(int err) {
-    switch (err) {
+int64_t gray_errno_code(int error_number) {
+    switch (error_number) {
         case ENOENT:       return GRAY_ERR_NotFound;
         case EEXIST:       return GRAY_ERR_AlreadyExists;
         case EACCES:
@@ -196,58 +196,58 @@ int64_t gray_errno_code(int err) {
 
 /* --- String --- */
 
-GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len) {
-    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
-    memcpy(data, text, (size_t)len);
-    data[len] = '\0';
-    GrayString str;
-    str.data = data;
-    str.len = len;
-    return str;
+GrayString gray_string_new(GrayArena *arena, const char *text, int32_t length) {
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
+    memcpy(data, text, (size_t)length);
+    data[length] = '\0';
+    GrayString string;
+    string.data = data;
+    string.len = length;
+    return string;
 }
 
 GrayString gray_c_string_dup(GrayArena *arena, const char *text) {
     if (text == NULL) return gray_string_lit("");
-    size_t len = strlen(text);
-    if (len > (size_t)INT32_MAX) len = (size_t)INT32_MAX;
-    char *data = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
-    memcpy(data, text, len);
-    data[len] = '\0';
-    GrayString str;
-    str.data = data;
-    str.len = (int32_t)len;
-    return str;
+    size_t length = strlen(text);
+    if (length > (size_t)INT32_MAX) length = (size_t)INT32_MAX;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, length + 1);
+    memcpy(data, text, length);
+    data[length] = '\0';
+    GrayString string;
+    string.data = data;
+    string.len = (int32_t)length;
+    return string;
 }
 
-GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
+GrayString gray_string_format(GrayArena *arena, const char *format, ...) {
     /* Format once into a stack buffer. The common callers — "%lld"/"%llu" for
-     * an interpolated integer, println(int) — never exceed 20 digits plus a
+     * an interpolated integer, println(i64) — never exceed 20 digits plus a
      * sign, so this is the whole job. Only a result that overflows the buffer
      * (a long "%s" path in a stdlib error message) pays the size-then-fill
      * fallback. */
-    char buf[32];
-    va_list args;
-    va_start(args, fmt);
-    int needed = vsnprintf(buf, sizeof buf, fmt, args);
-    va_end(args);
+    char buffer[32];
+    va_list arguments;
+    va_start(arguments, format);
+    int needed = vsnprintf(buffer, sizeof buffer, format, arguments);
+    va_end(arguments);
 
     if (needed < 0) {
         return gray_string_lit("");
     }
 
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)needed + 1);
-    if ((size_t)needed < sizeof buf) {
-        memcpy(data, buf, (size_t)needed + 1);
+    if ((size_t)needed < sizeof buffer) {
+        memcpy(data, buffer, (size_t)needed + 1);
     } else {
-        va_start(args, fmt);
-        vsnprintf(data, (size_t)needed + 1, fmt, args);
-        va_end(args);
+        va_start(arguments, format);
+        vsnprintf(data, (size_t)needed + 1, format, arguments);
+        va_end(arguments);
     }
 
-    GrayString str;
-    str.data = data;
-    str.len = (int32_t)needed;
-    return str;
+    GrayString string;
+    string.data = data;
+    string.len = (int32_t)needed;
+    return string;
 }
 
 GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right) {
@@ -255,12 +255,12 @@ GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString righ
         fprintf(stderr, "Grayscale runtime: string concatenation overflow\n");
         exit(1);
     }
-    int32_t new_len = left.len + right.len;
-    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    int32_t new_length = left.len + right.len;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
     memcpy(data, left.data, (size_t)left.len);
     memcpy(data + left.len, right.data, (size_t)right.len);
-    data[new_len] = '\0';
-    GrayString result = { data, new_len };
+    data[new_length] = '\0';
+    GrayString result = { data, new_length };
     return result;
 }
 
@@ -270,37 +270,37 @@ GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString righ
  * prefix at every boundary (O(n^2) in part count) and allocate n-1 dead
  * intermediates. Null-safe: a part with NULL data must have len 0. */
 GrayString gray_string_concat_n(GrayArena *arena, int count, ...) {
-    va_list args;
+    va_list arguments;
 
-    va_start(args, count);
+    va_start(arguments, count);
     int64_t total = 0;
     for (int i = 0; i < count; i++) {
-        GrayString part = va_arg(args, GrayString);
+        GrayString part = va_arg(arguments, GrayString);
         total += part.len;
     }
-    va_end(args);
+    va_end(arguments);
 
     if (total > INT32_MAX) {
         fprintf(stderr, "Grayscale runtime: string concatenation overflow\n");
         exit(1);
     }
 
-    int32_t new_len = (int32_t)total;
-    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    int32_t new_length = (int32_t)total;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
     int32_t offset = 0;
 
-    va_start(args, count);
+    va_start(arguments, count);
     for (int i = 0; i < count; i++) {
-        GrayString part = va_arg(args, GrayString);
+        GrayString part = va_arg(arguments, GrayString);
         if (part.len > 0) {
             memcpy(data + offset, part.data, (size_t)part.len);
             offset += part.len;
         }
     }
-    va_end(args);
+    va_end(arguments);
 
-    data[new_len] = '\0';
-    GrayString result = { data, new_len };
+    data[new_length] = '\0';
+    GrayString result = { data, new_length };
     return result;
 }
 
@@ -331,17 +331,17 @@ int gray_call_depth = 0;
 
 /* --- Runtime Init/Shutdown --- */
 
-static struct timespec gray_rt_start_time;
+static struct timespec gray_runtime_start_time;
 
 void gray_runtime_init(size_t arena_limit) {
     gray_map_init_seed();
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
     gray_heap_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
     if (arena_limit > 0) {
-        gray_default_arena->max_bytes = arena_limit;
-        gray_heap_arena->max_bytes = arena_limit;
+        gray_default_arena->maximum_bytes = arena_limit;
+        gray_heap_arena->maximum_bytes = arena_limit;
     }
-    clock_gettime(CLOCK_MONOTONIC, &gray_rt_start_time);
+    clock_gettime(CLOCK_MONOTONIC, &gray_runtime_start_time);
     /* Tear the runtime down at process exit rather than at the end of main, so
      * that a user callback registered with atexit() (which libc runs LIFO,
      * before this handler) still sees a live arena. */
@@ -351,8 +351,8 @@ void gray_runtime_init(size_t arena_limit) {
 double gray_runtime_uptime(void) {
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
-    return (double)(now.tv_sec - gray_rt_start_time.tv_sec) +
-           (double)(now.tv_nsec - gray_rt_start_time.tv_nsec) / 1e9;
+    return (double)(now.tv_sec - gray_runtime_start_time.tv_sec) +
+           (double)(now.tv_nsec - gray_runtime_start_time.tv_nsec) / 1e9;
 }
 
 void gray_runtime_shutdown(void) {
@@ -368,60 +368,60 @@ void gray_runtime_shutdown(void) {
 
 /* --- Panic --- */
 
-static _Noreturn void gray_panic_impl(const char *code, const char *file,
-    int line, const char *fmt, va_list args) {
+static _Noreturn void gray_panic_implementation(const char *code, const char *file,
+    int line, const char *format, va_list arguments) {
     /* Under `gray test`, a panic inside a test is a test failure, not a
      * process-ending event — hand it to the runner (never returns). */
     if (gray_test_active) {
-        gray_test_vfail(code, file, line, fmt, args);
+        gray_test_vfail(code, file, line, format, arguments);
     }
     fflush(stdout);
     int use_color = panic_use_color();
 
     /* Label: "panic" or "panic[CODE]" in bold red */
-    fprintf(stderr, "%s%spanic", use_color ? COL_BOLD : "", use_color ? COL_RED : "");
+    fprintf(stderr, "%s%spanic", use_color ? COLOR_BOLD : "", use_color ? COLOR_RED : "");
     if (code) {
         fprintf(stderr, "[%s]", code);
         if (!file) fputc(':', stderr);
     }
-    fprintf(stderr, "%s", use_color ? COL_RESET : "");
+    fprintf(stderr, "%s", use_color ? COLOR_RESET : "");
 
     /* Location (uncolored) */
     if (file) fprintf(stderr, " at %s:%d:", file, line);
 
     /* Message in bold */
-    fprintf(stderr, " %s", use_color ? COL_BOLD : "");
-    vfprintf(stderr, fmt, args);
-    fprintf(stderr, "%s\n", use_color ? COL_RESET : "");
+    fprintf(stderr, " %s", use_color ? COLOR_BOLD : "");
+    vfprintf(stderr, format, arguments);
+    fprintf(stderr, "%s\n", use_color ? COLOR_RESET : "");
     exit(1);
 }
 
-void gray_panic_code(const char *code, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
+void gray_panic_code(const char *code, const char *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
     /* No location of its own: fall back to the current statement's location,
      * stamped by generated code (NULL before the program's first statement). */
-    gray_panic_impl(code, gray_panic_call_file, gray_panic_call_line, fmt, args);
+    gray_panic_implementation(code, gray_panic_call_file, gray_panic_call_line, format, arguments);
 }
 
-void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    gray_panic_impl(code, file, line, fmt, args);
+void gray_panic_code_at(const char *file, int line, const char *code, const char *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    gray_panic_implementation(code, file, line, format, arguments);
 }
 
 /* Out-of-line failure tails for the checked-arithmetic helpers in runtime.h.
  * The Pxxxx code and message live here, once, instead of at every arithmetic
  * site in generated code. Messages mirror the registry in error_codes.h. */
-#define GRAY_ARITH_TAIL(name, code, msg)                     \
+#define GRAY_ARITHMETIC_TAIL(name, code, msg)                     \
     _Noreturn void name(const char *file, int line) {        \
         gray_panic_code_at(file, line, code, "%s", msg);     \
     }
-GRAY_ARITH_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of i64")
-GRAY_ARITH_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of i64")
-GRAY_ARITH_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of i64")
-GRAY_ARITH_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of i64")
-GRAY_ARITH_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of u64")
-GRAY_ARITH_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but u64 cannot hold negative values")
-GRAY_ARITH_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of u64")
-#undef GRAY_ARITH_TAIL
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of i64")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of i64")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of i64")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of i64")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of u64")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but u64 cannot hold negative values")
+GRAY_ARITHMETIC_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of u64")
+#undef GRAY_ARITHMETIC_TAIL

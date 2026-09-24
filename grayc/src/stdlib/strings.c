@@ -15,37 +15,37 @@
 #include <stdlib.h>
 #include <string.h>
 
-GrayString gray_strings_to_upper(GrayArena *arena, GrayString str) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)gray_ascii_upper((unsigned char)str.data[i]);
-    buf[str.len] = '\0';
-    GrayString result = { buf, str.len };
+GrayString gray_strings_to_upper(GrayArena *arena, GrayString string) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
+    for (int32_t i = 0; i < string.len; i++) buffer[i] = (char)gray_ascii_upper((unsigned char)string.data[i]);
+    buffer[string.len] = '\0';
+    GrayString result = { buffer, string.len };
     return result;
 }
 
-GrayString gray_strings_to_lower(GrayArena *arena, GrayString str) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)gray_ascii_lower((unsigned char)str.data[i]);
-    buf[str.len] = '\0';
-    GrayString result = { buf, str.len };
+GrayString gray_strings_to_lower(GrayArena *arena, GrayString string) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
+    for (int32_t i = 0; i < string.len; i++) buffer[i] = (char)gray_ascii_lower((unsigned char)string.data[i]);
+    buffer[string.len] = '\0';
+    GrayString result = { buffer, string.len };
     return result;
 }
 
-GrayString gray_strings_to_title(GrayArena *arena, GrayString str) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
+GrayString gray_strings_to_title(GrayArena *arena, GrayString string) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
     bool at_word_start = true;
-    for (int32_t i = 0; i < str.len; i++) {
-        unsigned char c = (unsigned char)str.data[i];
-        if (gray_ascii_is_space(c)) {
-            buf[i] = (char)c;
+    for (int32_t i = 0; i < string.len; i++) {
+        unsigned char character = (unsigned char)string.data[i];
+        if (gray_ascii_is_space(character)) {
+            buffer[i] = (char)character;
             at_word_start = true;
             continue;
         }
-        buf[i] = at_word_start ? (char)gray_ascii_upper(c) : (char)gray_ascii_lower(c);
+        buffer[i] = at_word_start ? (char)gray_ascii_upper(character) : (char)gray_ascii_lower(character);
         at_word_start = false;
     }
-    buf[str.len] = '\0';
-    GrayString result = { buf, str.len };
+    buffer[string.len] = '\0';
+    GrayString result = { buffer, string.len };
     return result;
 }
 
@@ -57,253 +57,253 @@ GrayString gray_strings_to_title(GrayArena *arena, GrayString str) {
  * character once a real character arrives to follow it. That drops trailing
  * separators for free and collapses runs, the same way to_camel_case defers its
  * capitalization. */
-static GrayString strings_delimit_words(GrayArena *arena, GrayString str, char sep) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len * 2 + 1);
-    int32_t pos = 0;
-    bool pending_sep = false;
-    for (int32_t i = 0; i < str.len; i++) {
-        unsigned char c = (unsigned char)str.data[i];
-        if (c == ' ' || c == '-' || c == '_') {
+static GrayString strings_delimit_words(GrayArena *arena, GrayString string, char separator) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len * 2 + 1);
+    int32_t position = 0;
+    bool has_pending_separator = false;
+    for (int32_t i = 0; i < string.len; i++) {
+        unsigned char character = (unsigned char)string.data[i];
+        if (character == ' ' || character == '-' || character == '_') {
             /* Leading separators are dropped rather than opening with sep. */
-            pending_sep = pos > 0;
+            has_pending_separator = position > 0;
             continue;
         }
-        if (gray_ascii_is_upper(c)) {
-            unsigned char prev = i > 0 ? (unsigned char)str.data[i - 1] : 0;
-            unsigned char next = i + 1 < str.len ? (unsigned char)str.data[i + 1] : 0;
+        if (gray_ascii_is_upper(character)) {
+            unsigned char previous_character = i > 0 ? (unsigned char)string.data[i - 1] : 0;
+            unsigned char next = i + 1 < string.len ? (unsigned char)string.data[i + 1] : 0;
             /* Break after a lowercase run, and at the tail of an acronym run
              * so "HTTPServer" splits as "http_server" rather than "h_t_t_p...". */
-            bool boundary = gray_ascii_is_lower(prev) || gray_ascii_is_digit(prev)
-                || (gray_ascii_is_upper(prev) && gray_ascii_is_lower(next));
-            if (boundary && pos > 0) pending_sep = true;
+            bool boundary = gray_ascii_is_lower(previous_character) || gray_ascii_is_digit(previous_character)
+                || (gray_ascii_is_upper(previous_character) && gray_ascii_is_lower(next));
+            if (boundary && position > 0) has_pending_separator = true;
         }
-        if (pending_sep) {
-            buf[pos++] = sep;
-            pending_sep = false;
+        if (has_pending_separator) {
+            buffer[position++] = separator;
+            has_pending_separator = false;
         }
-        buf[pos++] = (char)gray_ascii_lower(c);
+        buffer[position++] = (char)gray_ascii_lower(character);
     }
-    buf[pos] = '\0';
-    GrayString result = { buf, pos };
+    buffer[position] = '\0';
+    GrayString result = { buffer, position };
     return result;
 }
 
-GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString str) {
-    return strings_delimit_words(arena, str, '_');
+GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString string) {
+    return strings_delimit_words(arena, string, '_');
 }
 
-GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString str) {
-    return strings_delimit_words(arena, str, '-');
+GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString string) {
+    return strings_delimit_words(arena, string, '-');
 }
 
-GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString str) {
-    return gray_strings_to_upper(arena, strings_delimit_words(arena, str, '_'));
+GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString string) {
+    return gray_strings_to_upper(arena, strings_delimit_words(arena, string, '_'));
 }
 
 /* Shared by to_camel_case (first_upper = false) and to_pascal_case
  * (first_upper = true). */
-static GrayString strings_camelish(GrayArena *arena, GrayString str, bool first_upper) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    int32_t pos = 0;
+static GrayString strings_camelish(GrayArena *arena, GrayString string, bool first_upper) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
+    int32_t position = 0;
     bool upper_next = first_upper;
-    for (int32_t i = 0; i < str.len; i++) {
-        unsigned char c = (unsigned char)str.data[i];
-        if (c == '_' || c == '-' || c == ' ') {
+    for (int32_t i = 0; i < string.len; i++) {
+        unsigned char character = (unsigned char)string.data[i];
+        if (character == '_' || character == '-' || character == ' ') {
             /* A leading separator still leaves the first real character cased by
              * first_upper; a later one always capitalizes the next word. */
-            upper_next = first_upper || pos > 0;
+            upper_next = first_upper || position > 0;
             continue;
         }
-        buf[pos++] = upper_next ? (char)gray_ascii_upper(c) : (char)gray_ascii_lower(c);
+        buffer[position++] = upper_next ? (char)gray_ascii_upper(character) : (char)gray_ascii_lower(character);
         upper_next = false;
     }
-    buf[pos] = '\0';
-    GrayString result = { buf, pos };
+    buffer[position] = '\0';
+    GrayString result = { buffer, position };
     return result;
 }
 
-GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString str) {
-    return strings_camelish(arena, str, false);
+GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString string) {
+    return strings_camelish(arena, string, false);
 }
 
-GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString str) {
-    return strings_camelish(arena, str, true);
+GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString string) {
+    return strings_camelish(arena, string, true);
 }
 
-GrayString gray_strings_capitalize(GrayArena *arena, GrayString str) {
-    if (str.len == 0) return gray_string_lit("");
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    memcpy(buf, str.data, (size_t)str.len);
-    buf[0] = (char)gray_ascii_upper((unsigned char)buf[0]);
-    buf[str.len] = '\0';
-    GrayString result = { buf, str.len };
+GrayString gray_strings_capitalize(GrayArena *arena, GrayString string) {
+    if (string.len == 0) return gray_string_lit("");
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
+    memcpy(buffer, string.data, (size_t)string.len);
+    buffer[0] = (char)gray_ascii_upper((unsigned char)buffer[0]);
+    buffer[string.len] = '\0';
+    GrayString result = { buffer, string.len };
     return result;
 }
 
 /* Byte-oriented like the rest of the module (slice, char_at, len): max and the
  * ellipsis length are byte counts. */
-GrayString gray_strings_truncate(GrayArena *arena, GrayString str, int64_t max, GrayString ellipsis) {
-    if (max < ellipsis.len) {
+GrayString gray_strings_truncate(GrayArena *arena, GrayString string, int64_t maximum, GrayString ellipsis) {
+    if (maximum < ellipsis.len) {
         gray_panic_code("P0119",
             "strings.truncate: max (%lld) is smaller than the ellipsis length (%d)",
-            (long long)max, (int)ellipsis.len);
+            (long long)maximum, (int)ellipsis.len);
     }
-    if (str.len <= max) return str;
-    int32_t head = (int32_t)(max - ellipsis.len);
-    int32_t new_len = head + ellipsis.len;
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
-    memcpy(buf, str.data, (size_t)head);
-    memcpy(buf + head, ellipsis.data, (size_t)ellipsis.len);
-    buf[new_len] = '\0';
-    GrayString result = { buf, new_len };
+    if (string.len <= maximum) return string;
+    int32_t head = (int32_t)(maximum - ellipsis.len);
+    int32_t new_length = head + ellipsis.len;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
+    memcpy(buffer, string.data, (size_t)head);
+    memcpy(buffer + head, ellipsis.data, (size_t)ellipsis.len);
+    buffer[new_length] = '\0';
+    GrayString result = { buffer, new_length };
     return result;
 }
 
-GrayString gray_strings_trim(GrayArena *arena, GrayString str) {
-    int32_t start = 0, end = str.len;
-    while (start < end && gray_ascii_is_space((unsigned char)str.data[start])) start++;
-    while (end > start && gray_ascii_is_space((unsigned char)str.data[end - 1])) end--;
-    return gray_string_new(arena, str.data + start, end - start);
+GrayString gray_strings_trim(GrayArena *arena, GrayString string) {
+    int32_t start = 0, end = string.len;
+    while (start < end && gray_ascii_is_space((unsigned char)string.data[start])) start++;
+    while (end > start && gray_ascii_is_space((unsigned char)string.data[end - 1])) end--;
+    return gray_string_new(arena, string.data + start, end - start);
 }
 
-GrayString gray_strings_trim_left(GrayArena *arena, GrayString str) {
+GrayString gray_strings_trim_left(GrayArena *arena, GrayString string) {
     int32_t start = 0;
-    while (start < str.len && gray_ascii_is_space((unsigned char)str.data[start])) start++;
-    return gray_string_new(arena, str.data + start, str.len - start);
+    while (start < string.len && gray_ascii_is_space((unsigned char)string.data[start])) start++;
+    return gray_string_new(arena, string.data + start, string.len - start);
 }
 
-GrayString gray_strings_trim_right(GrayArena *arena, GrayString str) {
-    int32_t end = str.len;
-    while (end > 0 && gray_ascii_is_space((unsigned char)str.data[end - 1])) end--;
-    return gray_string_new(arena, str.data, end);
+GrayString gray_strings_trim_right(GrayArena *arena, GrayString string) {
+    int32_t end_index = string.len;
+    while (end_index > 0 && gray_ascii_is_space((unsigned char)string.data[end_index - 1])) end_index--;
+    return gray_string_new(arena, string.data, end_index);
 }
 
-bool gray_strings_contains(GrayString str, GrayString sub) {
-    if (sub.len == 0) return true;
-    if (sub.len > str.len) return false;
-    for (int32_t i = 0; i <= str.len - sub.len; i++) {
-        if (memcmp(str.data + i, sub.data, (size_t)sub.len) == 0) return true;
+bool gray_strings_contains(GrayString string, GrayString substring) {
+    if (substring.len == 0) return true;
+    if (substring.len > string.len) return false;
+    for (int32_t i = 0; i <= string.len - substring.len; i++) {
+        if (memcmp(string.data + i, substring.data, (size_t)substring.len) == 0) return true;
     }
     return false;
 }
 
-bool gray_strings_starts_with(GrayString str, GrayString prefix) {
-    if (prefix.len > str.len) return false;
-    return memcmp(str.data, prefix.data, (size_t)prefix.len) == 0;
+bool gray_strings_starts_with(GrayString string, GrayString prefix) {
+    if (prefix.len > string.len) return false;
+    return memcmp(string.data, prefix.data, (size_t)prefix.len) == 0;
 }
 
-bool gray_strings_ends_with(GrayString str, GrayString suffix) {
-    if (suffix.len > str.len) return false;
-    return memcmp(str.data + str.len - suffix.len, suffix.data, (size_t)suffix.len) == 0;
+bool gray_strings_ends_with(GrayString string, GrayString suffix) {
+    if (suffix.len > string.len) return false;
+    return memcmp(string.data + string.len - suffix.len, suffix.data, (size_t)suffix.len) == 0;
 }
 
-int64_t gray_strings_index_of(GrayString str, GrayString sub) {
-    if (sub.len == 0) return 0;
-    if (sub.len > str.len) return -1;
-    for (int32_t i = 0; i <= str.len - sub.len; i++) {
-        if (memcmp(str.data + i, sub.data, (size_t)sub.len) == 0) return i;
+int64_t gray_strings_index_of(GrayString string, GrayString substring) {
+    if (substring.len == 0) return 0;
+    if (substring.len > string.len) return -1;
+    for (int32_t i = 0; i <= string.len - substring.len; i++) {
+        if (memcmp(string.data + i, substring.data, (size_t)substring.len) == 0) return i;
     }
     return -1;
 }
 
-int64_t gray_strings_last_index_of(GrayString str, GrayString sub) {
-    if (sub.len == 0) return str.len;
-    if (sub.len > str.len) return -1;
-    for (int32_t i = str.len - sub.len; i >= 0; i--) {
-        if (memcmp(str.data + i, sub.data, (size_t)sub.len) == 0) return i;
+int64_t gray_strings_last_index_of(GrayString string, GrayString substring) {
+    if (substring.len == 0) return string.len;
+    if (substring.len > string.len) return -1;
+    for (int32_t i = string.len - substring.len; i >= 0; i--) {
+        if (memcmp(string.data + i, substring.data, (size_t)substring.len) == 0) return i;
     }
     return -1;
 }
 
-int64_t gray_strings_count(GrayString str, GrayString sub) {
-    if (sub.len == 0) return 0;
+int64_t gray_strings_count(GrayString string, GrayString substring) {
+    if (substring.len == 0) return 0;
     int64_t count = 0;
-    for (int32_t i = 0; i <= str.len - sub.len; i++) {
-        if (memcmp(str.data + i, sub.data, (size_t)sub.len) == 0) {
+    for (int32_t i = 0; i <= string.len - substring.len; i++) {
+        if (memcmp(string.data + i, substring.data, (size_t)substring.len) == 0) {
             count++;
-            i += sub.len - 1;
+            i += substring.len - 1;
         }
     }
     return count;
 }
 
-bool gray_strings_is_empty(GrayString str) {
-    return str.len == 0;
+bool gray_strings_is_empty(GrayString string) {
+    return string.len == 0;
 }
 
-GrayString gray_strings_remove_prefix(GrayArena *arena, GrayString str, GrayString prefix) {
-    if (prefix.len > str.len || memcmp(str.data, prefix.data, (size_t)prefix.len) != 0) return str;
-    int32_t new_len = str.len - prefix.len;
-    return gray_string_new(arena, str.data + prefix.len, new_len);
+GrayString gray_strings_remove_prefix(GrayArena *arena, GrayString string, GrayString prefix) {
+    if (prefix.len > string.len || memcmp(string.data, prefix.data, (size_t)prefix.len) != 0) return string;
+    int32_t new_length = string.len - prefix.len;
+    return gray_string_new(arena, string.data + prefix.len, new_length);
 }
 
-GrayString gray_strings_remove_suffix(GrayArena *arena, GrayString str, GrayString suffix) {
-    if (suffix.len > str.len || memcmp(str.data + str.len - suffix.len, suffix.data, (size_t)suffix.len) != 0) return str;
-    int32_t new_len = str.len - suffix.len;
-    return gray_string_new(arena, str.data, new_len);
+GrayString gray_strings_remove_suffix(GrayArena *arena, GrayString string, GrayString suffix) {
+    if (suffix.len > string.len || memcmp(string.data + string.len - suffix.len, suffix.data, (size_t)suffix.len) != 0) return string;
+    int32_t new_length = string.len - suffix.len;
+    return gray_string_new(arena, string.data, new_length);
 }
 
-GrayString gray_strings_replace(GrayArena *arena, GrayString str, GrayString old_s, GrayString new_s) {
-    if (old_s.len == 0) return str;
+GrayString gray_strings_replace(GrayArena *arena, GrayString string, GrayString old_text, GrayString new_text) {
+    if (old_text.len == 0) return string;
     /* Count occurrences to size the buffer */
-    int64_t count = gray_strings_count(str, old_s);
-    if (count == 0) return str;
-    int64_t new_len64 = (int64_t)str.len + count * ((int64_t)new_s.len - (int64_t)old_s.len);
-    if (new_len64 < 0 || new_len64 > INT32_MAX) {
+    int64_t count = gray_strings_count(string, old_text);
+    if (count == 0) return string;
+    int64_t new_length_wide = (int64_t)string.len + count * ((int64_t)new_text.len - (int64_t)old_text.len);
+    if (new_length_wide < 0 || new_length_wide > INT32_MAX) {
         gray_panic_code("P0071", "strings.replace() result exceeds maximum string length");
     }
-    int32_t new_len = (int32_t)new_len64;
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
-    int32_t pos = 0;
-    for (int32_t i = 0; i < str.len; ) {
-        if (i <= str.len - old_s.len && memcmp(str.data + i, old_s.data, (size_t)old_s.len) == 0) {
-            memcpy(buf + pos, new_s.data, (size_t)new_s.len);
-            pos += new_s.len;
-            i += old_s.len;
+    int32_t new_length = (int32_t)new_length_wide;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
+    int32_t position = 0;
+    for (int32_t i = 0; i < string.len; ) {
+        if (i <= string.len - old_text.len && memcmp(string.data + i, old_text.data, (size_t)old_text.len) == 0) {
+            memcpy(buffer + position, new_text.data, (size_t)new_text.len);
+            position += new_text.len;
+            i += old_text.len;
         } else {
-            buf[pos++] = str.data[i++];
+            buffer[position++] = string.data[i++];
         }
     }
-    buf[pos] = '\0';
-    GrayString result = { buf, pos };
+    buffer[position] = '\0';
+    GrayString result = { buffer, position };
     return result;
 }
 
-GrayString gray_strings_repeat(GrayArena *arena, GrayString str, int64_t count) {
+GrayString gray_strings_repeat(GrayArena *arena, GrayString string, int64_t count) {
     if (count < 0) gray_panic_code("P0072", "strings.repeat() count cannot be negative (%lld)", (long long)count);
-    if (count == 0 || str.len == 0) return gray_string_lit("");
-    if (count > INT32_MAX / str.len) {
+    if (count == 0 || string.len == 0) return gray_string_lit("");
+    if (count > INT32_MAX / string.len) {
         gray_panic_code("P0073", "strings.repeat() result exceeds maximum string length");
     }
-    int32_t new_len = (int32_t)(str.len * count);
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    int32_t new_length = (int32_t)(string.len * count);
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
     for (int64_t i = 0; i < count; i++) {
-        memcpy(buf + i * str.len, str.data, (size_t)str.len);
+        memcpy(buffer + i * string.len, string.data, (size_t)string.len);
     }
-    buf[new_len] = '\0';
-    GrayString result = { buf, new_len };
+    buffer[new_length] = '\0';
+    GrayString result = { buffer, new_length };
     return result;
 }
 
-GrayString gray_strings_reverse(GrayArena *arena, GrayString str) {
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    for (int32_t i = 0; i < str.len; i++) buf[i] = str.data[str.len - 1 - i];
-    buf[str.len] = '\0';
-    GrayString result = { buf, str.len };
+GrayString gray_strings_reverse(GrayArena *arena, GrayString string) {
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
+    for (int32_t i = 0; i < string.len; i++) buffer[i] = string.data[string.len - 1 - i];
+    buffer[string.len] = '\0';
+    GrayString result = { buffer, string.len };
     return result;
 }
 
-GrayString gray_strings_slice(GrayArena *arena, GrayString str, int64_t start, int64_t end) {
+GrayString gray_strings_slice(GrayArena *arena, GrayString string, int64_t start, int64_t end_index) {
     if (start < 0) start = 0;
-    if (end > str.len) end = str.len;
-    if (start >= end) return gray_string_lit("");
-    return gray_string_new(arena, str.data + start, (int32_t)(end - start));
+    if (end_index > string.len) end_index = string.len;
+    if (start >= end_index) return gray_string_lit("");
+    return gray_string_new(arena, string.data + start, (int32_t)(end_index - start));
 }
 
-bool gray_strings_contains_any(GrayString str, GrayString chars) {
-    for (int32_t i = 0; i < str.len; i++) {
+bool gray_strings_contains_any(GrayString string, GrayString chars) {
+    for (int32_t i = 0; i < string.len; i++) {
         for (int32_t j = 0; j < chars.len; j++) {
-            if (str.data[i] == chars.data[j]) return true;
+            if (string.data[i] == chars.data[j]) return true;
         }
     }
     return false;
@@ -318,234 +318,234 @@ bool gray_strings_equal_fold(GrayString left, GrayString right) {
 }
 
 int64_t gray_strings_compare(GrayString left, GrayString right) {
-    int32_t common_len = left.len < right.len ? left.len : right.len;
-    for (int32_t i = 0; i < common_len; i++) {
-        unsigned char left_ch = (unsigned char)left.data[i];
-        unsigned char right_ch = (unsigned char)right.data[i];
-        if (left_ch != right_ch) return left_ch < right_ch ? -1 : 1;
+    int32_t common_length = left.len < right.len ? left.len : right.len;
+    for (int32_t i = 0; i < common_length; i++) {
+        unsigned char left_character = (unsigned char)left.data[i];
+        unsigned char right_character = (unsigned char)right.data[i];
+        if (left_character != right_character) return left_character < right_character ? -1 : 1;
     }
     if (left.len == right.len) return 0;
     return left.len < right.len ? -1 : 1;
 }
 
-GrayArray gray_strings_split(GrayArena *arena, GrayString str, GrayString sep) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
-    if (sep.len == 0) {
-        GRAY_ARRAY_PUSH(arena, &arr, &str);
-        return arr;
+GrayArray gray_strings_split(GrayArena *arena, GrayString string, GrayString separator) {
+    GrayArray array = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
+    if (separator.len == 0) {
+        GRAY_ARRAY_PUSH(arena, &array, &string);
+        return array;
     }
     int32_t start = 0;
-    for (int32_t i = 0; i <= str.len - sep.len; i++) {
-        if (memcmp(str.data + i, sep.data, (size_t)sep.len) == 0) {
-            GrayString part = gray_string_new(arena, str.data + start, i - start);
-            GRAY_ARRAY_PUSH(arena, &arr, &part);
-            i += sep.len - 1;
+    for (int32_t i = 0; i <= string.len - separator.len; i++) {
+        if (memcmp(string.data + i, separator.data, (size_t)separator.len) == 0) {
+            GrayString part = gray_string_new(arena, string.data + start, i - start);
+            GRAY_ARRAY_PUSH(arena, &array, &part);
+            i += separator.len - 1;
             start = i + 1;
         }
     }
-    GrayString last = gray_string_new(arena, str.data + start, str.len - start);
-    GRAY_ARRAY_PUSH(arena, &arr, &last);
-    return arr;
+    GrayString last = gray_string_new(arena, string.data + start, string.len - start);
+    GRAY_ARRAY_PUSH(arena, &array, &last);
+    return array;
 }
 
-GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
+GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString string) {
+    GrayArray array = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
     int32_t i = 0;
-    while (i < str.len) {
-        while (i < str.len && gray_ascii_is_space((unsigned char)str.data[i])) i++;
-        if (i >= str.len) break;
+    while (i < string.len) {
+        while (i < string.len && gray_ascii_is_space((unsigned char)string.data[i])) i++;
+        if (i >= string.len) break;
         int32_t start = i;
-        while (i < str.len && !gray_ascii_is_space((unsigned char)str.data[i])) i++;
-        GrayString part = gray_string_new(arena, str.data + start, i - start);
-        GRAY_ARRAY_PUSH(arena, &arr, &part);
+        while (i < string.len && !gray_ascii_is_space((unsigned char)string.data[i])) i++;
+        GrayString part = gray_string_new(arena, string.data + start, i - start);
+        GRAY_ARRAY_PUSH(arena, &array, &part);
     }
-    return arr;
+    return array;
 }
 
-GrayArray gray_strings_split_n(GrayArena *arena, GrayString str, GrayString sep, int64_t max_parts) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
-    if (max_parts <= 0) return arr;
-    if (sep.len == 0) {
-        GRAY_ARRAY_PUSH(arena, &arr, &str);
-        return arr;
+GrayArray gray_strings_split_n(GrayArena *arena, GrayString string, GrayString separator, int64_t maximum_parts) {
+    GrayArray array = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
+    if (maximum_parts <= 0) return array;
+    if (separator.len == 0) {
+        GRAY_ARRAY_PUSH(arena, &array, &string);
+        return array;
     }
     int32_t start = 0;
     /* Stop splitting once one slot is left; it takes the whole remainder. */
-    for (int32_t i = 0; max_parts > 1 && i <= str.len - sep.len; i++) {
-        if (memcmp(str.data + i, sep.data, (size_t)sep.len) == 0) {
-            GrayString part = gray_string_new(arena, str.data + start, i - start);
-            GRAY_ARRAY_PUSH(arena, &arr, &part);
-            i += sep.len - 1;
+    for (int32_t i = 0; maximum_parts > 1 && i <= string.len - separator.len; i++) {
+        if (memcmp(string.data + i, separator.data, (size_t)separator.len) == 0) {
+            GrayString part = gray_string_new(arena, string.data + start, i - start);
+            GRAY_ARRAY_PUSH(arena, &array, &part);
+            i += separator.len - 1;
             start = i + 1;
-            max_parts--;
+            maximum_parts--;
         }
     }
-    GrayString last = gray_string_new(arena, str.data + start, str.len - start);
-    GRAY_ARRAY_PUSH(arena, &arr, &last);
-    return arr;
+    GrayString last = gray_string_new(arena, string.data + start, string.len - start);
+    GRAY_ARRAY_PUSH(arena, &array, &last);
+    return array;
 }
 
-GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep) {
-    if (arr.len == 0) return gray_string_lit("");
+GrayString gray_strings_join(GrayArena *arena, GrayArray array, GrayString separator) {
+    if (array.len == 0) return gray_string_lit("");
     /* Calculate total length */
     int32_t total = 0;
-    for (int32_t i = 0; i < arr.len; i++) {
-        GrayString *part = (GrayString *)((char *)arr.data + (size_t)i * sizeof(GrayString));
+    for (int32_t i = 0; i < array.len; i++) {
+        GrayString *part = (GrayString *)((char *)array.data + (size_t)i * sizeof(GrayString));
         total += part->len;
-        if (i > 0) total += sep.len;
+        if (i > 0) total += separator.len;
     }
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
-    int32_t pos = 0;
-    for (int32_t i = 0; i < arr.len; i++) {
-        if (i > 0) { memcpy(buf + pos, sep.data, (size_t)sep.len); pos += sep.len; }
-        GrayString *part = (GrayString *)((char *)arr.data + (size_t)i * sizeof(GrayString));
-        memcpy(buf + pos, part->data, (size_t)part->len);
-        pos += part->len;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
+    int32_t position = 0;
+    for (int32_t i = 0; i < array.len; i++) {
+        if (i > 0) { memcpy(buffer + position, separator.data, (size_t)separator.len); position += separator.len; }
+        GrayString *part = (GrayString *)((char *)array.data + (size_t)i * sizeof(GrayString));
+        memcpy(buffer + position, part->data, (size_t)part->len);
+        position += part->len;
     }
-    buf[pos] = '\0';
-    GrayString result = { buf, pos };
+    buffer[position] = '\0';
+    GrayString result = { buffer, position };
     return result;
 }
 
 
-GrayArray gray_strings_to_chars(GrayArena *arena, GrayString str) {
+GrayArray gray_strings_to_chars(GrayArena *arena, GrayString string) {
     /* A char is a full Unicode codepoint, not a raw byte — decode UTF-8
      * instead of widening each byte directly. Codepoint count is at most
-     * str.len (one array slot per byte is an over-allocation for any
+     * string.len (one array slot per byte is an over-allocation for any
      * multi-byte content, but never too small). */
-    GrayArray arr = gray_array_new(arena, sizeof(int32_t), str.len, GRAY_ELEM_CHAR);
-    int32_t *out = (int32_t *)arr.data;
-    const uint8_t *p = (const uint8_t *)str.data;
-    const uint8_t *end = p + str.len;
+    GrayArray array = gray_array_new(arena, sizeof(int32_t), string.len, GRAY_ELEM_CHAR);
+    int32_t *output = (int32_t *)array.data;
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
     int32_t count = 0;
-    while (p < end) {
-        int32_t cp;
-        p += gray_builtin_utf8_next(p, end, &cp);
-        out[count++] = cp;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        cursor += gray_builtin_utf8_next(cursor, end_cursor, &codepoint);
+        output[count++] = codepoint;
     }
-    arr.len = count;
-    return arr;
+    array.len = count;
+    return array;
 }
 
 GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
     int32_t count = chars->len;
     int32_t *data = (int32_t *)chars->data;
     /* Each codepoint UTF-8-encodes to at most 4 bytes. */
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)count * 4 + 1);
-    int32_t pos = 0;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)count * 4 + 1);
+    int32_t position = 0;
     for (int32_t i = 0; i < count; i++) {
-        GrayString enc = gray_builtin_char_to_utf8(arena, data[i]);
-        memcpy(buf + pos, enc.data, (size_t)enc.len);
-        pos += enc.len;
+        GrayString encoded = gray_builtin_char_to_utf8(arena, data[i]);
+        memcpy(buffer + position, encoded.data, (size_t)encoded.len);
+        position += encoded.len;
     }
-    buf[pos] = '\0';
-    return gray_string_new(arena, buf, pos);
+    buffer[position] = '\0';
+    return gray_string_new(arena, buffer, position);
 }
 
-char gray_strings_char_at(GrayString str, int64_t index) {
-    if (index < 0 || index >= str.len) {
+char gray_strings_char_at(GrayString string, int64_t index) {
+    if (index < 0 || index >= string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
-                      (long long)index, (int)str.len);
+                      (long long)index, (int)string.len);
     }
-    return str.data[index];
+    return string.data[index];
 }
 
 /* Build a new string: bytes [0,cut) of str, then ins, then bytes [cut+drop,str.len) of str.
    `drop` is 0 for insertions and 1 for a replacement. */
-static GrayString strings_splice(GrayArena *arena, GrayString str, int32_t cut,
-                                 int32_t drop, GrayString ins) {
-    int32_t tail = str.len - cut - drop;
-    int32_t new_len = cut + ins.len + tail;
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
-    memcpy(buf, str.data, (size_t)cut);
-    memcpy(buf + cut, ins.data, (size_t)ins.len);
-    memcpy(buf + cut + ins.len, str.data + cut + drop, (size_t)tail);
-    buf[new_len] = '\0';
-    return (GrayString){ buf, new_len };
+static GrayString strings_splice(GrayArena *arena, GrayString string, int32_t cut_position,
+                                 int32_t drop, GrayString insertion) {
+    int32_t tail = string.len - cut_position - drop;
+    int32_t new_length = cut_position + insertion.len + tail;
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
+    memcpy(buffer, string.data, (size_t)cut_position);
+    memcpy(buffer + cut_position, insertion.data, (size_t)insertion.len);
+    memcpy(buffer + cut_position + insertion.len, string.data + cut_position + drop, (size_t)tail);
+    buffer[new_length] = '\0';
+    return (GrayString){ buffer, new_length };
 }
 
-GrayString gray_strings_append_char(GrayArena *arena, GrayString str, int32_t codepoint) {
-    return strings_splice(arena, str, str.len, 0, gray_builtin_char_to_utf8(arena, codepoint));
+GrayString gray_strings_append_char(GrayArena *arena, GrayString string, int32_t codepoint) {
+    return strings_splice(arena, string, string.len, 0, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
-GrayString gray_strings_prepend_char(GrayArena *arena, GrayString str, int32_t codepoint) {
-    return strings_splice(arena, str, 0, 0, gray_builtin_char_to_utf8(arena, codepoint));
+GrayString gray_strings_prepend_char(GrayArena *arena, GrayString string, int32_t codepoint) {
+    return strings_splice(arena, string, 0, 0, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
-GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint) {
-    if (index < 0 || index > str.len) {
+GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString string, int64_t index, int32_t codepoint) {
+    if (index < 0 || index > string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
-                      (long long)index, (int)str.len);
+                      (long long)index, (int)string.len);
     }
-    return strings_splice(arena, str, (int32_t)index, 0, gray_builtin_char_to_utf8(arena, codepoint));
+    return strings_splice(arena, string, (int32_t)index, 0, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
-GrayString gray_strings_remove_at(GrayArena *arena, GrayString str, int64_t index) {
-    if (index < 0 || index >= str.len) {
+GrayString gray_strings_remove_at(GrayArena *arena, GrayString string, int64_t index) {
+    if (index < 0 || index >= string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
-                      (long long)index, (int)str.len);
+                      (long long)index, (int)string.len);
     }
-    return strings_splice(arena, str, (int32_t)index, 1, gray_string_lit(""));
+    return strings_splice(arena, string, (int32_t)index, 1, gray_string_lit(""));
 }
 
-GrayString gray_strings_set_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint) {
-    if (index < 0 || index >= str.len) {
+GrayString gray_strings_set_char_at(GrayArena *arena, GrayString string, int64_t index, int32_t codepoint) {
+    if (index < 0 || index >= string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
-                      (long long)index, (int)str.len);
+                      (long long)index, (int)string.len);
     }
-    return strings_splice(arena, str, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, codepoint));
+    return strings_splice(arena, string, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
-bool gray_strings_is_alpha(char c)      { return gray_ascii_is_alpha((unsigned char)c); }
-bool gray_strings_is_digit(char c)      { return gray_ascii_is_digit((unsigned char)c); }
-bool gray_strings_is_alnum(char c)      { return gray_ascii_is_alnum((unsigned char)c); }
-bool gray_strings_is_whitespace(char c) { return gray_ascii_is_space((unsigned char)c); }
-bool gray_strings_is_upper(char c)      { return gray_ascii_is_upper((unsigned char)c); }
-bool gray_strings_is_lower(char c)      { return gray_ascii_is_lower((unsigned char)c); }
+bool gray_strings_is_alpha(char character)      { return gray_ascii_is_alpha((unsigned char)character); }
+bool gray_strings_is_digit(char character)      { return gray_ascii_is_digit((unsigned char)character); }
+bool gray_strings_is_alnum(char character)      { return gray_ascii_is_alnum((unsigned char)character); }
+bool gray_strings_is_whitespace(char character) { return gray_ascii_is_space((unsigned char)character); }
+bool gray_strings_is_upper(char character)      { return gray_ascii_is_upper((unsigned char)character); }
+bool gray_strings_is_lower(char character)      { return gray_ascii_is_lower((unsigned char)character); }
 
 /* --- Builder --- */
 
-#define GRAY_BUILDER_MIN_CAP 16
+#define GRAY_BUILDER_MIN_CAPACITY 16
 
 /* Ensure the builder can hold `extra` more bytes, growing capacity by doubling.
    The arena has no realloc, so growth is allocate-and-copy: the old buffer lives
    until the arena is reset or destroyed, the same contract as gray_array_grow. */
 static void builder_ensure(GrayStringsBuilder *builder, int64_t extra) {
     int64_t need = (int64_t)builder->len + extra;
-    if (need <= builder->cap) return;
+    if (need <= builder->capacity) return;
     if (need > INT32_MAX) {
         gray_panic_code("P0116", "string builder size exceeds maximum string length");
     }
-    int64_t new_cap = builder->cap > 0 ? builder->cap : GRAY_BUILDER_MIN_CAP;
-    while (new_cap < need) new_cap *= 2;
-    if (new_cap > INT32_MAX) new_cap = INT32_MAX;
-    char *new_data = gray_arena_alloc_uninitialized(builder->arena, (size_t)new_cap);
+    int64_t new_capacity = builder->capacity > 0 ? builder->capacity : GRAY_BUILDER_MIN_CAPACITY;
+    while (new_capacity < need) new_capacity *= 2;
+    if (new_capacity > INT32_MAX) new_capacity = INT32_MAX;
+    char *new_data = gray_arena_alloc_uninitialized(builder->arena, (size_t)new_capacity);
     if (builder->data && builder->len > 0) {
         memcpy(new_data, builder->data, (size_t)builder->len);
     }
     builder->data = new_data;
-    builder->cap = (int32_t)new_cap;
+    builder->capacity = (int32_t)new_capacity;
 }
 
 GrayStringsBuilder *gray_strings_builder(GrayArena *arena) {
     GrayStringsBuilder *builder = gray_arena_alloc(arena, sizeof(GrayStringsBuilder));
     builder->data = NULL;
     builder->len = 0;
-    builder->cap = 0;
+    builder->capacity = 0;
     builder->arena = arena;
     return builder;
 }
 
 void gray_strings_builder_reserve(GrayStringsBuilder *builder, int64_t capacity) {
-    if (capacity <= builder->cap) return;
+    if (capacity <= builder->capacity) return;
     builder_ensure(builder, capacity - builder->len);
 }
 
-void gray_strings_builder_append(GrayStringsBuilder *builder, GrayString str) {
-    if (str.len <= 0) return;
-    builder_ensure(builder, str.len);
-    memcpy(builder->data + builder->len, str.data, (size_t)str.len);
-    builder->len += str.len;
+void gray_strings_builder_append(GrayStringsBuilder *builder, GrayString string) {
+    if (string.len <= 0) return;
+    builder_ensure(builder, string.len);
+    memcpy(builder->data + builder->len, string.data, (size_t)string.len);
+    builder->len += string.len;
 }
 
 void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codepoint) {
@@ -560,15 +560,15 @@ void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray da
 }
 
 void gray_strings_builder_append_int(GrayStringsBuilder *builder, int64_t value) {
-    char buf[24];
-    int len = snprintf(buf, sizeof(buf), "%lld", (long long)value);
-    builder_ensure(builder, len);
-    memcpy(builder->data + builder->len, buf, (size_t)len);
-    builder->len += len;
+    char buffer[24];
+    int length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value);
+    builder_ensure(builder, length);
+    memcpy(builder->data + builder->len, buffer, (size_t)length);
+    builder->len += length;
 }
 
-void gray_strings_builder_append_line(GrayStringsBuilder *builder, GrayString str) {
-    gray_strings_builder_append(builder, str);
+void gray_strings_builder_append_line(GrayStringsBuilder *builder, GrayString string) {
+    gray_strings_builder_append(builder, string);
     builder_ensure(builder, 1);
     builder->data[builder->len] = '\n';
     builder->len += 1;

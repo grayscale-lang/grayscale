@@ -71,15 +71,15 @@ static const uint32_t sha256_k[SHA256_ROUNDS] = {
 #define SIG1(x) (ROTR(x,17)^ROTR(x,19)^((x)>>10))
 
 /* Hex-encode `n` bytes of digest into a fresh arena string of length 2n. */
-static GrayString crypto_hex(GrayArena *arena, const uint8_t *digest, int n) {
+static GrayString crypto_hex(GrayArena *arena, const uint8_t *digest, int byte_count) {
     static const char hc[] = "0123456789abcdef";
-    char *hex = gray_arena_alloc_uninitialized(arena, (size_t)n * 2 + 1);
-    for (int i = 0; i < n; i++) {
-        hex[i * 2]     = hc[(digest[i] >> 4) & 0x0f];
-        hex[i * 2 + 1] = hc[digest[i] & 0x0f];
+    char *hex_text = gray_arena_alloc_uninitialized(arena, (size_t)byte_count * 2 + 1);
+    for (int i = 0; i < byte_count; i++) {
+        hex_text[i * 2]     = hc[(digest[i] >> 4) & 0x0f];
+        hex_text[i * 2 + 1] = hc[digest[i] & 0x0f];
     }
-    hex[n * 2] = '\0';
-    return (GrayString){ hex, n * 2 };
+    hex_text[byte_count * 2] = '\0';
+    return (GrayString){ hex_text, byte_count * 2 };
 }
 
 /* Compress `nblocks` consecutive 64-byte blocks into the hash state h. */
@@ -141,34 +141,34 @@ static void sha256_compress_arm(uint32_t h[8], const uint8_t *msg, size_t nblock
 
 /* SHA-256 core: writes the 32-byte digest to out. Allocates a padded message
  * buffer from the arena (the arena has no free; callers are short-lived). */
-static void sha256_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[SHA256_DIGEST_LEN]) {
+static void sha256_raw(GrayArena *arena, const uint8_t *data, size_t length, uint8_t output[SHA256_DIGEST_LEN]) {
     uint32_t h[8] = {
         0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
         0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
     };
 
-    uint64_t bits = (uint64_t)len * 8;
-    size_t padded = ((len + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
-    uint8_t *msg = (uint8_t *)gray_arena_alloc(arena, padded);
-    memcpy(msg, data, len);
-    msg[len] = 0x80;
-    memset(msg + len + 1, 0, padded - len - 1);
+    uint64_t bits = (uint64_t)length * 8;
+    size_t padded = ((length + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
+    uint8_t *message_bytes = (uint8_t *)gray_arena_alloc(arena, padded);
+    memcpy(message_bytes, data, length);
+    message_bytes[length] = 0x80;
+    memset(message_bytes + length + 1, 0, padded - length - 1);
     for (int i = 0; i < 8; i++)
-        msg[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
+        message_bytes[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
 
     size_t nblocks = padded / HASH_BLOCK_SIZE;
 #ifdef SHA256_HW_ARM
     if (sha256_hw_available())
-        sha256_compress_arm(h, msg, nblocks);
+        sha256_compress_arm(h, message_bytes, nblocks);
     else
 #endif
-        sha256_compress_scalar(h, msg, nblocks);
+        sha256_compress_scalar(h, message_bytes, nblocks);
 
     for (int i = 0; i < 8; i++) {
-        out[i*4]   = (uint8_t)(h[i] >> 24);
-        out[i*4+1] = (uint8_t)(h[i] >> 16);
-        out[i*4+2] = (uint8_t)(h[i] >> 8);
-        out[i*4+3] = (uint8_t)h[i];
+        output[i*4]   = (uint8_t)(h[i] >> 24);
+        output[i*4+1] = (uint8_t)(h[i] >> 16);
+        output[i*4+2] = (uint8_t)(h[i] >> 8);
+        output[i*4+3] = (uint8_t)h[i];
     }
 }
 
@@ -181,23 +181,23 @@ GrayString gray_crypto_sha256(GrayArena *arena, GrayString data) {
 /* ===== SHA-1 (broken for collision resistance; still needed for HMAC-SHA1
  * and TOTP, so it ships with the same caveat style as md5) ===== */
 
-static void sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[SHA1_DIGEST_LEN]) {
+static void sha1_raw(GrayArena *arena, const uint8_t *data, size_t length, uint8_t output[SHA1_DIGEST_LEN]) {
     uint32_t h[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
 
-    uint64_t bits = (uint64_t)len * 8;
-    size_t padded = ((len + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
-    uint8_t *msg = (uint8_t *)gray_arena_alloc(arena, padded);
-    memcpy(msg, data, len);
-    msg[len] = 0x80;
-    memset(msg + len + 1, 0, padded - len - 1);
+    uint64_t bits = (uint64_t)length * 8;
+    size_t padded = ((length + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
+    uint8_t *message_bytes = (uint8_t *)gray_arena_alloc(arena, padded);
+    memcpy(message_bytes, data, length);
+    message_bytes[length] = 0x80;
+    memset(message_bytes + length + 1, 0, padded - length - 1);
     for (int i = 0; i < 8; i++)
-        msg[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
+        message_bytes[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
 
-    for (size_t off = 0; off < padded; off += HASH_BLOCK_SIZE) {
+    for (size_t offset = 0; offset < padded; offset += HASH_BLOCK_SIZE) {
         uint32_t w[SHA1_ROUNDS];
         for (int j = 0; j < 16; j++)
-            w[j] = ((uint32_t)msg[off+j*4]<<24)|((uint32_t)msg[off+j*4+1]<<16)|
-                   ((uint32_t)msg[off+j*4+2]<<8)|msg[off+j*4+3];
+            w[j] = ((uint32_t)message_bytes[offset+j*4]<<24)|((uint32_t)message_bytes[offset+j*4+1]<<16)|
+                   ((uint32_t)message_bytes[offset+j*4+2]<<8)|message_bytes[offset+j*4+3];
         for (int j = 16; j < SHA1_ROUNDS; j++) {
             uint32_t v = w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16];
             w[j] = (v << 1) | (v >> 31);
@@ -215,15 +215,15 @@ static void sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t 
         h[0]+=a; h[1]+=b; h[2]+=c; h[3]+=d; h[4]+=e;
     }
     for (int i = 0; i < 5; i++) {
-        out[i*4]   = (uint8_t)(h[i] >> 24);
-        out[i*4+1] = (uint8_t)(h[i] >> 16);
-        out[i*4+2] = (uint8_t)(h[i] >> 8);
-        out[i*4+3] = (uint8_t)h[i];
+        output[i*4]   = (uint8_t)(h[i] >> 24);
+        output[i*4+1] = (uint8_t)(h[i] >> 16);
+        output[i*4+2] = (uint8_t)(h[i] >> 8);
+        output[i*4+3] = (uint8_t)h[i];
     }
 }
 
-void gray_crypto_sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[20]) {
-    sha1_raw(arena, data, len, out);
+void gray_crypto_sha1_raw(GrayArena *arena, const uint8_t *data, size_t length, uint8_t output[20]) {
+    sha1_raw(arena, data, length, output);
 }
 
 GrayString gray_crypto_sha1(GrayArena *arena, GrayString data) {
@@ -259,27 +259,27 @@ static const uint64_t sha512_k[SHA512_ROUNDS] = {
 
 #define ROTR64(x,n) (((x)>>(n))|((x)<<(64-(n))))
 
-static void sha512_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[SHA512_DIGEST_LEN]) {
+static void sha512_raw(GrayArena *arena, const uint8_t *data, size_t length, uint8_t output[SHA512_DIGEST_LEN]) {
     uint64_t h[8] = {
         0x6a09e667f3bcc908ULL,0xbb67ae8584caa73bULL,0x3c6ef372fe94f82bULL,0xa54ff53a5f1d36f1ULL,
         0x510e527fade682d1ULL,0x9b05688c2b3e6c1fULL,0x1f83d9abfb41bd6bULL,0x5be0cd19137e2179ULL
     };
     /* 128-byte blocks; 16-byte length field (we only fill the low 8 bytes). */
-    size_t padded = ((len + 16) / SHA512_BLOCK_SIZE + 1) * SHA512_BLOCK_SIZE;
-    uint8_t *msg = (uint8_t *)gray_arena_alloc(arena, padded);
-    memcpy(msg, data, len);
-    msg[len] = 0x80;
-    memset(msg + len + 1, 0, padded - len - 1);
-    uint64_t bits = (uint64_t)len * 8;
+    size_t padded = ((length + 16) / SHA512_BLOCK_SIZE + 1) * SHA512_BLOCK_SIZE;
+    uint8_t *message_bytes = (uint8_t *)gray_arena_alloc(arena, padded);
+    memcpy(message_bytes, data, length);
+    message_bytes[length] = 0x80;
+    memset(message_bytes + length + 1, 0, padded - length - 1);
+    uint64_t bits = (uint64_t)length * 8;
     for (int i = 0; i < 8; i++)
-        msg[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
+        message_bytes[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
 
-    for (size_t off = 0; off < padded; off += SHA512_BLOCK_SIZE) {
+    for (size_t offset = 0; offset < padded; offset += SHA512_BLOCK_SIZE) {
         uint64_t w[SHA512_ROUNDS];
         for (int j = 0; j < 16; j++) {
             w[j] = 0;
             for (int b = 0; b < 8; b++)
-                w[j] = (w[j] << 8) | msg[off + j*8 + b];
+                w[j] = (w[j] << 8) | message_bytes[offset + j*8 + b];
         }
         for (int j = 16; j < SHA512_ROUNDS; j++) {
             uint64_t s0 = ROTR64(w[j-15],1) ^ ROTR64(w[j-15],8) ^ (w[j-15] >> 7);
@@ -300,7 +300,7 @@ static void sha512_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_
     }
     for (int i = 0; i < 8; i++)
         for (int b = 0; b < 8; b++)
-            out[i*8 + b] = (uint8_t)(h[i] >> (56 - b*8));
+            output[i*8 + b] = (uint8_t)(h[i] >> (56 - b*8));
 }
 
 GrayString gray_crypto_sha512(GrayArena *arena, GrayString data) {
@@ -313,56 +313,56 @@ GrayString gray_crypto_sha512(GrayArena *arena, GrayString data) {
 
 typedef void (*crypto_hash_fn)(GrayArena *, const uint8_t *, size_t, uint8_t *);
 
-static void hmac_raw(GrayArena *arena, crypto_hash_fn hash, int digest_len,
-                     GrayString key, GrayString data, uint8_t *out) {
+static void hmac_raw(GrayArena *arena, crypto_hash_fn hash, int digest_length,
+                     GrayString key, GrayString data, uint8_t *output) {
     const int BLOCK = HASH_BLOCK_SIZE;
-    uint8_t k[HASH_BLOCK_SIZE];
-    memset(k, 0, sizeof(k));
+    uint8_t key_index[HASH_BLOCK_SIZE];
+    memset(key_index, 0, sizeof(key_index));
     if (key.len > BLOCK) {
-        hash(arena, (const uint8_t *)key.data, (size_t)key.len, k);
+        hash(arena, (const uint8_t *)key.data, (size_t)key.len, key_index);
         /* digest_len <= 32 < BLOCK for the hashes we use here */
     } else {
-        memcpy(k, key.data, (size_t)key.len);
+        memcpy(key_index, key.data, (size_t)key.len);
     }
     uint8_t ipad[HASH_BLOCK_SIZE], opad[HASH_BLOCK_SIZE];
     for (int i = 0; i < BLOCK; i++) {
-        ipad[i] = k[i] ^ 0x36;
-        opad[i] = k[i] ^ 0x5c;
+        ipad[i] = key_index[i] ^ 0x36;
+        opad[i] = key_index[i] ^ 0x5c;
     }
     /* inner = hash(ipad || data) */
-    uint8_t *inner_msg = gray_arena_alloc_uninitialized(arena, (size_t)BLOCK + (size_t)data.len);
-    memcpy(inner_msg, ipad, BLOCK);
-    memcpy(inner_msg + BLOCK, data.data, (size_t)data.len);
+    uint8_t *inner_message = gray_arena_alloc_uninitialized(arena, (size_t)BLOCK + (size_t)data.len);
+    memcpy(inner_message, ipad, BLOCK);
+    memcpy(inner_message + BLOCK, data.data, (size_t)data.len);
     uint8_t inner[HASH_BLOCK_SIZE];
-    hash(arena, inner_msg, (size_t)BLOCK + (size_t)data.len, inner);
+    hash(arena, inner_message, (size_t)BLOCK + (size_t)data.len, inner);
     /* out = hash(opad || inner) */
-    uint8_t outer_msg[HASH_BLOCK_SIZE + HASH_BLOCK_SIZE];
-    memcpy(outer_msg, opad, BLOCK);
-    memcpy(outer_msg + BLOCK, inner, (size_t)digest_len);
-    hash(arena, outer_msg, (size_t)BLOCK + (size_t)digest_len, out);
+    uint8_t outer_message[HASH_BLOCK_SIZE + HASH_BLOCK_SIZE];
+    memcpy(outer_message, opad, BLOCK);
+    memcpy(outer_message + BLOCK, inner, (size_t)digest_length);
+    hash(arena, outer_message, (size_t)BLOCK + (size_t)digest_length, output);
 }
 
 GrayString gray_crypto_hmac_sha256(GrayArena *arena, GrayString key, GrayString data) {
-    uint8_t mac[SHA256_DIGEST_LEN];
-    hmac_raw(arena, sha256_raw, SHA256_DIGEST_LEN, key, data, mac);
-    return crypto_hex(arena, mac, SHA256_DIGEST_LEN);
+    uint8_t message_authentication_code[SHA256_DIGEST_LEN];
+    hmac_raw(arena, sha256_raw, SHA256_DIGEST_LEN, key, data, message_authentication_code);
+    return crypto_hex(arena, message_authentication_code, SHA256_DIGEST_LEN);
 }
 
 GrayString gray_crypto_hmac_sha1(GrayArena *arena, GrayString key, GrayString data) {
-    uint8_t mac[SHA1_DIGEST_LEN];
-    hmac_raw(arena, sha1_raw, SHA1_DIGEST_LEN, key, data, mac);
-    return crypto_hex(arena, mac, SHA1_DIGEST_LEN);
+    uint8_t message_authentication_code[SHA1_DIGEST_LEN];
+    hmac_raw(arena, sha1_raw, SHA1_DIGEST_LEN, key, data, message_authentication_code);
+    return crypto_hex(arena, message_authentication_code, SHA1_DIGEST_LEN);
 }
 
 /* ===== Constant-time comparison ===== */
 
-bool gray_crypto_constant_time_equal(GrayString a, GrayString b) {
-    int32_t n = a.len > b.len ? a.len : b.len;
-    uint32_t diff = (uint32_t)(a.len ^ b.len);
-    for (int32_t i = 0; i < n; i++) {
-        uint8_t ca = i < a.len ? (uint8_t)a.data[i] : 0;
-        uint8_t cb = i < b.len ? (uint8_t)b.data[i] : 0;
-        diff |= (uint32_t)(ca ^ cb);
+bool gray_crypto_constant_time_equal(GrayString left, GrayString right) {
+    int32_t length = left.len > right.len ? left.len : right.len;
+    uint32_t diff = (uint32_t)(left.len ^ right.len);
+    for (int32_t i = 0; i < length; i++) {
+        uint8_t left_byte = i < left.len ? (uint8_t)left.data[i] : 0;
+        uint8_t right_byte = i < right.len ? (uint8_t)right.data[i] : 0;
+        diff |= (uint32_t)(left_byte ^ right_byte);
     }
     return diff == 0;
 }
@@ -374,10 +374,10 @@ static bool crc32_table_ready = false;
 
 static void crc32_init(void) {
     for (uint32_t i = 0; i < 256; i++) {
-        uint32_t c = i;
-        for (int k = 0; k < 8; k++)
-            c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
-        crc32_table[i] = c;
+        uint32_t crc_value = i;
+        for (int bit_index = 0; bit_index < 8; bit_index++)
+            crc_value = (crc_value & 1) ? (0xEDB88320u ^ (crc_value >> 1)) : (crc_value >> 1);
+        crc32_table[i] = crc_value;
     }
     crc32_table_ready = true;
 }
@@ -398,13 +398,13 @@ double gray_crypto_entropy(GrayString data) {
     for (int32_t i = 0; i < data.len; i++)
         counts[(uint8_t)data.data[i]]++;
     double total = (double)data.len;
-    double h = 0.0;
+    double entropy = 0.0;
     for (int i = 0; i < 256; i++) {
         if (counts[i] == 0) continue;
-        double p = (double)counts[i] / total;
-        h -= p * log2(p);
+        double probability = (double)counts[i] / total;
+        entropy -= probability * log2(probability);
     }
-    return h;
+    return entropy;
 }
 
 /* ===== TOTP (RFC 6238), SHA-1, 30-second step ===== */
@@ -415,26 +415,26 @@ GrayString gray_crypto_totp(GrayArena *arena, GrayString secret, int64_t timesta
             (long long)digits);
     }
     uint64_t counter = (uint64_t)(timestamp < 0 ? 0 : timestamp) / 30u;
-    uint8_t msg[8];
+    uint8_t counter_message[8];
     for (int i = 0; i < 8; i++)
-        msg[i] = (uint8_t)(counter >> (56 - i * 8));
+        counter_message[i] = (uint8_t)(counter >> (56 - i * 8));
 
-    uint8_t mac[SHA1_DIGEST_LEN];
-    hmac_raw(arena, sha1_raw, SHA1_DIGEST_LEN, secret, (GrayString){ (const char *)msg, 8 }, mac);
+    uint8_t message_authentication_code[SHA1_DIGEST_LEN];
+    hmac_raw(arena, sha1_raw, SHA1_DIGEST_LEN, secret, (GrayString){ (const char *)counter_message, 8 }, message_authentication_code);
 
-    int offset = mac[19] & 0x0f;
-    uint32_t bin = ((uint32_t)(mac[offset] & 0x7f) << 24) |
-                   ((uint32_t)mac[offset + 1] << 16) |
-                   ((uint32_t)mac[offset + 2] << 8) |
-                   (uint32_t)mac[offset + 3];
+    int offset = message_authentication_code[19] & 0x0f;
+    uint32_t binary_code = ((uint32_t)(message_authentication_code[offset] & 0x7f) << 24) |
+                   ((uint32_t)message_authentication_code[offset + 1] << 16) |
+                   ((uint32_t)message_authentication_code[offset + 2] << 8) |
+                   (uint32_t)message_authentication_code[offset + 3];
 
-    uint32_t mod = 1;
-    for (int64_t i = 0; i < digits; i++) mod *= 10u;
-    uint32_t otp = bin % mod;
+    uint32_t modulus = 1;
+    for (int64_t i = 0; i < digits; i++) modulus *= 10u;
+    uint32_t one_time_password = binary_code % modulus;
 
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)digits + 1);
-    snprintf(buf, (size_t)digits + 1, "%0*u", (int)digits, otp);
-    return (GrayString){ buf, (int32_t)digits };
+    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)digits + 1);
+    snprintf(buffer, (size_t)digits + 1, "%0*u", (int)digits, one_time_password);
+    return (GrayString){ buffer, (int32_t)digits };
 }
 
 /* ===== MD5 ===== */
@@ -465,17 +465,17 @@ GrayString gray_crypto_md5(GrayArena *arena, GrayString data) {
         0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391
     };
 
-    size_t len = (size_t)data.len;
-    size_t padded = ((len + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
-    uint8_t *msg = (uint8_t *)gray_arena_alloc(arena, padded);
-    memcpy(msg, data.data, len);
-    msg[len] = 0x80;
-    memset(msg + len + 1, 0, padded - len - 9);
-    uint64_t bits = (uint64_t)len * 8;
-    memcpy(msg + padded - 8, &bits, 8);
+    size_t length = (size_t)data.len;
+    size_t padded = ((length + 8) / HASH_BLOCK_SIZE + 1) * HASH_BLOCK_SIZE;
+    uint8_t *message_bytes = (uint8_t *)gray_arena_alloc(arena, padded);
+    memcpy(message_bytes, data.data, length);
+    message_bytes[length] = 0x80;
+    memset(message_bytes + length + 1, 0, padded - length - 9);
+    uint64_t bits = (uint64_t)length * 8;
+    memcpy(message_bytes + padded - 8, &bits, 8);
 
     for (size_t offset = 0; offset < padded; offset += HASH_BLOCK_SIZE) {
-        uint32_t *M = (uint32_t *)(msg + offset);
+        uint32_t *M = (uint32_t *)(message_bytes + offset);
         uint32_t A=a0, B=b0, C=c0, D=d0;
         for (int i = 0; i < MD5_ROUNDS; i++) {
             uint32_t f_val, g;
@@ -514,26 +514,26 @@ GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
 #elif defined(_WIN32)
     /* rand_s is RtlGenRandom under the hood: CSPRNG, no extra link library. */
     for (int64_t i = 0; i < nbytes; i += (int64_t)sizeof(unsigned int)) {
-        unsigned int r;
-        if (rand_s(&r) != 0) {
+        unsigned int random_value;
+        if (rand_s(&random_value) != 0) {
             gray_panic_code("P0052", "crypto.random_hex: failed to read from the system CSPRNG");
         }
-        size_t chunk = (size_t)(nbytes - i) < sizeof(r) ? (size_t)(nbytes - i) : sizeof(r);
-        memcpy(raw + i, &r, chunk);
+        size_t chunk = (size_t)(nbytes - i) < sizeof(random_value) ? (size_t)(nbytes - i) : sizeof(random_value);
+        memcpy(raw + i, &random_value, chunk);
     }
 #else
-    FILE *uf = fopen("/dev/urandom", "rb");
-    if (!uf || (int64_t)fread(raw, 1, (size_t)nbytes, uf) != nbytes) {
-        if (uf) fclose(uf);
+    FILE *urandom_file = fopen("/dev/urandom", "rb");
+    if (!urandom_file || (int64_t)fread(raw, 1, (size_t)nbytes, urandom_file) != nbytes) {
+        if (urandom_file) fclose(urandom_file);
         gray_panic_code("P0052", "crypto.random_hex: failed to read from /dev/urandom");
     }
-    fclose(uf);
+    fclose(urandom_file);
 #endif
 
     /* nbytes random bytes encode to an even number of hex digits; an odd
      * `length` drops the final one. */
-    GrayString hex = crypto_hex(arena, raw, (int)nbytes);
-    ((char *)hex.data)[length] = '\0';
-    hex.len = (int32_t)length;
-    return hex;
+    GrayString hex_text = crypto_hex(arena, raw, (int)nbytes);
+    ((char *)hex_text.data)[length] = '\0';
+    hex_text.len = (int32_t)length;
+    return hex_text;
 }

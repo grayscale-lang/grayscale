@@ -25,7 +25,7 @@ static void test_gray_arena_create(void) {
     ASSERT_NOT_NULL(a->first);
     ASSERT_EQ(a->default_block_size, 4096);
     ASSERT(a->first == a->current);
-    ASSERT_EQ(a->destroyed, false);
+    ASSERT_EQ(a->is_destroyed, false);
     gray_arena_destroy(a, __FILE__, __LINE__);
 }
 
@@ -180,7 +180,7 @@ static void test_gray_string_empty(void) {
 static void test_gray_array_new(void) {
     GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     ASSERT_EQ(arr.len, 0);
-    ASSERT_GE(arr.cap, GRAY_ARRAY_MIN_CAP);
+    ASSERT_GE(arr.capacity, GRAY_ARRAY_MIN_CAPACITY);
     ASSERT_EQ(arr.elem_size, (int32_t)sizeof(int64_t));
 }
 
@@ -199,7 +199,7 @@ static void test_gray_array_push_growth(void) {
         GRAY_ARRAY_PUSH(arena, &arr, &val);
     }
     ASSERT_EQ(arr.len, 10);
-    ASSERT_GE(arr.cap, 10);
+    ASSERT_GE(arr.capacity, 10);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 9), 90);
 }
 
@@ -282,7 +282,7 @@ static void test_gray_array_empty(void) {
 static void test_gray_map_new_kind(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     ASSERT_EQ(m.count, 0);
-    ASSERT_GE(m.capacity, GRAY_MAP_MIN_CAP);
+    ASSERT_GE(m.capacity, GRAY_MAP_MIN_CAPACITY);
 }
 
 static void test_gray_map_set_get_int(void) {

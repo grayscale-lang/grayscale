@@ -20,63 +20,63 @@
 #include <inttypes.h>
 #include <time.h>
 
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
 #include "../runtime/win32.h"
 #else
 #include <unistd.h>
 #include <sys/wait.h>
 #endif
 
-#define GRAY_TOSTRING_BUF_SIZE    4096
-#define GRAY_TOSTRING_SAFE_LIMIT  (GRAY_TOSTRING_BUF_SIZE - 96)
-#define GRAY_FLOAT_STR_BUF        64
-#define GRAY_INPUT_BUF_SIZE       4096
+#define GRAY_TO_STRING_BUFFER_SIZE    4096
+#define GRAY_TO_STRING_SAFE_LIMIT  (GRAY_TO_STRING_BUFFER_SIZE - 96)
+#define GRAY_FLOATING_POINT_STRING_BUFFER_SIZE        64
+#define GRAY_INPUT_BUFFER_SIZE       4096
 
 /* Encode Unicode codepoint to UTF-8; returns byte count (1-4). */
-static int cp_to_utf8(int32_t cp, char *out) {
-    if (cp < 0x80)   { out[0] = (char)cp; return 1; }
-    if (cp < 0x800)  { out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
-    if (cp < 0x10000){ out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F)); out[2] = (char)(0x80|(cp&0x3F)); return 3; }
-    out[0]=(char)(0xF0|(cp>>18)); out[1]=(char)(0x80|((cp>>12)&0x3F)); out[2]=(char)(0x80|((cp>>6)&0x3F)); out[3]=(char)(0x80|(cp&0x3F)); return 4;
+static int codepoint_to_utf8(int32_t codepoint, char *output) {
+    if (codepoint < 0x80)   { output[0] = (char)codepoint; return 1; }
+    if (codepoint < 0x800)  { output[0] = (char)(0xC0|(codepoint>>6)); output[1] = (char)(0x80|(codepoint&0x3F)); return 2; }
+    if (codepoint < 0x10000){ output[0] = (char)(0xE0|(codepoint>>12)); output[1] = (char)(0x80|((codepoint>>6)&0x3F)); output[2] = (char)(0x80|(codepoint&0x3F)); return 3; }
+    output[0]=(char)(0xF0|(codepoint>>18)); output[1]=(char)(0x80|((codepoint>>12)&0x3F)); output[2]=(char)(0x80|((codepoint>>6)&0x3F)); output[3]=(char)(0x80|(codepoint&0x3F)); return 4;
 }
 
 /* Decode next UTF-8 character; returns bytes consumed (1-4).
    Writes decoded codepoint to *cp_out (0xFFFD on invalid input). */
-int gray_builtin_utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
-    uint8_t b = *p;
-    int32_t cp;
+int gray_builtin_utf8_next(const uint8_t *cursor, const uint8_t *end_cursor, int32_t *cp_out) {
+    uint8_t lead_byte = *cursor;
+    int32_t codepoint;
     int bytes;
-    if (b < 0x80) {
-        *cp_out = b; return 1;
-    } else if ((b & 0xE0) == 0xC0) {
-        cp = b & 0x1F; bytes = 2;
-    } else if ((b & 0xF0) == 0xE0) {
-        cp = b & 0x0F; bytes = 3;
-    } else if ((b & 0xF8) == 0xF0) {
-        cp = b & 0x07; bytes = 4;
+    if (lead_byte < 0x80) {
+        *cp_out = lead_byte; return 1;
+    } else if ((lead_byte & 0xE0) == 0xC0) {
+        codepoint = lead_byte & 0x1F; bytes = 2;
+    } else if ((lead_byte & 0xF0) == 0xE0) {
+        codepoint = lead_byte & 0x0F; bytes = 3;
+    } else if ((lead_byte & 0xF8) == 0xF0) {
+        codepoint = lead_byte & 0x07; bytes = 4;
     } else {
         *cp_out = 0xFFFD; return 1;
     }
-    if (p + bytes > end) { *cp_out = 0xFFFD; return 1; }
+    if (cursor + bytes > end_cursor) { *cp_out = 0xFFFD; return 1; }
     for (int i = 1; i < bytes; i++) {
-        if ((p[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
-        cp = (cp << 6) | (p[i] & 0x3F);
+        if ((cursor[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
+        codepoint = (codepoint << 6) | (cursor[i] & 0x3F);
     }
-    *cp_out = cp;
+    *cp_out = codepoint;
     return bytes;
 }
 
 /* Write a Unicode code point as UTF-8 to a FILE stream */
-static void fput_utf8(int32_t codepoint, FILE *stream) {
-    char buf[4];
-    int len = cp_to_utf8(codepoint, buf);
-    fwrite(buf, 1, (size_t)len, stream);
+static void write_utf8(int32_t codepoint, FILE *stream) {
+    char buffer[4];
+    int length = codepoint_to_utf8(codepoint, buffer);
+    fwrite(buffer, 1, (size_t)length, stream);
 }
 
 /* --- Core print helpers (one per type) --- */
 
-static void print_core_str(GrayString str, FILE *stream, bool newline) {
-    fwrite(str.data, 1, (size_t)str.len, stream);
+static void print_core_str(GrayString string, FILE *stream, bool newline) {
+    fwrite(string.data, 1, (size_t)string.len, stream);
     if (newline) fputc('\n', stream);
 }
 
@@ -91,9 +91,9 @@ static void print_core_u64(uint64_t value, FILE *stream, bool newline) {
 }
 
 static void print_core_float(double value, int bit_size, FILE *stream, bool newline) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    gray_fmt_shortest_float(buf, sizeof(buf), value, bit_size);
-    fprintf(stream, "%s", buf);
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    gray_fmt_shortest_float(buffer, sizeof(buffer), value, bit_size);
+    fprintf(stream, "%s", buffer);
     if (newline) fputc('\n', stream);
 }
 
@@ -103,7 +103,7 @@ static void print_core_bool(bool value, FILE *stream, bool newline) {
 }
 
 static void print_core_char(int32_t codepoint, FILE *stream, bool newline) {
-    fput_utf8(codepoint, stream);
+    write_utf8(codepoint, stream);
     if (newline) fputc('\n', stream);
 }
 
@@ -127,7 +127,7 @@ PRINT_FAMILY(bool,  bool)
 PRINT_FAMILY(char,  int32_t)
 PRINT_FAMILY(addr,  uintptr_t)
 
-/* A float also carries its bit size (32 or 64) so it prints at its own
+/* A floating-point value also carries its bit size (32 or 64) so it prints at its own
  * precision. */
 void gray_builtin_println_float(double value, int bit_size)  { print_core_float(value, bit_size, stdout, true);  }
 void gray_builtin_print_float(double value, int bit_size)    { print_core_float(value, bit_size, stdout, false); }
@@ -145,22 +145,22 @@ void gray_builtin_flush(void) {
 /* --- input --- */
 
 GrayString gray_builtin_input(GrayArena *arena) {
-    char buf[GRAY_INPUT_BUF_SIZE];
+    char buffer[GRAY_INPUT_BUFFER_SIZE];
     fflush(stdout);
-    if (fgets(buf, sizeof(buf), stdin) == NULL) {
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
         return gray_string_lit("");
     }
-    size_t len = strlen(buf);
-    if (len > 0 && buf[len - 1] == '\n') {
-        len--;
-    } else if (len == GRAY_INPUT_BUF_SIZE - 1) {
+    size_t length = strlen(buffer);
+    if (length > 0 && buffer[length - 1] == '\n') {
+        length--;
+    } else if (length == GRAY_INPUT_BUFFER_SIZE - 1) {
         /* Buffer filled without reaching a newline — drain the rest of the
          * line so the next input() call reads the correct line. */
-        int c;
-        while ((c = getc(stdin)) != '\n' && c != EOF)
+        int character;
+        while ((character = getc(stdin)) != '\n' && character != EOF)
             ;
     }
-    return gray_string_new(arena, buf, (int32_t)len);
+    return gray_string_new(arena, buffer, (int32_t)length);
 }
 
 /* --- assert --- */
@@ -212,55 +212,55 @@ void gray_builtin_exit(int64_t code) {
 
 void gray_builtin_sleep_s(int64_t seconds) {
     if (seconds < 0) gray_panic_code("P0083", "sleep duration cannot be negative (%lld)", (long long)seconds);
-#if GRAY_RT_WINDOWS
-    if (seconds > 0) Sleep((DWORD)(seconds * MS_PER_SEC));
+#if GRAY_RUNTIME_WINDOWS
+    if (seconds > 0) Sleep((DWORD)(seconds * MILLISECONDS_PER_SECOND));
 #else
     if (seconds > 0) sleep((unsigned int)seconds);
 #endif
 }
 
-void gray_builtin_sleep_ms(int64_t ms) {
-    if (ms < 0) gray_panic_code("P0083", "sleep duration cannot be negative (%lld)", (long long)ms);
-#if GRAY_RT_WINDOWS
-    if (ms > 0) Sleep((DWORD)ms);
+void gray_builtin_sleep_ms(int64_t milliseconds) {
+    if (milliseconds < 0) gray_panic_code("P0083", "sleep duration cannot be negative (%lld)", (long long)milliseconds);
+#if GRAY_RUNTIME_WINDOWS
+    if (milliseconds > 0) Sleep((DWORD)milliseconds);
 #else
-    if (ms > 0) {
-        struct timespec ts;
-        ts.tv_sec = ms / MS_PER_SEC;
-        ts.tv_nsec = (ms % MS_PER_SEC) * NS_PER_MS;
-        nanosleep(&ts, NULL);
+    if (milliseconds > 0) {
+        struct timespec time_spec;
+        time_spec.tv_sec = milliseconds / MILLISECONDS_PER_SECOND;
+        time_spec.tv_nsec = (milliseconds % MILLISECONDS_PER_SECOND) * NANOSECONDS_PER_MILLISECOND;
+        nanosleep(&time_spec, NULL);
     }
 #endif
 }
 
-void gray_builtin_sleep_ns(int64_t ns) {
-#if GRAY_RT_WINDOWS
+void gray_builtin_sleep_ns(int64_t nanoseconds) {
+#if GRAY_RUNTIME_WINDOWS
     /* Sleep() has millisecond granularity; round up so we never sleep 0. */
-    if (ns > 0) Sleep((DWORD)((ns + NS_PER_MS - 1) / NS_PER_MS));
+    if (nanoseconds > 0) Sleep((DWORD)((nanoseconds + NANOSECONDS_PER_MILLISECOND - 1) / NANOSECONDS_PER_MILLISECOND));
 #else
-    if (ns > 0) {
-        struct timespec ts;
-        ts.tv_sec = ns / NS_PER_SEC;
-        ts.tv_nsec = ns % NS_PER_SEC;
-        nanosleep(&ts, NULL);
+    if (nanoseconds > 0) {
+        struct timespec time_spec;
+        time_spec.tv_sec = nanoseconds / NANOSECONDS_PER_SECOND;
+        time_spec.tv_nsec = nanoseconds % NANOSECONDS_PER_SECOND;
+        nanosleep(&time_spec, NULL);
     }
 #endif
 }
 
 /* --- system --- */
 
-int64_t gray_builtin_system(GrayString cmd) {
-    char *cstr = malloc((size_t)cmd.len + 1);
+int64_t gray_builtin_system(GrayString command) {
+    char *cstr = malloc((size_t)command.len + 1);
     if (!cstr) return -1;
-    memcpy(cstr, cmd.data, (size_t)cmd.len);
-    cstr[cmd.len] = '\0';
+    memcpy(cstr, command.data, (size_t)command.len);
+    cstr[command.len] = '\0';
     /* Flush our buffered output so it lands before the child's, which inherits
      * the same stdout fd. */
     fflush(stdout);
     fflush(stderr);
     int status = system(cstr);
     free(cstr);
-#if GRAY_RT_WINDOWS
+#if GRAY_RUNTIME_WINDOWS
     return (int64_t)status;
 #else
     if (WIFEXITED(status)) return (int64_t)WEXITSTATUS(status);
@@ -279,9 +279,9 @@ GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value) {
 }
 
 GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    int len = gray_fmt_shortest_float(buf, sizeof(buf), value, bit_size);
-    return gray_string_new(arena, buf, len);
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    int length = gray_fmt_shortest_float(buffer, sizeof(buffer), value, bit_size);
+    return gray_string_new(arena, buffer, length);
 }
 
 GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size) {
@@ -294,221 +294,221 @@ GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value) {
 
 /* --- from_string --- */
 
-int64_t gray_builtin_string_to_i64(GrayString str) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, str.data, (size_t)len);
-    buf[len] = '\0';
-    char *end = NULL;
-    int64_t result = strtoll(buf, &end, 10);
-    if (end == buf || (*end != '\0' && *end != ' ')) {
-        gray_panic_code("P0084", "cannot convert '%s' to i64", buf);
+int64_t gray_builtin_string_to_i64(GrayString string) {
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    int length = string.len < (int32_t)sizeof(buffer) - 1 ? string.len : (int32_t)sizeof(buffer) - 1;
+    memcpy(buffer, string.data, (size_t)length);
+    buffer[length] = '\0';
+    char *end_cursor = NULL;
+    int64_t result = strtoll(buffer, &end_cursor, 10);
+    if (end_cursor == buffer || (*end_cursor != '\0' && *end_cursor != ' ')) {
+        gray_panic_code("P0084", "cannot convert '%s' to i64", buffer);
     }
     return result;
 }
 
-double gray_builtin_string_to_f64(GrayString str) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, str.data, (size_t)len);
-    buf[len] = '\0';
-    char *end = NULL;
-    double result = strtod(buf, &end);
-    if (end == buf || (*end != '\0' && *end != ' ')) {
-        gray_panic_code("P0085", "cannot convert '%s' to f64", buf);
+double gray_builtin_string_to_f64(GrayString string) {
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    int length = string.len < (int32_t)sizeof(buffer) - 1 ? string.len : (int32_t)sizeof(buffer) - 1;
+    memcpy(buffer, string.data, (size_t)length);
+    buffer[length] = '\0';
+    char *end_cursor = NULL;
+    double result = strtod(buffer, &end_cursor);
+    if (end_cursor == buffer || (*end_cursor != '\0' && *end_cursor != ' ')) {
+        gray_panic_code("P0085", "cannot convert '%s' to f64", buffer);
     }
     return result;
 }
 
 /* --- composite to_string --- */
 
-/* A float element in its shortest round-trip form at its own width. */
-static void format_float_element(char *out, size_t out_size, const void *p, int32_t elem_kind) {
-    gray_fmt_shortest_float(out, out_size, gray_elem_to_double(elem_kind, p),
-        elem_kind == GRAY_ELEM_F32 ? 32 : 64);
+/* A floating-point element in its shortest round-trip form at its own width. */
+static void format_float_element(char *output, size_t out_size, const void *element, int32_t element_kind) {
+    gray_fmt_shortest_float(output, out_size, gray_elem_to_double(element_kind, element),
+        element_kind == GRAY_ELEM_F32 ? 32 : 64);
 }
 
 /* An integer element of any width, read by its element kind, as decimal
  * text at buf[pos]; returns the new pos. */
-static int format_integer_element(GrayArena *arena, char *buf, size_t buf_size, int pos,
-                                  const void *p, int32_t elem_kind) {
+static int format_integer_element(GrayArena *arena, char *buffer, size_t buffer_size, int position,
+                                  const void *element, int32_t element_kind) {
     GrayString text;
-    switch (elem_kind) {
-    case GRAY_ELEM_I128: text = gray_i128_to_string(arena, *(const gray_i128 *)p); break;
-    case GRAY_ELEM_U128: text = gray_u128_to_string(arena, *(const gray_u128 *)p); break;
-    case GRAY_ELEM_I256: text = gray_i256_to_string(arena, *(const gray_i256 *)p); break;
-    case GRAY_ELEM_U256: text = gray_u256_to_string(arena, *(const gray_u256 *)p); break;
+    switch (element_kind) {
+    case GRAY_ELEM_I128: text = gray_i128_to_string(arena, *(const gray_i128 *)element); break;
+    case GRAY_ELEM_U128: text = gray_u128_to_string(arena, *(const gray_u128 *)element); break;
+    case GRAY_ELEM_I256: text = gray_i256_to_string(arena, *(const gray_i256 *)element); break;
+    case GRAY_ELEM_U256: text = gray_u256_to_string(arena, *(const gray_u256 *)element); break;
     case GRAY_ELEM_U8: case GRAY_ELEM_U16: case GRAY_ELEM_U32: case GRAY_ELEM_U64:
-        return pos + snprintf(buf + pos, buf_size - pos, "%" PRIu64, gray_elem_to_u64(elem_kind, p));
+        return position + snprintf(buffer + position, buffer_size - position, "%" PRIu64, gray_elem_to_u64(element_kind, element));
     default:
-        return pos + snprintf(buf + pos, buf_size - pos, "%" PRId64, gray_elem_to_i64(elem_kind, p));
+        return position + snprintf(buffer + position, buffer_size - position, "%" PRId64, gray_elem_to_i64(element_kind, element));
     }
-    return pos + snprintf(buf + pos, buf_size - pos, "%.*s", (int)text.len, text.data);
+    return position + snprintf(buffer + position, buffer_size - position, "%.*s", (int)text.len, text.data);
 }
 
 /* Append one element/value of the given kind (see the to_string callers) at
  * buf[pos]; returns the new pos. An integer is read by its element kind. */
-static int format_value_into(GrayArena *arena, char *buf, size_t buf_size, int pos, int kind,
-                             const void *value_ptr, int32_t elem_kind) {
+static int format_value_into(GrayArena *arena, char *buffer, size_t buffer_size, int position, int kind,
+                             const void *value_pointer, int32_t element_kind) {
     switch (kind) {
     case 0:
-        pos = format_integer_element(arena, buf, buf_size, pos, value_ptr, elem_kind);
+        position = format_integer_element(arena, buffer, buffer_size, position, value_pointer, element_kind);
         break;
     case 1: {
-        char float_buffer[GRAY_FLOAT_STR_BUF];
-        format_float_element(float_buffer, sizeof(float_buffer), value_ptr, elem_kind);
-        pos += snprintf(buf + pos, buf_size - pos, "%s", float_buffer);
+        char floating_point_buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+        format_float_element(floating_point_buffer, sizeof(floating_point_buffer), value_pointer, element_kind);
+        position += snprintf(buffer + position, buffer_size - position, "%s", floating_point_buffer);
         break;
     }
     case 2: {
-        const GrayString *element = (const GrayString *)value_ptr;
-        pos += snprintf(buf + pos, buf_size - pos, "\"%.*s\"",
+        const GrayString *element = (const GrayString *)value_pointer;
+        position += snprintf(buffer + position, buffer_size - position, "\"%.*s\"",
             (int)element->len, element->data ? element->data : "");
         break;
     }
     case 3:
-        pos += snprintf(buf + pos, buf_size - pos, "%s", *(const bool *)value_ptr ? "true" : "false");
+        position += snprintf(buffer + position, buffer_size - position, "%s", *(const bool *)value_pointer ? "true" : "false");
         break;
     case 6: {
-        int32_t cp = *(const int32_t *)value_ptr;
-        char utf8[4]; int utf8_length = cp_to_utf8(cp, utf8);
-        if (pos + 2 + utf8_length < (int)buf_size) {
-            buf[pos++] = '\'';
-            memcpy(buf + pos, utf8, (size_t)utf8_length); pos += utf8_length;
-            buf[pos++] = '\'';
+        int32_t codepoint = *(const int32_t *)value_pointer;
+        char utf8[4]; int utf8_length = codepoint_to_utf8(codepoint, utf8);
+        if (position + 2 + utf8_length < (int)buffer_size) {
+            buffer[position++] = '\'';
+            memcpy(buffer + position, utf8, (size_t)utf8_length); position += utf8_length;
+            buffer[position++] = '\'';
         }
         break;
     }
     case 7:
-        pos += snprintf(buf + pos, buf_size - pos, "%d", *(const int *)value_ptr);
+        position += snprintf(buffer + position, buffer_size - position, "%d", *(const int *)value_pointer);
         break;
     }
-    return pos;
+    return position;
 }
 
-GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind) {
-    char buf[GRAY_TOSTRING_BUF_SIZE];
-    int pos = 0;
-    buf[pos++] = '{';
-    for (int32_t i = 0; i < arr->len && pos < GRAY_TOSTRING_SAFE_LIMIT; i++) {
-        if (i > 0) { buf[pos++] = ','; buf[pos++] = ' '; }
-        pos = format_value_into(arena, buf, sizeof(buf), pos, elem_kind,
-            (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_kind);
+GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *array, int element_kind) {
+    char buffer[GRAY_TO_STRING_BUFFER_SIZE];
+    int position = 0;
+    buffer[position++] = '{';
+    for (int32_t i = 0; i < array->len && position < GRAY_TO_STRING_SAFE_LIMIT; i++) {
+        if (i > 0) { buffer[position++] = ','; buffer[position++] = ' '; }
+        position = format_value_into(arena, buffer, sizeof(buffer), position, element_kind,
+            (char *)array->data + (size_t)i * (size_t)array->elem_size, array->elem_kind);
     }
-    buf[pos++] = '}';
-    buf[pos] = '\0';
-    return gray_string_new(arena, buf, (int32_t)pos);
+    buffer[position++] = '}';
+    buffer[position] = '\0';
+    return gray_string_new(arena, buffer, (int32_t)position);
 }
 
 /* --- GrayFmtOut: the in-memory stream generated print code can target --- */
 
-static void fmt_out_reserve(GrayFmtOut *out, size_t extra) {
-    if (out->len + extra + 1 <= out->cap) return;
-    size_t cap = out->cap ? out->cap * 2 : 128;
-    while (cap < out->len + extra + 1) cap *= 2;
-    out->data = realloc(out->data, cap);
-    if (!out->data) {
+static void format_output_reserve(GrayFmtOut *output, size_t extra) {
+    if (output->len + extra + 1 <= output->capacity) return;
+    size_t capacity = output->capacity ? output->capacity * 2 : 128;
+    while (capacity < output->len + extra + 1) capacity *= 2;
+    output->data = realloc(output->data, capacity);
+    if (!output->data) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
-    out->cap = cap;
+    output->capacity = capacity;
 }
 
-int gray_fmt_out_printf(GrayFmtOut *out, const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    int needed = vsnprintf(NULL, 0, format, args);
-    va_end(args);
+int gray_fmt_out_printf(GrayFmtOut *output, const char *format, ...) {
+    va_list arguments;
+    va_start(arguments, format);
+    int needed = vsnprintf(NULL, 0, format, arguments);
+    va_end(arguments);
     if (needed < 0) return needed;
 
-    fmt_out_reserve(out, (size_t)needed);
-    va_start(args, format);
-    vsnprintf(out->data + out->len, (size_t)needed + 1, format, args);
-    va_end(args);
-    out->len += (size_t)needed;
+    format_output_reserve(output, (size_t)needed);
+    va_start(arguments, format);
+    vsnprintf(output->data + output->len, (size_t)needed + 1, format, arguments);
+    va_end(arguments);
+    output->len += (size_t)needed;
     return needed;
 }
 
-size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *out) {
+size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *output) {
     size_t total = size * count;
-    fmt_out_reserve(out, total);
-    memcpy(out->data + out->len, data, total);
-    out->len += total;
-    out->data[out->len] = '\0';
+    format_output_reserve(output, total);
+    memcpy(output->data + output->len, data, total);
+    output->len += total;
+    output->data[output->len] = '\0';
     return count;
 }
 
-GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *out) {
-    GrayString result = gray_string_new(arena, out->data ? out->data : "", (int32_t)out->len);
-    free(out->data);
-    out->data = NULL;
-    out->len = out->cap = 0;
+GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *output) {
+    GrayString result = gray_string_new(arena, output->data ? output->data : "", (int32_t)output->len);
+    free(output->data);
+    output->data = NULL;
+    output->len = output->capacity = 0;
     return result;
 }
 
 /* --- to_char / char_count — Unicode codepoint access --- */
 
-int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, int line) {
+int32_t gray_builtin_to_char(GrayString string, int64_t index, const char *file, int line) {
     if (index < 0) {
         gray_panic_code("P0049", "to_char() index out of bounds; index %lld is negative", (long long)index);
     }
-    const uint8_t *p = (const uint8_t *)str.data;
-    const uint8_t *end = p + str.len;
-    int64_t cp_idx = 0;
-    while (p < end) {
-        int32_t cp;
-        int bytes = gray_builtin_utf8_next(p, end, &cp);
-        if (cp_idx == index) return cp;
-        p += bytes;
-        cp_idx++;
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
+    int64_t codepoint_index = 0;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        int bytes = gray_builtin_utf8_next(cursor, end_cursor, &codepoint);
+        if (codepoint_index == index) return codepoint;
+        cursor += bytes;
+        codepoint_index++;
     }
     gray_panic_code("P0050", "to_char() index out of bounds; index %lld but string has %lld characters",
-        (long long)index, (long long)cp_idx);
+        (long long)index, (long long)codepoint_index);
     return 0; /* unreachable */
 }
 
-int64_t gray_builtin_char_count(GrayString str) {
-    const uint8_t *p = (const uint8_t *)str.data;
-    const uint8_t *end = p + str.len;
+int64_t gray_builtin_char_count(GrayString string) {
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
     int64_t count = 0;
-    while (p < end) {
-        int32_t cp;
-        p += gray_builtin_utf8_next(p, end, &cp);
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        cursor += gray_builtin_utf8_next(cursor, end_cursor, &codepoint);
         count++;
     }
     return count;
 }
 
-GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp) {
-    char buf[4];
-    int len;
-    if (cp >= 0x110000) {
+GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t codepoint) {
+    char buffer[4];
+    int length;
+    if (codepoint >= 0x110000) {
         /* Invalid codepoint — replacement character U+FFFD */
-        len = cp_to_utf8(0xFFFD, buf);
+        length = codepoint_to_utf8(0xFFFD, buffer);
     } else {
-        len = cp_to_utf8(cp, buf);
+        length = codepoint_to_utf8(codepoint, buffer);
     }
-    return gray_string_new(arena, buf, (int32_t)len);
+    return gray_string_new(arena, buffer, (int32_t)length);
 }
 
-GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_kind) {
-    char buf[GRAY_TOSTRING_BUF_SIZE];
-    int pos = 0;
-    buf[pos++] = '{';
+GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int value_kind) {
+    char buffer[GRAY_TO_STRING_BUFFER_SIZE];
+    int position = 0;
+    buffer[position++] = '{';
     bool first_entry = true;
-    for (int32_t order_index = 0; order_index < map->order_len && pos < GRAY_TOSTRING_SAFE_LIMIT; order_index++) {
+    for (int32_t order_index = 0; order_index < map->order_len && position < GRAY_TO_STRING_SAFE_LIMIT; order_index++) {
         int32_t i = map->order[order_index];
         if (i < 0 || map->states[i] != 1) continue;
-        if (!first_entry) { buf[pos++] = ','; buf[pos++] = ' '; }
+        if (!first_entry) { buffer[position++] = ','; buffer[position++] = ' '; }
         first_entry = false;
-        GrayString *kp = (GrayString *)((char *)map->keys + (size_t)i * map->key_size);
-        pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\": ",
-            (int)kp->len, kp->data ? kp->data : "");
-        void *vp = (char *)map->values + (size_t)i * map->value_size;
-        pos = format_value_into(arena, buf, sizeof(buf), pos, val_kind, vp, map->value_kind);
+        GrayString *key_pointer = (GrayString *)((char *)map->keys + (size_t)i * map->key_size);
+        position += snprintf(buffer + position, sizeof(buffer) - position, "\"%.*s\": ",
+            (int)key_pointer->len, key_pointer->data ? key_pointer->data : "");
+        void *value_pointer = (char *)map->values + (size_t)i * map->value_size;
+        position = format_value_into(arena, buffer, sizeof(buffer), position, value_kind, value_pointer, map->value_kind);
     }
-    if (map->count == 0) { buf[pos++] = ':'; }
-    buf[pos++] = '}';
-    buf[pos] = '\0';
-    return gray_string_new(arena, buf, (int32_t)pos);
+    if (map->count == 0) { buffer[position++] = ':'; }
+    buffer[position++] = '}';
+    buffer[position] = '\0';
+    return gray_string_new(arena, buffer, (int32_t)position);
 }
