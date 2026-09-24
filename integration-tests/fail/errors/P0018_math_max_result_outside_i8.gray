@@ -1,7 +1,0 @@
-/* Panic Test: P0018 - math.max of an i8 and a value outside the i8 range */
-import @math
-
-do main() {
-    mut a i8 = -5
-    println(math.max(a, 1000))
-}

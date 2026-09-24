@@ -96,13 +96,13 @@ static bool floats_equal_f32(const void *left, const void *right) {
 /* Hash a key according to its kind. */
 static uint64_t hash_key(const void *key, int32_t key_size, int8_t key_kind) {
     switch (key_kind) {
-        case GRAY_MAP_KEY_STRING: {
+        case GRAY_ELEM_STRING: {
             const GrayString *key_str = (const GrayString *)key;
             return hash_bytes(key_str->data, key_str->len);
         }
-        case GRAY_MAP_KEY_F64:
+        case GRAY_ELEM_F64:
             return hash_f64(key);
-        case GRAY_MAP_KEY_F32:
+        case GRAY_ELEM_F32:
             return hash_f32(key);
         default:
             return hash_bytes(key, key_size);
@@ -112,15 +112,15 @@ static uint64_t hash_key(const void *key, int32_t key_size, int8_t key_kind) {
 /* Compare two keys according to their kind. */
 static bool keys_equal(const void *left, const void *right, int32_t key_size, int8_t key_kind) {
     switch (key_kind) {
-        case GRAY_MAP_KEY_STRING: {
+        case GRAY_ELEM_STRING: {
             const GrayString *left_str = (const GrayString *)left;
             const GrayString *right_str = (const GrayString *)right;
             if (left_str->len != right_str->len) return false;
             return memcmp(left_str->data, right_str->data, (size_t)left_str->len) == 0;
         }
-        case GRAY_MAP_KEY_F64:
+        case GRAY_ELEM_F64:
             return floats_equal_f64(left, right);
-        case GRAY_MAP_KEY_F32:
+        case GRAY_ELEM_F32:
             return floats_equal_f32(left, right);
         default:
             return memcmp(left, right, (size_t)key_size) == 0;
@@ -145,7 +145,7 @@ static void *val_ptr(GrayMap *map, int32_t idx) {
 static void store_key(GrayArena *arena, GrayMap *map, int32_t slot, const void *key) {
     void *dst = key_ptr(map, slot);
     memcpy(dst, key, (size_t)map->key_size);
-    if (map->key_kind == GRAY_MAP_KEY_STRING) {
+    if (map->key_kind == GRAY_ELEM_STRING) {
         GrayArena *owner = map->arena ? map->arena : arena;
         if (owner) {
             GrayString *key_str = (GrayString *)dst;
@@ -166,7 +166,8 @@ static int32_t gray_map_round_capacity(int32_t cap) {
     return p;
 }
 
-GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind) {
+GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap,
+                          int8_t key_kind, int8_t value_kind) {
     initial_cap = gray_map_round_capacity(initial_cap);
     GrayMap map;
     map.arena = arena;
@@ -177,19 +178,13 @@ GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size
     map.order_len = 0;
     map.iterating = 0;
     map.key_kind = key_kind;
+    map.value_kind = value_kind;
     map.keys = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * (size_t)key_size);
     map.values = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * (size_t)value_size);
     map.states = gray_arena_alloc(arena, (size_t)initial_cap);
     map.order = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * sizeof(int32_t));
     map.order_pos = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * sizeof(int32_t));
     return map;
-}
-
-GrayMap gray_map_new(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap) {
-    int8_t kind = (key_size == (int32_t)sizeof(GrayString))
-        ? GRAY_MAP_KEY_STRING
-        : GRAY_MAP_KEY_BYTES;
-    return gray_map_new_kind(arena, key_size, value_size, initial_cap, kind);
 }
 
 static int32_t find_slot(GrayMap *map, const void *key) {
@@ -358,6 +353,7 @@ GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
     map.order_len = src->order_len;
     map.iterating = 0;
     map.key_kind = src->key_kind;
+    map.value_kind = src->value_kind;
 
     size_t keys_bytes = (size_t)src->capacity * (size_t)src->key_size;
     size_t vals_bytes = (size_t)src->capacity * (size_t)src->value_size;
@@ -377,7 +373,7 @@ GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
 
     /* String keys store a pointer into the source arena — deep-copy the
      * character data so the returned map owns its key strings. */
-    if (src->key_kind == GRAY_MAP_KEY_STRING) {
+    if (src->key_kind == GRAY_ELEM_STRING) {
         for (int32_t i = 0; i < src->capacity; i++) {
             if (map.states[i] == 1) {
                 GrayString *key_str = (GrayString *)((char *)map.keys + (size_t)i * (size_t)map.key_size);

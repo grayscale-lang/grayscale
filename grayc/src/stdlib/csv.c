@@ -20,12 +20,12 @@
 /* RFC 4180 parser with a caller-chosen field delimiter. gray_csv_parse and
  * gray_csv_parse_delimited are thin wrappers over this. */
 static GrayArray csv_parse_delim(GrayArena *arena, GrayString csv_string, char delim) {
-    GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8);
+    GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = csv_string.data;
     const char *end = cursor + csv_string.len;
 
     while (cursor < end) {
-        GrayArray row = gray_array_new(arena, sizeof(GrayString), 8);
+        GrayArray row = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
         while (cursor < end && *cursor != '\n' && *cursor != '\r') {
             const char *field_start;
             int32_t field_length;
@@ -122,13 +122,12 @@ static _Noreturn void csv_no_such_column(GrayString name) {
 }
 
 GrayArray gray_csv_to_maps(GrayArena *arena, GrayArray *data) {
-    GrayArray out = gray_array_new(arena, sizeof(GrayMap), data->len > 1 ? data->len - 1 : 0);
+    GrayArray out = gray_array_new(arena, sizeof(GrayMap), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_MAP);
     if (data->len <= 1) return out;
     GrayArray *header = csv_row(data, 0);
     for (int32_t i = 1; i < data->len; i++) {
         GrayArray *row = csv_row(data, i);
-        GrayMap map = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString),
-                                 header->len > 0 ? header->len : 8);
+        GrayMap map = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), header->len > 0 ? header->len : 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
         int32_t pair_count = row->len < header->len ? row->len : header->len;
         for (int32_t j = 0; j < pair_count; j++) {
             GrayString key = csv_cell(header, j);
@@ -141,11 +140,11 @@ GrayArray gray_csv_to_maps(GrayArena *arena, GrayArray *data) {
 }
 
 GrayArray gray_csv_from_maps(GrayArena *arena, GrayArray *rows) {
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), rows->len + 1);
+    GrayArray out = gray_array_new(arena, sizeof(GrayArray), rows->len + 1, GRAY_ELEM_ARRAY);
     if (rows->len == 0) return out;
 
     /* Header = union of keys across all rows, in first-seen order. */
-    GrayArray header = gray_array_new(arena, sizeof(GrayString), 8);
+    GrayArray header = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
     for (int32_t i = 0; i < rows->len; i++) {
         GrayMap *map = (GrayMap *)((char *)rows->data + (size_t)i * sizeof(GrayMap));
         for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
@@ -163,7 +162,7 @@ GrayArray gray_csv_from_maps(GrayArena *arena, GrayArray *rows) {
 
     for (int32_t i = 0; i < rows->len; i++) {
         GrayMap *map = (GrayMap *)((char *)rows->data + (size_t)i * sizeof(GrayMap));
-        GrayArray cells = gray_array_new(arena, sizeof(GrayString), header.len);
+        GrayArray cells = gray_array_new(arena, sizeof(GrayString), header.len, GRAY_ELEM_STRING);
         for (int32_t h = 0; h < header.len; h++) {
             GrayString key = csv_cell(&header, h);
             GrayString *found = (GrayString *)gray_map_get_str(map, key);
@@ -178,7 +177,7 @@ GrayArray gray_csv_from_maps(GrayArena *arena, GrayArray *rows) {
 GrayArray gray_csv_column(GrayArena *arena, GrayArray *data, GrayString name) {
     int32_t col = csv_col_index(data, name);
     if (col < 0) csv_no_such_column(name);
-    GrayArray out = gray_array_new(arena, sizeof(GrayString), data->len > 1 ? data->len - 1 : 0);
+    GrayArray out = gray_array_new(arena, sizeof(GrayString), data->len > 1 ? data->len - 1 : 0, GRAY_ELEM_STRING);
     for (int32_t i = 1; i < data->len; i++) {
         GrayString cell = csv_cell(csv_row(data, i), col);
         GRAY_ARRAY_PUSH(arena, &out, &cell);
@@ -195,10 +194,10 @@ GrayArray gray_csv_select(GrayArena *arena, GrayArray *data, GrayArray *names) {
         if (col_index < 0) csv_no_such_column(column_name);
         idx[k] = col_index;
     }
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len);
+    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
     for (int32_t i = 0; i < data->len; i++) {
         GrayArray *row = csv_row(data, i);
-        GrayArray proj = gray_array_new(arena, sizeof(GrayString), names->len);
+        GrayArray proj = gray_array_new(arena, sizeof(GrayString), names->len, GRAY_ELEM_STRING);
         for (int32_t k = 0; k < names->len; k++) {
             GrayString cell = csv_cell(row, idx[k]);
             GRAY_ARRAY_PUSH(arena, &proj, &cell);
@@ -221,7 +220,7 @@ static int csv_sort_cmp(const void *left, const void *right) {
 GrayArray gray_csv_sort_by_column(GrayArena *arena, GrayArray *data, GrayString name) {
     int32_t col = csv_col_index(data, name);
     if (col < 0) csv_no_such_column(name);
-    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len);
+    GrayArray out = gray_array_new(arena, sizeof(GrayArray), data->len, GRAY_ELEM_ARRAY);
     if (data->len == 0) return out;
     GRAY_ARRAY_PUSH(arena, &out, csv_row(data, 0)); /* header stays first */
 
@@ -340,7 +339,7 @@ static int32_t csv_field_encode(char *dst, GrayString field) {
 GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
     /* Accept [string] — each string is a pre-formatted CSV row.
      * Join with newlines. */
-    if (data->elem_size == (int32_t)sizeof(GrayString)) {
+    if (data->elem_kind == GRAY_ELEM_STRING) {
         int32_t total = 0;
         for (int32_t i = 0; i < data->len; i++) {
             GrayString line = GRAY_ARRAY_GET(*data, GrayString, i);
@@ -390,12 +389,12 @@ GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
         GrayArray first_row = GRAY_ARRAY_GET(*data, GrayArray, 0);
         return gray_array_copy(arena, &first_row);
     }
-    return gray_array_new(arena, sizeof(GrayString), 0);
+    return gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
 }
 
 GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
     FILE *file = fopen(path.data, "rb");
-    if (!file) return gray_array_new(arena, sizeof(GrayArray), 1);
+    if (!file) return gray_array_new(arena, sizeof(GrayArray), 1, GRAY_ELEM_ARRAY);
     GrayString content = gray_io_read_file_impl(arena, file);
     fclose(file);
     if (content.data == NULL)
@@ -418,14 +417,14 @@ GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
     GrayResult_array result;
     FILE *file = fopen(path.data, "rb");
     if (!file) {
-        result.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
+        result.v0 = gray_array_new(arena, sizeof(GrayArray), 0, GRAY_ELEM_ARRAY);
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read CSV file '%s'", path.data));
         return result;
     }
     GrayString content = gray_io_read_file_impl(arena, file);
     fclose(file);
     if (content.data == NULL) {
-        result.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
+        result.v0 = gray_array_new(arena, sizeof(GrayArray), 0, GRAY_ELEM_ARRAY);
         result.v1 = gray_error_new(arena, GRAY_ERR_OutOfRange, gray_string_format(arena,
             "cannot read '%s': file exceeds maximum string length", path.data));
         return result;

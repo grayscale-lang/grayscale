@@ -172,7 +172,7 @@ static void test_panic_P0041(void) { ASSERT_PANICS("P0041", trigger_P0041); }
  * ===========================================================================*/
 
 static void trigger_P0044(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 4);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 4, GRAY_ELEM_I64);
     int64_t v = 1;
     GRAY_ARRAY_PUSH(arena, &a, &v);
     gray_arrays_remove_at(&a, 5);
@@ -183,7 +183,7 @@ static void test_panic_P0044(void) { ASSERT_PANICS("P0044", trigger_P0044); }
  * its own; it must report whatever generated code last stamped into
  * gray_panic_call_file/line (the enclosing statement's location). */
 static void trigger_stdlib_panic_location(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_panic_call_file = "caller_probe.gray";
     gray_panic_call_line = 42;
     gray_arrays_first_ptr(&a); /* P0045, raised via gray_panic_code() */
@@ -193,26 +193,26 @@ static void test_stdlib_panic_location(void) {
 }
 
 static void trigger_P0045(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_arrays_first_ptr(&a);
 }
 static void test_panic_P0045(void) { ASSERT_PANICS("P0045", trigger_P0045); }
 
 static void trigger_P0046(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_arrays_last_ptr(&a);
 }
 static void test_panic_P0046(void) { ASSERT_PANICS("P0046", trigger_P0046); }
 
 static void trigger_P0047(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t out;
     gray_arrays_remove_first_raw(&a, &out);
 }
 static void test_panic_P0047(void) { ASSERT_PANICS("P0047", trigger_P0047); }
 
 static void trigger_P0048(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t out;
     gray_arrays_remove_last_raw(&a, &out);
 }

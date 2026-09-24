@@ -1,0 +1,10 @@
+// Error Test: E3001 - an array never converts its elements: a [i64] value
+// cannot be stored as a [u8].
+// expect-error: E3001
+// expect-error-count: 1
+
+do main() {
+    mut a [i64] = {1, 2, 300}
+    mut b [u8] = a
+    println(b)
+}

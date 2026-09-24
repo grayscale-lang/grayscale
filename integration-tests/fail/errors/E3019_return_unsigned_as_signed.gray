@@ -1,5 +1,5 @@
-// Error Test: E5049 - returning an unsigned variable as a signed return type needs a cast
-// expect-error: E5049
+// Error Test: E3019 - returning an unsigned variable as a signed return type needs a cast
+// expect-error: E3019
 // expect-error-count: 1
 
 do give() -> i64 {

@@ -6,7 +6,7 @@
  * instead, turning any value above INT64_MAX negative.
  *
  * Covers all four conversion positions: declaration initialiser, the
- * i128()/i256() constructor, cast(), and binary widening.
+ * i128()/i256() constructor, cast(), and binary widening (u64 into u128).
  */
 
 do main() {
@@ -47,13 +47,13 @@ do main() {
         failed += 1
     }
 
-    // Test 4: binary widening
-    mut d i128 = i128(0) + u
-    if d == expected {
-        println("  [PASS] i128(0) + uint_var")
+    // Test 4: binary widening within the unsigned family
+    mut d u128 = u128(0) + u
+    if d == u128(18446744073709551615) {
+        println("  [PASS] u128(0) + uint_var")
         passed += 1
     } otherwise {
-        println("  [FAIL] i128(0) + uint_var: got ${d}")
+        println("  [FAIL] u128(0) + uint_var: got ${d}")
         failed += 1
     }
 

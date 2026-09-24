@@ -1,7 +1,0 @@
-/* Panic Test: P0019 - a u32 value outside the u16 range passed to encode_u16_le */
-import @binary
-
-do main() {
-    mut x u32 = 70000
-    println(binary.encode_u16_le(x))
-}

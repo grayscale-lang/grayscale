@@ -13,6 +13,7 @@
 
 #include <stdbool.h>
 #include <string.h>
+#include "../lexer/token.h"
 
 typedef enum {
     TK_VOID,
@@ -37,6 +38,12 @@ typedef enum {
      * from TK_UNKNOWN so the type-compatibility checks (which skip TK_UNKNOWN
      * for error recovery) still run against it. */
     TK_C_FUNC,
+    /* A number literal, or an expression built only from number literals,
+     * that has not taken a type yet. It takes one from the slot it is stored
+     * into, the other operand of a binary operator, or a cast; otherwise it
+     * becomes i64 (f64 when is_decimal) when its statement finishes. No
+     * expression keeps this type once typechecking is done. */
+    TK_LITERAL,
     TK_UNKNOWN,
 } TypeKind;
 
@@ -59,6 +66,7 @@ typedef struct GrayType {
     const char *key_type;       /* For maps: key type name */
     const char *value_type;     /* For maps: value type name */
     GrayFuncSig *func_sig;        /* For TK_FUNCTION: parsed signature */
+    bool is_decimal;            /* For TK_LITERAL: written with a decimal point or exponent */
 } GrayType;
 
 /* Built-in type singletons */
@@ -73,6 +81,8 @@ extern GrayType TYPE_STRING;
 extern GrayType TYPE_NIL;
 extern GrayType TYPE_UNKNOWN;
 extern GrayType TYPE_C_FUNC;
+extern GrayType TYPE_LITERAL_INT;
+extern GrayType TYPE_LITERAL_DECIMAL;
 
 /* Type constructors */
 GrayType *type_array(const char *elem_type);
@@ -87,6 +97,30 @@ GrayType *type_alloc(void);
 bool type_is_numeric(GrayType *type);
 bool type_is_integer(GrayType *type);
 const char *type_name(GrayType *type);
+
+/* How a value of one type converts to another. This and
+ * type_binary_result() are the only definition of the sized-type rules. */
+typedef enum {
+    CONV_SAME,        /* the same type */
+    CONV_WIDEN,       /* every value fits: i32 -> i64, u8 -> i16, f32 -> f64 */
+    CONV_NARROW,      /* a wider type: i64 -> i32, u64 -> u8, i64 -> u8, f64 -> f32 */
+    CONV_SIGN_CROSS,  /* signed <-> unsigned of the same or greater width: i64 -> u64 */
+    CONV_MISMATCH,    /* no implicit conversion */
+} Conversion;
+
+/* The conversion of a value of type `from` into a slot of type `to`. Neither
+ * may be TK_LITERAL: a literal takes its slot's type instead of converting. */
+Conversion type_conversion(GrayType *from, GrayType *to);
+
+/* The type of `left op right` for numeric operands (integer, float, or
+ * TK_LITERAL), or NULL when the pair needs a cast. A comparison yields bool.
+ * When both operands are literals the result is a literal. */
+GrayType *type_binary_result(TokenType op, GrayType *left, GrayType *right);
+
+/* True for the integer and float kinds a sized-type rule applies to. */
+static inline bool type_kind_is_number(TypeKind k) {
+    return k == TK_INT || k == TK_UINT || k == TK_FLOAT;
+}
 
 /* Resolve a type name string to an GrayType */
 GrayType *type_from_name(const char *name);

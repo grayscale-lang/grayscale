@@ -329,7 +329,7 @@ int64_t gray_strings_compare(GrayString left, GrayString right) {
 }
 
 GrayArray gray_strings_split(GrayArena *arena, GrayString str, GrayString sep) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
     if (sep.len == 0) {
         GRAY_ARRAY_PUSH(arena, &arr, &str);
         return arr;
@@ -349,7 +349,7 @@ GrayArray gray_strings_split(GrayArena *arena, GrayString str, GrayString sep) {
 }
 
 GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
     int32_t i = 0;
     while (i < str.len) {
         while (i < str.len && gray_ascii_is_space((unsigned char)str.data[i])) i++;
@@ -363,7 +363,7 @@ GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str) {
 }
 
 GrayArray gray_strings_split_n(GrayArena *arena, GrayString str, GrayString sep, int64_t max_parts) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
     if (max_parts <= 0) return arr;
     if (sep.len == 0) {
         GRAY_ARRAY_PUSH(arena, &arr, &str);
@@ -413,7 +413,7 @@ GrayArray gray_strings_to_chars(GrayArena *arena, GrayString str) {
      * instead of widening each byte directly. Codepoint count is at most
      * str.len (one array slot per byte is an over-allocation for any
      * multi-byte content, but never too small). */
-    GrayArray arr = gray_array_new(arena, sizeof(int32_t), str.len);
+    GrayArray arr = gray_array_new(arena, sizeof(int32_t), str.len, GRAY_ELEM_CHAR);
     int32_t *out = (int32_t *)arr.data;
     const uint8_t *p = (const uint8_t *)str.data;
     const uint8_t *end = p + str.len;
@@ -555,16 +555,7 @@ void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codep
 void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray data) {
     if (data.len <= 0) return;
     builder_ensure(builder, data.len);
-    if (data.elem_size == 1) {
-        memcpy(builder->data + builder->len, data.data, (size_t)data.len);
-    } else {
-        /* An integer array wider than [u8] (e.g. an [i64] literal); take
-           the low byte of each element (little-endian). */
-        const unsigned char *src = (const unsigned char *)data.data;
-        for (int32_t i = 0; i < data.len; i++) {
-            builder->data[builder->len + i] = (char)src[(size_t)i * (size_t)data.elem_size];
-        }
-    }
+    memcpy(builder->data + builder->len, data.data, (size_t)data.len);
     builder->len += data.len;
 }
 

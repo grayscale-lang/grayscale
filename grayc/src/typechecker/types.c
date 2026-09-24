@@ -17,17 +17,19 @@
 #include <stdarg.h>
 
 /* Built-in type singletons */
-GrayType TYPE_VOID    = {TK_VOID,   "void",   NULL, NULL, NULL, NULL};
-GrayType TYPE_I64     = {TK_INT,    "i64",    NULL, NULL, NULL, NULL};
-GrayType TYPE_U64     = {TK_UINT,   "u64",    NULL, NULL, NULL, NULL};
-GrayType TYPE_F64     = {TK_FLOAT,  "f64",    NULL, NULL, NULL, NULL};
-GrayType TYPE_BOOL    = {TK_BOOL,   "bool",   NULL, NULL, NULL, NULL};
-GrayType TYPE_CHAR    = {TK_CHAR,   "char",   NULL, NULL, NULL, NULL};
-GrayType TYPE_U8      = {TK_UINT,   "u8",     NULL, NULL, NULL, NULL};
-GrayType TYPE_STRING  = {TK_STRING, "string", NULL, NULL, NULL, NULL};
-GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL};
-GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
-GrayType TYPE_C_FUNC  = {TK_C_FUNC, "a C interop value", NULL, NULL, NULL, NULL};
+GrayType TYPE_VOID    = {TK_VOID,   "void",   NULL, NULL, NULL, NULL, false};
+GrayType TYPE_I64     = {TK_INT,    "i64",    NULL, NULL, NULL, NULL, false};
+GrayType TYPE_U64     = {TK_UINT,   "u64",    NULL, NULL, NULL, NULL, false};
+GrayType TYPE_F64     = {TK_FLOAT,  "f64",    NULL, NULL, NULL, NULL, false};
+GrayType TYPE_BOOL    = {TK_BOOL,   "bool",   NULL, NULL, NULL, NULL, false};
+GrayType TYPE_CHAR    = {TK_CHAR,   "char",   NULL, NULL, NULL, NULL, false};
+GrayType TYPE_U8      = {TK_UINT,   "u8",     NULL, NULL, NULL, NULL, false};
+GrayType TYPE_STRING  = {TK_STRING, "string", NULL, NULL, NULL, NULL, false};
+GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL, false};
+GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL, false};
+GrayType TYPE_C_FUNC  = {TK_C_FUNC, "a C interop value", NULL, NULL, NULL, NULL, false};
+GrayType TYPE_LITERAL_INT     = {TK_LITERAL, "integer literal", NULL, NULL, NULL, NULL, false};
+GrayType TYPE_LITERAL_DECIMAL = {TK_LITERAL, "decimal literal", NULL, NULL, NULL, NULL, true};
 
 /* Pool for dynamically created types — one entry per distinct composite type
  * (struct, enum, pointer, array, map, function signature), accumulated for the
@@ -357,6 +359,85 @@ void type_pool_reset(void) {
     free(type_hash_table);
     type_hash_table = NULL;
     type_hash_cap = 0;
+}
+
+/* Width in bits of a sized integer or float type name; 0 for anything else. */
+static int number_width(const char *name) {
+    if (!name || (name[0] != 'i' && name[0] != 'u' && name[0] != 'f')) return 0;
+    const char *digits = name + 1;
+    if (strcmp(digits, "8") == 0)   return 8;
+    if (strcmp(digits, "16") == 0)  return 16;
+    if (strcmp(digits, "32") == 0)  return 32;
+    if (strcmp(digits, "64") == 0)  return 64;
+    if (strcmp(digits, "128") == 0) return 128;
+    if (strcmp(digits, "256") == 0) return 256;
+    return 0;
+}
+
+Conversion type_conversion(GrayType *from, GrayType *to) {
+    if (!from || !to || !from->name || !to->name) return CONV_MISMATCH;
+    if (type_kind_is_number(from->kind) && type_kind_is_number(to->kind)) {
+        if (strcmp(from->name, to->name) == 0) return CONV_SAME;
+        int from_width = number_width(from->name);
+        int to_width = number_width(to->name);
+        if (from->kind == TK_FLOAT) {
+            if (to->kind != TK_FLOAT) return CONV_MISMATCH;
+            return to_width > from_width ? CONV_WIDEN : CONV_NARROW;
+        }
+        /* An integer stored into a float slot has always been accepted. */
+        if (to->kind == TK_FLOAT) return CONV_WIDEN;
+        if (to_width < from_width) return CONV_NARROW;
+        if (from->kind == to->kind) return CONV_WIDEN;
+        /* An unsigned value fits every strictly wider signed type. */
+        if (from->kind == TK_UINT && to_width > from_width) return CONV_WIDEN;
+        return CONV_SIGN_CROSS;
+    }
+    if (from->kind != to->kind) return CONV_MISMATCH;
+    if (from->kind == TK_ARRAY)
+        return from->element_type && to->element_type &&
+               strcmp(from->element_type, to->element_type) == 0 ? CONV_SAME : CONV_MISMATCH;
+    if (from->kind == TK_MAP)
+        return from->key_type && to->key_type && from->value_type && to->value_type &&
+               strcmp(from->key_type, to->key_type) == 0 &&
+               strcmp(from->value_type, to->value_type) == 0 ? CONV_SAME : CONV_MISMATCH;
+    return strcmp(from->name, to->name) == 0 ? CONV_SAME : CONV_MISMATCH;
+}
+
+GrayType *type_binary_result(TokenType op, GrayType *left, GrayType *right) {
+    bool is_comparison = op == TOK_EQ || op == TOK_NOT_EQ || op == TOK_LT ||
+                         op == TOK_GT || op == TOK_LT_EQ || op == TOK_GT_EQ;
+    bool is_shift = op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT;
+    bool integers_only = is_shift || op == TOK_BIT_AND || op == TOK_BIT_OR ||
+                         op == TOK_BIT_XOR || op == TOK_PERCENT;
+    bool left_literal = left->kind == TK_LITERAL;
+    bool right_literal = right->kind == TK_LITERAL;
+    bool left_float = left->kind == TK_FLOAT || (left_literal && left->is_decimal);
+    bool right_float = right->kind == TK_FLOAT || (right_literal && right->is_decimal);
+
+    if (integers_only && (left_float || right_float)) return NULL;
+    if (is_shift) {
+        /* The count can be any integer type; the result is the shifted
+         * operand's type. A literal shifted by a typed count still takes its
+         * type from context, like the literal alone would. */
+        return left_literal ? &TYPE_LITERAL_INT : left;
+    }
+    if (left_literal && right_literal) {
+        if (is_comparison) return &TYPE_BOOL;
+        return left_float || right_float ? &TYPE_LITERAL_DECIMAL : &TYPE_LITERAL_INT;
+    }
+    if (left_literal || right_literal) {
+        GrayType *typed = left_literal ? right : left;
+        GrayType *literal = left_literal ? left : right;
+        if (literal->is_decimal && typed->kind != TK_FLOAT) return NULL;
+        return is_comparison ? &TYPE_BOOL : typed;
+    }
+    GrayType *common = NULL;
+    if (strcmp(left->name, right->name) == 0)
+        common = left;
+    else if (left->kind == right->kind)
+        common = number_width(left->name) >= number_width(right->name) ? left : right;
+    if (!common) return NULL;
+    return is_comparison ? &TYPE_BOOL : common;
 }
 
 bool type_is_numeric(GrayType *type) {

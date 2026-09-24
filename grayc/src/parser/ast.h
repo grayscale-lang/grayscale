@@ -157,6 +157,19 @@ struct AstNode {
      * the stored array up to N. 0 otherwise. */
     int zero_fill_length;
 
+    /* Set by the type checker on a number literal expression once it has
+     * taken its type: the value folded at full width, as decimal text.
+     * Codegen emits it as a constant of the node's type in place of the
+     * expression. NULL on anything else, and on a literal shifted by a
+     * non-constant count. */
+    const char *folded_literal;
+
+    /* Set by the type checker on a value it implicitly widens into a wide
+     * integer type (i128, u128, i256, u256): that type's name. Codegen
+     * converts the value to it wherever the value is emitted. NULL when the
+     * value is stored at its own type. */
+    const char *widen_to;
+
     union {
         /* NODE_LABEL */
         struct {

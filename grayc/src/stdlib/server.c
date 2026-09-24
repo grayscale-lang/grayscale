@@ -272,9 +272,9 @@ static void *handle_connection(void *arg) {
     /* Parse request */
     GrayRequest req;
     req.body = (GrayString){"", 0};
-    req.query = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 8);
-    req.headers = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 16);
-    req.params = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 8);
+    req.query = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
+    req.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 16, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
+    req.params = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
     GrayResponse resp;
     resp.status = 404;

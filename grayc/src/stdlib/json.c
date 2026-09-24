@@ -10,6 +10,8 @@
  */
 
 #include "json.h"
+#include "strconv.h"
+#include "../runtime/bigint.h"
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -84,29 +86,6 @@ GrayString gray_json_enum_from_str(GrayString raw,
     return raw;
 }
 
-/* Read a packed primitive slot (array element or map value) of the given
- * byte width. Grayscale stores sized integers, char, and f32/f64 at their
- * natural width, so a fixed *(int64_t*) read walked off the slot. */
-static int64_t json_read_i(const void *p, int32_t sz) {
-    switch (sz) {
-    case 1: return *(const int8_t *)p;
-    case 2: return *(const int16_t *)p;
-    case 4: return *(const int32_t *)p;
-    default: return *(const int64_t *)p;
-    }
-}
-static uint64_t json_read_u(const void *p, int32_t sz) {
-    switch (sz) {
-    case 1: return *(const uint8_t *)p;
-    case 2: return *(const uint16_t *)p;
-    case 4: return *(const uint32_t *)p;
-    default: return *(const uint64_t *)p;
-    }
-}
-static double json_read_f(const void *p, int32_t sz) {
-    return sz == 4 ? (double)*(const float *)p : *(const double *)p;
-}
-
 /* Value kind for the shared map encoder. map[string:string] values are always
  * quoted (STRING) — never infer JSON types from string content. */
 typedef enum {
@@ -169,21 +148,21 @@ static GrayString json_encode_map_typed(GrayArena *arena, GrayMap *map, JsonMapV
                 break;
             case JSON_MAP_VAL_INT: {
                 int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64,
-                    json_read_i(val, map->value_size));
+                    gray_elem_to_i64(map->value_kind, val));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
                 else truncated = true;
                 break;
             }
             case JSON_MAP_VAL_UINT: {
                 int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRIu64,
-                    json_read_u(val, map->value_size));
+                    gray_elem_to_u64(map->value_kind, val));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
                 else truncated = true;
                 break;
             }
             case JSON_MAP_VAL_FLOAT: {
                 int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%g",
-                    json_read_f(val, map->value_size));
+                    gray_elem_to_double(map->value_kind, val));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
                 else truncated = true;
                 break;
@@ -214,7 +193,7 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr) {
     buf[pos++] = '[';
     for (int32_t i = 0; i < arr->len; i++) {
         if (i > 0) { buf[pos++] = ','; }
-        int64_t val = json_read_i((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
+        int64_t val = gray_elem_to_i64(arr->elem_kind, (char *)arr->data + (size_t)i * (size_t)arr->elem_size);
         int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, val);
         if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
@@ -232,7 +211,7 @@ GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr) {
     buf[pos++] = '[';
     for (int32_t i = 0; i < arr->len; i++) {
         if (i > 0) { buf[pos++] = ','; }
-        uint64_t val = json_read_u((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
+        uint64_t val = gray_elem_to_u64(arr->elem_kind, (char *)arr->data + (size_t)i * (size_t)arr->elem_size);
         int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRIu64, val);
         if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         else { pos = (int)need - 1; break; }
@@ -250,7 +229,7 @@ GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr) {
     buf[pos++] = '[';
     for (int32_t i = 0; i < arr->len; i++) {
         if (i > 0) { buf[pos++] = ','; }
-        double val = json_read_f((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
+        double val = gray_elem_to_double(arr->elem_kind, (char *)arr->data + (size_t)i * (size_t)arr->elem_size);
         int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", val);
         if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
@@ -474,7 +453,7 @@ static GrayString parse_json_value_as_string(GrayArena *arena, const char **curs
 }
 
 GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
-    GrayMap map = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 8);
+    GrayMap map = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     const char *cursor = text.data;
     const char *end = cursor + text.len;
     skip_ws(&cursor, end);
@@ -692,7 +671,7 @@ GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *map, int64_t indent_s
  * Handles nested braces, brackets, and quoted strings correctly. */
 
 GrayArray gray_json_split_array(GrayArena *arena, GrayString text) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4, GRAY_ELEM_STRING);
     const char *cursor = text.data;
     const char *end = cursor + text.len;
     skip_ws(&cursor, end);
@@ -748,12 +727,12 @@ GrayArray gray_json_split_array(GrayArena *arena, GrayString text) {
 GrayResult_map gray_json_decode_result(GrayArena *arena, GrayString text) {
     GrayResult_map result;
     if (text.len <= 0 || !text.data) {
-        result.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+        result.v0 = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena, "empty JSON input"));
         return result;
     }
     if (!gray_json_is_valid(text)) {
-        result.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+        result.v0 = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid JSON"));
         return result;
     }
@@ -761,11 +740,63 @@ GrayResult_map gray_json_decode_result(GrayArena *arena, GrayString text) {
     const char *text_end = first + text.len;
     skip_ws(&first, text_end);
     if (*first != '{') {
-        result.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+        result.v0 = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "JSON value is not an object"));
         return result;
     }
     result.v0 = gray_json_decode(arena, text);
     result.v1 = NULL;
     return result;
+}
+
+/* --- #json number fields --- */
+
+void gray_json_field_decode(GrayString text, int32_t kind, void *out, const char *file, int line) {
+    switch (kind) {
+    case GRAY_ELEM_I8:  *(int8_t *)out  = (int8_t)gray_cast_check(gray_strconv_to_int(text, 10), INT8_MIN, INT8_MAX, "i8", file, line); break;
+    case GRAY_ELEM_I16: *(int16_t *)out = (int16_t)gray_cast_check(gray_strconv_to_int(text, 10), INT16_MIN, INT16_MAX, "i16", file, line); break;
+    case GRAY_ELEM_I32: *(int32_t *)out = (int32_t)gray_cast_check(gray_strconv_to_int(text, 10), INT32_MIN, INT32_MAX, "i32", file, line); break;
+    case GRAY_ELEM_I64: *(int64_t *)out = gray_strconv_to_int(text, 10); break;
+    case GRAY_ELEM_U8:  *(uint8_t *)out  = (uint8_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT8_MAX, "u8", file, line); break;
+    case GRAY_ELEM_U16: *(uint16_t *)out = (uint16_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT16_MAX, "u16", file, line); break;
+    case GRAY_ELEM_U32: *(uint32_t *)out = (uint32_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT32_MAX, "u32", file, line); break;
+    case GRAY_ELEM_U64: *(uint64_t *)out = gray_strconv_to_uint(text, 10); break;
+    case GRAY_ELEM_F32: *(float *)out  = (float)gray_strconv_to_float(text); break;
+    case GRAY_ELEM_F64: *(double *)out = gray_strconv_to_float(text); break;
+    case GRAY_ELEM_I128: case GRAY_ELEM_U128: case GRAY_ELEM_I256: case GRAY_ELEM_U256: {
+        /* The wide parsers read a NUL-terminated decimal. */
+        char digits[96];
+        int32_t len = text.len < (int32_t)sizeof(digits) - 1 ? text.len : (int32_t)sizeof(digits) - 1;
+        memcpy(digits, text.data, (size_t)len);
+        digits[len] = '\0';
+        if (kind == GRAY_ELEM_I128) *(gray_i128 *)out = gray_i128_from_decimal(digits);
+        else if (kind == GRAY_ELEM_U128) *(gray_u128 *)out = gray_u128_from_decimal(digits);
+        else if (kind == GRAY_ELEM_I256) *(gray_i256 *)out = gray_i256_from_decimal(digits);
+        else *(gray_u256 *)out = gray_u256_from_decimal(digits);
+        break;
+    }
+    default: break;
+    }
+}
+
+GrayString gray_json_number_text(GrayArena *arena, int32_t kind, const void *value) {
+    char buf[48];
+    int len = 0;
+    switch (kind) {
+    case GRAY_ELEM_I128: return gray_i128_to_string(arena, *(const gray_i128 *)value);
+    case GRAY_ELEM_U128: return gray_u128_to_string(arena, *(const gray_u128 *)value);
+    case GRAY_ELEM_I256: return gray_i256_to_string(arena, *(const gray_i256 *)value);
+    case GRAY_ELEM_U256: return gray_u256_to_string(arena, *(const gray_u256 *)value);
+    case GRAY_ELEM_F32:
+    case GRAY_ELEM_F64:
+        len = snprintf(buf, sizeof(buf), "%g", gray_elem_to_double(kind, value));
+        break;
+    case GRAY_ELEM_U8: case GRAY_ELEM_U16: case GRAY_ELEM_U32: case GRAY_ELEM_U64:
+        len = snprintf(buf, sizeof(buf), "%" PRIu64, gray_elem_to_u64(kind, value));
+        break;
+    default:
+        len = snprintf(buf, sizeof(buf), "%" PRId64, gray_elem_to_i64(kind, value));
+        break;
+    }
+    return gray_string_new(arena, buf, len);
 }

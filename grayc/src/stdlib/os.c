@@ -63,7 +63,7 @@ void gray_os_init(int argc, char **argv) {
 }
 
 GrayArray gray_os_args(GrayArena *arena) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), _os_argc > 0 ? _os_argc : 1);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), _os_argc > 0 ? _os_argc : 1, GRAY_ELEM_STRING);
     for (int i = 0; i < _os_argc; i++) {
         GrayString s = gray_string_new(arena, _os_argv[i], (int32_t)strlen(_os_argv[i]));
         GRAY_ARRAY_PUSH(arena, &arr, &s);
@@ -93,7 +93,7 @@ GrayArray gray_os_environ(GrayArena *arena) {
 #endif
     int count = 0;
     for (char **e = envp; e && *e; e++) count++;
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), count > 0 ? count : 1);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), count > 0 ? count : 1, GRAY_ELEM_STRING);
     for (int i = 0; i < count; i++) {
         GrayString s = gray_string_new(arena, envp[i], (int32_t)strlen(envp[i]));
         GRAY_ARRAY_PUSH(arena, &arr, &s);

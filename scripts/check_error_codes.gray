@@ -9,6 +9,9 @@
 //   3. no duplicate code in the registry
 //   4. no E/W code is emitted from more than 15 distinct call sites
 //   5. no code is emitted from both parser.c and typechecker.c
+//   6. E3019, E3036 and E3155 (signedness crossing, literal out of range,
+//      narrowing) are emitted only from check_expr_as in typechecker.c —
+//      the one function that applies the sized-type conversion rules
 //
 // P-codes (runtime panics) are checked for (1) and (3) only: many are
 // emitted from headers (bigint.h, runtime.h) this script does not scan,
@@ -49,6 +52,31 @@ do registry_code(line string) -> string {
         return ""
     }
     return strings.slice(rest, 0, close)
+}
+
+// defined_function returns the name of the function a source line opens at
+// file scope ("static void f(int x) {" gives "f"), or "" for any other line.
+do defined_function(line string) -> string {
+    if len(line) == 0 || !strings.ends_with(line, "{") {
+        return ""
+    }
+    mut first char = strings.char_at(line, 0)
+    if first == ' ' || first == '\t' || first == '/' || first == '#' || first == '}' {
+        return ""
+    }
+    mut paren i64 = strings.index_of(line, "(")
+    if paren <= 0 {
+        return ""
+    }
+    mut start i64 = paren
+    for start > 0 {
+        mut c char = strings.char_at(line, start - 1)
+        if !(is_digit(c) || c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            break
+        }
+        start = start - 1
+    }
+    return strings.slice(line, start, paren)
 }
 
 // scan_line_codes returns every quoted "E####"/"W####"/"P####" literal on a
@@ -113,6 +141,7 @@ do main() {
     mut site_counts [i64] = {}
     mut in_parser [string] = {}
     mut in_typechecker [string] = {}
+    mut sized_rule_sites [string] = {}
 
     for_each entry in walked {
         mut path string = entry
@@ -132,9 +161,18 @@ do main() {
         if file_err != nil {
             continue
         }
+        mut current_function string = ""
         for_each src in file_lines {
+            mut opened string = defined_function(src)
+            if opened != "" {
+                current_function = opened
+            }
             mut codes [string] = scan_line_codes(src)
             for_each code in codes {
+                if (code == "E3019" || code == "E3036" || code == "E3155") &&
+                        !(is_typechecker && current_function == "check_expr_as") {
+                    arrays.append(sized_rule_sites, "${code} in ${path} (${current_function})")
+                }
                 if !arrays.contains(emitted, code) {
                     arrays.append(emitted, code)
                 }
@@ -196,6 +234,12 @@ do main() {
             arrays.append(violations,
                 "code ${code} emitted from both parser.c and typechecker.c")
         }
+    }
+
+    // (6) a sized-type conversion code emitted outside check_expr_as
+    for_each site in sized_rule_sites {
+        arrays.append(violations,
+            "${site}: E3019, E3036 and E3155 may only be emitted from check_expr_as")
     }
 
     // --- 4. Report ---------------------------------------------------------

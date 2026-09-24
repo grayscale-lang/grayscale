@@ -402,6 +402,13 @@ typedef struct {
      * Cleared after use to prevent stale context. */
     GrayType *expected_type;
 
+    /* Number literal expressions a context read without giving them a type.
+     * Each still untyped when its statement finishes takes its default type
+     * (i64, or f64 for a decimal literal) then. */
+    AstNode **pending_literals;
+    int pending_literal_count;
+    int pending_literal_cap;
+
     /* Type-level generic parameters (<?> syntax).
      * type_param_name is the parameter name (e.g. "T") during body check.
      * type_param_binding is the concrete struct name during re-check. */

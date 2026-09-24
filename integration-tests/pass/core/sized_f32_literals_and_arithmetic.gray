@@ -1,0 +1,45 @@
+/*
+ * sized_f32_literals_and_arithmetic.gray - an f32 stays an f32: arithmetic on
+ * two f32 values is f32, a decimal literal takes the f32 type of the value it
+ * meets (so it compares at f32 precision), and reassigning an f32 from a
+ * literal or an f32 expression compiles.
+ */
+
+do check(label string, ok bool) -> i64 {
+    if ok { return 0 }
+    println("  [FAIL] ${label}")
+    return 1
+}
+
+do main() {
+    mut failed i64 = 0
+    mut d f32 = 0.1
+    mut e f32 = 0.2
+
+    failed += check("f32 + f32 is f32", type_of(d + e) == "f32")
+    mut s = d + e
+    failed += check("inferred f32 sum", type_of(s) == "f32")
+
+    failed += check("f32 == literal compares at f32", d == 0.1)
+    failed += check("f32 != literal compares at f32", !(d != 0.1))
+    mut matched bool = false
+    when d {
+        is 0.1 { matched = true }
+        default { matched = false }
+    }
+    failed += check("when arm literal compares at f32", matched)
+
+    mut c f32 = 1.5
+    c = 2.5
+    c = c + 1.0
+    c += 1.0
+    c *= 2.0
+    c = c + d
+    failed += check("f32 reassignment", c > 9.0 && c < 9.2)
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -19,6 +19,16 @@ do main() {
         failed = failed + 1
     }
 
+    // wide operands of one signedness: the narrower widens to the wider
+    mut w128 i128 = 6
+    mut w256 i256 = 3
+    mut both i256 = w128 bit_and w256
+    if both == 2 && type_of(w128 bit_or w256) == "i256" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
     // a shift keeps the left operand's type
     mut shifted i64 = a bit_shift_left k
     if shifted == 24576 {

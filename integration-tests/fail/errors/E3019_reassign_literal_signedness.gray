@@ -1,10 +1,10 @@
 // Error Test: E3019 - an array or map literal reassigned to an unsigned
-// element type rejects a signed element, the same way a declaration does.
+// element type rejects a same-width signed element, the same way a declaration does.
 // expect-error: E3019
 // expect-error-count: 2
 
 do main() {
-    mut x i64 = 5
+    mut x i8 = 5
     mut bytes [u8] = {1}
     bytes = {x}
 

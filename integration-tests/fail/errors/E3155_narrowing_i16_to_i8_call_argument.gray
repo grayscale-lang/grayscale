@@ -1,0 +1,9 @@
+// Error Test: E3155 - an i16 value passed to an i8 parameter narrows
+// expect-error: E3155
+
+do wants_i8(v i8) { println(v) }
+
+do main() {
+    mut b i16 = 300
+    wants_i8(b)
+}

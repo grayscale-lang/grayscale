@@ -146,6 +146,12 @@ GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *map, int64_t indent_s
  * top-level JSON element from a JSON array string like "[{...},{...}]". */
 GrayArray gray_json_split_array(GrayArena *arena, GrayString text);
 
+/* A #json struct's number field, of element kind `kind`: decode its JSON
+ * text into *out at that type, panicking on a malformed value or one out of
+ * the type's range; render *value as JSON text. */
+void gray_json_field_decode(GrayString text, int32_t kind, void *out, const char *file, int line);
+GrayString gray_json_number_text(GrayArena *arena, int32_t kind, const void *value);
+
 /* _result variant */
 typedef struct { GrayMap v0; GrayError *v1; } GrayResult_map;
 

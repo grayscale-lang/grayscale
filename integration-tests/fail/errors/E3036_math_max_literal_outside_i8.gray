@@ -1,0 +1,9 @@
+/* Error Test: E3036 - math.max's arguments share one type; a literal takes
+ * the i8 of the other argument, and 1000 does not fit it */
+// expect-error: E3036
+import @math
+
+do main() {
+    mut a i8 = -5
+    println(math.max(a, 1000))
+}

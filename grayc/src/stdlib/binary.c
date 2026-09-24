@@ -16,7 +16,7 @@
 #define WIDE256_BYTES 32
 
 static GrayArray make_bytes(GrayArena *arena, const void *data, int32_t size) {
-    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), size);
+    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), size, GRAY_ELEM_U8);
     for (int32_t i = 0; i < size; i++) {
         uint8_t b = ((const uint8_t *)data)[i];
         GRAY_ARRAY_PUSH(arena, &arr, &b);
@@ -25,7 +25,7 @@ static GrayArray make_bytes(GrayArena *arena, const void *data, int32_t size) {
 }
 
 static GrayArray make_bytes_reversed(GrayArena *arena, const void *data, int32_t size) {
-    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), size);
+    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), size, GRAY_ELEM_U8);
     for (int32_t i = size - 1; i >= 0; i--) {
         uint8_t b = ((const uint8_t *)data)[i];
         GRAY_ARRAY_PUSH(arena, &arr, &b);

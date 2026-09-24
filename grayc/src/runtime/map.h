@@ -13,18 +13,11 @@
 
 #include "runtime.h"
 #include "atomic.h"
+#include "array.h"
 
 #define GRAY_MAP_MIN_CAP      8
 #define GRAY_MAP_LOAD_NUM     3
 #define GRAY_MAP_LOAD_DEN     4
-
-/* Key-kind discriminator. Multiple Grayscale key types share a key_size
- * (e.g. int64/uint64/double/pointer all 8), so size alone cannot pick
- * the right hash/equality. Codegen tags each map with its kind. */
-#define GRAY_MAP_KEY_BYTES    0   /* integer, bool, pointer, struct: bytewise */
-#define GRAY_MAP_KEY_STRING   1   /* GrayString: hash content, not struct bytes */
-#define GRAY_MAP_KEY_F32      2   /* f32: normalize -0.0 and NaN */
-#define GRAY_MAP_KEY_F64      3   /* f32/f64: normalize -0.0 and NaN */
 
 typedef struct {
     void *keys;
@@ -43,16 +36,16 @@ typedef struct {
     int32_t value_size;
     int32_t order_len;      /* entries in order array, holes included */
     int32_t iterating;      /* >0 while a for_each is active */
-    int8_t  key_kind;       /* GRAY_MAP_KEY_* */
+    /* GrayElemKind of the keys and of the values. The key kind also picks
+     * the hash and equality: a string key hashes its content, a float key
+     * treats -0.0 as 0.0 and NaN as equal to NaN, anything else is bytes. */
+    int8_t  key_kind;
+    int8_t  value_kind;
 } GrayMap;
 
-/* Create an empty map. Auto-detects GrayString by key_size; defaults to
- * KEY_BYTES otherwise. Callers that need a specific kind (e.g. float
- * keys) should use gray_map_new_kind. */
-GrayMap gray_map_new(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap);
-
-/* Create an empty map with an explicit key kind. */
-GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind);
+/* Create an empty map of key_kind keys and value_kind values. */
+GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap,
+                          int8_t key_kind, int8_t value_kind);
 
 /* Get a pointer to the value for a key, or NULL if not found */
 void *gray_map_get(GrayMap *map, const void *key);

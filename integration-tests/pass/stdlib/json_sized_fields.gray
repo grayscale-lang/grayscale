@@ -1,0 +1,28 @@
+/*
+ * json_sized_fields.gray - #json struct fields of every sized type encode and
+ * decode at their own type.
+ */
+import @json
+
+#json
+const Rec struct {
+    id i32
+    small u8
+    big u64
+    ratio f32
+    wide i128
+    name string
+}
+
+do main() {
+    mut r Rec = Rec{id: -5, small: 200, big: 18446744073709551615, ratio: 0.5,
+        wide: -170141183460469231731687303715884105728, name: "x"}
+    mut back Rec = json.parse(json.stringify(r))
+    if back.id == -5 && back.small == 200 && back.big == 18446744073709551615 &&
+       back.ratio == 0.5 && string(back.wide) == "-170141183460469231731687303715884105728" &&
+       back.name == "x" {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

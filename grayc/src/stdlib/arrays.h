@@ -84,9 +84,7 @@ void gray_arrays_remove_at(GrayArray *arr, int64_t index);
  *   println(nums)
  *@end
  */
-void gray_arrays_remove_i64(GrayArray *arr, int64_t value);
-void gray_arrays_remove_f64(GrayArray *arr, double value);
-void gray_arrays_remove_str(GrayArray *arr, GrayString value);
+void gray_arrays_remove(GrayArray *arr, const void *value);
 
 /*@man clear
  *@module arrays
@@ -173,10 +171,6 @@ void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
 void  gray_arrays_remove_last_raw(GrayArray *arr, void *out);
 
 /* Access — int64_t variants for internal use */
-int64_t gray_arrays_get_first(GrayArray *arr);
-int64_t gray_arrays_get_last(GrayArray *arr);
-int64_t gray_arrays_remove_last(GrayArray *arr);
-int64_t gray_arrays_remove_first(GrayArray *arr);
 
 /* Query */
 
@@ -204,11 +198,7 @@ bool gray_arrays_is_empty(GrayArray *arr);
  *   println(arrays.contains(nums, 2))
  *@end
  */
-bool gray_arrays_contains_i64(GrayArray *arr, int64_t value);
-bool gray_arrays_contains_char(GrayArray *arr, int32_t value);
-bool gray_arrays_contains_u8(GrayArray *arr, uint8_t value);
-bool gray_arrays_contains_f64(GrayArray *arr, double value);
-bool gray_arrays_contains_str(GrayArray *arr, GrayString value);
+bool gray_arrays_contains(GrayArray *arr, const void *value);
 
 /*@man index_of
  *@module arrays
@@ -221,8 +211,7 @@ bool gray_arrays_contains_str(GrayArray *arr, GrayString value);
  *   println(arrays.index_of(nums, 20))
  *@end
  */
-int64_t gray_arrays_index_of_i64(GrayArray *arr, int64_t value);
-int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value);
+int64_t gray_arrays_index_of(GrayArray *arr, const void *value);
 
 /*@man count
  *@module arrays
@@ -235,7 +224,7 @@ int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value);
  *   println(arrays.count(nums, 2))
  *@end
  */
-int64_t gray_arrays_count(GrayArray *arr, int64_t value);
+int64_t gray_arrays_count(GrayArray *arr, const void *value);
 
 /*@man is_equal
  *@module arrays
@@ -249,8 +238,7 @@ int64_t gray_arrays_count(GrayArray *arr, int64_t value);
  *   println(arrays.is_equal(a, b))
  *@end
  */
-bool gray_arrays_is_equal_prim(GrayArray *left, GrayArray *right);
-bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
+bool gray_arrays_is_equal(GrayArray *left, GrayArray *right);
 
 /*@man is_sorted
  *@module arrays
@@ -264,16 +252,6 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
  *@end
  */
 bool gray_arrays_is_sorted(GrayArray *arr);
-bool gray_arrays_is_sorted_u8(GrayArray *arr);
-bool gray_arrays_is_sorted_char(GrayArray *arr);
-bool gray_arrays_is_sorted_i8(GrayArray *arr);
-bool gray_arrays_is_sorted_i16(GrayArray *arr);
-bool gray_arrays_is_sorted_u16(GrayArray *arr);
-bool gray_arrays_is_sorted_u32(GrayArray *arr);
-bool gray_arrays_is_sorted_u64(GrayArray *arr);
-bool gray_arrays_is_sorted_f32(GrayArray *arr);
-bool gray_arrays_is_sorted_f64(GrayArray *arr);
-bool gray_arrays_is_sorted_str(GrayArray *arr);
 
 /*@man binary_search
  *@module arrays
@@ -286,9 +264,7 @@ bool gray_arrays_is_sorted_str(GrayArray *arr);
  *   println(arrays.binary_search(nums, 7))
  *@end
  */
-int64_t gray_arrays_binary_search(GrayArray *arr, int64_t val);
-int64_t gray_arrays_binary_search_f64(GrayArray *arr, double val);
-int64_t gray_arrays_binary_search_str(GrayArray *arr, GrayString val);
+int64_t gray_arrays_binary_search(GrayArray *arr, const void *value);
 
 /* Transformation */
 
@@ -411,7 +387,7 @@ GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
  *   println(arrays.get_sum(nums))
  *@end
  */
-int64_t gray_arrays_get_sum(GrayArray *arr);
+void gray_arrays_get_sum(GrayArray *arr, void *out, const char *file, int line);
 
 /*@man get_min
  *@module arrays
@@ -424,7 +400,7 @@ int64_t gray_arrays_get_sum(GrayArray *arr);
  *   println(arrays.get_min(nums))
  *@end
  */
-int64_t gray_arrays_get_min(GrayArray *arr);
+void gray_arrays_get_min(GrayArray *arr, void *out);
 
 /*@man get_max
  *@module arrays
@@ -437,7 +413,7 @@ int64_t gray_arrays_get_min(GrayArray *arr);
  *   println(arrays.get_max(nums))
  *@end
  */
-int64_t gray_arrays_get_max(GrayArray *arr);
+void gray_arrays_get_max(GrayArray *arr, void *out);
 
 /*@man min_index
  *@module arrays
@@ -451,7 +427,6 @@ int64_t gray_arrays_get_max(GrayArray *arr);
  *@end
  */
 int64_t gray_arrays_min_index(GrayArray *arr);
-int64_t gray_arrays_min_index_f64(GrayArray *arr);
 
 /*@man max_index
  *@module arrays
@@ -465,7 +440,6 @@ int64_t gray_arrays_min_index_f64(GrayArray *arr);
  *@end
  */
 int64_t gray_arrays_max_index(GrayArray *arr);
-int64_t gray_arrays_max_index_f64(GrayArray *arr);
 
 /* Sort */
 
@@ -473,7 +447,7 @@ int64_t gray_arrays_max_index_f64(GrayArray *arr);
  *@module arrays
  *@group Modification
  *@sig sort_asc(&arr [T])
- *@desc Sorts arr in ascending order in place. Works on i64, f64, and string arrays.
+ *@desc Sorts arr in ascending order in place. Works on arrays of any number type, char, bool, and string.
  *@example
  *   import @arrays
  *   mut nums [i64] = {3, 1, 4, 1, 5}
@@ -481,23 +455,13 @@ int64_t gray_arrays_max_index_f64(GrayArray *arr);
  *   println(nums)
  *@end
  */
-void gray_arrays_sort_asc(GrayArray *arr);
-void gray_arrays_sort_asc_f64(GrayArray *arr);
-void gray_arrays_sort_asc_str(GrayArray *arr);
-void gray_arrays_sort_asc_u8(GrayArray *arr);
-void gray_arrays_sort_asc_char(GrayArray *arr);
-void gray_arrays_sort_asc_i8(GrayArray *arr);
-void gray_arrays_sort_asc_i16(GrayArray *arr);
-void gray_arrays_sort_asc_u16(GrayArray *arr);
-void gray_arrays_sort_asc_u32(GrayArray *arr);
-void gray_arrays_sort_asc_u64(GrayArray *arr);
-void gray_arrays_sort_asc_f32(GrayArray *arr);
+void gray_arrays_sort(GrayArray *arr, bool descending);
 
 /*@man sort_desc
  *@module arrays
  *@group Modification
  *@sig sort_desc(&arr [T])
- *@desc Sorts arr in descending order in place. Works on i64, f64, and string arrays.
+ *@desc Sorts arr in descending order in place. Works on arrays of any number type, char, bool, and string.
  *@example
  *   import @arrays
  *   mut nums [i64] = {3, 1, 4, 1, 5}
@@ -505,22 +469,6 @@ void gray_arrays_sort_asc_f32(GrayArray *arr);
  *   println(nums)
  *@end
  */
-void gray_arrays_sort_desc(GrayArray *arr);
-void gray_arrays_sort_desc_f64(GrayArray *arr);
-void gray_arrays_sort_desc_str(GrayArray *arr);
-void gray_arrays_sort_desc_u8(GrayArray *arr);
-void gray_arrays_sort_desc_char(GrayArray *arr);
-void gray_arrays_sort_desc_i8(GrayArray *arr);
-void gray_arrays_sort_desc_i16(GrayArray *arr);
-void gray_arrays_sort_desc_u16(GrayArray *arr);
-void gray_arrays_sort_desc_u32(GrayArray *arr);
-void gray_arrays_sort_desc_u64(GrayArray *arr);
-void gray_arrays_sort_desc_f32(GrayArray *arr);
-
-/* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
- * i64/f64/str paths only look at the low 64 bits; this orders by the full
- * value. is_signed / is_256 select the element type, desc reverses the order. */
-void gray_arrays_sort_wide(GrayArray *arr, bool is_signed, bool is_256, bool desc);
 
 /*@man swap
  *@module arrays
@@ -549,6 +497,7 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *   println(arrays.average(nums))
  *@end
  */
+double gray_arrays_average(GrayArray *arr, const char *file, int line);
 
 /*@man find
  *@module arrays

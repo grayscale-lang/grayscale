@@ -1,0 +1,13 @@
+// Error Test: E3019 - returning a signed variable as an unsigned return type needs a cast
+// expect-error: E3019
+// expect-error-count: 1
+
+do get_value() -> u64 {
+    mut x i64 = -1
+    return x
+}
+
+do main() {
+    mut val u64 = get_value()
+    println(val)
+}

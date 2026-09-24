@@ -79,7 +79,7 @@ static inline int64_t gray_math_sign(int64_t n) { return n > 0 ? 1 : (n < 0 ? -1
  *@module math
  *@group Min/Max/Clamp
  *@sig min(a T, b T) -> T
- *@desc Returns the smaller of two values. Works on i64 and f64.
+ *@desc Returns the smaller of two values. Works on every integer and float type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.min(3, 7))
@@ -94,7 +94,7 @@ static inline double   gray_math_min_f64(double a, double b) { return a < b ? a 
  *@module math
  *@group Min/Max/Clamp
  *@sig max(a T, b T) -> T
- *@desc Returns the larger of two values. Works on i64 and f64.
+ *@desc Returns the larger of two values. Works on every integer and float type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.max(3, 7))
@@ -109,7 +109,7 @@ static inline double   gray_math_max_f64(double a, double b) { return a > b ? a 
  *@module math
  *@group Min/Max/Clamp
  *@sig clamp(value T, min T, max T) -> T
- *@desc Clamps value to the range [min, max]. Works on i64 and f64.
+ *@desc Clamps value to the range [min, max]. Works on every integer and float type; the arguments share one type, which is the result type.
  *@example
  *   import @math
  *   println(math.clamp(15, 1, 10))

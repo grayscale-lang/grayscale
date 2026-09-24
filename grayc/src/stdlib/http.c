@@ -85,7 +85,7 @@ static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int d
     GrayHttpResponse resp;
     resp.status = 0;
     resp.body = (GrayString){"", 0};
-    resp.headers = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 16);
+    resp.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 16, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
     if (data_len < GRAY_HTTP_MIN_RESP_LEN) return resp;
 
@@ -144,7 +144,7 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
     GrayHttpResponse err_resp;
     err_resp.status = 0;
     err_resp.body = (GrayString){"", 0};
-    err_resp.headers = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 4);
+    err_resp.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 4, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
     char url_buf[GRAY_HTTP_URL_BUF];
     gray_cstr(url, url_buf, sizeof(url_buf));

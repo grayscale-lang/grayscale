@@ -95,7 +95,7 @@ static void uuid_to_bytes16(GrayUUID id, uint8_t out[16]) {
 GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id) {
     uint8_t bytes[16];
     uuid_to_bytes16(id, bytes);
-    return gray_array_from(arena, bytes, sizeof(uint8_t), 16);
+    return gray_array_from(arena, bytes, sizeof(uint8_t), 16, GRAY_ELEM_U8);
 }
 
 GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes) {

@@ -10,6 +10,7 @@
 
 #include "builtins.h"
 #include "strconv.h"
+#include "../runtime/bigint.h"
 #include "../runtime/platform_rt.h"
 #include "../util/constants.h"
 #include <stdio.h>
@@ -321,45 +322,41 @@ double gray_builtin_string_to_f64(GrayString str) {
 
 /* --- composite to_string --- */
 
-/* An integer element of `size` bytes, widened to 64 bits. The container
- * records the width its elements were stored at, so a [i32] or [u8] is read
- * back at that width instead of as consecutive int64 values. */
-static int64_t element_as_signed(const void *p, int32_t size) {
-    switch (size) {
-    case 1: return *(const int8_t *)p;
-    case 2: return *(const int16_t *)p;
-    case 4: return *(const int32_t *)p;
-    default: return *(const int64_t *)p;
-    }
+/* A float element in its shortest round-trip form at its own width. */
+static void format_float_element(char *out, size_t out_size, const void *p, int32_t elem_kind) {
+    gray_fmt_shortest_float(out, out_size, gray_elem_to_double(elem_kind, p),
+        elem_kind == GRAY_ELEM_F32 ? 32 : 64);
 }
 
-static uint64_t element_as_unsigned(const void *p, int32_t size) {
-    switch (size) {
-    case 1: return *(const uint8_t *)p;
-    case 2: return *(const uint16_t *)p;
-    case 4: return *(const uint32_t *)p;
-    default: return *(const uint64_t *)p;
+/* An integer element of any width, read by its element kind, as decimal
+ * text at buf[pos]; returns the new pos. */
+static int format_integer_element(GrayArena *arena, char *buf, size_t buf_size, int pos,
+                                  const void *p, int32_t elem_kind) {
+    GrayString text;
+    switch (elem_kind) {
+    case GRAY_ELEM_I128: text = gray_i128_to_string(arena, *(const gray_i128 *)p); break;
+    case GRAY_ELEM_U128: text = gray_u128_to_string(arena, *(const gray_u128 *)p); break;
+    case GRAY_ELEM_I256: text = gray_i256_to_string(arena, *(const gray_i256 *)p); break;
+    case GRAY_ELEM_U256: text = gray_u256_to_string(arena, *(const gray_u256 *)p); break;
+    case GRAY_ELEM_U8: case GRAY_ELEM_U16: case GRAY_ELEM_U32: case GRAY_ELEM_U64:
+        return pos + snprintf(buf + pos, buf_size - pos, "%" PRIu64, gray_elem_to_u64(elem_kind, p));
+    default:
+        return pos + snprintf(buf + pos, buf_size - pos, "%" PRId64, gray_elem_to_i64(elem_kind, p));
     }
-}
-
-/* A float element in its shortest round-trip form at its stored width: a
- * 4-byte f32 or an 8-byte double. */
-static void format_float_element(char *out, size_t out_size, const void *p, int32_t size) {
-    double value = size == 4 ? (double)*(const float *)p : *(const double *)p;
-    gray_fmt_shortest_float(out, out_size, value, size * 8);
+    return pos + snprintf(buf + pos, buf_size - pos, "%.*s", (int)text.len, text.data);
 }
 
 /* Append one element/value of the given kind (see the to_string callers) at
- * buf[pos]; returns the new pos. */
-static int format_value_into(char *buf, size_t buf_size, int pos, int kind,
-                             const void *value_ptr, int32_t value_size) {
+ * buf[pos]; returns the new pos. An integer is read by its element kind. */
+static int format_value_into(GrayArena *arena, char *buf, size_t buf_size, int pos, int kind,
+                             const void *value_ptr, int32_t elem_kind) {
     switch (kind) {
     case 0:
-        pos += snprintf(buf + pos, buf_size - pos, "%" PRId64, element_as_signed(value_ptr, value_size));
+        pos = format_integer_element(arena, buf, buf_size, pos, value_ptr, elem_kind);
         break;
     case 1: {
         char float_buffer[GRAY_FLOAT_STR_BUF];
-        format_float_element(float_buffer, sizeof(float_buffer), value_ptr, value_size);
+        format_float_element(float_buffer, sizeof(float_buffer), value_ptr, elem_kind);
         pos += snprintf(buf + pos, buf_size - pos, "%s", float_buffer);
         break;
     }
@@ -371,9 +368,6 @@ static int format_value_into(char *buf, size_t buf_size, int pos, int kind,
     }
     case 3:
         pos += snprintf(buf + pos, buf_size - pos, "%s", *(const bool *)value_ptr ? "true" : "false");
-        break;
-    case 4:
-        pos += snprintf(buf + pos, buf_size - pos, "%" PRIu64, element_as_unsigned(value_ptr, value_size));
         break;
     case 6: {
         int32_t cp = *(const int32_t *)value_ptr;
@@ -398,8 +392,8 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
     buf[pos++] = '{';
     for (int32_t i = 0; i < arr->len && pos < GRAY_TOSTRING_SAFE_LIMIT; i++) {
         if (i > 0) { buf[pos++] = ','; buf[pos++] = ' '; }
-        pos = format_value_into(buf, sizeof(buf), pos, elem_kind,
-            (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
+        pos = format_value_into(arena, buf, sizeof(buf), pos, elem_kind,
+            (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_kind);
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
@@ -511,7 +505,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_ki
         pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\": ",
             (int)kp->len, kp->data ? kp->data : "");
         void *vp = (char *)map->values + (size_t)i * map->value_size;
-        pos = format_value_into(buf, sizeof(buf), pos, val_kind, vp, (int32_t)map->value_size);
+        pos = format_value_into(arena, buf, sizeof(buf), pos, val_kind, vp, map->value_kind);
     }
     if (map->count == 0) { buf[pos++] = ':'; }
     buf[pos++] = '}';

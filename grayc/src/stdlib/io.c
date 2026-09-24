@@ -416,7 +416,7 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     if (io_path_is_dir(path.data))
         gray_panic_code("P0086", "io.read_bytes() cannot read a directory");
     FILE *file = fopen(path.data, "rb");
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
     if (!file) return arr;
     uint8_t buf[GRAY_IO_READ_BUF];
     size_t bytes_read;
@@ -436,7 +436,7 @@ GrayString gray_io_read_stdin_all(GrayArena *arena) {
 }
 
 GrayArray gray_io_read_stdin_bytes(GrayArena *arena) {
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
     uint8_t buf[GRAY_IO_READ_BUF];
     size_t bytes_read;
     while ((bytes_read = fread(buf, 1, sizeof(buf), stdin)) > 0) {
@@ -471,7 +471,7 @@ static void io_stream_lines(GrayArena *arena, FILE *file, int64_t limit, GrayArr
 
 GrayArray gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16, GRAY_ELEM_STRING);
     if (io_path_is_dir(path.data))
         gray_panic_code("P0086", "io.read_lines() cannot read a directory");
     FILE *file = fopen(path.data, "rb");
@@ -646,7 +646,7 @@ bool gray_io_move_file(GrayString src, GrayString dst) {
 /* Read directory entries from an already-opened DIR handle.
  * Caller is responsible for closedir. */
 static GrayArray io_list_dir_from(GrayArena *arena, DIR *dir) {
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16, GRAY_ELEM_STRING);
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
@@ -659,7 +659,7 @@ static GrayArray io_list_dir_from(GrayArena *arena, DIR *dir) {
 GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
     validate_path(path);
     DIR *dir = opendir(path.data);
-    if (!dir) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    if (!dir) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16, GRAY_ELEM_STRING);
     GrayArray arr = io_list_dir_from(arena, dir);
     closedir(dir);
     return arr;
@@ -749,14 +749,14 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *rel, 
 
 GrayArray gray_io_walk(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), GRAY_IO_WALK_INITIAL_CAP);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), GRAY_IO_WALK_INITIAL_CAP, GRAY_ELEM_STRING);
     walk_recursive(arena, path.data, "", &arr);
     return arr;
 }
 
 GrayArray gray_io_glob(GrayArena *arena, GrayString pattern) {
     validate_path(pattern);
-    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16, GRAY_ELEM_STRING);
     glob_t gl;
     if (glob(pattern.data, GLOB_NOSORT, NULL, &gl) == 0) {
         for (size_t i = 0; i < gl.gl_pathc; i++) {
@@ -872,7 +872,7 @@ GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
     GrayResult_array result;
     DIR *dir = opendir(path.data);
     if (!dir) {
-        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot list directory '%s'", path.data));
         return result;
     }
@@ -906,7 +906,7 @@ GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array result;
     if (!io_path_is_dir(path.data)) {
-        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot walk directory '%s'", path.data));
         return result;
     }
@@ -919,18 +919,18 @@ GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array result;
     if (io_path_is_dir(path.data)) {
-        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
         return result;
     }
     FILE *file = fopen(path.data, "rb");
     if (!file) {
-        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read '%s'", path.data));
         return result;
     }
-    result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
     uint8_t buf[GRAY_IO_READ_BUF];
     size_t bytes_read;
     while ((bytes_read = fread(buf, 1, sizeof(buf), file)) > 0) {
@@ -945,7 +945,7 @@ GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
 GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
     GrayResult_array result;
-    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16, GRAY_ELEM_STRING);
     if (io_path_is_dir(path.data)) {
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
@@ -969,12 +969,12 @@ GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern) {
     glob_t gl;
     int rc = glob(pattern.data, GLOB_NOSORT, NULL, &gl);
     if (rc != 0 && rc != GLOB_NOMATCH) {
-        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "glob pattern failed: '%s'", pattern.data));
         return result;
     }
-    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), (int32_t)gl.gl_pathc);
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), (int32_t)gl.gl_pathc, GRAY_ELEM_STRING);
     for (size_t i = 0; i < gl.gl_pathc; i++) {
         GrayString entry = gray_string_format(arena, "%s", gl.gl_pathv[i]);
         GRAY_ARRAY_PUSH(arena, &result.v0, &entry);

@@ -22,6 +22,8 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <float.h>
+#include <math.h>
 
 #define MAX_STRUCT_DEPTH 32
 
@@ -179,6 +181,10 @@ static bool string_set_contains(const char *const *sorted, int n, const char *na
 /* Forward declaration — resolve_expression is defined later but needed by helper
  * routines and stdlib arg-type validation. */
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
+static GrayType *check_expr_as(TypeChecker *checker, AstNode *value, GrayType *target);
+static GrayType *resolve_untyped(TypeChecker *checker, AstNode *node);
+static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
+static bool literal_entry_mismatches(TypeChecker *checker, GrayType *expected, GrayType *actual);
 
 /* Forward declarations — fixed-size array helpers, defined near the pointer
  * checker but needed earlier by the mutating-array-call guard. */
@@ -3019,8 +3025,18 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 /* --- Stdlib argument kind validation --- */
 
 typedef enum {
-    ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
+    /* ARG_INT is an i64 parameter, ARG_U64 a u64 one, ARG_FLOAT an f64 one;
+     * an argument is checked as that type. ARG_NUMBER takes any number. */
+    ARG_STRING, ARG_INT, ARG_U64, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
     ARG_BUILDER, ARG_UUID, ARG_U8_ARRAY, ARG_I64_POINTER,
+    /* A value stored into or compared with the array in argument 0: checked
+     * as that array's element type. */
+    ARG_ELEM_OF_FIRST,
+    /* A second array of argument 0's type. */
+    ARG_SAME_AS_FIRST,
+    /* One of the numbers math.min/max/clamp combine: every such argument is
+     * checked as their common type (as a binary operator would type them). */
+    ARG_COMMON_NUMBER,
     /* A type name, not a value. Declaring the position here is what keeps
      * it out of value resolution — see arg_is_type_position(). */
     ARG_TYPE
@@ -3030,7 +3046,8 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
     if (!actual || actual->kind == TK_UNKNOWN) return true; /* can't validate */
     switch (expected) {
     case ARG_STRING: return actual->kind == TK_STRING;
-    case ARG_INT:    return actual->kind == TK_INT || actual->kind == TK_UINT;
+    case ARG_INT:
+    case ARG_U64:    return actual->kind == TK_INT || actual->kind == TK_UINT;
     case ARG_FLOAT:  return actual->kind == TK_FLOAT;
     case ARG_BOOL:   return actual->kind == TK_BOOL;
     case ARG_ARRAY:  return actual->kind == TK_ARRAY;
@@ -3053,6 +3070,11 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
     /* Validated by name, never by resolved type — the argument is a type
      * name and is never resolved as a value. */
     case ARG_TYPE:   return true;
+    /* Checked against the type derived from the other arguments. */
+    case ARG_ELEM_OF_FIRST:
+    case ARG_SAME_AS_FIRST: return true;
+    case ARG_COMMON_NUMBER: return actual->kind == TK_INT || actual->kind == TK_UINT ||
+                                   actual->kind == TK_FLOAT;
     }
     return true;
 }
@@ -3061,6 +3083,7 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     switch (kind) {
     case ARG_STRING: return "string";
     case ARG_INT:    return "integer";
+    case ARG_U64:    return "u64";
     case ARG_FLOAT:  return "f64";
     case ARG_BOOL:   return "bool";
     case ARG_ARRAY:  return "array";
@@ -3074,6 +3097,9 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_U8_ARRAY: return "[u8]";
     case ARG_I64_POINTER: return "^i64";
     case ARG_TYPE:   return "a type name";
+    case ARG_ELEM_OF_FIRST: return "an element of the array";
+    case ARG_SAME_AS_FIRST: return "an array of the same type";
+    case ARG_COMMON_NUMBER: return "number";
     }
     return "unknown";
 }
@@ -3105,52 +3131,56 @@ typedef struct {
     FallibleType success_type;
     int arg_type_count;
     struct { int index; ExpectedArgKind kind; } arg_types[STDLIB_MAX_ARG_CHECKS];
-    const char *return_type;  /* type name string, or NULL for context-dependent */
+    /* A type name; "$0" for argument 0's type, "$elem0" for its element
+     * type, "[$0]" for an array of argument 0's type, "$common" for the
+     * common type of the ARG_COMMON_NUMBER arguments; or NULL when a
+     * module resolver computes it. */
+    const char *return_type;
 } StdlibFuncMeta;
 
 static const StdlibFuncMeta stdlib_func_meta[] = {
     /* arrays */
     {"arrays", "all",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "any",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
-    {"arrays", "append",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "append",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "void"},
     {"arrays", "average",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "f64"},
-    {"arrays", "binary_search",2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
+    {"arrays", "binary_search",2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "i64"},
     {"arrays", "clear",        1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, NULL},
-    {"arrays", "contains",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
-    {"arrays", "count",        2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "deduplicate",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "fill",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "filter",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_SAME_AS_FIRST}}, "$0"},
+    {"arrays", "contains",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "bool"},
+    {"arrays", "count",        2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "i64"},
+    {"arrays", "deduplicate",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$0"},
+    {"arrays", "fill",         3, 3, false, FT_NONE, 3, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}, {2, ARG_INT}}, "void"},
+    {"arrays", "filter",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$0"},
     {"arrays", "find",         2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "find_index",   2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "flatten",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "get_first",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "get_last",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "get_max",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "get_min",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "get_sum",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "index_of",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "insert_at",    3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "flatten",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "get_first",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "get_last",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "get_max",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "get_min",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "get_sum",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "index_of",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "i64"},
+    {"arrays", "insert_at",    3, 3, false, FT_NONE, 3, {{0, ARG_ARRAY}, {1, ARG_INT}, {2, ARG_ELEM_OF_FIRST}}, "void"},
     {"arrays", "is_empty",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
-    {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "bool"},
+    {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_SAME_AS_FIRST}}, "bool"},
     {"arrays", "is_sorted",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
-    {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$0"},
     {"arrays", "max_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
     {"arrays", "min_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i64"},
-    {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[i64]]"},
-    {"arrays", "prepend",      2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "reduce",       3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "remove",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "remove_at",    2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "rotate",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
-    {"arrays", "slice",        3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_SAME_AS_FIRST}}, "[$0]"},
+    {"arrays", "prepend",      2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "void"},
+    {"arrays", "reduce",       3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "remove",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ELEM_OF_FIRST}}, "void"},
+        {"arrays", "remove_at",    2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, "void"},
+    {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
+    {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$0"},
+    {"arrays", "rotate",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, "$0"},
+    {"arrays", "slice",        3, 3, false, FT_NONE, 3, {{0, ARG_ARRAY}, {1, ARG_INT}, {2, ARG_INT}}, "$0"},
     {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
-    {"arrays", "split_every",  2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "[[i64]]"},
+    {"arrays", "split_every",  2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, "[$0]"},
     {"arrays", "swap",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     /* atomic */
     {"atomic", "add",              2, 2, false, FT_NONE, 1, {{0, ARG_I64_POINTER}},"i64"},
@@ -3312,7 +3342,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"http", "post",   3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}, "HttpResponse"},
     {"http", "put",    3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}, "HttpResponse"},
     /* io */
-    {"io", "append_bytes",   2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
+    {"io", "append_bytes",   2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_U8_ARRAY}}, "bool"},
     {"io", "append_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"io", "basename",       1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
     {"io", "copy_file",      2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -3342,7 +3372,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"io", "temp_dir",       0, 0, true,  FT_STRING,       0, {{0}},"string"},
     {"io", "temp_file",      0, 0, true,  FT_STRING,       0, {{0}},"string"},
     {"io", "walk",           1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
-    {"io", "write_bytes",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
+    {"io", "write_bytes",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_U8_ARRAY}}, "bool"},
     {"io", "write_file",     2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     /* json */
     {"json", "decode",       1, 1, true,  FT_STRUCT_MAP, 1, {{0, ARG_STRING}}, "map[string:string]"},
@@ -3363,7 +3393,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"maps", "merge",          2, 2, false, FT_NONE, 2, {{0, ARG_MAP}, {1, ARG_MAP}}, NULL},
     {"maps", "remove_key",     2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}, "void"},
     /* math */
-    {"math", "abs",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "abs",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "$0"},
     {"math", "acos",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
     {"math", "approx_equal", 3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "bool"},
     {"math", "asin",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
@@ -3371,7 +3401,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "atan2",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
     {"math", "cbrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
     {"math", "ceil",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
-    {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, NULL},
+    {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_COMMON_NUMBER}, {1, ARG_COMMON_NUMBER}, {2, ARG_COMMON_NUMBER}}, "$common"},
     {"math", "copysign",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
     {"math", "cos",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
     {"math", "cosh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
@@ -3397,11 +3427,11 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "log10",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
     {"math", "log2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
     {"math", "log_base",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
-    {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
-    {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
+    {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_COMMON_NUMBER}, {1, ARG_COMMON_NUMBER}}, "$common"},
+    {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_COMMON_NUMBER}, {1, ARG_COMMON_NUMBER}}, "$common"},
     {"math", "mod",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
     {"math", "modf",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
-    {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "$0"},
     {"math", "next_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "i64"},
     {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
     {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "f64"},
@@ -3450,16 +3480,16 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "void"},
     {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     /* random */
-    {"random", "choice",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"random", "choice",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$elem0"},
     {"random", "rand_bool",  0, 0, false, FT_NONE, 0, {{0}},"bool"},
     {"random", "rand_byte",  0, 0, false, FT_NONE, 0, {{0}},"u8"},
     {"random", "rand_char",  0, 2, false, FT_NONE, 2, {{0, ARG_CHAR}, {1, ARG_CHAR}}, "char"},
     {"random", "rand_float", 0, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "f64"},
     {"random", "rand_int",   1, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "i64"},
     {"random", "rand_string", 2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_STRING}}, "string"},
-    {"random", "sample",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
+    {"random", "sample",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, "$0"},
     {"random", "seed",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "void"},
-    {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "$0"},
     /* regex */
     {"regex", "count",    2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "i64"},
     {"regex", "escape",   1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
@@ -3503,11 +3533,11 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_int",  2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
-    {"strconv", "format_uint", 2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
+    {"strconv", "format_uint", 2, 2, false, FT_NONE,  2, {{0, ARG_U64}, {1, ARG_INT}}, "string"},
     {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}, "string"},
     {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}, "string"},
     {"strconv", "from_int",   1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
-    {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
+    {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_U64}}, "string"},
     {"strconv", "is_integer", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "is_numeric", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "quote",      1, 1, false, FT_NONE,   1, {{0, ARG_STRING}}, "string"},
@@ -3521,7 +3551,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "build",              1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "string"},
     {"strings", "builder",            0, 0, false, FT_NONE, 0, {{0}}, "Builder"},
     {"strings", "builder_append",      2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_STRING}}, "void"},
-    {"strings", "builder_append_bytes", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_ARRAY}}, "void"},
+    {"strings", "builder_append_bytes", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_U8_ARRAY}}, "void"},
     {"strings", "builder_append_char", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_CHAR}}, "void"},
     {"strings", "builder_append_int",  2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_INT}}, "void"},
     {"strings", "builder_append_line", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_STRING}}, "void"},
@@ -3665,9 +3695,55 @@ bool stdlib_has_func(const char *mod, const char *fn) {
     return false;
 }
 
-static GrayType *resolve_return_type(const char *rt) {
+/* The common number type of the ARG_COMMON_NUMBER arguments of `node`: the
+ * arguments' types combined as a binary operator combines its operands, or
+ * a literal's default when every one is a literal. NULL when two of them
+ * have no common type. */
+static GrayType *stdlib_common_number_type(TypeChecker *checker, const StdlibFuncMeta *m, AstNode *node) {
+    GrayType *common = NULL;
+    bool any_decimal = false;
+    for (int i = 0; i < m->arg_type_count; i++) {
+        int idx = m->arg_types[i].index;
+        if (m->arg_types[i].kind != ARG_COMMON_NUMBER || idx >= node->data.call.arg_count) continue;
+        GrayType *t = resolve_untyped(checker, node->data.call.args[idx]);
+        if (t->kind == TK_LITERAL) { any_decimal = any_decimal || t->is_decimal; continue; }
+        if (!type_kind_is_number(t->kind)) continue;
+        if (!common) { common = t; continue; }
+        common = type_binary_result(TOK_PLUS, common, t);
+        if (!common) return NULL;
+    }
+    if (!common) common = any_decimal ? &TYPE_F64 : &TYPE_I64;
+    return common;
+}
+
+/* Argument 0 of a stdlib call, resolved. */
+static GrayType *stdlib_first_arg_type(TypeChecker *checker, AstNode *node) {
+    return node->data.call.arg_count > 0 ? resolve_expression(checker, node->data.call.args[0])
+                                         : &TYPE_UNKNOWN;
+}
+
+/* The element type of array type `t`, or unknown. */
+static GrayType *array_element_type(TypeChecker *checker, GrayType *t) {
+    return t && t->kind == TK_ARRAY && t->element_type
+        ? typechecker_type_from_name(checker, t->element_type) : &TYPE_UNKNOWN;
+}
+
+/* The return type a registry entry gives the call `node`, deriving it from
+ * the arguments where the entry says to (see StdlibFuncMeta.return_type). */
+static GrayType *resolve_return_type(TypeChecker *checker, const StdlibFuncMeta *m, AstNode *node) {
+    const char *rt = m->return_type;
     if (!rt) return NULL;
     if (strcmp(rt, "void") == 0) return &TYPE_VOID;
+    if (strcmp(rt, "$0") == 0) return stdlib_first_arg_type(checker, node);
+    if (strcmp(rt, "$elem0") == 0) return array_element_type(checker, stdlib_first_arg_type(checker, node));
+    if (strcmp(rt, "[$0]") == 0) {
+        GrayType *first = stdlib_first_arg_type(checker, node);
+        return first->kind == TK_UNKNOWN ? first : type_array(type_name(first));
+    }
+    if (strcmp(rt, "$common") == 0) {
+        GrayType *common = stdlib_common_number_type(checker, m, node);
+        return common ? common : &TYPE_UNKNOWN;
+    }
     return type_from_name(rt);
 }
 
@@ -3809,8 +3885,37 @@ static void typechecker_check_stdlib_arg_types(TypeChecker *checker, const char 
                 }
                 continue;
             }
-            GrayType *arg_t = resolve_expression(checker, node->data.call.args[idx]);
-            if (!arg_kind_matches(m->arg_types[i].kind, arg_t)) {
+            /* A typed parameter checks its argument as that type. A binary
+             * encoder's value is checked as the encoder's own type above. */
+            bool encoder_value = strcmp(mod, "binary") == 0 && strncmp(fn, "encode_", 7) == 0;
+            ExpectedArgKind kind = m->arg_types[i].kind;
+            GrayType *slot = NULL;
+            if (!encoder_value) {
+                if (kind == ARG_INT) slot = &TYPE_I64;
+                else if (kind == ARG_U64) slot = &TYPE_U64;
+                else if (kind == ARG_FLOAT) slot = &TYPE_F64;
+                else if (kind == ARG_U8_ARRAY) slot = type_array("u8");
+                else if (kind == ARG_ELEM_OF_FIRST) slot = array_element_type(checker, stdlib_first_arg_type(checker, node));
+                else if (kind == ARG_SAME_AS_FIRST) slot = stdlib_first_arg_type(checker, node);
+                else if (kind == ARG_COMMON_NUMBER) {
+                    slot = stdlib_common_number_type(checker, m, node);
+                    if (!slot) {
+                        tc_err_at(checker, "E5026", node->data.call.args[idx], typechecker_format(checker,
+                            "'%s.%s()' arguments must share one number type; convert one with cast()", mod, fn));
+                        slot = &TYPE_UNKNOWN;
+                    }
+                }
+            }
+            AstNode *arg = node->data.call.args[idx];
+            GrayType *arg_t = slot ? check_expr_as(checker, arg, slot) : resolve_expression(checker, arg);
+            if ((kind == ARG_ELEM_OF_FIRST || kind == ARG_SAME_AS_FIRST) && slot &&
+                literal_entry_mismatches(checker, slot, arg_t)) {
+                tc_err_at(checker, "E5026", arg, typechecker_format(checker,
+                    "'%s.%s()' expects '%s' as argument %d, got '%s'",
+                    mod, fn, type_display_name(checker, slot), idx + 1, type_display_name(checker, arg_t)));
+                continue;
+            }
+            if (!arg_kind_matches(kind, arg_t)) {
                 char *msg = typechecker_format(checker,
                     "'%s.%s()' expects %s as argument %d, got '%s'",
                     mod, fn, expected_kind_name(m->arg_types[i].kind), idx + 1, type_name(arg_t));
@@ -5111,22 +5216,27 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
             /* Cross-module struct/enum names (e.g. "Item" vs "types_Item") */
             if (typechecker_same_array_element(checker, dest->element_type, src->element_type))
                 return true;
-            /* Resolve element types and compare recursively (e.g. i64→i128, i64→f64) */
+            /* Resolve element types and compare recursively. An array never
+             * converts its elements, so numbers must match exactly: a [i64]
+             * is not a [u8], an [i128] or an [f64]. */
             GrayType *dest_et = typechecker_type_from_name(checker, dest->element_type);
             GrayType *src_et = typechecker_type_from_name(checker, src->element_type);
-            if (dest_et->kind != TK_UNKNOWN && src_et->kind != TK_UNKNOWN)
+            if (dest_et->kind != TK_UNKNOWN && src_et->kind != TK_UNKNOWN) {
+                if (type_kind_is_number(dest_et->kind) || type_kind_is_number(src_et->kind))
+                    return false;
                 return types_assignable(checker, dest_et, src_et);
+            }
         }
         return true; /* unknown element type: allow */
     }
+    /* Numbers convert under type_conversion. A narrowing or signedness
+     * crossing is assignable here: check_expr_as reports it with its own
+     * code. */
+    if (type_kind_is_number(dest->kind) && type_kind_is_number(src->kind))
+        return type_conversion(src, dest) != CONV_MISMATCH;
     if (dest->kind == src->kind) return true;
-    /* Int-family interop */
-    if (is_int_kind(dest->kind) && is_int_kind(src->kind))
-        return true;
     /* Enum → integer (enums are integer-backed) */
     if (is_int_kind(dest->kind) && src->kind == TK_ENUM) return true;
-    /* Integer → float coercion */
-    if (dest->kind == TK_FLOAT && is_int_kind(src->kind)) return true;
     /* String enum → string */
     if (dest->kind == TK_STRING && src->kind == TK_ENUM &&
         typechecker_enum_is_string(checker, src->name))
@@ -5164,37 +5274,6 @@ static void report_arg_mismatch(TypeChecker *checker, AstNode *arg_node, int ind
     tc_err_arg_type(checker, arg_node, msg);
 }
 
-/* `dest` and `src` name the same shape of nested arrays and differ only in
- * the width of the numeric elements at the bottom: [[i32]] against [[i64]],
- * map[string:[u8]] against map[string:[i64]]. A flat integer map is not one:
- * nothing is nested, so nothing is adapted. */
-static bool nested_widths_compatible(TypeChecker *checker, const char *dest,
-                                     const char *src, bool inside_array) {
-    if (!dest || !src) return false;
-    if (strcmp(dest, src) == 0) return true;
-    GrayType *d = typechecker_type_from_name(checker, dest);
-    GrayType *s = typechecker_type_from_name(checker, src);
-    if (!d || !s || d->kind == TK_UNKNOWN || s->kind == TK_UNKNOWN) return false;
-    if (d->kind == TK_ARRAY && s->kind == TK_ARRAY)
-        return nested_widths_compatible(checker, d->element_type, s->element_type, true);
-    if (d->kind == TK_MAP && s->kind == TK_MAP)
-        return d->key_type && s->key_type && strcmp(d->key_type, s->key_type) == 0 &&
-               nested_widths_compatible(checker, d->value_type, s->value_type, inside_array);
-    if (!inside_array) return false;
-    if (is_int_kind(d->kind) && is_int_kind(s->kind)) return true;
-    return d->kind == TK_FLOAT && (s->kind == TK_FLOAT || is_int_kind(s->kind));
-}
-
-/* True when `value` is an array or map literal whose nested numeric elements
- * take the width `declared` gives them — {{1}, {2}} for [[i32]]. Codegen
- * emits each inner literal at the declared width. */
-static bool literal_fits_nested_widths(TypeChecker *checker, AstNode *value,
-                                       GrayType *declared, GrayType *value_type) {
-    if (!value || (value->kind != NODE_ARRAY_VALUE && value->kind != NODE_MAP_VALUE)) return false;
-    if (!declared || !value_type) return false;
-    return nested_widths_compatible(checker, type_name(declared), type_name(value_type), false);
-}
-
 /* Rank for named integer types; 0 = not a named integer type.
  * Used to detect narrowing (declared rank < value rank). */
 static int int_type_name_rank(const char *n) {
@@ -5210,83 +5289,707 @@ static int int_type_name_rank(const char *n) {
     return 0;
 }
 
-/* True when an unsigned value of type `src_tn` is representable in the signed
- * type `dest_tn` purely by width — a value-preserving widening that needs no
- * cast (u64 -> i128, u8 -> i64). A same-width or narrower crossing still
- * reinterprets or truncates and requires an explicit cast. */
-static bool unsigned_widens_to_signed(const char *dest_tn, const char *src_tn) {
-    int dr = int_type_name_rank(dest_tn);
-    int sr = int_type_name_rank(src_tn);
-    return dr > 0 && sr > 0 && dr > sr;
+/* --- Number literals --- */
+
+/* A number literal expression folded at full width. An integer is a sign and
+ * a 320-bit magnitude: room for every value an integer type holds
+ * (-2^255 .. 2^256-1) plus headroom for intermediate results. */
+#define LITERAL_LIMBS 10
+
+typedef struct {
+    bool is_decimal;
+    bool too_large;                     /* an integer step reached 2^320 */
+    bool negative;
+    uint32_t magnitude[LITERAL_LIMBS];  /* little-endian 32-bit limbs */
+    double decimal;
+} LiteralValue;
+
+static bool magnitude_is_zero(const uint32_t *m) {
+    for (int i = 0; i < LITERAL_LIMBS; i++) if (m[i]) return false;
+    return true;
 }
 
-/* --- Literal value extraction --- */
+static int magnitude_compare(const uint32_t *a, const uint32_t *b) {
+    for (int i = LITERAL_LIMBS - 1; i >= 0; i--) {
+        if (a[i] != b[i]) return a[i] > b[i] ? 1 : -1;
+    }
+    return 0;
+}
 
-/* Try to extract a compile-time integer value from a literal expression.
- * Handles: NODE_INT_VALUE, PREFIX(-) NODE_INT_VALUE, and simple constant
- * binary expressions on literals. Returns true if a value was extracted. */
-static bool try_get_literal_int(AstNode *node, int64_t *out) {
+static int magnitude_bit_length(const uint32_t *m) {
+    for (int i = LITERAL_LIMBS - 1; i >= 0; i--) {
+        if (!m[i]) continue;
+        int bits = 32;
+        while (!(m[i] & (1u << (bits - 1)))) bits--;
+        return i * 32 + bits;
+    }
+    return 0;
+}
+
+/* a += b. Returns false when the sum does not fit. */
+static bool magnitude_add(uint32_t *a, const uint32_t *b) {
+    uint64_t carry = 0;
+    for (int i = 0; i < LITERAL_LIMBS; i++) {
+        uint64_t sum = (uint64_t)a[i] + b[i] + carry;
+        a[i] = (uint32_t)sum;
+        carry = sum >> 32;
+    }
+    return carry == 0;
+}
+
+/* a -= b, where a >= b. */
+static void magnitude_subtract(uint32_t *a, const uint32_t *b) {
+    int64_t borrow = 0;
+    for (int i = 0; i < LITERAL_LIMBS; i++) {
+        int64_t diff = (int64_t)a[i] - b[i] - borrow;
+        borrow = diff < 0;
+        a[i] = (uint32_t)(diff + (borrow ? ((int64_t)1 << 32) : 0));
+    }
+}
+
+/* out = a * b. Returns false when the product does not fit. */
+static bool magnitude_multiply(uint32_t *out, const uint32_t *a, const uint32_t *b) {
+    uint32_t product[LITERAL_LIMBS * 2] = {0};
+    for (int i = 0; i < LITERAL_LIMBS; i++) {
+        uint64_t carry = 0;
+        for (int j = 0; j < LITERAL_LIMBS; j++) {
+            uint64_t cur = product[i + j] + (uint64_t)a[i] * b[j] + carry;
+            product[i + j] = (uint32_t)cur;
+            carry = cur >> 32;
+        }
+        product[i + LITERAL_LIMBS] = (uint32_t)carry;
+    }
+    for (int i = LITERAL_LIMBS; i < LITERAL_LIMBS * 2; i++) if (product[i]) return false;
+    memcpy(out, product, sizeof(uint32_t) * LITERAL_LIMBS);
+    return true;
+}
+
+/* m <<= bits. Returns false when a set bit is shifted out. */
+static bool magnitude_shift_left(uint32_t *m, int bits) {
+    if (magnitude_is_zero(m)) return true;
+    if (bits >= LITERAL_LIMBS * 32 || magnitude_bit_length(m) + bits > LITERAL_LIMBS * 32) return false;
+    int limbs = bits / 32, rest = bits % 32;
+    for (int i = LITERAL_LIMBS - 1; i >= 0; i--) {
+        uint64_t hi = i - limbs >= 0 ? m[i - limbs] : 0;
+        uint64_t lo = i - limbs - 1 >= 0 ? m[i - limbs - 1] : 0;
+        m[i] = rest ? (uint32_t)((hi << rest) | (lo >> (32 - rest))) : (uint32_t)hi;
+    }
+    return true;
+}
+
+/* m >>= bits. Returns true when a set bit was shifted out. */
+static bool magnitude_shift_right(uint32_t *m, int bits) {
+    bool lost = false;
+    if (bits >= LITERAL_LIMBS * 32) {
+        lost = !magnitude_is_zero(m);
+        memset(m, 0, sizeof(uint32_t) * LITERAL_LIMBS);
+        return lost;
+    }
+    int limbs = bits / 32, rest = bits % 32;
+    for (int i = 0; i < limbs; i++) if (m[i]) lost = true;
+    if (rest && (m[limbs] & ((1u << rest) - 1))) lost = true;
+    for (int i = 0; i < LITERAL_LIMBS; i++) {
+        uint64_t lo = i + limbs < LITERAL_LIMBS ? m[i + limbs] : 0;
+        uint64_t hi = i + limbs + 1 < LITERAL_LIMBS ? m[i + limbs + 1] : 0;
+        m[i] = rest ? (uint32_t)((lo >> rest) | (hi << (32 - rest))) : (uint32_t)lo;
+    }
+    return lost;
+}
+
+/* quotient = a / b, remainder = a % b, for a nonzero b. */
+static void magnitude_divide(const uint32_t *a, const uint32_t *b,
+                             uint32_t *quotient, uint32_t *remainder) {
+    memset(quotient, 0, sizeof(uint32_t) * LITERAL_LIMBS);
+    memset(remainder, 0, sizeof(uint32_t) * LITERAL_LIMBS);
+    for (int bit = magnitude_bit_length(a) - 1; bit >= 0; bit--) {
+        magnitude_shift_left(remainder, 1);
+        if (a[bit / 32] & (1u << (bit % 32))) remainder[0] |= 1u;
+        if (magnitude_compare(remainder, b) >= 0) {
+            magnitude_subtract(remainder, b);
+            quotient[bit / 32] |= 1u << (bit % 32);
+        }
+    }
+}
+
+/* True when m is exactly 2^exponent. */
+static bool magnitude_is_power_of_two(const uint32_t *m, int exponent) {
+    for (int i = 0; i < LITERAL_LIMBS; i++) {
+        uint32_t expect = i == exponent / 32 ? 1u << (exponent % 32) : 0;
+        if (m[i] != expect) return false;
+    }
+    return true;
+}
+
+static void literal_set_u64(LiteralValue *v, uint64_t value) {
+    memset(v, 0, sizeof(*v));
+    v->magnitude[0] = (uint32_t)value;
+    v->magnitude[1] = (uint32_t)(value >> 32);
+}
+
+static double literal_as_double(const LiteralValue *v) {
+    if (v->is_decimal) return v->decimal;
+    double d = 0.0;
+    for (int i = LITERAL_LIMBS - 1; i >= 0; i--) d = d * 4294967296.0 + v->magnitude[i];
+    return v->negative ? -d : d;
+}
+
+static void literal_normalize_sign(LiteralValue *v) {
+    if (!v->is_decimal && magnitude_is_zero(v->magnitude)) v->negative = false;
+}
+
+/* Two's complement of `v` across all limbs, for the bitwise operators. */
+static void literal_to_twos(const LiteralValue *v, uint32_t *out) {
+    memcpy(out, v->magnitude, sizeof(uint32_t) * LITERAL_LIMBS);
+    if (!v->negative) return;
+    for (int i = 0; i < LITERAL_LIMBS; i++) out[i] = ~out[i];
+    uint32_t one[LITERAL_LIMBS] = {1};
+    magnitude_add(out, one);
+}
+
+static void literal_from_twos(LiteralValue *v, const uint32_t *twos) {
+    memset(v, 0, sizeof(*v));
+    memcpy(v->magnitude, twos, sizeof(uint32_t) * LITERAL_LIMBS);
+    if (twos[LITERAL_LIMBS - 1] & 0x80000000u) {
+        v->negative = true;
+        for (int i = 0; i < LITERAL_LIMBS; i++) v->magnitude[i] = ~v->magnitude[i];
+        uint32_t one[LITERAL_LIMBS] = {1};
+        magnitude_add(v->magnitude, one);
+    }
+}
+
+/* out = left + right for integers of any sign. */
+static void literal_add(LiteralValue *out, const LiteralValue *left, const LiteralValue *right) {
+    LiteralValue result = *left;
+    if (left->negative == right->negative) {
+        if (!magnitude_add(result.magnitude, right->magnitude)) result.too_large = true;
+    } else if (magnitude_compare(left->magnitude, right->magnitude) >= 0) {
+        magnitude_subtract(result.magnitude, right->magnitude);
+    } else {
+        result = *right;
+        magnitude_subtract(result.magnitude, left->magnitude);
+    }
+    result.too_large = result.too_large || left->too_large || right->too_large;
+    literal_normalize_sign(&result);
+    *out = result;
+}
+
+/* Fold the literal expression `node` into *out. Returns false when it is not
+ * a constant: a shift by a non-literal count, a division by zero, a negative
+ * shift count, or an operator the operands do not support (reported
+ * elsewhere). */
+static bool literal_fold(AstNode *node, LiteralValue *out) {
     if (!node) return false;
-    if (node->kind == NODE_INT_VALUE) {
-        *out = node->data.int_value.value;
+    switch (node->kind) {
+    case NODE_INT_VALUE:
+        literal_set_u64(out, (uint64_t)node->data.int_value.value);
+        if (node->data.int_value.overflow_u64) {
+            memset(out->magnitude, 0, sizeof(out->magnitude));
+            uint32_t ten[LITERAL_LIMBS] = {10};
+            for (const char *c = node->data.int_value.literal; c && *c; c++) {
+                if (*c < '0' || *c > '9') continue;
+                uint32_t digit[LITERAL_LIMBS] = {(uint32_t)(*c - '0')};
+                if (!magnitude_multiply(out->magnitude, out->magnitude, ten) ||
+                    !magnitude_add(out->magnitude, digit)) {
+                    out->too_large = true;
+                    break;
+                }
+            }
+        }
         return true;
-    }
-    if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
-        node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
-        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
+    case NODE_FLOAT_VALUE:
+        memset(out, 0, sizeof(*out));
+        out->is_decimal = true;
+        out->decimal = node->data.float_value.value;
         return true;
+    case NODE_PREFIX_EXPR: {
+        if (!literal_fold(node->data.prefix.right, out)) return false;
+        if (node->data.prefix.op == TOK_MINUS) {
+            if (out->is_decimal) out->decimal = -out->decimal;
+            else out->negative = !out->negative;
+            literal_normalize_sign(out);
+            return true;
+        }
+        if (node->data.prefix.op == TOK_BIT_NOT && !out->is_decimal) {
+            /* ~x == -x - 1 */
+            LiteralValue minus_one;
+            literal_set_u64(&minus_one, 1);
+            minus_one.negative = true;
+            out->negative = !out->negative;
+            literal_normalize_sign(out);
+            literal_add(out, out, &minus_one);
+            return true;
+        }
+        return false;
     }
-    /* Simple constant folding for literal +, -, *, /. Every operation is
-     * guarded against int64 overflow/UB (signed overflow, and the one
-     * division that traps: INT64_MIN / -1) — on overflow the expression
-     * is simply treated as non-foldable rather than invoking undefined
-     * behavior in the compiler's own arithmetic. */
-    if (node->kind == NODE_INFIX_EXPR) {
-        int64_t left_value, right_value, result;
-        if (try_get_literal_int(node->data.infix.left, &left_value) &&
-            try_get_literal_int(node->data.infix.right, &right_value)) {
-            if (node->data.infix.op == TOK_PLUS &&
-                !__builtin_add_overflow(left_value, right_value, &result)) { *out = result; return true; }
-            if (node->data.infix.op == TOK_MINUS &&
-                !__builtin_sub_overflow(left_value, right_value, &result)) { *out = result; return true; }
-            if (node->data.infix.op == TOK_ASTERISK &&
-                !__builtin_mul_overflow(left_value, right_value, &result)) { *out = result; return true; }
-            if (node->data.infix.op == TOK_SLASH && right_value != 0 &&
-                !(left_value == INT64_MIN && right_value == -1)) { *out = left_value / right_value; return true; }
+    case NODE_INFIX_EXPR: {
+        LiteralValue left, right;
+        if (!literal_fold(node->data.infix.left, &left) ||
+            !literal_fold(node->data.infix.right, &right))
+            return false;
+        TokenType op = node->data.infix.op;
+        if (left.is_decimal || right.is_decimal) {
+            double l = literal_as_double(&left), r = literal_as_double(&right);
+            memset(out, 0, sizeof(*out));
+            out->is_decimal = true;
+            if (op == TOK_PLUS) out->decimal = l + r;
+            else if (op == TOK_MINUS) out->decimal = l - r;
+            else if (op == TOK_ASTERISK) out->decimal = l * r;
+            else if (op == TOK_SLASH && r != 0.0) out->decimal = l / r;
+            else return false;
+            return true;
+        }
+        if (op == TOK_PLUS || op == TOK_MINUS) {
+            if (op == TOK_MINUS) { right.negative = !right.negative; literal_normalize_sign(&right); }
+            literal_add(out, &left, &right);
+            return true;
+        }
+        if (op == TOK_ASTERISK) {
+            *out = left;
+            if (!magnitude_multiply(out->magnitude, left.magnitude, right.magnitude)) out->too_large = true;
+            out->negative = left.negative != right.negative;
+            out->too_large = out->too_large || left.too_large || right.too_large;
+            literal_normalize_sign(out);
+            return true;
+        }
+        if (op == TOK_SLASH || op == TOK_PERCENT) {
+            if (magnitude_is_zero(right.magnitude)) return false;
+            LiteralValue quotient, remainder;
+            memset(&quotient, 0, sizeof(quotient));
+            memset(&remainder, 0, sizeof(remainder));
+            magnitude_divide(left.magnitude, right.magnitude, quotient.magnitude, remainder.magnitude);
+            /* C semantics: the quotient truncates toward zero and the
+             * remainder takes the dividend's sign. */
+            quotient.negative = left.negative != right.negative;
+            remainder.negative = left.negative;
+            *out = op == TOK_SLASH ? quotient : remainder;
+            out->too_large = left.too_large || right.too_large;
+            literal_normalize_sign(out);
+            return true;
+        }
+        if (op == TOK_BIT_AND || op == TOK_BIT_OR || op == TOK_BIT_XOR) {
+            uint32_t a[LITERAL_LIMBS], b[LITERAL_LIMBS];
+            literal_to_twos(&left, a);
+            literal_to_twos(&right, b);
+            for (int i = 0; i < LITERAL_LIMBS; i++)
+                a[i] = op == TOK_BIT_AND ? (a[i] & b[i]) : op == TOK_BIT_OR ? (a[i] | b[i]) : (a[i] ^ b[i]);
+            literal_from_twos(out, a);
+            out->too_large = left.too_large || right.too_large;
+            return true;
+        }
+        if (op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT) {
+            if (right.negative) return false;
+            int count = magnitude_bit_length(right.magnitude) > 16
+                ? LITERAL_LIMBS * 32 : (int)right.magnitude[0];
+            *out = left;
+            if (op == TOK_BIT_SHIFT_LEFT) {
+                if (!magnitude_shift_left(out->magnitude, count)) out->too_large = true;
+            } else {
+                /* An arithmetic shift: a negative value rounds toward
+                 * negative infinity. */
+                bool lost = magnitude_shift_right(out->magnitude, count);
+                if (out->negative && lost) {
+                    uint32_t one[LITERAL_LIMBS] = {1};
+                    magnitude_add(out->magnitude, one);
+                }
+            }
+            literal_normalize_sign(out);
+            return true;
+        }
+        return false;
+    }
+    default:
+        return false;
+    }
+}
+
+/* True when `node` is built only from number literals: a literal, a unary
+ * minus or bit_not of one, a binary arithmetic or bitwise operator on two,
+ * or a literal shifted by any count. Such an expression has no type of its
+ * own until a context gives it one. */
+static bool is_literal_expr(AstNode *node) {
+    if (!node) return false;
+    switch (node->kind) {
+    case NODE_INT_VALUE:
+    case NODE_FLOAT_VALUE:
+        return true;
+    case NODE_PREFIX_EXPR:
+        return (node->data.prefix.op == TOK_MINUS || node->data.prefix.op == TOK_BIT_NOT) &&
+               is_literal_expr(node->data.prefix.right);
+    case NODE_INFIX_EXPR: {
+        TokenType op = node->data.infix.op;
+        if (op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT)
+            return is_literal_expr(node->data.infix.left);
+        return (op == TOK_PLUS || op == TOK_MINUS || op == TOK_ASTERISK ||
+                op == TOK_SLASH || op == TOK_PERCENT || op == TOK_BIT_AND ||
+                op == TOK_BIT_OR || op == TOK_BIT_XOR) &&
+               is_literal_expr(node->data.infix.left) &&
+               is_literal_expr(node->data.infix.right);
+    }
+    default:
+        return false;
+    }
+}
+
+/* True when the literal expression `node` has a decimal literal in it. The
+ * count of a shift is not part of the shifted value. */
+static bool literal_expr_is_decimal(AstNode *node) {
+    switch (node->kind) {
+    case NODE_FLOAT_VALUE: return true;
+    case NODE_PREFIX_EXPR: return literal_expr_is_decimal(node->data.prefix.right);
+    case NODE_INFIX_EXPR:
+        if (node->data.infix.op == TOK_BIT_SHIFT_LEFT || node->data.infix.op == TOK_BIT_SHIFT_RIGHT)
+            return literal_expr_is_decimal(node->data.infix.left);
+        return literal_expr_is_decimal(node->data.infix.left) ||
+               literal_expr_is_decimal(node->data.infix.right);
+    default: return false;
+    }
+}
+
+/* Decimal text of an integer literal value. */
+static char *literal_integer_text(TypeChecker *checker, const LiteralValue *v) {
+    char digits[LITERAL_LIMBS * 10 + 2];
+    int len = 0;
+    uint32_t m[LITERAL_LIMBS];
+    memcpy(m, v->magnitude, sizeof(m));
+    uint32_t ten[LITERAL_LIMBS] = {10};
+    do {
+        uint32_t quotient[LITERAL_LIMBS], remainder[LITERAL_LIMBS];
+        magnitude_divide(m, ten, quotient, remainder);
+        digits[len++] = (char)('0' + remainder[0]);
+        memcpy(m, quotient, sizeof(m));
+    } while (!magnitude_is_zero(m));
+    char text[LITERAL_LIMBS * 10 + 3];
+    int pos = 0;
+    if (v->negative) text[pos++] = '-';
+    while (len > 0) text[pos++] = digits[--len];
+    text[pos] = '\0';
+    return typechecker_format(checker, "%s", text);
+}
+
+/* The shortest decimal text that reads back as `d`. */
+static char *decimal_text(TypeChecker *checker, double d) {
+    char buf[64];
+    for (int digits = 1; digits <= 17; digits++) {
+        snprintf(buf, sizeof(buf), "%.*g", digits, d);
+        if (strtod(buf, NULL) == d) break;
+    }
+    return typechecker_format(checker, "%s", buf);
+}
+
+static char *literal_text(TypeChecker *checker, const LiteralValue *v) {
+    if (v->is_decimal) return decimal_text(checker, v->decimal);
+    return literal_integer_text(checker, v);
+}
+
+/* The inclusive range of a sized integer type as decimal text. */
+static bool integer_type_range(const char *name, const char **min, const char **max) {
+    static const struct { const char *name, *min, *max; } ranges[] = {
+        {"i8",   "-128", "127"},
+        {"i16",  "-32768", "32767"},
+        {"i32",  "-2147483648", "2147483647"},
+        {"i64",  "-9223372036854775808", "9223372036854775807"},
+        {"i128", "-170141183460469231731687303715884105728",
+                 "170141183460469231731687303715884105727"},
+        {"i256", "-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+                 "57896044618658097711785492504343953926634992332820282019728792003956564819967"},
+        {"u8",   "0", "255"},
+        {"u16",  "0", "65535"},
+        {"u32",  "0", "4294967295"},
+        {"u64",  "0", "18446744073709551615"},
+        {"u128", "0", "340282366920938463463374607431768211455"},
+        {"u256", "0", "115792089237316195423570985008687907853269984665640564039457584007913129639935"},
+    };
+    for (size_t i = 0; i < sizeof(ranges) / sizeof(ranges[0]); i++) {
+        if (name && strcmp(name, ranges[i].name) == 0) {
+            *min = ranges[i].min;
+            *max = ranges[i].max;
+            return true;
         }
     }
     return false;
 }
 
-/* A non-literal integer value used where the other signedness is expected
- * reinterprets the bits — a negative becomes a huge positive, a large unsigned
- * becomes negative — and needs an explicit cast in either direction. var-decl,
- * reassignment, and return check this for their own value position; this
- * consolidates it so call arguments, array elements, struct fields, and map
- * values are covered too. Literals are skipped — their value is range-checked
- * separately (a negative literal to an unsigned type is its own error). `pos` anchors the
- * diagnostic. E3019 covers a signedness crossing in either direction
- * (matching what reassignment already emits for each direction). A
- * value-preserving unsigned -> wider-signed widening is left implicit. */
-static void check_signedness_crossing(TypeChecker *checker,
-                                      const char *expected_tn,
-                                      AstNode *value, GrayType *value_t,
-                                      AstNode *pos) {
-    if (!expected_tn || !value_t || !value_t->name || !pos) return;
-    int64_t lit;
-    if (value && try_get_literal_int(value, &lit)) return;
-    if (is_unsigned_type(expected_tn) && is_signed_int_type(value_t->name)) {
-        diagnostic_error_code_formatted(checker->diag, "E3019",
-            NODE_FILE(checker, pos), pos->token.line, pos->token.column, 0,
-            value_t->name, expected_tn);
-    } else if (is_signed_int_type(expected_tn) && is_unsigned_type(value_t->name) &&
-               !unsigned_widens_to_signed(expected_tn, value_t->name)) {
-        diagnostic_error_message(checker->diag, "E3019",
-            typechecker_format(checker,
-                "type mismatch: cannot assign unsigned type '%s' to signed type '%s'; use cast(value, %s) to convert explicitly",
-                value_t->name, expected_tn, expected_tn),
-            NODE_FILE(checker, pos), pos->token.line, pos->token.column, 0);
+/* Bits in a sized integer type name; 0 for anything else. */
+static int integer_type_bits(const char *name) {
+    int rank = int_type_name_rank(name);
+    return rank ? 4 << rank : 0;
+}
+
+/* True when the folded value `v` fits the number type `target`. */
+static bool literal_fits(const LiteralValue *v, GrayType *target) {
+    if (target->kind == TK_FLOAT) {
+        double d = literal_as_double(v);
+        double limit = strcmp(target->name, "f32") == 0 ? (double)FLT_MAX : DBL_MAX;
+        return !v->too_large && isfinite(d) && fabs(d) <= limit;
     }
+    if (v->is_decimal || v->too_large) return false;
+    int bits = integer_type_bits(target->name);
+    int length = magnitude_bit_length(v->magnitude);
+    if (target->kind == TK_UINT) return !v->negative && length <= bits;
+    if (!v->negative) return length <= bits - 1;
+    /* -2^(bits-1) is the one negative value whose magnitude needs `bits`. */
+    return length < bits || (length == bits && magnitude_is_power_of_two(v->magnitude, bits - 1));
+}
+
+/* True when the folded integer `v` fits some integer type: i256 below zero,
+ * u256 otherwise. */
+static bool literal_fits_some_integer(const LiteralValue *v) {
+    if (v->too_large) return false;
+    int length = magnitude_bit_length(v->magnitude);
+    if (!v->negative) return length <= 256;
+    return length < 256 || (length == 256 && magnitude_is_power_of_two(v->magnitude, 255));
+}
+
+/* The value of a constant integer literal expression that fits in i64. */
+static bool literal_int_value(AstNode *node, int64_t *out) {
+    LiteralValue v;
+    if (!is_literal_expr(node) || !literal_fold(node, &v) || v.is_decimal || v.too_large ||
+        magnitude_bit_length(v.magnitude) > 63)
+        return false;
+    uint64_t magnitude = (uint64_t)v.magnitude[0] | ((uint64_t)v.magnitude[1] << 32);
+    *out = v.negative ? -(int64_t)magnitude : (int64_t)magnitude;
+    return true;
+}
+
+/* Record `type` on every node of the literal expression `node`, and its
+ * folded value on every node that is a constant. Returns true, with *value
+ * set, when `node` itself is a constant. */
+static bool literal_take_type(TypeChecker *checker, AstNode *node, GrayType *type,
+                              LiteralValue *value) {
+    bool constant = literal_fold(node, value);
+    if (checker->suppress_typetable_writes) return constant;
+    typetable_set(checker->type_table, node, type);
+    node->folded_literal = constant ? literal_text(checker, value) : NULL;
+    LiteralValue part;
+    if (node->kind == NODE_PREFIX_EXPR) {
+        literal_take_type(checker, node->data.prefix.right, type, &part);
+    } else if (node->kind == NODE_INFIX_EXPR) {
+        literal_take_type(checker, node->data.infix.left, type, &part);
+        bool is_shift = node->data.infix.op == TOK_BIT_SHIFT_LEFT ||
+                        node->data.infix.op == TOK_BIT_SHIFT_RIGHT;
+        /* A shift count is not part of the shifted value; a literal count
+         * stays i64 whatever the value's type. */
+        if (!is_shift)
+            literal_take_type(checker, node->data.infix.right, type, &part);
+        else if (is_literal_expr(node->data.infix.right))
+            literal_take_type(checker, node->data.infix.right, &TYPE_I64, &part);
+    }
+    return constant;
+}
+
+static void literal_mark_pending(TypeChecker *checker, AstNode *node) {
+    if (checker->pending_literal_count == checker->pending_literal_cap) {
+        checker->pending_literal_cap = checker->pending_literal_cap ? checker->pending_literal_cap * 2 : 16;
+        checker->pending_literals = xrealloc(checker->pending_literals,
+            sizeof(AstNode *) * (size_t)checker->pending_literal_cap);
+    }
+    checker->pending_literals[checker->pending_literal_count++] = node;
+}
+
+/* Give every literal expression read since `start` without taking a type its
+ * default type: i64, or f64 for a decimal literal. The latest first, so an
+ * enclosing expression is typed as a whole before any part of it is. */
+static void literal_flush_pending(TypeChecker *checker, int start) {
+    for (int i = checker->pending_literal_count - 1; i >= start; i--) {
+        AstNode *node = checker->pending_literals[i];
+        GrayType *t = typetable_get(checker->type_table, node);
+        if (!t || t->kind == TK_LITERAL) check_expr_as(checker, node, NULL);
+    }
+    checker->pending_literal_count = start;
+}
+
+static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node);
+
+/* The type of `node`, which stays TK_LITERAL for a number literal expression
+ * that has not taken a type yet. Contexts that can give a literal its type
+ * (check_expr_as, binary operators, casts) resolve through this. */
+static GrayType *resolve_untyped(TypeChecker *checker, AstNode *node) {
+    if (!node) return &TYPE_UNKNOWN;
+    if (!is_literal_expr(node)) return resolve_expression_inner(checker, node);
+    GrayType *cached = typetable_get(checker->type_table, node);
+    if (cached && cached->kind != TK_LITERAL && !checker->suppress_typetable_writes)
+        return cached;
+    GrayType *t = resolve_expression_inner(checker, node);
+    if (t->kind == TK_UNKNOWN) return t;
+    return literal_expr_is_decimal(node) ? &TYPE_LITERAL_DECIMAL : &TYPE_LITERAL_INT;
+}
+
+/* The type of `node`. A number literal expression read here, where nothing
+ * gives it a type, is reported as its default type and takes that type when
+ * its statement finishes, unless a context types it first. */
+static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
+    GrayType *t = resolve_untyped(checker, node);
+    if (t->kind != TK_LITERAL) return t;
+    if (!checker->suppress_typetable_writes) literal_mark_pending(checker, node);
+    return t->is_decimal ? &TYPE_F64 : &TYPE_I64;
+}
+
+static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr);
+static void reject_void_in_context(TypeChecker *checker, AstNode *expr, GrayType *t, const char *context);
+
+/* True when an element of type `actual` cannot be stored as `expected` in an
+ * array or map literal. A narrowing or signedness-crossing number has been
+ * reported by check_expr_as already. */
+static bool literal_entry_mismatches(TypeChecker *checker, GrayType *expected, GrayType *actual) {
+    if (!expected || !actual || expected->kind == TK_UNKNOWN || actual->kind == TK_UNKNOWN ||
+        actual->kind == TK_VOID)
+        return false;
+    if (expected->kind == TK_ENUM && is_int_kind(actual->kind)) return false;
+    if (expected->kind == TK_POINTER && actual->kind == TK_POINTER)
+        return expected->element_type && actual->element_type &&
+               strcmp(expected->element_type, actual->element_type) != 0;
+    if (expected->kind == TK_ENUM && actual->kind == TK_ENUM)
+        return expected->name && actual->name &&
+               !typechecker_same_enum_type(checker, expected->name, actual->name);
+    return !types_assignable(checker, expected, actual);
+}
+
+/* E12006: a map literal that repeats a key. */
+static void check_map_literal_duplicate_keys(TypeChecker *checker, AstNode *node) {
+    for (int i = 0; i < node->data.map_value.count; i++) {
+        AstNode *ki = node->data.map_value.keys[i];
+        for (int j = i + 1; j < node->data.map_value.count; j++) {
+            AstNode *kj = node->data.map_value.keys[j];
+            bool dup = false;
+            if (ki->kind == NODE_STRING_VALUE && kj->kind == NODE_STRING_VALUE &&
+                strcmp(ki->data.string_value.value, kj->data.string_value.value) == 0) {
+                dup = true;
+            } else if (ki->kind == NODE_INT_VALUE && kj->kind == NODE_INT_VALUE &&
+                ki->data.int_value.value == kj->data.int_value.value) {
+                dup = true;
+            }
+            if (dup) {
+                diagnostic_error_code(checker->diag, "E12006", NODE_FILE(checker, kj), kj->token.line, kj->token.column, 0);
+            }
+        }
+    }
+}
+
+/* An array literal stored into a slot of array type `target`: each element is
+ * checked as the element type. E3053 for an element of another type. */
+static GrayType *check_array_literal_as(TypeChecker *checker, AstNode *node, GrayType *target) {
+    GrayType *elem_t = typechecker_type_from_name(checker, target->element_type);
+    for (int i = 0; i < node->data.array_value.count; i++) {
+        AstNode *el = node->data.array_value.elements[i];
+        GrayType *et = check_expr_as(checker, el, elem_t);
+        reject_multi_return_in_single_position(checker, el);
+        if (literal_entry_mismatches(checker, elem_t, et)) {
+            diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, el),
+                el->token.line, el->token.column, 0,
+                type_display_name(checker, elem_t), type_display_name(checker, et));
+        }
+    }
+    if (!checker->suppress_typetable_writes) typetable_set(checker->type_table, node, target);
+    return target;
+}
+
+/* A map literal stored into a slot of map type `target`: each key and value
+ * is checked as the key and value type. E3053 for an entry of another type. */
+static GrayType *check_map_literal_as(TypeChecker *checker, AstNode *node, GrayType *target) {
+    GrayType *key_t = typechecker_type_from_name(checker, target->key_type);
+    GrayType *val_t = typechecker_type_from_name(checker, target->value_type);
+    for (int i = 0; i < node->data.map_value.count; i++) {
+        AstNode *kn = node->data.map_value.keys[i];
+        AstNode *vn = node->data.map_value.values[i];
+        GrayType *kt = check_expr_as(checker, kn, key_t);
+        GrayType *vt = check_expr_as(checker, vn, val_t);
+        reject_void_in_context(checker, kn, kt, "map key");
+        reject_void_in_context(checker, vn, vt, "map value");
+        reject_multi_return_in_single_position(checker, kn);
+        reject_multi_return_in_single_position(checker, vn);
+        if (literal_entry_mismatches(checker, key_t, kt)) {
+            char *msg = typechecker_format(checker,
+                "type mismatch in map literal key; expected '%s', got '%s'",
+                type_display_name(checker, key_t), type_display_name(checker, kt));
+            tc_err_at(checker, "E3053", kn, msg);
+        }
+        if (literal_entry_mismatches(checker, val_t, vt)) {
+            char *msg = typechecker_format(checker,
+                "type mismatch in map literal value; expected '%s', got '%s'",
+                type_display_name(checker, val_t), type_display_name(checker, vt));
+            tc_err_at(checker, "E3053", vn, msg);
+        }
+    }
+    check_map_literal_duplicate_keys(checker, node);
+    if (!checker->suppress_typetable_writes) typetable_set(checker->type_table, node, target);
+    return target;
+}
+
+/* Check `value` as a value stored into a slot of type `target`. A number
+ * literal takes the slot's type, and E3036 reports one that does not fit it.
+ * An array or map literal passes the element, key and value types down to
+ * each entry. Any other number converts under type_conversion: E3155 when it
+ * narrows, E3019 when it crosses signedness. A mismatch of any other kind is
+ * left to the caller, which reports it with its own code. A NULL or unknown
+ * `target` gives a literal its default type. Returns the value's type.
+ *
+ * This is the only function that emits E3019, E3036 and E3155. */
+static GrayType *check_expr_as(TypeChecker *checker, AstNode *value, GrayType *target) {
+    if (!value) return &TYPE_UNKNOWN;
+    bool typed_target = target && target->kind != TK_UNKNOWN && target->kind != TK_LITERAL;
+
+    if (is_literal_expr(value)) {
+        GrayType *literal_t = resolve_untyped(checker, value);
+        if (literal_t->kind == TK_UNKNOWN) return literal_t;
+        bool decimal = literal_expr_is_decimal(value);
+        GrayType *take = decimal ? &TYPE_F64 : &TYPE_I64;
+        if (typed_target && type_kind_is_number(target->kind) &&
+            (!decimal || target->kind == TK_FLOAT))
+            take = target;
+        LiteralValue folded;
+        if (literal_take_type(checker, value, take, &folded) && !literal_fits(&folded, take)) {
+            char *text = literal_text(checker, &folded);
+            const char *min = NULL, *max = NULL;
+            if (!folded.is_decimal && !literal_fits_some_integer(&folded)) {
+                diagnostic_error_code_formatted(checker->diag, "E3046", NODE_FILE(checker, value),
+                    value->token.line, value->token.column, 0, text);
+            } else if (take->kind == TK_FLOAT) {
+                double limit = strcmp(take->name, "f32") == 0 ? (double)FLT_MAX : DBL_MAX;
+                char *max_text = decimal_text(checker, limit);
+                tc_err_at(checker, "E3036", value, typechecker_format(checker,
+                    "value %s is out of range for type '%s' (valid range: -%s to %s)",
+                    text, take->name, max_text, max_text));
+            } else if (integer_type_range(take->name, &min, &max)) {
+                tc_err_at(checker, "E3036", value, take->kind == TK_UINT && folded.negative
+                    ? typechecker_format(checker,
+                        "value %s is out of range for type '%s'; unsigned types cannot hold negative values (valid range: 0 to %s)",
+                        text, take->name, max)
+                    : typechecker_format(checker,
+                        "value %s is out of range for type '%s' (valid range: %s to %s)",
+                        text, take->name, min, max));
+            }
+        }
+        return take;
+    }
+
+    GrayType *saved_expected = checker->expected_type;
+    if (typed_target) checker->expected_type = target;
+    GrayType *t;
+    if (typed_target && value->kind == NODE_ARRAY_VALUE && target->kind == TK_ARRAY && target->element_type)
+        t = check_array_literal_as(checker, value, target);
+    else if (typed_target && value->kind == NODE_MAP_VALUE && target->kind == TK_MAP &&
+             target->key_type && target->value_type)
+        t = check_map_literal_as(checker, value, target);
+    else
+        t = resolve_expression(checker, value);
+    checker->expected_type = saved_expected;
+
+    if (typed_target && t && type_kind_is_number(t->kind) && type_kind_is_number(target->kind)) {
+        Conversion conversion = type_conversion(t, target);
+        /* A wide integer has no implicit C conversion; codegen converts a
+         * value widened into one. */
+        if (conversion == CONV_WIDEN && is_bigint_type(target->name) &&
+            !checker->suppress_typetable_writes)
+            value->widen_to = target->name;
+        if (conversion == CONV_NARROW) {
+            diagnostic_error_code_formatted(checker->diag, "E3155", NODE_FILE(checker, value),
+                value->token.line, value->token.column, 0, t->name, target->name, target->name);
+        } else if (conversion == CONV_SIGN_CROSS) {
+            diagnostic_error_code_formatted(checker->diag, "E3019", NODE_FILE(checker, value),
+                value->token.line, value->token.column, 0, t->name, target->name);
+        }
+    }
+    return t;
 }
 
 /* Register a file-scope const integer value for later constant folding. */
@@ -5548,105 +6251,9 @@ static void typechecker_check_const_domain(TypeChecker *checker, const char *mod
     }
 }
 
-/* Like try_get_literal_int, but also reports whether the literal is a
- * genuinely negative value, as opposed to a large non-negative magnitude in
- * (INT64_MAX, UINT64_MAX] whose int64 bit pattern only looks negative. A bare
- * NODE_INT_VALUE always holds a magnitude (the parser stores the `-` sign as a
- * prefix expression), so only folded expressions and unary-minus can be
- * negative. */
-static bool try_get_signed_literal_int(AstNode *node, int64_t *out, bool *is_negative) {
-    if (!try_get_literal_int(node, out)) return false;
-    *is_negative = (node && node->kind == NODE_INT_VALUE) ? false : (*out < 0);
-    return true;
-}
-
-/* Check if a literal integer value fits in the declared sized type.
- * Returns true if an error was emitted.
- *
- * value carries the parsed bit pattern; value_is_negative distinguishes a
- * true negative from a non-negative magnitude whose top bit is set (a literal
- * above INT64_MAX). For unsigned targets the magnitude is compared as
- * uint64_t so UINT64_MAX itself is accepted by u64. */
-static bool check_integer_range(DiagnosticList *diag, const char *file,
-    int line, int col, const char *type_name_str, int64_t value,
-    bool value_is_negative) {
-    int64_t min_val = 0, max_val = 0;
-    bool is_unsigned = false;
-    bool is_u64 = false;
-    const char *wide_max = NULL;
-
-    if (strcmp(type_name_str, "i8") == 0)        { min_val = -128; max_val = 127; }
-    else if (strcmp(type_name_str, "i16") == 0)   { min_val = -32768; max_val = 32767; }
-    else if (strcmp(type_name_str, "i32") == 0)   { min_val = -2147483648LL; max_val = 2147483647; }
-    else if (strcmp(type_name_str, "u8") == 0)    { min_val = 0; max_val = 255; is_unsigned = true; }
-    else if (strcmp(type_name_str, "u16") == 0)   { min_val = 0; max_val = 65535; is_unsigned = true; }
-    else if (strcmp(type_name_str, "u32") == 0)   { min_val = 0; max_val = 4294967295LL; is_unsigned = true; }
-    else if (strcmp(type_name_str, "u64") == 0)   { is_unsigned = true; is_u64 = true; }
-    /* u128/u256: every non-negative int64 literal fits; only a negative one
-     * is out of range (the >64-bit-magnitude case is handled separately by
-     * the E3046 overflow check, which already excludes bigint types). */
-    else if (strcmp(type_name_str, "u128") == 0)  { is_unsigned = true; is_u64 = true;
-        wide_max = "340282366920938463463374607431768211455"; }
-    else if (strcmp(type_name_str, "u256") == 0)  { is_unsigned = true; is_u64 = true;
-        wide_max = "115792089237316195423570985008687907853269984665640564039457584007913129639935"; }
-    else return false; /* not a range-checked type */
-
-    bool out_of_range;
-    if (is_u64) {
-        out_of_range = value_is_negative; /* 0..max all fit */
-    } else if (value_is_negative) {
-        out_of_range = is_unsigned || value < min_val;
-    } else {
-        out_of_range = (uint64_t)value > (uint64_t)max_val;
-    }
-    if (!out_of_range) return false;
-
-    char valbuf[24];
-    if (value_is_negative)
-        snprintf(valbuf, sizeof(valbuf), "%lld", (long long)value);
-    else
-        snprintf(valbuf, sizeof(valbuf), "%llu", (unsigned long long)value);
-
-    char range_hi[80];
-    if (wide_max)
-        snprintf(range_hi, sizeof(range_hi), "%s", wide_max);
-    else if (is_u64)
-        snprintf(range_hi, sizeof(range_hi), "%llu", (unsigned long long)UINT64_MAX);
-    else
-        snprintf(range_hi, sizeof(range_hi), "%lld", (long long)max_val);
-
-    char msg[MSG_BUF_SIZE];
-    if (is_unsigned && value_is_negative) {
-        snprintf(msg, sizeof(msg),
-            "value %s is out of range for type '%s'; unsigned types cannot hold negative values (valid range: 0 to %s)",
-            valbuf, type_name_str, range_hi);
-    } else {
-        snprintf(msg, sizeof(msg),
-            "value %s is out of range for type '%s' (valid range: %lld to %s)",
-            valbuf, type_name_str, (long long)min_val, range_hi);
-    }
-    diagnostic_error_message(diag, "E3036", strdup(msg), file, line, col, 0);
-    return true;
-}
-
-/* E3036 for a literal argument whose value cannot fit the parameter's
- * sized-integer type. Call-argument position was the one spot the range
- * check was never wired into, unlike var-decls, return, struct-literal
- * fields, map values and array elements. */
-static void check_arg_integer_range(TypeChecker *checker, AstNode *arg,
-    const char *param_type_name) {
-    if (!arg || !param_type_name) return;
-    int64_t v;
-    bool neg;
-    if (try_get_signed_literal_int(arg, &v, &neg))
-        check_integer_range(checker->diag, NODE_FILE(checker, arg),
-            arg->token.line, arg->token.column, param_type_name, v, neg);
-}
-
-/* binary.encode_<T>[_le|_be](val T): the argument is checked like a
- * parameter of type T. E3019 for a signedness crossing, E3036 for an
- * out-of-range literal; a narrowing value is range-checked in codegen. The
- * 128/256-bit encoders take their wide type through their own path. */
+/* binary.encode_<T>[_le|_be](val T): the argument is checked as a value of
+ * type T. The 128/256-bit encoders take their wide type through their own
+ * path. */
 static void typechecker_check_binary_encode_arg(TypeChecker *checker, const char *fn, AstNode *node) {
     static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64" };
     if (strncmp(fn, "encode_", 7) != 0 || node->data.call.arg_count != 1) return;
@@ -5654,10 +6261,7 @@ static void typechecker_check_binary_encode_arg(TypeChecker *checker, const char
     size_t type_len = strcspn(type_start, "_");
     for (size_t i = 0; i < sizeof(value_types) / sizeof(value_types[0]); i++) {
         if (strlen(value_types[i]) == type_len && strncmp(type_start, value_types[i], type_len) == 0) {
-            AstNode *arg = node->data.call.args[0];
-            check_signedness_crossing(checker, value_types[i], arg,
-                resolve_expression(checker, arg), arg);
-            check_arg_integer_range(checker, arg, value_types[i]);
+            check_expr_as(checker, node->data.call.args[0], type_from_name(value_types[i]));
             return;
         }
     }
@@ -5980,42 +6584,6 @@ static void reject_non_json_parse_target(TypeChecker *checker, AstNode *node,
 
 /* maps module calls whose return type depends on the arguments. Returns
  * `result` (the table-driven type) unless the arguments refine it. */
-/* math.abs / math.neg: (n T) -> T, so the result stays in the argument's
- * range and negating it overflow-checks at that width, like `-n`. neg of an
- * unsigned value is rejected the same way `-n` is. */
-static GrayType *resolve_math_abs_neg(TypeChecker *checker, AstNode *node, const char *mfn) {
-    AstNode *arg0 = node->data.call.args[0];
-    GrayType *arg_t = resolve_expression(checker, arg0);
-    if (strcmp(mfn, "neg") == 0 && arg_t && arg_t->name && is_unsigned_type(arg_t->name))
-        diagnostic_error_code_formatted(checker->diag, "E3096", NODE_FILE(checker, arg0),
-            arg0->token.line, arg0->token.column, 0, arg_t->name);
-    if (arg_t && (arg_t->kind == TK_INT || arg_t->kind == TK_UINT || arg_t->kind == TK_FLOAT))
-        return arg_t;
-    return &TYPE_I64;
-}
-
-/* math.min / max / clamp: (a T, b T...) -> T. T is the type of the first
- * argument that is not a numeric literal, so a literal argument takes the
- * other arguments' type (math.max(small_i8, 3) is i8). With only literal
- * arguments, T is the literals' default type. */
-static GrayType *resolve_math_min_max_clamp(TypeChecker *checker, AstNode *node) {
-    GrayType *literal_type = NULL;
-    for (int i = 0; i < node->data.call.arg_count; i++) {
-        AstNode *arg = node->data.call.args[i];
-        GrayType *arg_t = resolve_expression(checker, arg);
-        if (!arg_t || (arg_t->kind != TK_INT && arg_t->kind != TK_UINT && arg_t->kind != TK_FLOAT))
-            continue;
-        AstNode *unsigned_arg = (arg->kind == NODE_PREFIX_EXPR && arg->data.prefix.op == TOK_MINUS)
-            ? arg->data.prefix.right : arg;
-        if (unsigned_arg->kind == NODE_INT_VALUE || unsigned_arg->kind == NODE_FLOAT_VALUE) {
-            if (!literal_type || arg_t->kind == TK_FLOAT) literal_type = arg_t;
-            continue;
-        }
-        return arg_t;
-    }
-    return literal_type ? literal_type : &TYPE_I64;
-}
-
 static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
     if (strcmp(mfn, "get_keys") == 0) {
         if (node->data.call.arg_count > 0) {
@@ -6118,66 +6686,6 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
  * callback checks for map/filter/reduce and friends. Returns `result` (the
  * table-driven type) unless the arguments refine it. */
 static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
-    /* Context-dependent array return types */
-    if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
-        strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
-        strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
-        strcmp(mfn, "rotate") == 0) {
-        if (node->data.call.arg_count > 0) {
-            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-            result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("i64");
-        } else {
-            result = type_array("i64");
-        }
-    } else if (strcmp(mfn, "flatten") == 0) {
-        if (node->data.call.arg_count > 0) {
-            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-            if (arr_t && arr_t->element_type) {
-                GrayType *inner = type_from_name(arr_t->element_type);
-                if (inner && inner->kind == TK_ARRAY && inner->element_type)
-                    result = type_array(inner->element_type);
-                else
-                    result = type_array(arr_t->element_type);
-            } else {
-                result = type_array("i64");
-            }
-        } else {
-            result = type_array("i64");
-        }
-    } else if (strcmp(mfn, "split_every") == 0 || strcmp(mfn, "pair") == 0) {
-        /* [[T]] for the element type T of the input array. */
-        result = type_array("[i64]");
-        if (node->data.call.arg_count > 0) {
-            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-            if (arr_t && arr_t->element_type) {
-                char chunk[MSG_BUF_SIZE];
-                snprintf(chunk, sizeof(chunk), "[%s]", arr_t->element_type);
-                result = type_array(arena_copy_string(checker->arena, chunk));
-            }
-        }
-    } else if (strcmp(mfn, "get_first") == 0 || strcmp(mfn, "get_last") == 0 ||
-               strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "remove_first") == 0 ||
-               strcmp(mfn, "reduce") == 0) {
-        if (node->data.call.arg_count > 0) {
-            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-            result = (arr_t && arr_t->element_type) ? type_from_name(arr_t->element_type) : &TYPE_I64;
-        } else {
-            result = &TYPE_I64;
-        }
-    } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
-               strcmp(mfn, "get_max") == 0) {
-        /* An integer or float array yields its own element type; a char or
-         * integer-backed enum array folds to i64. */
-        result = &TYPE_I64;
-        if (node->data.call.arg_count > 0) {
-            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-            if (arr_t && arr_t->element_type) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (elem_t->kind == TK_INT || elem_t->kind == TK_UINT || elem_t->kind == TK_FLOAT)
-                    result = elem_t;
-            }
-        }
-    }
     /* E5007: mutating array functions on const array */
     if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "insert_at") == 0 ||
          strcmp(mfn, "remove") == 0 || strcmp(mfn, "remove_at") == 0 ||
@@ -6229,93 +6737,13 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             ? member_expr_fixed_array_field_size(checker, arg0) : 0;
         if (fixed_size > 0) {
             int64_t count_lit;
-            bool count_neg;
-            bool count_matches = try_get_signed_literal_int(node->data.call.args[2], &count_lit, &count_neg) &&
-                !count_neg && count_lit == fixed_size;
+            bool count_matches = literal_int_value(node->data.call.args[2], &count_lit) &&
+                count_lit == fixed_size;
             if (!count_matches) {
                 diagnostic_error_code_formatted(checker->diag, "E5051",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     mfn, arg0->data.member.member);
             }
-        }
-    }
-    /* E5026: arrays.append/prepend/insert_at element type mismatch */
-    {
-        AstNode *val_node = NULL;
-        const char *op_name = NULL;
-        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0) &&
-            node->data.call.arg_count >= 2) {
-            val_node = node->data.call.args[1];
-            op_name = mfn;
-        } else if (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 3) {
-            val_node = node->data.call.args[2];
-            op_name = "insert_at";
-        }
-        if (val_node && op_name) {
-            AstNode *arr_arg = node->data.call.args[0];
-            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
-            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
-            GrayType *val_t = resolve_expression(checker, val_node);
-            if (arr_t && arr_t->kind != TK_ARRAY && arr_t->kind != TK_UNKNOWN) {
-                char *msg = typechecker_format(checker,
-                    "'arrays.%s()' expects an array as the first argument, got '%s'",
-                    op_name, type_name(arr_t));
-                tc_err_arg_type(checker, arr_arg, msg);
-            } else if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-                val_t && val_t->kind != TK_UNKNOWN) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
-                    !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
-                    char *msg = typechecker_format(checker,
-                        "type mismatch in 'arrays.%s()'; cannot add '%s' to array of '%s'",
-                        op_name, type_name(val_t), arr_t->element_type);
-                    tc_err_arg_type(checker, val_node, msg);
-                } else if (is_int_kind(elem_t->kind) && is_int_kind(val_t->kind)) {
-                    /* A narrow element slot must reject an oversized value the
-                     * same way `xs[i] = value` does: E3036 for an out-of-range
-                     * literal, E3019 for a signedness crossing. */
-                    int64_t lit_val;
-                    bool lit_neg;
-                    if (try_get_signed_literal_int(val_node, &lit_val, &lit_neg)) {
-                        check_integer_range(checker->diag, NODE_FILE(checker, val_node),
-                            val_node->token.line, val_node->token.column,
-                            arr_t->element_type, lit_val, lit_neg);
-                    }
-                    check_signedness_crossing(checker, arr_t->element_type,
-                        val_node, val_t, val_node);
-                }
-            }
-        }
-    }
-    /* E5026: arrays.binary_search value type must match element type */
-    if (strcmp(mfn, "binary_search") == 0 && node->data.call.arg_count >= 2) {
-        AstNode *arr_arg = node->data.call.args[0];
-        AstNode *val_node = node->data.call.args[1];
-        GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
-        if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
-        GrayType *val_t = resolve_expression(checker, val_node);
-        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-            val_t && val_t->kind != TK_UNKNOWN) {
-            GrayType *elem_t = type_from_name(arr_t->element_type);
-            if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
-                !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch in 'arrays.binary_search()'; cannot search for '%s' in array of '%s'",
-                    type_name(val_t), arr_t->element_type);
-                tc_err_arg_type(checker, val_node, msg);
-            }
-        }
-    }
-    /* E5026: arrays.remove_at/insert_at index must be an integer */
-    if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
-        (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
-        AstNode *idx_node = node->data.call.args[1];
-        GrayType *idx_t = resolve_expression(checker, idx_node);
-        if (idx_t && idx_t->kind != TK_UNKNOWN && !is_int_kind(idx_t->kind)) {
-            char *msg = typechecker_format(checker,
-                "'arrays.%s()' expects an integer index, got '%s'",
-                mfn, type_name(idx_t));
-            tc_err_arg_type(checker, idx_node, msg);
         }
     }
     /* E9002: arrays.sum/min/max require numeric array. Same stricter
@@ -6385,34 +6813,9 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             }
         }
     }
-    /* E5026: arrays.concat element type mismatch */
-    if (strcmp(mfn, "concat") == 0 && node->data.call.arg_count >= 2) {
-        AstNode *a0 = node->data.call.args[0];
-        AstNode *a1 = node->data.call.args[1];
-        GrayType *t0 = typetable_get(checker->type_table, a0);
-        GrayType *t1 = typetable_get(checker->type_table, a1);
-        if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
-            t0->element_type && t1->element_type &&
-            strcmp(t0->element_type, t1->element_type) != 0) {
-            char *msg = typechecker_format(checker,
-                "type mismatch: cannot concat array of %s with array of %s",
-                t0->element_type, t1->element_type);
-            tc_err_arg_type(checker, a1, msg);
-        }
-    }
     if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
         AstNode *a0 = node->data.call.args[0];
-        AstNode *a1 = node->data.call.args[1];
         GrayType *t0 = typetable_get(checker->type_table, a0);
-        GrayType *t1 = typetable_get(checker->type_table, a1);
-        if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
-            t0->element_type && t1->element_type &&
-            strcmp(t0->element_type, t1->element_type) != 0) {
-            char *msg = typechecker_format(checker,
-                "type mismatch: cannot compare array of %s with array of %s",
-                t0->element_type, t1->element_type);
-            tc_err_at(checker, "E3156", a1, msg);
-        }
         if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
             GrayType *et = type_from_name(t0->element_type);
             if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
@@ -6785,7 +7188,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     /* Table-driven return type resolution: O(log n) bsearch */
     const StdlibFuncMeta *meta = find_stdlib_meta(mod, mfn);
     if (meta && meta->return_type) {
-        result = resolve_return_type(meta->return_type);
+        result = resolve_return_type(checker, meta, node);
     }
     /* Context-dependent return types (meta->return_type == NULL) */
     if (strcmp(mod, "mem") == 0) {
@@ -6819,33 +7222,12 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     } else if (strcmp(mod, "maps") == 0) {
         result = resolve_maps_call(checker, node, mfn, result);
     } else if (strcmp(mod, "math") == 0) {
-        if ((strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0) && node->data.call.arg_count > 0) {
-            result = resolve_math_abs_neg(checker, node, mfn);
-        } else if (strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
-                   strcmp(mfn, "clamp") == 0) {
-            result = resolve_math_min_max_clamp(checker, node);
-        }
-    } else if (strcmp(mod, "random") == 0) {
-        if (strcmp(mfn, "shuffle") == 0 || strcmp(mfn, "sample") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type)
-                    result = type_array(arr_t->element_type);
-                else
-                    result = type_array("i64");
-            } else {
-                result = type_array("i64");
-            }
-        } else if (strcmp(mfn, "choice") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type)
-                    result = type_from_name(arr_t->element_type);
-                else
-                    result = &TYPE_I64;
-            } else {
-                result = &TYPE_I64;
-            }
+        /* E3096: neg of an unsigned value has no result of its type. */
+        if (strcmp(mfn, "neg") == 0 && node->data.call.arg_count > 0 &&
+            result && result->name && is_unsigned_type(result->name)) {
+            AstNode *arg0 = node->data.call.args[0];
+            diagnostic_error_code_formatted(checker->diag, "E3096", NODE_FILE(checker, arg0),
+                arg0->token.line, arg0->token.column, 0, result->name);
         }
     } else if (strcmp(mod, "arrays") == 0) {
         result = resolve_arrays_call(checker, node, mfn, result);
@@ -7298,12 +7680,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             snprintf(callee, sizeof(callee), "%s.%s", display_mod, mfn);
             for (int argument_index = 0; argument_index < check_count; argument_index++) {
                 GrayType *param_t = sig->param_types[argument_index];
-                /* Set expected_type for implicit enum resolution */
-                GrayType *saved_expected_m = checker->expected_type;
-                if (param_t && param_t->kind == TK_ENUM && param_t->name)
-                    checker->expected_type = param_t;
-                GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
-                checker->expected_type = saved_expected_m;
+                GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], param_t);
                 bool arg_reported = false;
                 AstNode *arg_node = node->data.call.args[argument_index];
                 if (arg_type_mismatches(checker, param_t, arg_t)) {
@@ -7430,12 +7807,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 for (int argument_index = 0; argument_index < check_count; argument_index++) {
                     AstNode *arg = node->data.call.args[argument_index];
                     GrayType *param_t = sig->param_types[argument_index];
-                    /* Set expected_type for implicit enum resolution */
-                    GrayType *saved_expected_u = checker->expected_type;
-                    if (param_t && param_t->kind == TK_ENUM && param_t->name)
-                        checker->expected_type = param_t;
-                    GrayType *arg_t = resolve_expression(checker, arg);
-                    checker->expected_type = saved_expected_u;
+                    GrayType *arg_t = check_expr_as(checker, arg, param_t);
                     /* E3027: const or non-assignable passed to a mutable (&)
                      * param. The bare, struct-namespaced and triple-chain
                      * spellings all run this; the module-qualified loop did
@@ -7645,12 +8017,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         snprintf(callee, sizeof(callee), "%s.%s", display_sname, mfn);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
                             GrayType *param_t = ssig->param_types[argument_index];
-                            /* Set expected_type for implicit enum resolution */
-                            GrayType *saved_expected_s = checker->expected_type;
-                            if (param_t && param_t->kind == TK_ENUM && param_t->name)
-                                checker->expected_type = param_t;
-                            GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
-                            checker->expected_type = saved_expected_s;
+                            GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], param_t);
                             bool arg_reported = false;
                             AstNode *arg_node = node->data.call.args[argument_index];
                             if (arg_type_mismatches(checker, param_t, arg_t)) {
@@ -7670,20 +8037,6 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 arg_t->name && param_t->name &&
                                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
                                 report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "");
-                            }
-                            /* E3019: an argument that crosses signedness vs the
-                             * parameter needs a cast. resolve_call_expr's own
-                             * copy of this check could not see this call —
-                             * dispatch had not yet rewritten the object from
-                             * the instance label to the struct name. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
-                                check_signedness_crossing(checker,
-                                    ssig->decl->data.func_decl.params[argument_index].type_name,
-                                    node->data.call.args[argument_index], arg_t,
-                                    node->data.call.args[argument_index]);
-                                check_arg_integer_range(checker,
-                                    node->data.call.args[argument_index],
-                                    ssig->decl->data.func_decl.params[argument_index].type_name);
                             }
                         }
                     }
@@ -7786,25 +8139,11 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         char callee[MSG_BUF_SIZE];
                         snprintf(callee, sizeof(callee), "%s.%s", display_sname, mfn);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
-                            GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                             GrayType *param_t = ssig->param_types[argument_index];
+                            GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], param_t);
                             AstNode *arg_node = node->data.call.args[argument_index];
                             if (arg_type_mismatches(checker, param_t, arg_t)) {
                                 report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, NULL);
-                            }
-                            /* E3019: an argument that crosses signedness vs the
-                             * parameter needs a cast — same gap as the
-                             * is_self_func branch above.
-                             * E3036: literal argument out of range for a
-                             * sized-integer parameter. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
-                                check_signedness_crossing(checker,
-                                    ssig->decl->data.func_decl.params[argument_index].type_name,
-                                    node->data.call.args[argument_index], arg_t,
-                                    node->data.call.args[argument_index]);
-                                check_arg_integer_range(checker,
-                                    node->data.call.args[argument_index],
-                                    ssig->decl->data.func_decl.params[argument_index].type_name);
                             }
                         }
                     }
@@ -7995,91 +8334,15 @@ static bool try_get_static_array_length(TypeChecker *checker, AstNode *expr, int
     return false;
 }
 
-/* True when a map of `value_type` can be stored as `declared`: key and
- * value types match, or differ only by int-kind or float width coercion.
- * Int-to-float values coerce only for a map literal (`value_is_literal`),
- * not a map variable. */
-static bool map_types_coercible(GrayType *declared, GrayType *value_type, bool value_is_literal) {
+/* True when a map of type `value_type` can be stored as `declared`. A map
+ * never converts its keys or values: a map[string:i64] is not a
+ * map[string:u8]. A map literal takes the declared types itself. */
+static bool map_types_match(GrayType *declared, GrayType *value_type) {
     bool key_mismatch = declared->key_type && value_type->key_type &&
         strcmp(declared->key_type, value_type->key_type) != 0;
     bool val_mismatch = declared->value_type && value_type->value_type &&
         strcmp(declared->value_type, value_type->value_type) != 0;
-    if (key_mismatch) {
-        GrayType *dk = type_from_name(declared->key_type);
-        GrayType *vk = type_from_name(value_type->key_type);
-        if (dk && vk && ((is_int_kind(dk->kind) && is_int_kind(vk->kind)) ||
-                        (dk->kind == TK_FLOAT && vk->kind == TK_FLOAT) ||
-                        (dk->kind == TK_FLOAT && is_int_kind(vk->kind))))
-            key_mismatch = false;
-    }
-    if (val_mismatch) {
-        GrayType *dv = type_from_name(declared->value_type);
-        GrayType *vv = type_from_name(value_type->value_type);
-        if (dv && vv && ((is_int_kind(dv->kind) && is_int_kind(vv->kind)) ||
-                        (dv->kind == TK_FLOAT && vv->kind == TK_FLOAT) ||
-                        (value_is_literal && dv->kind == TK_FLOAT && is_int_kind(vv->kind))))
-            val_mismatch = false;
-    }
     return !key_mismatch && !val_mismatch;
-}
-
-/* Each element of array literal `arr`, stored as `elem_type`: E3019 when it
- * crosses signedness, E3046/E3036 when an integer literal doesn't fit. */
-static void check_array_literal_elements(TypeChecker *checker, const char *elem_type, AstNode *arr) {
-    bool elem_is_u64_like = strcmp(elem_type, "u64") == 0;
-    for (int element_index = 0; element_index < arr->data.array_value.count; element_index++) {
-        AstNode *el = arr->data.array_value.elements[element_index];
-        check_signedness_crossing(checker, elem_type, el, typetable_get(checker->type_table, el), el);
-        if (is_bigint_type(elem_type)) continue;
-        bool el_overflowed = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow);
-        bool el_overflowed_u64 = (el->kind == NODE_INT_VALUE && el->data.int_value.overflow_u64);
-        /* Element exceeds UINT64_MAX entirely; always an error. */
-        if (el_overflowed_u64) {
-            diagnostic_error_message(checker->diag, "E3046",
-                "integer literal overflows 64-bit integer; max value is 18446744073709551615",
-                NODE_FILE(checker, el), el->token.line, el->token.column, 0);
-            continue;
-        }
-        /* Element exceeds INT64_MAX but fits UINT64_MAX — fine for u64
-         * elements, error for narrower signed/unsigned and for i64. */
-        if (el_overflowed) {
-            if (!elem_is_u64_like) {
-                diagnostic_error_message(checker->diag, "E3046",
-                    "integer literal overflows 64-bit integer; max value is 9223372036854775807",
-                    NODE_FILE(checker, el), el->token.line, el->token.column, 0);
-            }
-            continue;
-        }
-        int64_t ev;
-        bool ev_neg;
-        if (try_get_signed_literal_int(el, &ev, &ev_neg)) {
-            check_integer_range(checker->diag, NODE_FILE(checker, el),
-                el->token.line, el->token.column,
-                elem_type, ev, ev_neg);
-        }
-    }
-}
-
-/* Each entry of map literal `map`, stored as `key_tn`:`val_tn`: E3019 when a
- * key or value crosses signedness, E3036 when an integer literal doesn't fit. */
-static void check_map_literal_entries(TypeChecker *checker, const char *key_tn, const char *val_tn,
-                                      AstNode *map) {
-    for (int entry_index = 0; entry_index < map->data.map_value.count; entry_index++) {
-        AstNode *key_node = map->data.map_value.keys[entry_index];
-        AstNode *value_node = map->data.map_value.values[entry_index];
-        check_signedness_crossing(checker, key_tn, key_node,
-            typetable_get(checker->type_table, key_node), key_node);
-        check_signedness_crossing(checker, val_tn, value_node,
-            typetable_get(checker->type_table, value_node), value_node);
-        int64_t literal_value;
-        bool literal_negative;
-        if (try_get_signed_literal_int(key_node, &literal_value, &literal_negative))
-            check_integer_range(checker->diag, NODE_FILE(checker, key_node),
-                key_node->token.line, key_node->token.column, key_tn, literal_value, literal_negative);
-        if (try_get_signed_literal_int(value_node, &literal_value, &literal_negative))
-            check_integer_range(checker->diag, NODE_FILE(checker, value_node),
-                value_node->token.line, value_node->token.column, val_tn, literal_value, literal_negative);
-    }
 }
 
 /* Shared W3003/E3052 length check for a fixed-size struct field ([T,N])
@@ -8833,7 +9096,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                strcmp(function_name, "sleep_ns") == 0) {
         /* Validate argument types for these builtins */
         if (strcmp(function_name, "exit") == 0 && node->data.call.arg_count >= 1) {
-            GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+            GrayType *at = check_expr_as(checker, node->data.call.args[0], &TYPE_I64);
             if (at->kind != TK_UNKNOWN && !is_int_kind(at->kind)) {
                 char *msg = typechecker_format(checker,
                     "'exit()' expects an integer argument, got '%s'", type_name(at));
@@ -8863,7 +9126,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
         } else if ((strcmp(function_name, "sleep_s") == 0 || strcmp(function_name, "sleep_ms") == 0 ||
                     strcmp(function_name, "sleep_ns") == 0) && node->data.call.arg_count >= 1) {
-            GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+            GrayType *at = check_expr_as(checker, node->data.call.args[0], &TYPE_I64);
             if (at->kind != TK_UNKNOWN && !is_int_kind(at->kind)) {
                 char *msg = typechecker_format(checker,
                     "'%s()' expects an integer argument, got '%s'", function_name, type_name(at));
@@ -8910,7 +9173,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         /* E7014: char() with a constant outside U+0000–U+10FFFF */
         int64_t lit_val;
-        if (try_get_literal_int(node->data.call.args[0], &lit_val) && (lit_val < 0 || lit_val > 0x10FFFF)) {
+        if (literal_int_value(node->data.call.args[0], &lit_val) && (lit_val < 0 || lit_val > 0x10FFFF)) {
             diagnostic_error_code_formatted(checker->diag, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)lit_val);
         }
         /* E5026: char() converts an integer codepoint; reject any non-integer
@@ -8925,8 +9188,12 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_CHAR;
     } else if (is_bigint_type(function_name) && node->data.call.arg_count == 1) {
+        /* A wide-integer conversion converts like a cast: a number literal
+         * takes the target type, any other value keeps its own. */
+        GrayType *src_t = is_literal_expr(node->data.call.args[0])
+            ? check_expr_as(checker, node->data.call.args[0], type_from_name(function_name))
+            : resolve_expression(checker, node->data.call.args[0]);
         /* E3043: validate source type is convertible to numeric */
-        GrayType *src_t = resolve_expression(checker, node->data.call.args[0]);
         if (src_t->kind == TK_ARRAY || src_t->kind == TK_MAP ||
             src_t->kind == TK_STRUCT || src_t->kind == TK_POINTER) {
             char *msg = typechecker_format(checker,
@@ -8936,7 +9203,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "only numeric, enum, and string conversions are supported");
         }
-        result = is_unsigned_type(function_name) ? &TYPE_U64 : &TYPE_I64;
+        result = type_from_name(function_name);
     } else if (strcmp(function_name, "string") == 0 && node->data.call.arg_count == 1) {
         /* E3043: validate source type is convertible to string */
         GrayType *src_t = resolve_expression(checker, node->data.call.args[0]);
@@ -9112,12 +9379,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 sig->decl->data.func_decl.params[argument_index].is_type_param)
                 continue;
             GrayType *param_t = sig->param_types[argument_index];
-            /* Set expected_type for implicit enum resolution */
-            GrayType *saved_expected = checker->expected_type;
-            if (param_t && param_t->kind == TK_ENUM && param_t->name)
-                checker->expected_type = param_t;
-            GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
-            checker->expected_type = saved_expected;
+            GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], param_t);
             if (is_generic_call) {
                 /* Generic branch already handled unification;
                  * suppress the scalar param/arg comparison which
@@ -9148,38 +9410,10 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
                 report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
             }
-            /* Bigint narrowing in call argument: i128 arg to i64 param, etc. */
-            if (arg_t->name && param_t->name) {
-                int ar = int_type_name_rank(arg_t->name);
-                int pr = int_type_name_rank(param_t->name);
-                if (ar >= 5 && pr > 0 && pr < ar) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s': cannot implicitly narrow '%s' to '%s'; use 'cast(value, %s)' to convert explicitly",
-                        argument_index + 1, function_name, arg_t->name, param_t->name, param_t->name);
-                    tc_err_at(checker, "E3155", node->data.call.args[argument_index], msg);
-                }
-            }
-            /* Array element type mismatch */
-            if (!arg_reported && arg_t->kind == TK_ARRAY && param_t->kind == TK_ARRAY &&
-                arg_t->element_type && param_t->element_type &&
-                !typechecker_same_array_element(checker, arg_t->element_type, param_t->element_type)) {
-                GrayType *ae = type_from_name(arg_t->element_type);
-                GrayType *pe = type_from_name(param_t->element_type);
-                if (!(ae && pe && is_int_kind(ae->kind) && is_int_kind(pe->kind)) &&
-                    !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
-                    report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
-                }
-            }
             /* Map key/value type mismatch */
-            if (!arg_reported && arg_t->kind == TK_MAP && param_t->kind == TK_MAP) {
-                bool key_mismatch = arg_t->key_type && param_t->key_type &&
-                    strcmp(arg_t->key_type, param_t->key_type) != 0;
-                bool val_mismatch = arg_t->value_type && param_t->value_type &&
-                    strcmp(arg_t->value_type, param_t->value_type) != 0;
-                if ((key_mismatch || val_mismatch) &&
-                    !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
-                    report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
-                }
+            if (!arg_reported && arg_t->kind == TK_MAP && param_t->kind == TK_MAP &&
+                !map_types_match(param_t, arg_t)) {
+                report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
             }
             /* E3066: typed-func signatures must match exactly */
             if (func_types_mismatch(arg_t, param_t)) {
@@ -9275,8 +9509,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     tc_err_arity(checker, node, msg);
                 } else {
                     for (int argument_index = 0; argument_index < ref_sig->param_count; argument_index++) {
-                        GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
                         GrayType *pt = ref_sig->param_types[argument_index];
+                        GrayType *at = check_expr_as(checker, node->data.call.args[argument_index], pt);
                         if (at && pt && at->kind != TK_UNKNOWN &&
                             pt->kind != TK_UNKNOWN &&
                             !types_assignable(checker, pt, at) &&
@@ -9332,8 +9566,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 } else {
                     for (int argument_index = 0; argument_index < sig->param_count; argument_index++) {
                         AstNode *arg = node->data.call.args[argument_index];
-                        GrayType *at = resolve_expression(checker, arg);
                         GrayType *pt = sig->param_types[argument_index] ? type_from_name(sig->param_types[argument_index]) : NULL;
+                        GrayType *at = check_expr_as(checker, arg, pt);
                         if (at && pt && at->kind != TK_UNKNOWN && pt->kind != TK_UNKNOWN &&
                             !types_assignable(checker, pt, at) &&
                             !(at->kind == TK_NIL &&
@@ -9391,56 +9625,6 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     }
                 }
             }
-            /* Check for math functions whose return type depends on argument */
-            if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0) &&
-                node->data.call.arg_count > 0) {
-                for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
-                    if (!using_module_accessible(checker, using_index)) continue;
-                    const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
-                    if (strcmp(real_mod, "math") == 0) {
-                        found_in_using = true;
-                        using_stdlib_mod = real_mod;
-                        result = resolve_math_abs_neg(checker, node, function_name);
-                        break;
-                    }
-                }
-            }
-            if (!found_in_using && (strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
-                strcmp(function_name, "clamp") == 0)) {
-                for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
-                    if (!using_module_accessible(checker, using_index)) continue;
-                    const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
-                    if (strcmp(real_mod, "math") == 0) {
-                        found_in_using = true;
-                        using_stdlib_mod = real_mod;
-                        result = resolve_math_min_max_clamp(checker, node);
-                        break;
-                    }
-                }
-            }
-            /* Random functions whose return type depends on argument */
-            if (!found_in_using && (strcmp(function_name, "choice") == 0 ||
-                strcmp(function_name, "shuffle") == 0 || strcmp(function_name, "sample") == 0)) {
-                for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
-                    if (!using_module_accessible(checker, using_index)) continue;
-                    const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
-                    if (strcmp(real_mod, "random") == 0) {
-                        found_in_using = true;
-                        using_stdlib_mod = real_mod;
-                        if (node->data.call.arg_count > 0) {
-                            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                            if (strcmp(function_name, "choice") == 0) {
-                                result = (arr_t && arr_t->element_type) ? type_from_name(arr_t->element_type) : &TYPE_I64;
-                            } else {
-                                result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("i64");
-                            }
-                        } else {
-                            result = (strcmp(function_name, "choice") == 0) ? &TYPE_I64 : type_array("i64");
-                        }
-                        break;
-                    }
-                }
-            }
             /* Maps functions whose return type depends on map key/value types */
             if (!found_in_using && (strcmp(function_name, "get_keys") == 0 || strcmp(function_name, "get_values") == 0)) {
                 for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
@@ -9472,7 +9656,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 if (umeta) {
                     found_in_using = true;
                     using_stdlib_mod = real_mod;
-                    result = umeta->return_type ? resolve_return_type(umeta->return_type) : &TYPE_UNKNOWN;
+                    result = umeta->return_type ? resolve_return_type(checker, umeta, node) : &TYPE_UNKNOWN;
                 }
                 /* 2) Try user-defined module */
                 if (!found_in_using) {
@@ -9757,21 +9941,18 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * from the function signature, which is resolved later. */
         if (node->data.call.args[i]->kind == NODE_IMPLICIT_ENUM)
             continue;
-        GrayType *ai_t = resolve_expression(checker, node->data.call.args[i]);
+        /* An array or map literal passed to a declared parameter takes the
+         * parameter's element types, so it is checked where the call is
+         * dispatched, against that parameter. */
+        if (callee_decl && i < callee_decl->data.func_decl.param_count &&
+            (node->data.call.args[i]->kind == NODE_ARRAY_VALUE ||
+             node->data.call.args[i]->kind == NODE_MAP_VALUE))
+            continue;
+        resolve_expression(checker, node->data.call.args[i]);
 
         /* E3040: a multi-return call cannot appear in single-value
          * argument position. Caller must destructure first. */
         reject_multi_return_in_single_position(checker, node->data.call.args[i]);
-
-        /* E3019: an argument that crosses signedness vs the parameter needs a cast.
-         * E3036: a literal argument out of range for a sized-integer parameter. */
-        if (callee_decl && i < callee_decl->data.func_decl.param_count) {
-            check_signedness_crossing(checker,
-                callee_decl->data.func_decl.params[i].type_name,
-                node->data.call.args[i], ai_t, node->data.call.args[i]);
-            check_arg_integer_range(checker, node->data.call.args[i],
-                callee_decl->data.func_decl.params[i].type_name);
-        }
     }
 
     /* E3163: addr() of inner-scope variable passed alongside an outer-scope
@@ -10002,8 +10183,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                         diagnostic_error_code_formatted(checker->diag, "E3113", NODE_FILE(checker, node), node->token.line, node->token.column, 0, vname, checker->enum_display_names[eidx], expected_pc, provided_argument_count);
                     } else {
                         for (int argument_index = 0; argument_index < provided_argument_count; argument_index++) {
-                            GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                             GrayType *exp_t = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][argument_index]);
+                            GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], exp_t);
                             if (arg_t && exp_t &&
                                 arg_t->kind != TK_UNKNOWN && exp_t->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, exp_t, arg_t)) {
@@ -10075,11 +10256,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                  * call paths; the triple chain was the one spelling that left
                  * expected_type unset here. */
                 GrayType *param_t = sig->param_types ? sig->param_types[argument_index] : NULL;
-                GrayType *saved_expected_ms = checker->expected_type;
-                if (param_t && param_t->kind == TK_ENUM && param_t->name)
-                    checker->expected_type = param_t;
-                resolve_expression(checker, node->data.call.args[argument_index]);
-                checker->expected_type = saved_expected_ms;
+                GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], param_t);
+                if (arg_type_mismatches(checker, param_t, arg_t)) {
+                    char display[MSG_BUF_SIZE];
+                    snprintf(display, sizeof(display), "%s.%s.%s", mod_name, struct_name, func_name);
+                    report_arg_mismatch(checker, node->data.call.args[argument_index], argument_index,
+                        display, param_t, arg_t, NULL);
+                }
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
                 AstNode *sdecl = find_struct_in_program(checker, struct_name);
@@ -10148,8 +10331,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             } else {
                 /* Validate each arg type against payload type */
                 for (int argument_index = 0; argument_index < provided_argument_count; argument_index++) {
-                    GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                     GrayType *expected_t = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][argument_index]);
+                    GrayType *arg_t = check_expr_as(checker, node->data.call.args[argument_index], expected_t);
                     if (arg_t && expected_t &&
                         arg_t->kind != TK_UNKNOWN && expected_t->kind != TK_UNKNOWN &&
                         !types_assignable(checker, expected_t, arg_t)) {
@@ -10450,15 +10633,84 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
 static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     TokenType op = node->data.infix.op;
-    GrayType *left = resolve_expression(checker, node->data.infix.left);
+    AstNode *left_node = node->data.infix.left;
+    AstNode *right_node = node->data.infix.right;
+    GrayType *left = resolve_untyped(checker, left_node);
     /* For == and !=, set expected_type so .VARIANT on the RHS
      * can resolve against the LHS enum type. */
     GrayType *saved_infix_expected = checker->expected_type;
     if ((op == TOK_EQ || op == TOK_NOT_EQ) &&
         left && left->kind == TK_ENUM && left->name)
         checker->expected_type = left;
-    GrayType *right = resolve_expression(checker, node->data.infix.right);
+    GrayType *right = resolve_untyped(checker, right_node);
     checker->expected_type = saved_infix_expected;
+
+    /* Number operands type themselves through type_binary_result: a literal
+     * takes the other operand's type, same-family operands of different
+     * widths give the wider type, and any other pair needs a cast. */
+    bool is_comparison = op == TOK_EQ || op == TOK_NOT_EQ || op == TOK_LT ||
+                         op == TOK_GT || op == TOK_LT_EQ || op == TOK_GT_EQ;
+    bool is_shift = op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT;
+    bool is_bitwise = is_shift || op == TOK_BIT_AND || op == TOK_BIT_OR || op == TOK_BIT_XOR;
+    bool is_arithmetic = op == TOK_PLUS || op == TOK_MINUS || op == TOK_ASTERISK ||
+                         op == TOK_SLASH || op == TOK_PERCENT;
+    bool numeric_pair = (is_comparison || is_bitwise || is_arithmetic) &&
+        (left->kind == TK_LITERAL || type_kind_is_number(left->kind)) &&
+        (right->kind == TK_LITERAL || type_kind_is_number(right->kind));
+    GrayType *numeric_result = NULL;
+    if (numeric_pair) {
+        numeric_result = type_binary_result(op, left, right);
+        if (!numeric_result) {
+            GrayType *left_shown = left->kind == TK_LITERAL ? check_expr_as(checker, left_node, NULL) : left;
+            GrayType *right_shown = right->kind == TK_LITERAL ? check_expr_as(checker, right_node, NULL) : right;
+            if (op == TOK_PERCENT && (left_shown->kind == TK_FLOAT || right_shown->kind == TK_FLOAT)) {
+                tc_err_at(checker, "E3002", node, "modulo (%) only works on integers, not floats");
+            } else if (is_bitwise) {
+                diagnostic_error_code_formatted(checker->diag, "E8001",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    operator_display_name(op), type_display_name(checker, left_shown),
+                    type_display_name(checker, right_shown));
+            } else if (is_comparison) {
+                tc_err_at(checker, "E3156", node, typechecker_format(checker,
+                    "cannot compare %s with %s; convert one side with cast()",
+                    type_name(left_shown), type_name(right_shown)));
+            } else {
+                tc_err_at(checker, "E3002", node, typechecker_format(checker,
+                    "invalid operands: cannot use '%s' with %s and %s; convert one side with cast()",
+                    operator_display_name(op), type_name(left_shown), type_name(right_shown)));
+            }
+            return &TYPE_UNKNOWN;
+        }
+        bool left_literal = left->kind == TK_LITERAL, right_literal = right->kind == TK_LITERAL;
+        if (is_shift) {
+            /* The count keeps its own type; a literal count is an i64. */
+            if (right_literal) right = check_expr_as(checker, right_node, NULL);
+        } else if (left_literal && right_literal) {
+            if (is_comparison) {
+                GrayType *common = left->is_decimal || right->is_decimal ? &TYPE_F64 : &TYPE_I64;
+                left = check_expr_as(checker, left_node, common);
+                right = check_expr_as(checker, right_node, common);
+            }
+        } else if (left_literal) {
+            left = check_expr_as(checker, left_node, right);
+        } else if (right_literal) {
+            right = check_expr_as(checker, right_node, left);
+        }
+    } else {
+        /* A value looked up in a collection is checked as its element or
+         * key type; nothing else here gives a literal operand a type. */
+        if (op == TOK_IN || op == TOK_NOT_IN) {
+            GrayType *container = right;
+            GrayType *slot = NULL;
+            if (container->kind == TK_ARRAY && container->element_type)
+                slot = typechecker_type_from_name(checker, container->element_type);
+            else if (container->kind == TK_MAP && container->key_type)
+                slot = typechecker_type_from_name(checker, container->key_type);
+            left = check_expr_as(checker, left_node, slot);
+        }
+        if (left->kind == TK_LITERAL) left = check_expr_as(checker, left_node, NULL);
+        if (right->kind == TK_LITERAL) right = check_expr_as(checker, right_node, NULL);
+    }
 
     /* track whether any op-specific check has rejected the
      * expression so the final result can be collapsed to TK_UNKNOWN
@@ -10505,13 +10757,6 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         return result;
     }
 
-    /* E3002: modulo on float */
-    if (op == TOK_PERCENT &&
-        (left->kind == TK_FLOAT || right->kind == TK_FLOAT)) {
-        tc_err_at(checker, "E3002", node, "modulo (%) only works on integers, not floats");
-        infix_errored = true;
-    }
-
     /* E3002: compile-time divide/modulo by zero (). Catches the
      * statically-detectable case where the RHS folds to an integer
      * zero — a literal, a literal expression, or a const binding
@@ -10555,7 +10800,8 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
                 lv == INT64_MIN) {
                 diagnostic_error_code_formatted(checker->diag, "E3137",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    (long long)lv, (long long)iv, type_display_name(checker, left));
+                    (long long)lv, (long long)iv,
+                    type_display_name(checker, numeric_result ? numeric_result : left));
                 infix_errored = true;
             }
         }
@@ -10569,32 +10815,6 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN) {
         char *msg = typechecker_format(checker,
             "invalid operands: cannot use '%s' with %s and %s",
-            operator_display_name(op), type_name(left), type_name(right));
-        tc_err_at(checker, "E3002", node, msg);
-        infix_errored = true;
-    }
-
-    /* E3002: incompatible bigint operands. Bigint arithmetic and comparison
-     * functions (gray_i128_add_checked, gray_i128_eq, etc.) only accept their
-     * own struct type. The only cross-type bigint combinations that codegen
-     * can handle are i256+i128 and u256+u128 (the narrower type is widened).
-     * Everything else — mixed signedness or the wrong direction — leaks a
-     * C type error and must be caught here. */
-    if (!infix_errored &&
-        (op == TOK_PLUS || op == TOK_MINUS ||
-         op == TOK_ASTERISK || op == TOK_SLASH || op == TOK_PERCENT ||
-         op == TOK_EQ || op == TOK_NOT_EQ ||
-         op == TOK_LT || op == TOK_GT ||
-         op == TOK_LT_EQ || op == TOK_GT_EQ ||
-         op == TOK_BIT_AND || op == TOK_BIT_OR || op == TOK_BIT_XOR) &&
-        left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN &&
-        left->name && right->name &&
-        is_bigint_type(left->name) && is_bigint_type(right->name) &&
-        strcmp(left->name, right->name) != 0 &&
-        !(strcmp(left->name, "i256") == 0 && strcmp(right->name, "i128") == 0) &&
-        !(strcmp(left->name, "u256") == 0 && strcmp(right->name, "u128") == 0)) {
-        char *msg = typechecker_format(checker,
-            "invalid operands: cannot use '%s' with %s and %s; bigint types must match",
             operator_display_name(op), type_name(left), type_name(right));
         tc_err_at(checker, "E3002", node, msg);
         infix_errored = true;
@@ -10769,7 +10989,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         }
     }
     /* Comparison of incompatible types (e.g., i64 == string) */
-    if ((op == TOK_EQ || op == TOK_NOT_EQ) &&
+    if ((op == TOK_EQ || op == TOK_NOT_EQ) && !numeric_pair &&
         left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN &&
         left->kind != right->kind && left->kind != TK_NIL && right->kind != TK_NIL &&
         !(is_int_kind(left->kind) && is_int_kind(right->kind)) &&
@@ -10875,9 +11095,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     }
 
     /* E3089: binary bitwise operators require integer operands */
-    if ((op == TOK_BIT_AND || op == TOK_BIT_OR ||
-         op == TOK_BIT_XOR || op == TOK_BIT_SHIFT_LEFT ||
-         op == TOK_BIT_SHIFT_RIGHT) &&
+    if (is_bitwise && !numeric_pair &&
         !infix_errored && left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN) {
         bool left_ok  = is_int_kind(left->kind)  || left->kind  == TK_CHAR
             || (left->kind == TK_ENUM && left->name && typechecker_enum_is_flags(checker, left->name));
@@ -10893,26 +11111,20 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    if (op == TOK_EQ || op == TOK_NOT_EQ ||
+    if (numeric_pair) {
+        result = numeric_result;
+    } else if (op == TOK_EQ || op == TOK_NOT_EQ ||
         op == TOK_LT || op == TOK_GT ||
         op == TOK_LT_EQ || op == TOK_GT_EQ ||
         op == TOK_AND || op == TOK_OR ||
         op == TOK_IN || op == TOK_NOT_IN) {
         result = &TYPE_BOOL;
-    } else if (left->kind == TK_FLOAT || right->kind == TK_FLOAT) {
-        result = &TYPE_F64;
     } else if (left->kind == TK_STRING && right->kind == TK_STRING && op == TOK_PLUS) {
         result = &TYPE_STRING;
     } else if (left->kind == TK_ENUM || right->kind == TK_ENUM) {
         /* #flags enum bitwise ops produce i64 (combined values
          * don't correspond to a single variant). */
         result = &TYPE_I64;
-    } else if (op != TOK_BIT_SHIFT_LEFT && op != TOK_BIT_SHIFT_RIGHT &&
-               right->name && is_bigint_type(right->name) &&
-               !(left->name && is_bigint_type(left->name))) {
-        /* A narrow operand is widened to the wide one, so the result is
-         * wide. A shift keeps its left operand's type. */
-        result = right;
     } else {
         result = left;
     }
@@ -11393,13 +11605,9 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        GrayType *saved_sv_expected = checker->expected_type;
-        if (field_expected_t)
-            checker->expected_type = field_expected_t;
-        /* A field value is a single-value position. */
+        /* A field value is a single-value position, stored into its field. */
         reject_multi_return_in_single_position(checker, node->data.struct_value.field_values[i]);
-        GrayType *val_t = resolve_expression(checker, node->data.struct_value.field_values[i]);
-        checker->expected_type = saved_sv_expected;
+        GrayType *val_t = check_expr_as(checker, node->data.struct_value.field_values[i], field_expected_t);
         /* Validate field exists */
         if (si && node->data.struct_value.field_names[i]) {
             const char *fname = node->data.struct_value.field_names[i];
@@ -11439,20 +11647,6 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                     "field '%s' of struct '%s': expected %s, got %s",
                     fname, struct_display_name(checker, struct_name), type_display_name(checker, expected_t), type_display_name(checker, val_t));
                 tc_err_at(checker, "E3053", node, msg);
-            }
-            /* E3019: a field initializer that crosses signedness needs a cast. */
-            if (found && expected_t && expected_t->name)
-                check_signedness_crossing(checker, expected_t->name,
-                    node->data.struct_value.field_values[i], val_t,
-                    node->data.struct_value.field_values[i]);
-            /* E3036: an out-of-range literal in a narrow field (S{ b: 300 }). */
-            if (found && expected_t && expected_t->name) {
-                int64_t field_lit;
-                bool field_lit_neg;
-                AstNode *fv = node->data.struct_value.field_values[i];
-                if (try_get_signed_literal_int(fv, &field_lit, &field_lit_neg))
-                    check_integer_range(checker->diag, NODE_FILE(checker, fv),
-                        fv->token.line, fv->token.column, expected_t->name, field_lit, field_lit_neg);
             }
             /* W3003/E3052: fixed-size array field ([T,N]) set in a struct
              * literal with too many/too few elements. Runs for any RHS whose
@@ -11777,16 +11971,8 @@ static const char *param_ref_type_name(TypeChecker *checker, AstNode *elem) {
 }
 
 /* Grayscale type name for an array- or map-literal element, used when an
- * unannotated `mut` array/map infers its element (or K/V) type from the first
- * entry. A wide-integer constructor call (i128(x), u256(x), ...) is resolved
- * as plain i64/u64 by the expression typechecker, so recover the width from
- * the call itself — otherwise the inferred container is [i64] / map[..:i64]
- * and the 16/32-byte value is truncated to 8 bytes in codegen. */
+ * unannotated array/map infers its element (or K/V) type from an entry. */
 static const char *literal_elem_type_name(TypeChecker *checker, AstNode *elem, GrayType *resolved) {
-    if (elem && elem->kind == NODE_CALL_EXPR &&
-        elem->data.call.function->kind == NODE_LABEL &&
-        is_bigint_type(elem->data.call.function->data.label.value))
-        return elem->data.call.function->data.label.value;
     /* A wildcard-typed element resolves to TYPE_UNKNOWN — recover the '?' from
      * the parameter declaration so {x, x} / {k: v} infer [?] / map[K:?]. The
      * composite unifier and monomorphization then bind it per call site,
@@ -11799,7 +11985,7 @@ static const char *literal_elem_type_name(TypeChecker *checker, AstNode *elem, G
     return resolved ? type_name(resolved) : "unknown";
 }
 
-static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
+static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
     if (!node) return &TYPE_UNKNOWN;
 
     /* Memoize: if we already resolved this node, return the cached type.
@@ -11827,11 +12013,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 
     switch (node->kind) {
     case NODE_INT_VALUE:
-        result = &TYPE_I64;
+        result = &TYPE_LITERAL_INT;
         break;
 
     case NODE_FLOAT_VALUE:
-        result = &TYPE_F64;
+        result = &TYPE_LITERAL_DECIMAL;
         break;
 
     case NODE_STRING_VALUE:
@@ -12127,7 +12313,19 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
     }
 
     case NODE_PREFIX_EXPR: {
-        GrayType *right = resolve_expression(checker, node->data.prefix.right);
+        GrayType *right = resolve_untyped(checker, node->data.prefix.right);
+        if (right->kind == TK_LITERAL && node->data.prefix.op != TOK_BANG) {
+            /* -literal and bit_not literal are literals too; they take a
+             * type from context with the rest of the expression. */
+            if (node->data.prefix.op == TOK_BIT_NOT && right->is_decimal) {
+                diagnostic_error_code_formatted(checker->diag, "E8002", NODE_FILE(checker, node), node->token.line, node->token.column, 0, "f64");
+                result = &TYPE_UNKNOWN;
+            } else {
+                result = right;
+            }
+            break;
+        }
+        if (right->kind == TK_LITERAL) right = resolve_expression(checker, node->data.prefix.right);
         if (node->data.prefix.op == TOK_BANG) {
             if (right->kind != TK_BOOL && right->kind != TK_UNKNOWN) {
                 diagnostic_error_code_formatted(checker->diag, "E3090", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, right));
@@ -12221,15 +12419,13 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         reject_multi_return_in_single_position(checker, node->data.index_expr.left);
         reject_multi_return_in_single_position(checker, node->data.index_expr.index);
         GrayType *left = resolve_expression(checker, node->data.index_expr.left);
-        /* Propagate map key type as expected_type so .VARIANT resolves */
-        GrayType *saved_idx_expected = checker->expected_type;
-        if (left->kind == TK_MAP && left->key_type) {
-            GrayType *key_t = typechecker_type_from_name(checker, left->key_type);
-            if (key_t && key_t->kind == TK_ENUM && key_t->name)
-                checker->expected_type = key_t;
-        }
-        GrayType *idx_t = resolve_expression(checker, node->data.index_expr.index);
-        checker->expected_type = saved_idx_expected;
+        /* An array or string index is an i64; a map index is the key type. */
+        GrayType *index_slot = NULL;
+        if (left->kind == TK_ARRAY || left->kind == TK_STRING)
+            index_slot = &TYPE_I64;
+        else if (left->kind == TK_MAP && left->key_type)
+            index_slot = typechecker_type_from_name(checker, left->key_type);
+        GrayType *idx_t = check_expr_as(checker, node->data.index_expr.index, index_slot);
         /* E3003: array index must be integer */
         if (left->kind == TK_ARRAY && idx_t->kind != TK_UNKNOWN &&
             !is_int_kind(idx_t->kind)) {
@@ -12262,8 +12458,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 bool declared_is_enum = is_enum_name(checker, left->key_type);
                 bool compatible =
                     key_t->kind == TK_UNKNOWN ||
-                    key_t->kind == idx_t->kind ||
-                    (is_int_kind(key_t->kind) && is_int_kind(idx_t->kind)) ||
+                    types_assignable(checker, key_t, idx_t) ||
                     (declared_is_enum && is_int_kind(idx_t->kind));
                 if (!compatible) {
                     char *msg = typechecker_format(checker,
@@ -12295,30 +12490,46 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = elem_t;
         }
         if (node->data.array_value.count > 0) {
-            GrayType *first = resolve_expression(checker, node->data.array_value.elements[0]);
-            reject_multi_return_in_single_position(checker, node->data.array_value.elements[0]);
-            result = type_array(literal_elem_type_name(checker, node->data.array_value.elements[0], first));
-            /* Validate all elements have the same type */
-            for (int i = 1; i < node->data.array_value.count; i++) {
-                GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
-                reject_multi_return_in_single_position(checker, node->data.array_value.elements[i]);
-                if (!element_resolved || element_resolved->kind == TK_UNKNOWN || !first ||
-                    first->kind == TK_UNKNOWN ||
+            /* With no array type to take, the elements are one type: the
+             * first element that has one, which every literal element takes
+             * too; i64 (f64 with a decimal literal) when all are literals. */
+            GrayType *elem_t = NULL;
+            AstNode *elem_node = NULL;
+            bool any_decimal = false;
+            for (int i = 0; i < node->data.array_value.count; i++) {
+                AstNode *el = node->data.array_value.elements[i];
+                GrayType *t = resolve_untyped(checker, el);
+                reject_multi_return_in_single_position(checker, el);
+                if (t->kind == TK_LITERAL) {
+                    any_decimal = any_decimal || t->is_decimal;
+                } else if (!elem_t) {
+                    elem_t = t;
+                    elem_node = el;
+                }
+            }
+            if (!elem_t) elem_t = any_decimal ? &TYPE_F64 : &TYPE_I64;
+            result = type_array(literal_elem_type_name(checker, elem_node, elem_t));
+            for (int i = 0; i < node->data.array_value.count; i++) {
+                AstNode *el = node->data.array_value.elements[i];
+                GrayType *element_resolved = is_literal_expr(el)
+                    ? check_expr_as(checker, el, elem_t) : resolve_expression(checker, el);
+                if (!element_resolved || element_resolved->kind == TK_UNKNOWN ||
+                    elem_t->kind == TK_UNKNOWN ||
                     /* A C interop element has no Grayscale type to compare;
                      * the element-vs-declared check (E3053) reports it. */
-                    first->kind == TK_C_FUNC || element_resolved->kind == TK_C_FUNC)
+                    elem_t->kind == TK_C_FUNC || element_resolved->kind == TK_C_FUNC)
                     continue;
                 /* Strict type equality for array elements — no coercions */
-                bool compatible = (first->kind == element_resolved->kind);
-                if (compatible && first->name && element_resolved->name)
-                    compatible = strcmp(first->name, element_resolved->name) == 0;
-                if (compatible && first->element_type && element_resolved->element_type)
-                    compatible = strcmp(first->element_type, element_resolved->element_type) == 0;
+                bool compatible = (elem_t->kind == element_resolved->kind);
+                if (compatible && elem_t->name && element_resolved->name)
+                    compatible = strcmp(elem_t->name, element_resolved->name) == 0;
+                if (compatible && elem_t->element_type && element_resolved->element_type)
+                    compatible = strcmp(elem_t->element_type, element_resolved->element_type) == 0;
                 if (!compatible) {
                     char *msg = typechecker_format(checker,
                         "array elements must all be the same type; element %d is '%s' but the array is '%s'",
-                        i, type_name(element_resolved), type_name(first));
-                    tc_err_at(checker, "E3053", node->data.array_value.elements[i], msg);
+                        i, type_name(element_resolved), type_name(elem_t));
+                    tc_err_at(checker, "E3053", el, msg);
                     break;
                 }
             }
@@ -12336,12 +12547,20 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             if (val_t && val_t->kind == TK_ENUM && val_t->name)
                 checker->expected_type = val_t;
         }
-        /* Resolve key and value types */
+        /* With no map type to take, the keys are one type and the values
+         * another: the first key (value) that has a type, which every literal
+         * key (value) takes too; i64 (f64 with a decimal literal) when all
+         * are literals. */
         GrayType *first_kt = NULL, *first_vt = NULL;
+        AstNode *first_kn = NULL, *first_vn = NULL;
+        bool key_decimal = false, value_decimal = false;
         for (int i = 0; i < node->data.map_value.count; i++) {
-            GrayType *kt = resolve_expression(checker, node->data.map_value.keys[i]);
-            GrayType *vt = resolve_expression(checker, node->data.map_value.values[i]);
-            if (i == 0) { first_kt = kt; first_vt = vt; }
+            GrayType *kt = resolve_untyped(checker, node->data.map_value.keys[i]);
+            GrayType *vt = resolve_untyped(checker, node->data.map_value.values[i]);
+            if (kt->kind == TK_LITERAL) key_decimal = key_decimal || kt->is_decimal;
+            else if (!first_kt) { first_kt = kt; first_kn = node->data.map_value.keys[i]; }
+            if (vt->kind == TK_LITERAL) value_decimal = value_decimal || vt->is_decimal;
+            else if (!first_vt) { first_vt = vt; first_vn = node->data.map_value.values[i]; }
             /* void can't be a map key or value. */
             reject_void_in_context(checker, node->data.map_value.keys[i], kt, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], vt, "map value");
@@ -12349,35 +12568,34 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             reject_multi_return_in_single_position(checker, node->data.map_value.keys[i]);
             reject_multi_return_in_single_position(checker, node->data.map_value.values[i]);
         }
-        /* E12006: Check for duplicate keys in map literal */
+        if (!first_kt) first_kt = key_decimal ? &TYPE_F64 : &TYPE_I64;
+        if (!first_vt) first_vt = value_decimal ? &TYPE_F64 : &TYPE_I64;
         for (int i = 0; i < node->data.map_value.count; i++) {
-            AstNode *ki = node->data.map_value.keys[i];
-            for (int j = i + 1; j < node->data.map_value.count; j++) {
-                AstNode *kj = node->data.map_value.keys[j];
-                bool dup = false;
-                if (ki->kind == NODE_STRING_VALUE && kj->kind == NODE_STRING_VALUE &&
-                    strcmp(ki->data.string_value.value, kj->data.string_value.value) == 0) {
-                    dup = true;
-                } else if (ki->kind == NODE_INT_VALUE && kj->kind == NODE_INT_VALUE &&
-                    ki->data.int_value.value == kj->data.int_value.value) {
-                    dup = true;
-                }
-                if (dup) {
-                    diagnostic_error_code(checker->diag, "E12006", NODE_FILE(checker, kj), kj->token.line, kj->token.column, 0);
-                }
+            AstNode *kn = node->data.map_value.keys[i];
+            AstNode *vn = node->data.map_value.values[i];
+            if (is_literal_expr(kn) &&
+                literal_entry_mismatches(checker, first_kt, check_expr_as(checker, kn, first_kt))) {
+                tc_err_at(checker, "E3053", kn, typechecker_format(checker,
+                    "type mismatch in map literal key; expected '%s', got '%s'",
+                    type_display_name(checker, first_kt), type_display_name(checker, resolve_expression(checker, kn))));
+            }
+            if (is_literal_expr(vn) &&
+                literal_entry_mismatches(checker, first_vt, check_expr_as(checker, vn, first_vt))) {
+                tc_err_at(checker, "E3053", vn, typechecker_format(checker,
+                    "type mismatch in map literal value; expected '%s', got '%s'",
+                    type_display_name(checker, first_vt), type_display_name(checker, resolve_expression(checker, vn))));
             }
         }
+        check_map_literal_duplicate_keys(checker, node);
         GrayType *resolved_type = type_alloc();
         resolved_type->kind = TK_MAP;
         resolved_type->name = strdup("map");
         if (node->data.map_value.count > 0) {
-            /* Use the freshly-resolved first pair, not typetable_get: during
+            /* Use the freshly-resolved types, not typetable_get: during
              * generic instantiation typetable writes are suppressed, so a
              * stale wildcard entry from the first pass would otherwise stick. */
-            GrayType *kt = first_kt ? first_kt : typetable_get(checker->type_table, node->data.map_value.keys[0]);
-            GrayType *vt = first_vt ? first_vt : typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(literal_elem_type_name(checker, node->data.map_value.keys[0], kt));
-            resolved_type->value_type = strdup(literal_elem_type_name(checker, node->data.map_value.values[0], vt));
+            resolved_type->key_type = strdup(literal_elem_type_name(checker, first_kn, first_kt));
+            resolved_type->value_type = strdup(literal_elem_type_name(checker, first_vn, first_vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types
@@ -12402,25 +12620,24 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                              node->data.range_expr.end,
                              node->data.range_expr.step };
         const char *labels[] = { "start", "end", "step" };
-        const char *wide_type = NULL;
-        for (int return_index = 0; return_index < 3; return_index++) {
-            if (!parts[return_index]) continue;
-            GrayType *pt = resolve_expression(checker, parts[return_index]);
+        /* The range runs in i64, or in the widest wide integer type among
+         * its bounds; every bound and the step are checked as that type. */
+        GrayType *range_t = &TYPE_I64;
+        for (int part_index = 0; part_index < 3; part_index++) {
+            if (!parts[part_index]) continue;
+            GrayType *pt = resolve_untyped(checker, parts[part_index]);
+            if (pt->name && is_bigint_type(pt->name) &&
+                int_type_name_rank(pt->name) > int_type_name_rank(range_t->name))
+                range_t = pt;
+        }
+        for (int part_index = 0; part_index < 3; part_index++) {
+            if (!parts[part_index]) continue;
+            GrayType *pt = check_expr_as(checker, parts[part_index], range_t);
             if (pt->kind != TK_UNKNOWN && !is_int_kind(pt->kind)) {
                 char *msg = typechecker_format(checker,
                     "'range()' %s argument must be an integer type, got '%s'",
-                    labels[return_index], type_name(pt));
-                tc_err_arg_type(checker, parts[return_index], msg);
-            } else if (pt->name && is_bigint_type(pt->name)) {
-                /* The range runs in one wide type; the others widen into it. */
-                if (!wide_type) {
-                    wide_type = pt->name;
-                } else if (strcmp(wide_type, pt->name) != 0) {
-                    char *msg = typechecker_format(checker,
-                        "'range()' bounds must share one wide integer type, got '%s' and '%s'",
-                        wide_type, pt->name);
-                    tc_err_arg_type(checker, parts[return_index], msg);
-                }
+                    labels[part_index], type_name(pt));
+                tc_err_arg_type(checker, parts[part_index], msg);
             }
         }
         GrayType *rt = type_alloc();
@@ -12443,7 +12660,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         break;
 
     case NODE_CAST_EXPR: {
-        GrayType *src_t = resolve_expression(checker, node->data.cast.value);
+        /* A number literal operand takes the cast's target type, so
+         * cast(300, u8) and cast(1.0e300, f32) are range-checked like any
+         * other literal. Every other operand keeps its own type: the cast
+         * is the explicit conversion. */
+        GrayType *src_t = is_literal_expr(node->data.cast.value)
+            ? NULL : resolve_expression(checker, node->data.cast.value);
         /* The cast target is a written type name like any annotation, so it
          * goes through the same resolution: as written, then through aliases.
          * Taken literally, `cast(x, I)` where `alias I = i64` was read as a
@@ -12465,6 +12687,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                                                         leaf, sizeof(leaf));
             if (undefined) {
                 tc_err_undefined_type(checker, node, unqualified_display_name(undefined));
+                if (!src_t) check_expr_as(checker, node->data.cast.value, NULL);
                 result = &TYPE_UNKNOWN;
                 break;
             }
@@ -12473,6 +12696,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         /* Resolve user-defined enum types that type_from_name() can't find */
         if (!dst_t && is_enum_name(checker, target))
             dst_t = type_enum(target);
+        if (!src_t) src_t = check_expr_as(checker, node->data.cast.value, dst_t);
         /* E3167: cast() cannot reinterpret one pointer type as another. A
          * pointer cast bypasses every lifetime and type guarantee the pointer
          * checker relies on; there is no safe form of it in the language. */
@@ -13311,7 +13535,10 @@ static void check_var_decl_annotation(TypeChecker *checker, AstNode *node) {
                 /* Expression is a valid compile-time constant.  Register
                  * the value so later const declarations can reference it. */
                 typechecker_register_const_int(checker, node->data.var_decl.name, folded);
-            } else if (overflowed) {
+            } else if (overflowed && !is_literal_expr(node->data.var_decl.value) &&
+                       !is_bigint_type(type_name_str)) {
+                /* A literal expression is range-checked against the declared
+                 * type when it takes it (E3036); this folds consts in i64. */
                 char *msg = typechecker_format(checker,
                     "constant expression overflows type '%s'", type_name_str);
                 tc_err_at(checker, "E5039", node, msg);
@@ -13523,17 +13750,6 @@ static void check_var_decl_annotation(TypeChecker *checker, AstNode *node) {
  * type: `declared`, or the initializer's type when there is no annotation. */
 static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node, GrayType *declared) {
     if (node->data.var_decl.value) {
-        /* Set expected_type for implicit enum resolution (.VARIANT) */
-        GrayType *saved_expected = checker->expected_type;
-        if (declared->kind == TK_ENUM && declared->name)
-            checker->expected_type = declared;
-        else if (declared->kind == TK_ARRAY && declared->element_type) {
-            checker->expected_type = declared;
-        } else if (declared->kind == TK_MAP && declared->value_type) {
-            GrayType *val_t = typechecker_type_from_name(checker, declared->value_type);
-            if (val_t && val_t->kind == TK_ENUM)
-                checker->expected_type = declared;
-        }
         /* A file-scope initializer is emitted where it is written, so it can
          * only name declarations already in scope at that point. Every earlier
          * file-scope declaration has been defined by the walk that got here, so
@@ -13543,9 +13759,8 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
          * are exempt: codegen emits file-scope declarations ahead of them. */
         bool saved_file_scope_init = checker->in_file_scope_init;
         if (checker->func_depth == 0) checker->in_file_scope_init = true;
-        GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);
+        GrayType *value_type = check_expr_as(checker, node->data.var_decl.value, declared);
         checker->in_file_scope_init = saved_file_scope_init;
-        checker->expected_type = saved_expected;
 
         /* E3050/E3051: an array or map literal with no type annotation needs
          * one — unless this is a `mut` declaration whose literal is built only
@@ -13754,20 +13969,6 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                 type_display_name(checker, value_type), type_display_name(checker, declared));
             tc_err_assign_type(checker, node, msg);
         }
-        /* Bigint narrowing: e.g. i128 → i64, u256 → i64.  Both sides share
-         * TK_INT/TK_UINT so the kind-equality guard above silently passes
-         * them through.  Catch it here by comparing named ranks. */
-        if (declared && value_type &&
-            declared->name && value_type->name) {
-            int declared_rank = int_type_name_rank(declared->name);
-            int value_rank = int_type_name_rank(value_type->name);
-            if (declared_rank > 0 && value_rank >= 5 && declared_rank < value_rank) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
-                    value_type->name, declared->name, declared->name);
-                tc_err_at(checker, "E3155", node, msg);
-            }
-        }
         /* Struct-to-struct name mismatch (both TK_STRUCT but different names).
          * skip when one name is a module-prefixed alias of the
          * other (e.g. "Point" vs "shapes_Point" via import and use). */
@@ -13799,78 +14000,16 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                 type_display_name(checker, value_type), type_display_name(checker, declared));
             tc_err_assign_type(checker, node, msg);
         }
-        /* Array element type mismatch (both TK_ARRAY but different element types) */
-        bool literal_widths_ok = literal_fits_nested_widths(checker,
-            node->data.var_decl.value, declared, value_type);
-        if (declared->kind == TK_ARRAY && value_type->kind == TK_ARRAY &&
-            declared->element_type && value_type->element_type && !literal_widths_ok &&
-            !typechecker_same_array_element(checker, declared->element_type, value_type->element_type)) {
-            GrayType *decl_elem = type_from_name(declared->element_type);
-            GrayType *val_elem  = type_from_name(value_type->element_type);
-            /* Allow integer ↔ integer, integer→float, and skip when either
-             * element type is opaque/unknown (e.g. generic stdlib returns) */
-            /* Skip function-type arrays: signature strings differ by whitespace */
-            bool elem_is_func = strncmp(declared->element_type, "func", 4) == 0;
-            if (!elem_is_func && decl_elem && val_elem &&
-                decl_elem->kind != TK_UNKNOWN && val_elem->kind != TK_UNKNOWN &&
-                !(is_int_kind(decl_elem->kind) && is_int_kind(val_elem->kind)) &&
-                !(is_int_kind(decl_elem->kind) && val_elem->kind == TK_STRUCT) &&
-                !(decl_elem->kind == TK_FLOAT && is_int_kind(val_elem->kind)) &&
-                /* f32 ↔ f64 array element coercion, mirroring the
-                 * scalar path (`mut x f32 = someFloat` is allowed). */
-                !(decl_elem->kind == TK_FLOAT && val_elem->kind == TK_FLOAT)) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot assign '%s' to '%s'",
-                    type_display_name(checker, value_type), type_display_name(checker, declared));
-                tc_err_assign_type(checker, node, msg);
-            }
-        }
         /* Map key/value type mismatch (both TK_MAP but different key or value types) */
         if (declared->kind == TK_MAP && value_type->kind == TK_MAP) {
-            bool val_is_literal = node->data.var_decl.value &&
-                node->data.var_decl.value->kind == NODE_MAP_VALUE;
-            if (!map_types_coercible(declared, value_type, val_is_literal) && !literal_widths_ok) {
+            if (!map_types_match(declared, value_type)) {
                 char *msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
                 tc_err_assign_type(checker, node, msg);
             }
         }
-        /* E3046: literal that exceeds the destination type's range.
-         *   overflow_u64 = true  : exceeds UINT64_MAX, never fits a non-bigint
-         *   overflow     = true  : exceeds INT64_MAX but fits in UINT64_MAX,
-         *                         OK for u64/bigint, error otherwise */
-        if (node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_INT_VALUE &&
-            node->data.var_decl.value->data.int_value.overflow) {
-            const char *type_name_str = node->data.var_decl.type_name;
-            bool is_bigint = type_name_str && (strcmp(type_name_str, "i128") == 0 || strcmp(type_name_str, "u128") == 0 ||
-                                    strcmp(type_name_str, "i256") == 0 || strcmp(type_name_str, "u256") == 0);
-            bool is_u64_like = type_name_str && strcmp(type_name_str, "u64") == 0;
-            bool exceeds_u64 = node->data.var_decl.value->data.int_value.overflow_u64;
-            if (exceeds_u64 && !is_bigint) {
-                diagnostic_error_message(checker->diag, "E3046",
-                    "integer literal overflows 64-bit integer; max value is 18446744073709551615",
-                    NODE_FILE(checker, node->data.var_decl.value), node->data.var_decl.value->token.line,
-                    node->data.var_decl.value->token.column, 0);
-            } else if (!exceeds_u64 && !is_bigint && !is_u64_like) {
-                diagnostic_error_message(checker->diag, "E3046",
-                    "integer literal overflows 64-bit integer; max value is 9223372036854775807",
-                    NODE_FILE(checker, node->data.var_decl.value), node->data.var_decl.value->token.line,
-                    node->data.var_decl.value->token.column, 0);
-            }
-        }
-        /* E3036: Check literal value fits in sized integer type (skip overflowed literals) */
         if (node->data.var_decl.type_name && node->data.var_decl.value) {
-            bool val_overflowed = (node->data.var_decl.value->kind == NODE_INT_VALUE &&
-                node->data.var_decl.value->data.int_value.overflow);
-            int64_t lit_val;
-            bool lit_neg;
-            if (!val_overflowed && try_get_signed_literal_int(node->data.var_decl.value, &lit_val, &lit_neg)) {
-                check_integer_range(checker->diag, NODE_FILE(checker, node),
-                    node->token.line, node->token.column,
-                    node->data.var_decl.type_name, lit_val, lit_neg);
-            }
             /* E3001 (): assigning an array literal `{}` to a map
              * variable falls through the normal type check because the
              * literal has no elements to derive a concrete element type
@@ -13892,7 +14031,7 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                 }
                 tc_err_assign_type(checker, node->data.var_decl.value, msg);
             }
-            /* E3026/E3036: Check array literal elements fit in sized element type */
+            /* W3003/E3052: fixed-size array initialization count checks */
             if (type_name_str[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 /* Extract element type name from "[u8]", "[i8]", "[u8, 3]", etc. */
                 char elem_type[TYPE_NAME_MAX] = {0};
@@ -13930,58 +14069,6 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                         elem_type[elen] = '\0';
                     }
                 }
-                if (elem_type[0])
-                    check_array_literal_elements(checker, elem_type, node->data.var_decl.value);
-                /* E3053: element type mismatch in array initializer */
-                if (elem_type[0]) {
-                    GrayType *expected_et = typechecker_type_from_name(checker, elem_type);
-                    AstNode *arr = node->data.var_decl.value;
-                    for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
-                        AstNode *el_node = arr->data.array_value.elements[enum_index];
-                        GrayType *actual_et = resolve_expression(checker, el_node);
-                        if (actual_et && actual_et->kind != TK_UNKNOWN &&
-                            expected_et && expected_et->kind != TK_UNKNOWN &&
-                            actual_et->kind != expected_et->kind) {
-                            bool compatible = types_assignable(checker, expected_et, actual_et) ||
-                                (expected_et->kind == TK_ENUM && is_int_kind(actual_et->kind));
-                            if (!compatible) {
-                                diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
-                                    arr->data.array_value.elements[enum_index]->token.line,
-                                    arr->data.array_value.elements[enum_index]->token.column, 0,
-                                    type_display_name(checker, expected_et),
-                                    type_display_name(checker, actual_et));
-                            }
-                        }
-                        /* E3053: cross-enum mismatch — both are TK_ENUM but
-                         * from different enum types (e.g. Color vs Dir).
-                         * The kind-level check above passes since both are
-                         * TK_ENUM, so we need a name-level comparison.
-                         * Use display-name comparison so cross-module
-                         * aliases (e.g. types_Status vs Status) unify. */
-                        if (actual_et && expected_et &&
-                            actual_et->kind == TK_ENUM && expected_et->kind == TK_ENUM &&
-                            actual_et->name && expected_et->name &&
-                            !typechecker_same_enum_type(checker, actual_et->name, expected_et->name)) {
-                            diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
-                                arr->data.array_value.elements[enum_index]->token.line,
-                                arr->data.array_value.elements[enum_index]->token.column, 0,
-                                type_display_name(checker, expected_et),
-                                type_display_name(checker, actual_et));
-                        }
-                        /* E3053: cross-pointer mismatch — both are TK_POINTER but
-                         * point to different types (e.g. ^i64 vs ^f64). */
-                        if (actual_et && expected_et &&
-                            actual_et->kind == TK_POINTER && expected_et->kind == TK_POINTER &&
-                            actual_et->element_type && expected_et->element_type &&
-                            strcmp(actual_et->element_type, expected_et->element_type) != 0) {
-                            diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
-                                arr->data.array_value.elements[enum_index]->token.line,
-                                arr->data.array_value.elements[enum_index]->token.column, 0,
-                                type_display_name(checker, expected_et), type_display_name(checker, actual_et));
-                        }
-                    }
-                }
-                /* W3003/E3052: fixed-size array initialization count checks */
                 if (comma && comma < end) {
                     int fixed_size = atoi(comma + 1);
                     AstNode *arr = node->data.var_decl.value;
@@ -13998,120 +14085,6 @@ static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node,
                     }
                 }
             }
-            /* map literal key/value type mismatch. Parallel
-             * to the array E3053 check above; walks NODE_MAP_VALUE
-             * pairs and rejects entries whose key or value type
-             * doesn't match the declared map's K/V. The void case is
-             * already caught in NODE_MAP_VALUE's
-             * reject_void_in_context path (); this block
-             * covers the non-void-but-wrong-type leak. */
-            if (strncmp(type_name_str, "map[", 4) == 0 &&
-                node->data.var_decl.value->kind == NODE_MAP_VALUE) {
-                const char *mstart = type_name_str + 4;
-                const char *mcolon = strchr(mstart, ':');
-                const char *mend = strrchr(type_name_str, ']');
-                if (mcolon && mend && mend > mcolon) {
-                    char key_tn[TYPE_NAME_MAX] = {0};
-                    char val_tn[TYPE_NAME_MAX] = {0};
-                    size_t klen = (size_t)(mcolon - mstart);
-                    size_t vlen = (size_t)(mend - mcolon - 1);
-                    if (klen > 0 && klen < sizeof(key_tn) &&
-                        vlen > 0 && vlen < sizeof(val_tn)) {
-                        memcpy(key_tn, mstart, klen);
-                        key_tn[klen] = '\0';
-                        memcpy(val_tn, mcolon + 1, vlen);
-                        val_tn[vlen] = '\0';
-                        GrayType *expected_k = typechecker_type_from_name(checker, key_tn);
-                        GrayType *expected_v = typechecker_type_from_name(checker, val_tn);
-                        AstNode *mv = node->data.var_decl.value;
-                        check_map_literal_entries(checker, key_tn, val_tn, mv);
-                        for (int mi = 0; mi < mv->data.map_value.count; mi++) {
-                            AstNode *kn = mv->data.map_value.keys[mi];
-                            AstNode *vn = mv->data.map_value.values[mi];
-                            GrayType *kt = resolve_expression(checker, kn);
-                            GrayType *vt = resolve_expression(checker, vn);
-                            if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
-                                expected_k && expected_k->kind != TK_UNKNOWN &&
-                                !types_assignable(checker, expected_k, kt) &&
-                                !(expected_k->kind == TK_ENUM && is_int_kind(kt->kind))) {
-                                char *msg = typechecker_format(checker,
-                                    "type mismatch in map literal key; expected '%s', got '%s'",
-                                    type_display_name(checker, expected_k), type_display_name(checker, kt));
-                                tc_err_at(checker, "E3053", kn, msg);
-                            }
-                            /* Enum-to-enum: key types both TK_ENUM but different names */
-                            if (expected_k && kt &&
-                                expected_k->kind == TK_ENUM && kt->kind == TK_ENUM &&
-                                expected_k->name && kt->name &&
-                                !typechecker_same_enum_type(checker, expected_k->name, kt->name)) {
-                                char *msg = typechecker_format(checker,
-                                    "type mismatch in map literal key; expected enum '%s', got enum '%s'",
-                                    type_display_name(checker, expected_k), type_display_name(checker, kt));
-                                tc_err_at(checker, "E3053", kn, msg);
-                            }
-                            if (vt && vt->kind != TK_UNKNOWN && vt->kind != TK_VOID &&
-                                expected_v && expected_v->kind != TK_UNKNOWN &&
-                                !types_assignable(checker, expected_v, vt) &&
-                                !(expected_v->kind == TK_ENUM && is_int_kind(vt->kind)) &&
-                                !(expected_v->kind == TK_POINTER && vt->kind == TK_POINTER)) {
-                                char *msg = typechecker_format(checker,
-                                    "type mismatch in map literal value; expected '%s', got '%s'",
-                                    type_display_name(checker, expected_v), type_display_name(checker, vt));
-                                tc_err_at(checker, "E3053", vn, msg);
-                            }
-                            /* Enum-to-enum: value types both TK_ENUM but different names */
-                            if (expected_v && vt &&
-                                expected_v->kind == TK_ENUM && vt->kind == TK_ENUM &&
-                                expected_v->name && vt->name &&
-                                !typechecker_same_enum_type(checker, expected_v->name, vt->name)) {
-                                char *msg = typechecker_format(checker,
-                                    "type mismatch in map literal value; expected enum '%s', got enum '%s'",
-                                    type_display_name(checker, expected_v), type_display_name(checker, vt));
-                                tc_err_at(checker, "E3053", vn, msg);
-                            }
-                            /* Pointer-to-pointer: pointee types differ in map literal value */
-                            if (expected_v && vt &&
-                                expected_v->kind == TK_POINTER && vt->kind == TK_POINTER &&
-                                expected_v->name && vt->name &&
-                                strcmp(expected_v->name, vt->name) != 0) {
-                                char *msg = typechecker_format(checker,
-                                    "type mismatch in map literal value; expected '%s', got '%s'",
-                                    type_display_name(checker, expected_v), type_display_name(checker, vt));
-                                tc_err_at(checker, "E3053", vn, msg);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        /* E3019: a declared integer type crossed by the initializer variable's
-         * signedness (i64 x = u64_var, u64 x = i64_var) needs an explicit cast. */
-        if (node->data.var_decl.type_name &&
-            node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_LABEL) {
-            const char *dest_tn = node->data.var_decl.type_name;
-            const char *src_name = node->data.var_decl.value->data.label.value;
-            Symbol *src_sym = scope_lookup(checker->current_scope, src_name);
-            const char *src_tn = src_sym ? src_sym->declared_type : NULL;
-            if (src_tn && is_unsigned_type(dest_tn) && is_signed_int_type(src_tn)) {
-                diagnostic_error_code_formatted(checker->diag, "E3019", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, dest_tn);
-            } else if (src_tn && is_signed_int_type(dest_tn) && is_unsigned_type(src_tn) &&
-                       !unsigned_widens_to_signed(dest_tn, src_tn)) {
-                diagnostic_error_message(checker->diag, "E3019",
-                    typechecker_format(checker,
-                        "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
-                        src_tn, dest_tn, node->data.var_decl.name, dest_tn),
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-        } else if (node->data.var_decl.type_name && node->data.var_decl.value &&
-                   value_type && value_type->kind != TK_UNKNOWN) {
-            /* A non-label initializer (function call, or an expression whose
-             * top-level type is a concrete integer) crosses signedness the
-             * same way — the NODE_LABEL branch above only covers a bare
-             * variable RHS. Literals are range-checked separately and are
-             * skipped by check_signedness_crossing. */
-            check_signedness_crossing(checker, node->data.var_decl.type_name,
-                node->data.var_decl.value, value_type, node->data.var_decl.value);
         }
     }
     return declared;
@@ -14729,15 +14702,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     GrayType *target_t = resolve_expression(checker, node->data.assign.target);
-    /* Set expected_type so the value can be resolved against the target:
-     * implicit enum selectors (.VARIANT) need the enum, and an empty map
-     * literal needs the element types it is being assigned into. */
-    GrayType *saved_expected = checker->expected_type;
-    if (target_t && ((target_t->kind == TK_ENUM && target_t->name) ||
-                     (target_t->kind == TK_MAP && target_t->key_type)))
-        checker->expected_type = target_t;
-    GrayType *value_t = resolve_expression(checker, node->data.assign.value);
-    checker->expected_type = saved_expected;
+    /* The value is stored into the target, so it is checked as the target's
+     * type — for a compound assignment `x op= v` too. */
+    GrayType *value_t = check_expr_as(checker, node->data.assign.value, target_t);
 
     reject_non_json_parse_target(checker, node, node->data.assign.value, target_t);
 
@@ -14756,33 +14723,6 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             pointer_checker_bind_arena_handle(checker, tsym, node->data.assign.value, aname);
         }
     }
-
-    /* An in-range integer literal (or constant-folded literal expression)
-     * carries no inherent signedness or width — resolve_expression types it
-     * as plain `i64`. check_integer_range (E3036) already rejects a value
-     * that does not fit the target, so the signed/unsigned and narrowing
-     * rules meant for variable sources must not fire for such a literal.
-     * A literal that overflows 64 bits is left to those rules (and E3046),
-     * so it is still rejected rather than silently truncated. */
-    int64_t reassign_lit_val;
-    bool value_is_int_literal =
-        try_get_literal_int(node->data.assign.value, &reassign_lit_val) &&
-        !(node->data.assign.value->kind == NODE_INT_VALUE &&
-          node->data.assign.value->data.int_value.overflow);
-    /* An array or map literal takes the target's element widths, as in a
-     * declaration — {1, 2} for a [i32] target, {2.5} for a [f32] one,
-     * {"k": 2.5} for a map[string:f32] one. */
-    bool value_fits_literal_widths =
-        literal_fits_nested_widths(checker, node->data.assign.value, target_t, value_t) ||
-        (node->data.assign.value->kind == NODE_MAP_VALUE && target_t && value_t &&
-         target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
-         map_types_coercible(target_t, value_t, true));
-    if (value_fits_literal_widths && target_t->kind == TK_ARRAY &&
-        node->data.assign.value->kind == NODE_ARRAY_VALUE && target_t->element_type)
-        check_array_literal_elements(checker, target_t->element_type, node->data.assign.value);
-    if (value_fits_literal_widths && target_t->kind == TK_MAP &&
-        node->data.assign.value->kind == NODE_MAP_VALUE && target_t->key_type && target_t->value_type)
-        check_map_literal_entries(checker, target_t->key_type, target_t->value_type, node->data.assign.value);
 
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
@@ -14945,25 +14885,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             GrayType *val_t = resolve_expression(checker, node->data.assign.value);
             if (val_t && val_t->kind != TK_UNKNOWN && elem_t && elem_t->kind != TK_UNKNOWN &&
                 !types_assignable(checker, elem_t, val_t) &&
-                !(val_t->kind == TK_FLOAT && is_int_kind(elem_t->kind)) &&
                 /* enum array: type_from_name returns TK_STRUCT for enum names */
                 !(val_t->kind == TK_ENUM && elem_t->kind == TK_STRUCT &&
                   indexed_t->element_type && is_enum_name(checker, indexed_t->element_type))) {
                 diagnostic_error_code_formatted(checker->diag, "E3094",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     type_display_name(checker, val_t), type_display_name(checker, indexed_t));
-            }
-            /* E3019: assigning a value that crosses signedness into an element needs a cast. */
-            check_signedness_crossing(checker, indexed_t->element_type,
-                node->data.assign.value, val_t, node->data.assign.value);
-            /* E3036: out-of-range literal into a narrow element (xs[0] = 300). */
-            int64_t elem_lit;
-            bool elem_lit_neg;
-            if (try_get_signed_literal_int(node->data.assign.value, &elem_lit, &elem_lit_neg)) {
-                check_integer_range(checker->diag, NODE_FILE(checker, node),
-                    node->data.assign.value->token.line,
-                    node->data.assign.value->token.column,
-                    indexed_t->element_type, elem_lit, elem_lit_neg);
             }
         }
         /* E3001: a C interop value has no Grayscale type to check against the
@@ -14974,57 +14901,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 type_display_name(checker, indexed_t));
             tc_err_assign_type(checker, node, msg);
         }
-        /* E3019: assigning a signed value into an unsigned map value needs a cast. */
-        if (indexed_t && indexed_t->kind == TK_MAP && indexed_t->value_type) {
-            check_signedness_crossing(checker, indexed_t->value_type,
-                node->data.assign.value, value_t, node->data.assign.value);
-            /* E3036: out-of-range literal into a narrow map value (m["a"] = 300). */
-            int64_t mval_lit;
-            bool mval_lit_neg;
-            if (try_get_signed_literal_int(node->data.assign.value, &mval_lit, &mval_lit_neg)) {
-                check_integer_range(checker->diag, NODE_FILE(checker, node),
-                    node->data.assign.value->token.line,
-                    node->data.assign.value->token.column,
-                    indexed_t->value_type, mval_lit, mval_lit_neg);
-            }
-        }
     }
 
-    /* E3036 (): range check on reassignment; the var_decl path
-     * already catches out-of-range literals at declaration, but
-     * reassignment (`x = 300` where x is u8) was unchecked. */
-    if (target->kind == NODE_LABEL && node->data.assign.value) {
-        Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
-        if (sym && sym->declared_type) {
-            int64_t lit_val;
-            bool lit_neg;
-            if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
-                check_integer_range(checker->diag, NODE_FILE(checker, node),
-                    node->data.assign.value->token.line,
-                    node->data.assign.value->token.column,
-                    sym->declared_type, lit_val, lit_neg);
-            }
-        }
-    }
-    /* E3036 (): range check on struct field assignment. */
-    if (target->kind == NODE_MEMBER_EXPR &&
-        target->data.member.object->kind == NODE_LABEL &&
-        node->data.assign.value) {
-        Symbol *sym = scope_lookup(checker->current_scope, target->data.member.object->data.label.value);
-        if (sym && sym->type && sym->type->kind == TK_STRUCT) {
-            GrayType *field_t = struct_field_type(checker, sym->type->name, target->data.member.member);
-            if (field_t && field_t->name) {
-                int64_t lit_val;
-                bool lit_neg;
-                if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
-                    check_integer_range(checker->diag, NODE_FILE(checker, node),
-                        node->data.assign.value->token.line,
-                        node->data.assign.value->token.column,
-                        field_t->name, lit_val, lit_neg);
-                }
-            }
-        }
-    }
     /* W3003/E3052: fixed-size array field ([T,N]) reassigned with too
      * many/too few elements. The struct-literal-construction check above
      * never sees this — a plain `w.items = <expr>` is an ordinary
@@ -15046,49 +14924,6 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             break;
         }
     }
-    /* Also handle dereferenced pointer field: p^.field = value */
-    if (target->kind == NODE_MEMBER_EXPR &&
-        target->data.member.object->kind == NODE_POSTFIX_EXPR &&
-        target->data.member.object->data.postfix.left->kind == NODE_LABEL &&
-        node->data.assign.value) {
-        Symbol *sym = scope_lookup(checker->current_scope,
-            target->data.member.object->data.postfix.left->data.label.value);
-        if (sym && sym->type && sym->type->kind == TK_POINTER && sym->type->element_type) {
-            GrayType *field_t = struct_field_type(checker, sym->type->element_type, target->data.member.member);
-            if (field_t && field_t->name) {
-                int64_t lit_val;
-                bool lit_neg;
-                if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
-                    check_integer_range(checker->diag, NODE_FILE(checker, node),
-                        node->data.assign.value->token.line,
-                        node->data.assign.value->token.column,
-                        field_t->name, lit_val, lit_neg);
-                }
-            }
-        }
-    }
-    /* E3155 / E3019: non-literal narrowing or signedness crossing into an
-     * integer member target (s.field, o.a.b, p^.field). target_t is already
-     * the resolved field type. Literal values are left to the range check
-     * above; this mirrors the NODE_LABEL reassignment guards below. */
-    if (target->kind == NODE_MEMBER_EXPR && node->data.assign.value &&
-        target_t && target_t->name && value_t && value_t->name &&
-        is_int_kind(target_t->kind) && is_int_kind(value_t->kind)) {
-        int64_t member_lit_probe;
-        if (!try_get_literal_int(node->data.assign.value, &member_lit_probe)) {
-            int declared_rank = int_type_name_rank(target_t->name);
-            int value_rank = int_type_name_rank(value_t->name);
-            if (declared_rank > 0 && value_rank > 0 && declared_rank < value_rank) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot implicitly narrow %s to %s field '%s'; use cast(value, %s) to convert explicitly",
-                    value_t->name, target_t->name, target->data.member.member, target_t->name);
-                tc_err_at(checker, "E3155", node, msg);
-            } else {
-                check_signedness_crossing(checker, target_t->name,
-                    node->data.assign.value, value_t, node->data.assign.value);
-            }
-        }
-    }
     /* Reject integer assigned to enum variable */
     if (target->kind == NODE_LABEL && target_t->kind == TK_ENUM &&
         is_int_kind(value_t->kind)) {
@@ -15101,7 +14936,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL) {
         Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
         if (sym && sym->type->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
-            target_t->kind != TK_UNKNOWN && !value_fits_literal_widths &&
+            target_t->kind != TK_UNKNOWN &&
             !types_assignable(checker, target_t, value_t) &&
             !(target_t->kind == TK_ENUM && is_int_kind(value_t->kind)) &&
             !(target_t->kind == TK_STRUCT && is_int_kind(value_t->kind)) &&
@@ -15191,7 +15026,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Array-to-array: element types differ on reassignment (e.g., [i64] = [string]).
      * Both sides are TK_ARRAY so the outer kind-equality guard passes. */
-    if (target->kind == NODE_LABEL && !value_fits_literal_widths &&
+    if (target->kind == NODE_LABEL &&
         target_t && value_t &&
         target_t->kind == TK_ARRAY && value_t->kind == TK_ARRAY &&
         target_t->element_type && value_t->element_type &&
@@ -15203,7 +15038,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Map-to-map: key or value types differ on reassignment (e.g., [string:i64] = [string:string]).
      * Both sides are TK_MAP so the outer kind-equality guard passes. */
-    if (target->kind == NODE_LABEL && !value_fits_literal_widths &&
+    if (target->kind == NODE_LABEL &&
         target_t && value_t &&
         target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
         target_t->key_type && value_t->key_type &&
@@ -15214,60 +15049,6 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             "type mismatch: cannot assign %s to %s variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
         tc_err_assign_type(checker, node, msg);
-    }
-    /* Integer narrowing on reassignment: u32 → u8, i64 → i16, i128 → i64, etc.
-     * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
-    if (target->kind == NODE_LABEL && !value_is_int_literal && !value_fits_literal_widths &&
-        target_t && value_t &&
-        target_t->name && value_t->name) {
-        int declared_rank = int_type_name_rank(target_t->name);
-        int value_rank = int_type_name_rank(value_t->name);
-        if (declared_rank > 0 && value_rank > 0 && declared_rank < value_rank) {
-            char *msg = typechecker_format(checker,
-                "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
-                value_t->name, target_t->name, target->data.label.value, target_t->name);
-            tc_err_at(checker, "E3155", node, msg);
-        }
-    }
-    /* E3019: signed-to-unsigned on reassignment (e.g., uint_var = signed_var).
-     * Only fires when narrowing did not already catch it (same rank). */
-    if (target->kind == NODE_LABEL && !value_is_int_literal &&
-        target_t && value_t &&
-        target_t->name && value_t->name &&
-        is_unsigned_type(target_t->name) &&
-        is_signed_int_type(value_t->name) &&
-        int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
-        diagnostic_error_code_formatted(checker->diag, "E3019",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            value_t->name, target_t->name);
-    }
-    /* Unsigned-to-signed on reassignment (e.g., int_var = uint_var). Fires on a
-     * same-width reinterpretation only: narrowing is caught above, and an
-     * unsigned value widening into a strictly larger signed type is lossless. */
-    if (target->kind == NODE_LABEL &&
-        target_t && value_t &&
-        target_t->name && value_t->name &&
-        is_signed_int_type(target_t->name) &&
-        is_unsigned_type(value_t->name) &&
-        int_type_name_rank(target_t->name) == int_type_name_rank(value_t->name)) {
-        char *msg = typechecker_format(checker,
-            "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
-            value_t->name, target_t->name, target->data.label.value,
-            target_t->name);
-        tc_err_at(checker, "E3019", node, msg);
-    }
-    /* Float narrowing on reassignment: f64 → f32.
-     * Both are TK_FLOAT so the kind guard passes. */
-    if (target->kind == NODE_LABEL &&
-        target_t && value_t &&
-        target_t->kind == TK_FLOAT && value_t->kind == TK_FLOAT &&
-        target_t->name && value_t->name &&
-        strcmp(target_t->name, value_t->name) != 0 &&
-        strcmp(target_t->name, "f32") == 0) {
-        char *msg = typechecker_format(checker,
-            "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
-            value_t->name, target_t->name, target->data.label.value, target_t->name);
-        tc_err_at(checker, "E3155", node, msg);
     }
     /* Check type mismatch on struct field assignment.
      * sym->type may be TK_STRUCT (by-value) or TK_POINTER (from new()),
@@ -15498,15 +15279,9 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         /* E3040: multi-return call in single-value return position */
         reject_multi_return_in_single_position(checker, node->data.return_stmt.values[i]);
-        /* Set expected_type for implicit enum resolution in return values */
-        GrayType *saved_ret_expected = checker->expected_type;
-        if (i < checker->current_return_count &&
-            checker->current_return_types[i] &&
-            checker->current_return_types[i]->kind == TK_ENUM &&
-            checker->current_return_types[i]->name)
-            checker->expected_type = checker->current_return_types[i];
-        resolve_expression(checker, node->data.return_stmt.values[i]);
-        checker->expected_type = saved_ret_expected;
+        /* Each value is stored into its return slot. */
+        GrayType *slot = i < checker->current_return_count ? checker->current_return_types[i] : NULL;
+        check_expr_as(checker, node->data.return_stmt.values[i], slot);
     }
     /* main() exits when control reaches the closing brace; an
      * explicit `return` is not allowed. Without this check, codegen
@@ -15603,29 +15378,6 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E3155 / E3019: a wide integer returned as a narrower integer, or across
-     * signedness to or from a wide integer. Same rules as a var-decl; the
-     * struct-backed wide types have no implicit C conversion. */
-    if (node->data.return_stmt.count == checker->current_return_count) {
-        for (int i = 0; i < node->data.return_stmt.count; i++) {
-            AstNode *return_val = node->data.return_stmt.values[i];
-            GrayType *value_type = typetable_get(checker->type_table, return_val);
-            GrayType *expected = checker->current_return_types[i];
-            if (!value_type || !expected || !value_type->name || !expected->name) continue;
-            int declared_rank = int_type_name_rank(expected->name);
-            int value_rank = int_type_name_rank(value_type->name);
-            if (declared_rank == 0 || value_rank == 0) continue;
-            if (value_rank >= 5 && declared_rank < value_rank) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
-                    value_type->name, expected->name, expected->name);
-                tc_err_at(checker, "E3155", return_val, msg);
-            } else if (value_rank >= 5 || declared_rank >= 5) {
-                check_signedness_crossing(checker, expected->name, return_val, value_type, return_val);
-            }
-        }
-    }
-
     /* Check return type matches function signature */
     if (checker->current_return_count == 0 && node->data.return_stmt.count > 0) {
         /* Returning a value from a void function; suppress when
@@ -15714,28 +15466,13 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 type_display_name(checker, ret_t), type_display_name(checker, expected));
             tc_err_at(checker, "E3066", node->data.return_stmt.values[0], msg);
         }
-        /* Array element type mismatch in return */
-        if (ret_t->kind == TK_ARRAY && expected->kind == TK_ARRAY &&
-            ret_t->element_type && expected->element_type &&
-            !typechecker_same_array_element(checker, ret_t->element_type, expected->element_type)) {
-            GrayType *re = type_from_name(ret_t->element_type);
-            GrayType *ee = type_from_name(expected->element_type);
-            if (!(re && ee && is_int_kind(re->kind) && is_int_kind(ee->kind)) &&
-                !literal_fits_nested_widths(checker, node->data.return_stmt.values[0], expected, ret_t)) {
-                char *msg = typechecker_format(checker,
-                    "return type mismatch: expected '%s', got '%s'",
-                    type_display_name(checker, expected), type_display_name(checker, ret_t));
-                tc_err_at(checker, "E5049", node, msg);
-            }
-        }
         /* Map key/value type mismatch in return */
         if (ret_t->kind == TK_MAP && expected->kind == TK_MAP) {
             bool key_mismatch = ret_t->key_type && expected->key_type &&
                 strcmp(ret_t->key_type, expected->key_type) != 0;
             bool val_mismatch = ret_t->value_type && expected->value_type &&
                 strcmp(ret_t->value_type, expected->value_type) != 0;
-            if ((key_mismatch || val_mismatch) &&
-                !literal_fits_nested_widths(checker, node->data.return_stmt.values[0], expected, ret_t)) {
+            if (key_mismatch || val_mismatch) {
                 char *msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",
                     type_display_name(checker, expected), type_display_name(checker, ret_t));
@@ -15761,40 +15498,6 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 "return type mismatch: expected '%s', got '%s'",
                 exp_str, got_str);
             tc_err_at(checker, "E5049", node, msg);
-        }
-        /* E5024/E5049: a returned variable whose signedness crosses the declared
-         * return type needs an explicit cast, in either direction. */
-        if (checker->current_return_type_names && checker->current_return_type_names[0] &&
-            node->data.return_stmt.values[0]->kind == NODE_LABEL) {
-            const char *ret_tn = checker->current_return_type_names[0];
-            const char *src_name = node->data.return_stmt.values[0]->data.label.value;
-            Symbol *src_sym = scope_lookup(checker->current_scope, src_name);
-            const char *src_tn = src_sym ? src_sym->declared_type : NULL;
-            if (src_tn && is_unsigned_type(ret_tn) && is_signed_int_type(src_tn)) {
-                diagnostic_error_code_formatted(checker->diag, "E5024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, ret_tn);
-            } else if (src_tn && is_signed_int_type(ret_tn) && is_unsigned_type(src_tn) &&
-                       !unsigned_widens_to_signed(ret_tn, src_tn)) {
-                diagnostic_error_message(checker->diag, "E5049",
-                    typechecker_format(checker,
-                        "return type mismatch: cannot return unsigned '%s' as signed '%s'; use cast(value, %s) to convert explicitly",
-                        src_tn, ret_tn, ret_tn),
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-        }
-        /* E3036: an out-of-range integer literal in any return slot
-         * (do f() -> u8 { return 300 }). */
-        if (checker->current_return_type_names) {
-            for (int i = 0; i < node->data.return_stmt.count &&
-                            i < checker->current_return_count; i++) {
-                const char *slot_tn = checker->current_return_type_names[i];
-                int64_t ret_lit;
-                bool ret_lit_neg;
-                if (slot_tn && try_get_signed_literal_int(node->data.return_stmt.values[i], &ret_lit, &ret_lit_neg)) {
-                    AstNode *rv = node->data.return_stmt.values[i];
-                    check_integer_range(checker->diag, NODE_FILE(checker, rv),
-                        rv->token.line, rv->token.column, slot_tn, ret_lit, ret_lit_neg);
-                }
-            }
         }
         /* Non-primary return slots. Everything above inspects values[0]
          * only; without this a `return 0, NetErr.DNS_FAIL` into a
@@ -17036,12 +16739,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
         }
         /* E5026: validate default value type matches parameter type */
         if (p->default_value && p->type_name) {
-            /* Set expected_type for implicit enum resolution in default param values */
-            GrayType *saved_def_expected = checker->expected_type;
-            if (ptype->kind == TK_ENUM && ptype->name)
-                checker->expected_type = ptype;
-            GrayType *def_t = resolve_expression(checker, p->default_value);
-            checker->expected_type = saved_def_expected;
+            GrayType *def_t = check_expr_as(checker, p->default_value, ptype);
             /* E3040/E3089: a fallible or multi-return call baked into a
              * parameter default is not a call site under the caller's
              * control — the resolved type above collapses to just the
@@ -17057,14 +16755,6 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                     p->name, p->type_name, type_name(def_t));
                 tc_err_arg_type(checker, p->default_value, msg);
             }
-            /* E3036: out-of-range default value for a narrow parameter
-             * (do f(b u8 = 300)). */
-            int64_t def_lit;
-            bool def_lit_neg;
-            if (try_get_signed_literal_int(p->default_value, &def_lit, &def_lit_neg))
-                check_integer_range(checker->diag, NODE_FILE(checker, p->default_value),
-                    p->default_value->token.line, p->default_value->token.column,
-                    p->type_name, def_lit, def_lit_neg);
         }
         scope_define(func_scope, p->name, ptype, p->mutable);
     }
@@ -17456,18 +17146,17 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 tc_err_at(checker, "E3173", node, msg);
             }
             /* E3140: field types the JSON serializer codegen cannot marshal.
-             * The func-typed case is already reported as E3103 above. An
-             * enum field is allowed (serialized by backing type, see the
-             * E3173 check above for the tagged-enum exception). */
+             * Every sized number type is marshaled at its own type. The
+             * func-typed case is already reported as E3103 above. An enum
+             * field is allowed (serialized by backing type, see the E3173
+             * check above for the tagged-enum exception). */
             if (ftype && strncmp(ftype, "func", 4) != 0 &&
-                strcmp(ftype, "i64") != 0 &&
-                strcmp(ftype, "u64") != 0 &&
-                strcmp(ftype, "f64") != 0 &&
+                !type_kind_is_number(type_from_name(ftype)->kind) &&
                 strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0 &&
                 !is_enum_name(checker, ftype)) {
                 char *msg = typechecker_format(checker,
                     "#json struct '%s' field '%s' has type '%s', which has no JSON representation; "
-                    "#json fields must be i64, u64, f64, string, bool, or enum",
+                    "#json fields must be a number type, string, bool, or enum",
                     STRUCT_DISPLAY_NAME(node),
                     node->data.struct_decl.fields[field_index].name, ftype);
                 tc_err_at(checker, "E3140", node, msg);
@@ -17679,7 +17368,14 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 }
                 continue;
             }
-            GrayType *case_t = resolve_expression(checker, val_i);
+            /* A case value is checked as the subject's type: `is 300` on a u8
+             * subject is out of range, and `is 0.1` on an f32 one compares as
+             * f32. A range case is checked as a range. */
+            bool is_range_case = val_i->kind == NODE_RANGE_EXPR ||
+                (val_i->kind == NODE_CALL_EXPR && val_i->data.call.function->kind == NODE_LABEL &&
+                 strcmp(val_i->data.call.function->data.label.value, "range") == 0);
+            GrayType *case_t = is_range_case ? resolve_expression(checker, val_i)
+                                             : check_expr_as(checker, val_i, when_t);
             /* Check case value type matches scrutinee; skip range exprs and unknowns */
             if (when_t && case_t &&
                 when_t->kind != TK_UNKNOWN && case_t->kind != TK_UNKNOWN &&
@@ -17957,7 +17653,17 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
     pointer_checker_snap_free(pointer_checker_pre);
 }
 
+static void check_statement_kind(TypeChecker *checker, AstNode *node);
+
+/* Check one statement. A number literal it read without giving a type takes
+ * its default type once the statement is done. */
 static void check_statement(TypeChecker *checker, AstNode *node) {
+    int literal_start = checker->pending_literal_count;
+    check_statement_kind(checker, node);
+    literal_flush_pending(checker, literal_start);
+}
+
+static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     if (!node) return;
 
     /* E2056: executable statements not allowed at file scope */
@@ -18958,11 +18664,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
              * parameter default (typechecker.c ~16497). */
             if (stmt->data.struct_decl.fields[j].default_value) {
                 AstNode *field_default = stmt->data.struct_decl.fields[j].default_value;
-                GrayType *saved_expected = checker->expected_type;
-                if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
-                    checker->expected_type = ftypes[j];
-                GrayType *def_t = resolve_expression(checker, field_default);
-                checker->expected_type = saved_expected;
+                GrayType *def_t = check_expr_as(checker, field_default, ftypes[j]);
                 if (def_t && ftypes[j] && def_t->kind != TK_UNKNOWN &&
                     ftypes[j]->kind != TK_UNKNOWN &&
                     !types_assignable(checker, ftypes[j], def_t) &&
@@ -19658,6 +19360,7 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->const_int_names);
     free(checker->const_int_values);
+    free(checker->pending_literals);
 
     free(checker->tn_cache_names);
     free(checker->tn_cache_types);
@@ -19935,6 +19638,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         }
         check_statement(checker, stmt);
     }
+    literal_flush_pending(checker, 0);
 
     /* Pass 3: re-check generic function bodies per instantiation
      * ( slice 4). The main pass walked bodies with '?' as

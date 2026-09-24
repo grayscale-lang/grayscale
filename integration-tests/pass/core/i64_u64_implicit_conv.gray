@@ -34,10 +34,10 @@ do main() {
         failed += 1
     }
 
-    // Test 3: Equality comparison between i64 and u64
+    // Test 3: Equality comparison between i64 and u64 via explicit cast
     mut c i64 = 10
     mut d u64 = 10
-    if c == d {
+    if c == cast(d, i64) {
         println("  [PASS] i64 == u64 comparison")
         passed += 1
     } otherwise {
@@ -45,10 +45,10 @@ do main() {
         failed += 1
     }
 
-    // Test 4: Inequality comparison between i64 and u64
+    // Test 4: Inequality comparison between i64 and u64 via explicit cast
     mut e i64 = 5
     mut f u64 = 10
-    if e != f {
+    if e != cast(f, i64) {
         println("  [PASS] i64 != u64 comparison")
         passed += 1
     } otherwise {
@@ -79,9 +79,9 @@ do main() {
         failed += 1
     }
 
-    // Test 7: Equality comparison between u8 and i64
+    // Test 7: Equality comparison between u8 and i64 via explicit cast
     mut i i64 = 65
-    if h == i {
+    if cast(h, i64) == i {
         println("  [PASS] u8 == i64 comparison")
         passed += 1
     } otherwise {

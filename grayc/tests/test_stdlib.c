@@ -248,7 +248,7 @@ static void test_strings_split_no_match(void) {
 }
 
 static void test_strings_join(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 3);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 3, GRAY_ELEM_STRING);
     GrayString a = gray_string_lit("a");
     GrayString b = gray_string_lit("b");
     GrayString c = gray_string_lit("c");
@@ -260,7 +260,7 @@ static void test_strings_join(void) {
 }
 
 static void test_strings_join_empty_array(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
     GrayString r = gray_strings_join(arena, arr, gray_string_lit(","));
     ASSERT_EQ(r.len, 0);
 }
@@ -279,7 +279,7 @@ static void test_strings_to_chars(void) {
 }
 
 static void test_strings_from_chars(void) {
-    GrayArray chars = gray_array_new(arena, sizeof(int32_t), 3);
+    GrayArray chars = gray_array_new(arena, sizeof(int32_t), 3, GRAY_ELEM_I32);
     int32_t a = 'h', b = 'i';
     GRAY_ARRAY_PUSH(arena, &chars, &a);
     GRAY_ARRAY_PUSH(arena, &chars, &b);
@@ -390,7 +390,7 @@ static void test_arrays_remove_at(void) {
 
 static void test_arrays_remove_int(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3, 2);
-    gray_arrays_remove_i64(&arr, 2);
+    gray_arrays_remove(&arr, &(int64_t){2});
     ASSERT_EQ(arr.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 1), 3);
@@ -399,7 +399,7 @@ static void test_arrays_remove_int(void) {
 
 static void test_arrays_remove_float(void) {
     GrayArray arr = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.5, 3.5, 2.5);
-    gray_arrays_remove_f64(&arr, 2.5);
+    gray_arrays_remove(&arr, &(double){2.5});
     ASSERT_EQ(arr.len, 3);
     ASSERT(GRAY_ARRAY_GET(arr, double, 0) == 1.5);
     ASSERT(GRAY_ARRAY_GET(arr, double, 1) == 3.5);
@@ -409,7 +409,7 @@ static void test_arrays_remove_float(void) {
 static void test_arrays_remove_str(void) {
     GrayArray arr = GRAY_ARRAY_FROM_STR(arena,
         gray_string_lit("a"), gray_string_lit("b"), gray_string_lit("c"), gray_string_lit("b"));
-    gray_arrays_remove_str(&arr, gray_string_lit("b"));
+    GrayString needle = gray_string_lit("b"); gray_arrays_remove(&arr, &needle);
     ASSERT_EQ(arr.len, 3);
     ASSERT_GRAY_STR(GRAY_ARRAY_GET(arr, GrayString, 0), "a");
     ASSERT_GRAY_STR(GRAY_ARRAY_GET(arr, GrayString, 1), "c");
@@ -423,7 +423,7 @@ static void test_arrays_clear(void) {
 }
 
 static void test_arrays_fill(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t v = 7;
     gray_arrays_fill(arena, &arr, &v, 5);
     ASSERT_EQ(arr.len, 5);
@@ -433,17 +433,17 @@ static void test_arrays_fill(void) {
 
 static void test_arrays_get_first(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    ASSERT_EQ(gray_arrays_get_first(&arr), 10);
+    ASSERT_EQ(*(int64_t *)gray_arrays_first_ptr(&arr), 10);
 }
 
 static void test_arrays_get_last(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    ASSERT_EQ(gray_arrays_get_last(&arr), 30);
+    ASSERT_EQ(*(int64_t *)gray_arrays_last_ptr(&arr), 30);
 }
 
 static void test_arrays_remove_first(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    int64_t val = gray_arrays_remove_first(&arr);
+    int64_t val; gray_arrays_remove_first_raw(&arr, &val);
     ASSERT_EQ(val, 10);
     ASSERT_EQ(arr.len, 2);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 20);
@@ -451,13 +451,13 @@ static void test_arrays_remove_first(void) {
 
 static void test_arrays_remove_last(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    int64_t val = gray_arrays_remove_last(&arr);
+    int64_t val; gray_arrays_remove_last_raw(&arr, &val);
     ASSERT_EQ(val, 30);
     ASSERT_EQ(arr.len, 2);
 }
 
 static void test_arrays_is_empty(void) {
-    GrayArray empty = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray empty = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     GrayArray nonempty = GRAY_ARRAY_FROM_I64(arena, 1);
     ASSERT(gray_arrays_is_empty(&empty));
     ASSERT(!gray_arrays_is_empty(&nonempty));
@@ -465,42 +465,43 @@ static void test_arrays_is_empty(void) {
 
 static void test_arrays_contains_i64(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
-    ASSERT(gray_arrays_contains_i64(&arr, 2));
-    ASSERT(!gray_arrays_contains_i64(&arr, 99));
+    ASSERT(gray_arrays_contains(&arr, &(int64_t){2}));
+    ASSERT(!gray_arrays_contains(&arr, &(int64_t){99}));
 }
 
 static void test_arrays_contains_str(void) {
     GrayArray arr = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("a"), gray_string_lit("b"));
-    ASSERT(gray_arrays_contains_str(&arr, gray_string_lit("a")));
-    ASSERT(!gray_arrays_contains_str(&arr, gray_string_lit("c")));
+    GrayString present = gray_string_lit("a"), absent = gray_string_lit("c");
+    ASSERT(gray_arrays_contains(&arr, &present));
+    ASSERT(!gray_arrays_contains(&arr, &absent));
 }
 
 static void test_arrays_index_of_int(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    ASSERT_EQ(gray_arrays_index_of_i64(&arr, 20), 1);
-    ASSERT_EQ(gray_arrays_index_of_i64(&arr, 99), -1);
+    ASSERT_EQ(gray_arrays_index_of(&arr, &(int64_t){20}), 1);
+    ASSERT_EQ(gray_arrays_index_of(&arr, &(int64_t){99}), -1);
 }
 
 static void test_arrays_count(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 2, 3, 2);
-    ASSERT_EQ(gray_arrays_count(&arr, 2), 3);
-    ASSERT_EQ(gray_arrays_count(&arr, 99), 0);
+    ASSERT_EQ(gray_arrays_count(&arr, &(int64_t){2}), 3);
+    ASSERT_EQ(gray_arrays_count(&arr, &(int64_t){99}), 0);
 }
 
 static void test_arrays_is_equal_prim(void) {
     GrayArray a = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
     GrayArray b = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
     GrayArray c = GRAY_ARRAY_FROM_I64(arena, 1, 2, 4);
-    ASSERT(gray_arrays_is_equal_prim(&a, &b));
-    ASSERT(!gray_arrays_is_equal_prim(&a, &c));
+    ASSERT(gray_arrays_is_equal(&a, &b));
+    ASSERT(!gray_arrays_is_equal(&a, &c));
 }
 
 static void test_arrays_is_equal_str(void) {
     GrayArray a = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("x"), gray_string_lit("y"));
     GrayArray b = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("x"), gray_string_lit("y"));
     GrayArray c = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("x"), gray_string_lit("z"));
-    ASSERT(gray_arrays_is_equal_str(&a, &b));
-    ASSERT(!gray_arrays_is_equal_str(&a, &c));
+    ASSERT(gray_arrays_is_equal(&a, &b));
+    ASSERT(!gray_arrays_is_equal(&a, &c));
 }
 
 static void test_arrays_reverse(void) {
@@ -541,7 +542,7 @@ static void test_arrays_deduplicate(void) {
 static void test_arrays_flatten(void) {
     GrayArray inner1 = GRAY_ARRAY_FROM_I64(arena, 1, 2);
     GrayArray inner2 = GRAY_ARRAY_FROM_I64(arena, 3, 4);
-    GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 2);
+    GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 2, GRAY_ELEM_ARRAY);
     GRAY_ARRAY_PUSH(arena, &outer, &inner1);
     GRAY_ARRAY_PUSH(arena, &outer, &inner2);
     GrayArray flat = gray_arrays_flatten(arena, &outer);
@@ -574,22 +575,22 @@ static void test_arrays_pair(void) {
 
 static void test_arrays_get_sum(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3, 4);
-    ASSERT_EQ(gray_arrays_get_sum(&arr), 10);
+    int64_t total; gray_arrays_get_sum(&arr, &total, __FILE__, __LINE__); ASSERT_EQ(total, 10);
 }
 
 static void test_arrays_get_min(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 3, 1, 4, 1, 5);
-    ASSERT_EQ(gray_arrays_get_min(&arr), 1);
+    int64_t smallest; gray_arrays_get_min(&arr, &smallest); ASSERT_EQ(smallest, 1);
 }
 
 static void test_arrays_get_max(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 3, 1, 4, 1, 5);
-    ASSERT_EQ(gray_arrays_get_max(&arr), 5);
+    int64_t largest; gray_arrays_get_max(&arr, &largest); ASSERT_EQ(largest, 5);
 }
 
 static void test_arrays_sort_asc(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 3, 1, 4, 1, 5);
-    gray_arrays_sort_asc(&arr);
+    gray_arrays_sort(&arr, false);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 1), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 4), 5);
@@ -597,7 +598,7 @@ static void test_arrays_sort_asc(void) {
 
 static void test_arrays_sort_desc(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 3, 1, 4, 1, 5);
-    gray_arrays_sort_desc(&arr);
+    gray_arrays_sort(&arr, true);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 5);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 4), 1);
 }
@@ -607,7 +608,7 @@ static void test_arrays_sort_asc_str(void) {
         gray_string_lit("cherry"),
         gray_string_lit("apple"),
         gray_string_lit("banana"));
-    gray_arrays_sort_asc_str(&arr);
+    gray_arrays_sort(&arr, false);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(arr, GrayString, 0), gray_string_lit("apple")));
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(arr, GrayString, 1), gray_string_lit("banana")));
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(arr, GrayString, 2), gray_string_lit("cherry")));
@@ -616,7 +617,7 @@ static void test_arrays_sort_asc_str(void) {
 /* ===== maps module ===== */
 
 static void test_maps_get_keys(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k1 = gray_string_lit("a");
     GrayString k2 = gray_string_lit("b");
     int64_t v1 = 1, v2 = 2;
@@ -629,7 +630,7 @@ static void test_maps_get_keys(void) {
 }
 
 static void test_maps_get_values(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k1 = gray_string_lit("x");
     int64_t v1 = 42;
     gray_map_set_str(arena, &m, k1, &v1, __FILE__, __LINE__);
@@ -639,7 +640,7 @@ static void test_maps_get_values(void) {
 }
 
 static void test_maps_has_key(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k = 5, v = 50;
     ASSERT(!gray_maps_has_key(&m, &k));
     GRAY_MAP_SET(arena, &m, &k, &v);
@@ -647,7 +648,7 @@ static void test_maps_has_key(void) {
 }
 
 static void test_maps_is_empty(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     ASSERT(gray_maps_is_empty(&m));
     int64_t k = 1, v = 10;
     GRAY_MAP_SET(arena, &m, &k, &v);
@@ -655,7 +656,7 @@ static void test_maps_is_empty(void) {
 }
 
 static void test_maps_contains_value(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k1 = 1, v1 = 100, k2 = 2, v2 = 200;
     GRAY_MAP_SET(arena, &m, &k1, &v1);
     GRAY_MAP_SET(arena, &m, &k2, &v2);
@@ -665,8 +666,8 @@ static void test_maps_contains_value(void) {
 }
 
 static void test_maps_is_equal(void) {
-    GrayMap a = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
-    GrayMap b = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap a = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
+    GrayMap b = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k1 = 1, v1 = 10, k2 = 2, v2 = 20;
     GRAY_MAP_SET(arena, &a, &k1, &v1);
     GRAY_MAP_SET(arena, &a, &k2, &v2);
@@ -676,8 +677,8 @@ static void test_maps_is_equal(void) {
 }
 
 static void test_maps_is_equal_str_keys(void) {
-    GrayMap a = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
-    GrayMap b = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayMap a = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
+    GrayMap b = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k = gray_string_lit("key");
     int64_t v = 42;
     gray_map_set_str(arena, &a, k, &v, __FILE__, __LINE__);
@@ -686,8 +687,8 @@ static void test_maps_is_equal_str_keys(void) {
 }
 
 static void test_maps_is_equal_different(void) {
-    GrayMap a = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
-    GrayMap b = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap a = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
+    GrayMap b = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k1 = 1, v1 = 10, v2 = 99;
     GRAY_MAP_SET(arena, &a, &k1, &v1);
     GRAY_MAP_SET(arena, &b, &k1, &v2);
@@ -695,8 +696,8 @@ static void test_maps_is_equal_different(void) {
 }
 
 static void test_maps_merge(void) {
-    GrayMap m1 = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
-    GrayMap m2 = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m1 = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
+    GrayMap m2 = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k1 = 1, v1 = 10, k2 = 2, v2 = 20, k3 = 1, v3 = 99;
     GRAY_MAP_SET(arena, &m1, &k1, &v1);
     GRAY_MAP_SET(arena, &m2, &k2, &v2);
@@ -1118,7 +1119,7 @@ static void test_strconv_quote_unquote_roundtrip(void) {
 /* ===== json module ===== */
 
 static void test_json_encode_map(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("name");
     GrayString v = gray_string_lit("Alice");
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
@@ -1130,7 +1131,7 @@ static void test_json_encode_map(void) {
  * with a key that requires escaping and a worst-case value. */
 
 static void test_json_encode_map_string_escaped_key(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("a\"b");
     GrayString v = gray_string_lit("v\\x");
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
@@ -1139,7 +1140,7 @@ static void test_json_encode_map_string_escaped_key(void) {
 }
 
 static void test_json_encode_map_int_escaped_key(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k = gray_string_lit("a\"b");
     int64_t v = INT64_MIN; /* longest int64 output: -9223372036854775808 */
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
@@ -1148,7 +1149,7 @@ static void test_json_encode_map_int_escaped_key(void) {
 }
 
 static void test_json_encode_map_float_escaped_key(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(double), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(double), 0, GRAY_ELEM_STRING, GRAY_ELEM_F64);
     GrayString k = gray_string_lit("k\ny");
     double v = 3.5;
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
@@ -1157,7 +1158,7 @@ static void test_json_encode_map_float_escaped_key(void) {
 }
 
 static void test_json_encode_map_bool_escaped_key(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(bool), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(bool), 0, GRAY_ELEM_STRING, GRAY_ELEM_BOOL);
     GrayString k1 = gray_string_lit("t\"1");
     GrayString k2 = gray_string_lit("f\"2");
     bool v1 = true, v2 = false;
@@ -1231,7 +1232,7 @@ static void test_json_roundtrip(void) {
 }
 
 static void test_json_pretty_map(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("k");
     GrayString v = gray_string_lit("v");
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
@@ -1257,7 +1258,7 @@ static GrayString io_tmp_path(const char *name) {
     GrayString parts_data[2];
     parts_data[0] = gray_io_temp_dir(arena);
     parts_data[1] = gray_string_lit(name);
-    GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2);
+    GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2, GRAY_ELEM_STRING);
     return gray_io_path_join(arena, parts);
 }
 
@@ -1301,7 +1302,7 @@ static void test_io_read_lines(void) {
 static void test_io_bytes_roundtrip(void) {
     GrayString path = io_tmp_path("grayc_ut_bytes.bin");
     uint8_t bytes[3] = {72, 105, 33};
-    GrayArray data = gray_array_from(arena, bytes, sizeof(uint8_t), 3);
+    GrayArray data = gray_array_from(arena, bytes, sizeof(uint8_t), 3, GRAY_ELEM_U8);
     ASSERT(gray_io_write_bytes(path, data));
     GrayArray back = gray_io_read_bytes(arena, path);
     ASSERT_EQ(back.len, 3);

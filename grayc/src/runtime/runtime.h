@@ -398,15 +398,6 @@ static inline uint64_t gray_usized_mul_check(int64_t left, int64_t right, uint64
     return (uint64_t)result;
 }
 
-/* Three-way comparison of an unsigned and a signed integer by value: <0, 0
- * or >0 as unsigned_value is less than, equal to or greater than
- * signed_value. A plain C comparison converts the signed side to unsigned
- * first, so a negative value would compare as a huge one. */
-static inline int gray_compare_unsigned_signed(uint64_t unsigned_value, int64_t signed_value) {
-    if (signed_value < 0) return 1;
-    return (unsigned_value > (uint64_t)signed_value) - (unsigned_value < (uint64_t)signed_value);
-}
-
 /* Safe narrowing cast with overflow check */
 static inline int64_t gray_cast_check(int64_t value, int64_t min_val, int64_t max_val,
     const char *type_name, const char *file, int line) {

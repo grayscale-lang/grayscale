@@ -341,7 +341,7 @@ GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString str) {
 /* --- Byte conversion functions (formerly @bytes module) --- */
 
 GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str) {
-    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), str.len);
+    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), str.len, GRAY_ELEM_U8);
     for (int32_t i = 0; i < str.len; i++) {
         uint8_t b = (uint8_t)str.data[i];
         GRAY_ARRAY_PUSH(arena, &arr, &b);
@@ -355,7 +355,7 @@ GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes) {
 
 GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex) {
     int32_t output_length = hex.len / 2;
-    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), output_length);
+    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), output_length, GRAY_ELEM_U8);
     for (int32_t i = 0; i < output_length; i++) {
         unsigned int byte;
         sscanf(hex.data + i * 2, "%02x", &byte);

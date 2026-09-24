@@ -1,0 +1,40 @@
+/*
+ * sized_literal_folding.gray - an expression made only of literals folds to
+ * one value at full width before it takes a type, so intermediate values may
+ * exceed the target type; wide literals are exact constants.
+ */
+
+const BIG i128 = 170141183460469231731687303715884105727
+
+do check(label string, ok bool) -> i64 {
+    if ok { return 0 }
+    println("  [FAIL] ${label}")
+    return 1
+}
+
+do main() {
+    mut failed i64 = 0
+
+    mut a u8 = 200 + 100 - 50
+    failed += check("folded u8", a == 250)
+    mut b i64 = 1 bit_shift_left 62
+    failed += check("folded shift", b == 4611686018427387904)
+    mut c i128 = -170141183460469231731687303715884105728
+    failed += check("i128 min", string(c) == "-170141183460469231731687303715884105728")
+    failed += check("file-scope i128 const", string(BIG) == "170141183460469231731687303715884105727")
+    mut m i64 = -9223372036854775808
+    failed += check("i64 min", string(m) == "-9223372036854775808")
+    mut u u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    failed += check("u256 max", string(u) == "115792089237316195423570985008687907853269984665640564039457584007913129639935")
+
+    // a narrow operand combined with a wider one of its family widens
+    mut n8 i8 = 5
+    mut n32 i32 = 100000
+    failed += check("i8 + i32 is i32", type_of(n8 + n32) == "i32" && n8 + n32 == 100005)
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,7 +1,0 @@
-/* Error Test: E3002 - bitwise operator on two different wide types */
-
-do main() {
-    mut a i128 = 1
-    mut b i256 = 2
-    println(a bit_and b)
-}

@@ -915,14 +915,14 @@ static void test_error_E4014_shadow_module(void) {
 
 /* --- E5xxx: Additional usage errors --- */
 
-static void test_error_E5024_signed_return_as_unsigned(void) {
+static void test_error_E3019_signed_return_as_unsigned(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do foo() -> u64 {\n"
         "    mut x i64 = -5\n"
         "    return x\n"
         "}\n"
         "do main() { foo() }");
-    ASSERT(has_error_code(diagnostics, "E5024"));
+    ASSERT(has_error_code(diagnostics, "E3019"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -2920,7 +2920,7 @@ int main(void) {
     RUN_TEST(test_error_E4014_shadow_module);
 
     /* E5xxx: Additional usage errors */
-    RUN_TEST(test_error_E5024_signed_return_as_unsigned);
+    RUN_TEST(test_error_E3019_signed_return_as_unsigned);
 
     /* E6xxx: Module errors */
     RUN_TEST(test_error_E6001_unknown_module);

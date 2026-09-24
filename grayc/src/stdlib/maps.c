@@ -16,7 +16,7 @@
  * rather than a gray_array_push per entry. */
 
 GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map) {
-    GrayArray arr = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4);
+    GrayArray arr = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4, map->key_kind);
     size_t ks = (size_t)map->key_size;
     char *out = (char *)arr.data;
     int32_t n = 0;
@@ -32,7 +32,7 @@ GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map) {
 }
 
 GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map) {
-    GrayArray arr = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4);
+    GrayArray arr = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4, map->value_kind);
     size_t vs = (size_t)map->value_size;
     char *out = (char *)arr.data;
     int32_t n = 0;
@@ -58,7 +58,7 @@ bool gray_maps_is_empty(GrayMap *map) {
 GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right) {
     GrayMap result = gray_map_new_kind(arena, left->key_size, left->value_size,
         left->count + right->count > 8 ? (left->count + right->count) * 2 : 8,
-        left->key_kind);
+        left->key_kind, left->value_kind);
     /* Copy all entries from left */
     for (int32_t order_index = 0; order_index < left->order_len; order_index++) {
         int32_t slot = left->order[order_index];

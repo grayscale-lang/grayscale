@@ -1,6 +1,0 @@
-do wants_i8(v i8) { println(v) }
-
-do main() {
-    mut b i16 = 300
-    wants_i8(b)
-}
