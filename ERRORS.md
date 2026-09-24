@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 484 codes** (336 errors, 17 warnings, 131 panics)
+**Total: 483 codes** (335 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -120,7 +120,7 @@
 | `E3043` | types | cannot cast between incompatible types; only numeric, enum, and string conversions are allowed |
 | `E3044` | types | cannot access field '%s' on type '%s'; use an instance variable instead |
 | `E3045` | types | 'or_return' requires a function that returns (T, Error); '%s()' does not return an error |
-| `E3046` | types | integer too large for 64 bits; max is 9223372036854775807 |
+| `E3046` | types | integer literal %s does not fit any integer type; integers range from -2^255 (i256) to 2^256 - 1 (u256) |
 | `E3047` | types | enum '%s' has no member '%s' |
 | `E3048` | types | operator '+' on strings requires both operands to be strings; got '%s' and '%s' |
 | `E3049` | types | cannot use '%s' on enum values; enums only support == and != comparisons |
@@ -287,7 +287,6 @@
 | `E5017` | usage | 'embed()' argument must be a string literal file path, not an expression |
 | `E5018` | usage | 'embed()' cannot open '%s': file not found or unreadable |
 | `E5023` | usage | cannot use '%s' on type '%s'; only integer types support increment/decrement |
-| `E5024` | usage | return type mismatch: cannot return signed '%s' as unsigned '%s' |
 | `E5025` | usage | invalid assignment target; left side of '=' must be a variable, field, or index expression |
 | `E5026` | arguments | argument type mismatch; an argument's type does not match the parameter it is bound to |
 | `E5027` | usage | 'embed()' path must not escape the source file's directory tree |
@@ -535,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-23 16:31:38 UTC*
+*Generated on 2026-09-24 00:30:33 UTC*
