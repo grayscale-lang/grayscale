@@ -9,88 +9,88 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // Test 1: to_int success path
-    mut val1, err1 = strconv.to_int("123")
+    // Test 1: to_i64 success path
+    mut val1, err1 = strconv.to_i64("123")
     if err1 == nil {
         if val1 == 123 {
-            println("  [PASS] to_int(\"123\") success = 123")
+            println("  [PASS] to_i64(\"123\") success = 123")
             passed += 1
         } otherwise {
-            println("  [FAIL] to_int(\"123\") value = ${val1}")
+            println("  [FAIL] to_i64(\"123\") value = ${val1}")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] to_int(\"123\") returned error")
+        println("  [FAIL] to_i64(\"123\") returned error")
         failed += 1
     }
 
-    // Test 2: to_int error path
-    mut val2, err2 = strconv.to_int("abc")
+    // Test 2: to_i64 error path
+    mut val2, err2 = strconv.to_i64("abc")
     if err2 != nil {
-        println("  [PASS] to_int(\"abc\") returned error")
+        println("  [PASS] to_i64(\"abc\") returned error")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"abc\") no error, val=${val2}")
+        println("  [FAIL] to_i64(\"abc\") no error, val=${val2}")
         failed += 1
     }
 
-    // Test 3: to_uint success path
-    mut val3, err3 = strconv.to_uint("456")
+    // Test 3: to_u64 success path
+    mut val3, err3 = strconv.to_u64("456")
     if err3 == nil {
         if val3 == 456 {
-            println("  [PASS] to_uint(\"456\") success = 456")
+            println("  [PASS] to_u64(\"456\") success = 456")
             passed += 1
         } otherwise {
-            println("  [FAIL] to_uint(\"456\") unexpected value")
+            println("  [FAIL] to_u64(\"456\") unexpected value")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] to_uint(\"456\") returned error")
+        println("  [FAIL] to_u64(\"456\") returned error")
         failed += 1
     }
 
-    // Test 4: to_uint error path (negative)
-    mut val4, err4 = strconv.to_uint("-5")
+    // Test 4: to_u64 error path (negative)
+    mut val4, err4 = strconv.to_u64("-5")
     if err4 != nil {
-        println("  [PASS] to_uint(\"-5\") returned error (negative)")
+        println("  [PASS] to_u64(\"-5\") returned error (negative)")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_uint(\"-5\") no error, val=${val4}")
+        println("  [FAIL] to_u64(\"-5\") no error, val=${val4}")
         failed += 1
     }
 
-    // Test 5: to_uint error path (non-numeric)
-    mut val5, err5 = strconv.to_uint("xyz")
+    // Test 5: to_u64 error path (non-numeric)
+    mut val5, err5 = strconv.to_u64("xyz")
     if err5 != nil {
-        println("  [PASS] to_uint(\"xyz\") returned error")
+        println("  [PASS] to_u64(\"xyz\") returned error")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_uint(\"xyz\") no error, val=${val5}")
+        println("  [FAIL] to_u64(\"xyz\") no error, val=${val5}")
         failed += 1
     }
 
-    // Test 6: to_float success path
-    mut val6, err6 = strconv.to_float("2.718")
+    // Test 6: to_f64 success path
+    mut val6, err6 = strconv.to_f64("2.718")
     if err6 == nil {
         if val6 > 2.71 {
-            println("  [PASS] to_float(\"2.718\") success")
+            println("  [PASS] to_f64(\"2.718\") success")
             passed += 1
         } otherwise {
-            println("  [FAIL] to_float(\"2.718\") value too small")
+            println("  [FAIL] to_f64(\"2.718\") value too small")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] to_float(\"2.718\") returned error")
+        println("  [FAIL] to_f64(\"2.718\") returned error")
         failed += 1
     }
 
-    // Test 7: to_float error path
-    mut val7, err7 = strconv.to_float("not_a_number")
+    // Test 7: to_f64 error path
+    mut val7, err7 = strconv.to_f64("not_a_number")
     if err7 != nil {
-        println("  [PASS] to_float(\"not_a_number\") returned error")
+        println("  [PASS] to_f64(\"not_a_number\") returned error")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_float(\"not_a_number\") no error, val=${val7}")
+        println("  [FAIL] to_f64(\"not_a_number\") no error, val=${val7}")
         failed += 1
     }
 
@@ -134,25 +134,25 @@ do main() {
         failed += 1
     }
 
-    // Test 11: to_int invalid runtime base returns an error, not a panic
+    // Test 11: to_i64 invalid runtime base returns an error, not a panic
     mut bad_base i64 = 99
-    mut val11, err11 = strconv.to_int("42", bad_base)
+    mut val11, err11 = strconv.to_i64("42", bad_base)
     if err11 != nil {
-        println("  [PASS] to_int(\"42\", 99) returned error (invalid base)")
+        println("  [PASS] to_i64(\"42\", 99) returned error (invalid base)")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"42\", 99) no error, val=${val11}")
+        println("  [FAIL] to_i64(\"42\", 99) no error, val=${val11}")
         failed += 1
     }
 
-    // Test 12: to_uint invalid runtime base returns an error, not a panic
+    // Test 12: to_u64 invalid runtime base returns an error, not a panic
     mut zero_base i64 = 0
-    mut val12, err12 = strconv.to_uint("42", zero_base)
+    mut val12, err12 = strconv.to_u64("42", zero_base)
     if err12 != nil {
-        println("  [PASS] to_uint(\"42\", 0) returned error (invalid base)")
+        println("  [PASS] to_u64(\"42\", 0) returned error (invalid base)")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_uint(\"42\", 0) no error, val=${val12}")
+        println("  [FAIL] to_u64(\"42\", 0) no error, val=${val12}")
         failed += 1
     }
 

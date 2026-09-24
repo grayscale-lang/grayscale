@@ -14,27 +14,27 @@
 #include "../runtime/runtime.h"
 #include "../runtime/array.h"
 
-/*@man rand_float
+/*@man rand_f64
  *@module random
  *@group Generation
- *@sig rand_float() -> f64  |  rand_float(min f64, max f64) -> f64
+ *@sig rand_f64() -> f64  |  rand_f64(min f64, max f64) -> f64
  *@desc Returns a random f64. With no arguments returns a value in [0.0, 1.0). With two arguments returns a value in [min, max).
  *@example
  *   import @random
- *   mut f f64 = random.rand_float()
- *   mut g f64 = random.rand_float(1.0, 10.0)
+ *   mut f f64 = random.rand_f64()
+ *   mut g f64 = random.rand_f64(1.0, 10.0)
  *@end
  */
 
-/*@man rand_int
+/*@man rand_i64
  *@module random
  *@group Generation
- *@sig rand_int(max i64) -> i64  |  rand_int(min i64, max i64) -> i64
+ *@sig rand_i64(max i64) -> i64  |  rand_i64(min i64, max i64) -> i64
  *@desc Returns a random integer. With one argument returns a value in [0, max). With two arguments returns a value in [min, max).
  *@example
  *   import @random
- *   mut n i64 = random.rand_int(100)
- *   mut m i64 = random.rand_int(10, 50)
+ *   mut n i64 = random.rand_i64(100)
+ *   mut m i64 = random.rand_i64(10, 50)
  *@end
  */
 
@@ -49,14 +49,14 @@
  *@end
  */
 
-/*@man rand_byte
+/*@man rand_u8
  *@module random
  *@group Generation
- *@sig rand_byte() -> u8
+ *@sig rand_u8() -> u8
  *@desc Returns a random u8 value in [0, 255].
  *@example
  *   import @random
- *   mut b u8 = random.rand_byte()
+ *   mut b u8 = random.rand_u8()
  *@end
  */
 
@@ -130,16 +130,16 @@ GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alpha
  *@example
  *   import @random
  *   random.seed(42)
- *   mut n i64 = random.rand_int(100)
+ *   mut n i64 = random.rand_i64(100)
  *@end
  */
 
-double gray_random_float_range(double minimum, double maximum);
+double gray_random_f64_range(double minimum, double maximum);
 double gray_random_f64_unit(void);
-int64_t gray_random_int_range(int64_t minimum, int64_t maximum);
-int64_t gray_random_int_max(int64_t maximum);
+int64_t gray_random_i64_range(int64_t minimum, int64_t maximum);
+int64_t gray_random_i64_max(int64_t maximum);
 bool gray_random_bool(void);
-uint8_t gray_random_byte(void);
+uint8_t gray_random_u8(void);
 int32_t gray_random_char(void);
 int32_t gray_random_char_range(int32_t minimum, int32_t maximum);
 

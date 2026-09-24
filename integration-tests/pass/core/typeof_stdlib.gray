@@ -10,17 +10,17 @@ import @maps
 
 do main() {
     // Test random module types
-    mut rf f64 = random.rand_float()
-    assert(type_of(rf) == "f64", "random.rand_float() should return 'f64'")
+    mut rf f64 = random.rand_f64()
+    assert(type_of(rf) == "f64", "random.rand_f64() should return 'f64'")
 
-    mut ri i64 = random.rand_int(100)
-    assert(type_of(ri) == "i64", "random.rand_int() should return 'i64'")
+    mut ri i64 = random.rand_i64(100)
+    assert(type_of(ri) == "i64", "random.rand_i64() should return 'i64'")
 
     mut rb bool = random.rand_bool()
     assert(type_of(rb) == "bool", "random.rand_bool() should return 'bool'")
 
-    mut rc u8 = random.rand_byte()
-    assert(type_of(rc) == "u8", "random.rand_byte() should return 'u8'")
+    mut rc u8 = random.rand_u8()
+    assert(type_of(rc) == "u8", "random.rand_u8() should return 'u8'")
 
     mut rchar char = random.rand_char()
     assert(type_of(rchar) == "char", "random.rand_char() should return 'char'")

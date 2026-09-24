@@ -1,8 +1,8 @@
 /*
  * fmt_formatting.gray - Integration tests for @fmt formatting functions
  * Tests: sprintf, pad_left, pad_right, center,
- *        int_to_hex, int_to_binary, int_to_octal,
- *        float_fixed, float_sci
+ *        i64_to_hex, i64_to_binary, i64_to_octal,
+ *        f64_to_fixed, f64_to_scientific
  */
 
 import @fmt
@@ -102,113 +102,113 @@ do main() {
         failed += 1
     }
 
-    // Test 10: int_to_hex
-    mut hex string = fmt.int_to_hex(255)
+    // Test 10: i64_to_hex
+    mut hex string = fmt.i64_to_hex(255)
     if hex == "ff" {
-        println("  [PASS] int_to_hex")
+        println("  [PASS] i64_to_hex")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_hex: got '${hex}'")
+        println("  [FAIL] i64_to_hex: got '${hex}'")
         failed += 1
     }
 
-    // Test 11: int_to_hex zero
-    mut hex0 string = fmt.int_to_hex(0)
+    // Test 11: i64_to_hex zero
+    mut hex0 string = fmt.i64_to_hex(0)
     if hex0 == "0" {
-        println("  [PASS] int_to_hex zero")
+        println("  [PASS] i64_to_hex zero")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_hex zero: got '${hex0}'")
+        println("  [FAIL] i64_to_hex zero: got '${hex0}'")
         failed += 1
     }
 
-    // Test 12: int_to_binary
-    mut bin string = fmt.int_to_binary(10)
+    // Test 12: i64_to_binary
+    mut bin string = fmt.i64_to_binary(10)
     if bin == "1010" {
-        println("  [PASS] int_to_binary")
+        println("  [PASS] i64_to_binary")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_binary: got '${bin}'")
+        println("  [FAIL] i64_to_binary: got '${bin}'")
         failed += 1
     }
 
-    // Test 13: int_to_binary zero
-    mut bin0 string = fmt.int_to_binary(0)
+    // Test 13: i64_to_binary zero
+    mut bin0 string = fmt.i64_to_binary(0)
     if bin0 == "0" {
-        println("  [PASS] int_to_binary zero")
+        println("  [PASS] i64_to_binary zero")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_binary zero: got '${bin0}'")
+        println("  [FAIL] i64_to_binary zero: got '${bin0}'")
         failed += 1
     }
 
-    // Test 14: int_to_binary power of 2
-    mut bin8 string = fmt.int_to_binary(128)
+    // Test 14: i64_to_binary power of 2
+    mut bin8 string = fmt.i64_to_binary(128)
     if bin8 == "10000000" {
-        println("  [PASS] int_to_binary 128")
+        println("  [PASS] i64_to_binary 128")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_binary 128: got '${bin8}'")
+        println("  [FAIL] i64_to_binary 128: got '${bin8}'")
         failed += 1
     }
 
-    // Test 15: int_to_octal
-    mut oct string = fmt.int_to_octal(8)
+    // Test 15: i64_to_octal
+    mut oct string = fmt.i64_to_octal(8)
     if oct == "10" {
-        println("  [PASS] int_to_octal")
+        println("  [PASS] i64_to_octal")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_octal: got '${oct}'")
+        println("  [FAIL] i64_to_octal: got '${oct}'")
         failed += 1
     }
 
-    // Test 16: int_to_octal zero
-    mut oct0 string = fmt.int_to_octal(0)
+    // Test 16: i64_to_octal zero
+    mut oct0 string = fmt.i64_to_octal(0)
     if oct0 == "0" {
-        println("  [PASS] int_to_octal zero")
+        println("  [PASS] i64_to_octal zero")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_octal zero: got '${oct0}'")
+        println("  [FAIL] i64_to_octal zero: got '${oct0}'")
         failed += 1
     }
 
-    // Test 17: float_fixed
-    mut ff string = fmt.float_fixed(3.14159, 2)
+    // Test 17: f64_to_fixed
+    mut ff string = fmt.f64_to_fixed(3.14159, 2)
     if ff == "3.14" {
-        println("  [PASS] float_fixed")
+        println("  [PASS] f64_to_fixed")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_fixed: got '${ff}'")
+        println("  [FAIL] f64_to_fixed: got '${ff}'")
         failed += 1
     }
 
-    // Test 18: float_fixed zero decimals
-    mut ff0 string = fmt.float_fixed(3.14159, 0)
+    // Test 18: f64_to_fixed zero decimals
+    mut ff0 string = fmt.f64_to_fixed(3.14159, 0)
     if ff0 == "3" {
-        println("  [PASS] float_fixed zero decimals")
+        println("  [PASS] f64_to_fixed zero decimals")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_fixed 0 dec: got '${ff0}'")
+        println("  [FAIL] f64_to_fixed 0 dec: got '${ff0}'")
         failed += 1
     }
 
-    // Test 19: float_sci
-    mut fs string = fmt.float_sci(1230.0)
+    // Test 19: f64_to_scientific
+    mut fs string = fmt.f64_to_scientific(1230.0)
     if fs == "1.230000e+03" {
-        println("  [PASS] float_sci")
+        println("  [PASS] f64_to_scientific")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_sci: got '${fs}'")
+        println("  [FAIL] f64_to_scientific: got '${fs}'")
         failed += 1
     }
 
-    // Test 20: float_sci small number
-    mut fs2 string = fmt.float_sci(0.00123)
+    // Test 20: f64_to_scientific small number
+    mut fs2 string = fmt.f64_to_scientific(0.00123)
     if fs2 == "1.230000e-03" {
-        println("  [PASS] float_sci small")
+        println("  [PASS] f64_to_scientific small")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_sci small: got '${fs2}'")
+        println("  [FAIL] f64_to_scientific small: got '${fs2}'")
         failed += 1
     }
 

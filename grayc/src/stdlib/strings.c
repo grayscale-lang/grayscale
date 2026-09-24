@@ -559,7 +559,7 @@ void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray da
     builder->len += data.len;
 }
 
-void gray_strings_builder_append_int(GrayStringsBuilder *builder, int64_t value) {
+void gray_strings_builder_append_i64(GrayStringsBuilder *builder, int64_t value) {
     char buffer[24];
     int length = snprintf(buffer, sizeof(buffer), "%lld", (long long)value);
     builder_ensure(builder, length);

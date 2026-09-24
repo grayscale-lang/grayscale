@@ -12,9 +12,9 @@ do main() {
 
     // Test 1: seed produces deterministic output
     random.seed(42)
-    mut a i64 = random.rand_int(1000)
+    mut a i64 = random.rand_i64(1000)
     random.seed(42)
-    mut b i64 = random.rand_int(1000)
+    mut b i64 = random.rand_i64(1000)
     if a == b {
         println("  [PASS] same seed produces same value")
         passed += 1
@@ -25,9 +25,9 @@ do main() {
 
     // Test 2: different seeds produce different output (statistical)
     random.seed(1)
-    mut c i64 = random.rand_int(1000000)
+    mut c i64 = random.rand_i64(1000000)
     random.seed(999)
-    mut d i64 = random.rand_int(1000000)
+    mut d i64 = random.rand_i64(1000000)
     if c != d {
         println("  [PASS] different seeds produce different values")
         passed += 1
@@ -38,23 +38,23 @@ do main() {
 
     // Test 3: seed with zero
     random.seed(0)
-    mut e i64 = random.rand_int(100)
+    mut e i64 = random.rand_i64(100)
     if e >= 0 && e < 100 {
-        println("  [PASS] seed(0) still produces valid rand_int")
+        println("  [PASS] seed(0) still produces valid rand_i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] seed(0) rand_int out of range: ${e}")
+        println("  [FAIL] seed(0) rand_i64 out of range: ${e}")
         failed += 1
     }
 
-    // Test 4: seed then rand_float still works
+    // Test 4: seed then rand_f64 still works
     random.seed(42)
-    mut f f64 = random.rand_float()
+    mut f f64 = random.rand_f64()
     if f >= 0.0 && f < 1.0 {
-        println("  [PASS] seed then rand_float in range")
+        println("  [PASS] seed then rand_f64 in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] seed then rand_float: got ${f}")
+        println("  [FAIL] seed then rand_f64: got ${f}")
         failed += 1
     }
 

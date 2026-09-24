@@ -9,48 +9,48 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // Test 1: to_int (discard the error)
-    mut n, _ = strconv.to_int("42")
+    // Test 1: to_i64 (discard the error)
+    mut n, _ = strconv.to_i64("42")
     if n == 42 {
-        println("  [PASS] to_int(\"42\") = 42")
+        println("  [PASS] to_i64(\"42\") = 42")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"42\") = ${n}")
+        println("  [FAIL] to_i64(\"42\") = ${n}")
         failed += 1
     }
 
-    // Test 2: to_int negative
-    mut neg, _ = strconv.to_int("-100")
+    // Test 2: to_i64 negative
+    mut neg, _ = strconv.to_i64("-100")
     if neg == -100 {
-        println("  [PASS] to_int(\"-100\") = -100")
+        println("  [PASS] to_i64(\"-100\") = -100")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"-100\") = ${neg}")
+        println("  [FAIL] to_i64(\"-100\") = ${neg}")
         failed += 1
     }
 
-    // Test 3: to_uint
-    mut u, _ = strconv.to_uint("999")
+    // Test 3: to_u64
+    mut u, _ = strconv.to_u64("999")
     if u == 999 {
-        println("  [PASS] to_uint(\"999\") = 999")
+        println("  [PASS] to_u64(\"999\") = 999")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_uint(\"999\") unexpected value")
+        println("  [FAIL] to_u64(\"999\") unexpected value")
         failed += 1
     }
 
-    // Test 4: to_float
-    mut f, _ = strconv.to_float("3.14")
+    // Test 4: to_f64
+    mut f, _ = strconv.to_f64("3.14")
     if f > 3.13 {
         if f < 3.15 {
-            println("  [PASS] to_float(\"3.14\") ~ 3.14")
+            println("  [PASS] to_f64(\"3.14\") ~ 3.14")
             passed += 1
         } otherwise {
-            println("  [FAIL] to_float(\"3.14\") too large")
+            println("  [FAIL] to_f64(\"3.14\") too large")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] to_float(\"3.14\") too small")
+        println("  [FAIL] to_f64(\"3.14\") too small")
         failed += 1
     }
 
@@ -84,33 +84,33 @@ do main() {
         failed += 1
     }
 
-    // Test 8: from_int
-    mut s1 string = strconv.from_int(42)
+    // Test 8: from_i64
+    mut s1 string = strconv.from_i64(42)
     if s1 == "42" {
-        println("  [PASS] from_int(42) = \"42\"")
+        println("  [PASS] from_i64(42) = \"42\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] from_int(42) = \"${s1}\"")
+        println("  [FAIL] from_i64(42) = \"${s1}\"")
         failed += 1
     }
 
-    // Test 9: from_uint
-    mut s2 string = strconv.from_uint(123)
+    // Test 9: from_u64
+    mut s2 string = strconv.from_u64(123)
     if s2 == "123" {
-        println("  [PASS] from_uint(123) = \"123\"")
+        println("  [PASS] from_u64(123) = \"123\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] from_uint(123) = \"${s2}\"")
+        println("  [FAIL] from_u64(123) = \"${s2}\"")
         failed += 1
     }
 
-    // Test 10: from_float
-    mut s3 string = strconv.from_float(2.5)
+    // Test 10: from_f64
+    mut s3 string = strconv.from_f64(2.5)
     if s3 == "2.5" {
-        println("  [PASS] from_float(2.5) = \"2.5\"")
+        println("  [PASS] from_f64(2.5) = \"2.5\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] from_float(2.5) = \"${s3}\"")
+        println("  [FAIL] from_f64(2.5) = \"${s3}\"")
         failed += 1
     }
 

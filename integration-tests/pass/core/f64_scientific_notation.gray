@@ -61,7 +61,7 @@ do main() {
     }
 
     // The bounds constants are only writable as literals with an exponent
-    if 1.7976931348623157e308 == math.MAX_FLOAT && -1.7976931348623157e308 == math.MIN_FLOAT {
+    if 1.7976931348623157e308 == math.MAX_F64 && -1.7976931348623157e308 == math.MIN_F64 {
         println("  [PASS] f64 bounds round-trip as literals")
         passed += 1
     } otherwise {

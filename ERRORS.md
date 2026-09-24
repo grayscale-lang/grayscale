@@ -432,12 +432,12 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0051` | crypto | crypto.random_hex: length must be non-negative (got %lld) |
 | `P0052` | crypto | crypto.random_hex: failed to read from /dev/urandom |
 | `P0053` | io | io.read_file: input exceeds maximum string length |
-| `P0054` | strconv | strconv.to_int: invalid base %lld; must be between 2 and 36 |
-| `P0055` | strconv | strconv.to_int: cannot convert '%s' to i64 (base %lld) |
-| `P0056` | strconv | strconv.to_uint: invalid base %lld; must be between 2 and 36 |
-| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to u64 (base %lld) |
-| `P0058` | strconv | strconv.to_uint: cannot convert '%s' to u64; value is negative |
-| `P0059` | strconv | strconv.to_float: cannot convert '%s' to f64 |
+| `P0054` | strconv | strconv.to_i64: invalid base %lld; must be between 2 and 36 |
+| `P0055` | strconv | strconv.to_i64: cannot convert '%s' to i64 (base %lld) |
+| `P0056` | strconv | strconv.to_u64: invalid base %lld; must be between 2 and 36 |
+| `P0057` | strconv | strconv.to_u64: cannot convert '%s' to u64 (base %lld) |
+| `P0058` | strconv | strconv.to_u64: cannot convert '%s' to u64; value is negative |
+| `P0059` | strconv | strconv.to_f64: cannot convert '%s' to f64 |
 | `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
 | `P0061` | memory | mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB |
 | `P0062` | random | random.sample() count %lld exceeds array length %d |
@@ -488,8 +488,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 | `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
-| `P0110` | strconv | strconv.format_int: invalid base %lld; must be between 2 and 36 |
-| `P0111` | strconv | strconv.format_uint: invalid base %lld; must be between 2 and 36 |
+| `P0110` | strconv | strconv.format_i64: invalid base %lld; must be between 2 and 36 |
+| `P0111` | strconv | strconv.format_u64: invalid base %lld; must be between 2 and 36 |
 | `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
 | `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
 | `P0114` | io | csv.read_file: input exceeds maximum string length |
@@ -534,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-24 00:30:33 UTC*
+*Generated on 2026-09-24 15:35:17 UTC*

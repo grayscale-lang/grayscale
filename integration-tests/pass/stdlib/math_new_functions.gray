@@ -75,42 +75,42 @@ do main() {
     }
 
     // -- bounds constants --
-    if math.MAX_INT == 9223372036854775807 {
-        println("  [PASS] MAX_INT")
+    if math.MAX_I64 == 9223372036854775807 {
+        println("  [PASS] MAX_I64")
         passed += 1
     } otherwise {
-        println("  [FAIL] MAX_INT: got ${math.MAX_INT}")
+        println("  [FAIL] MAX_I64: got ${math.MAX_I64}")
         failed += 1
     }
-    if math.MIN_INT < 0 && math.MIN_INT + math.MAX_INT == -1 {
-        println("  [PASS] MIN_INT")
+    if math.MIN_I64 < 0 && math.MIN_I64 + math.MAX_I64 == -1 {
+        println("  [PASS] MIN_I64")
         passed += 1
     } otherwise {
-        println("  [FAIL] MIN_INT: got ${math.MIN_INT}")
+        println("  [FAIL] MIN_I64: got ${math.MIN_I64}")
         failed += 1
     }
-    if math.MAX_FLOAT < math.INF && math.is_finite(math.MAX_FLOAT) && math.MAX_FLOAT > 0.0 {
-        println("  [PASS] MAX_FLOAT")
+    if math.MAX_F64 < math.INF && math.is_finite(math.MAX_F64) && math.MAX_F64 > 0.0 {
+        println("  [PASS] MAX_F64")
         passed += 1
     } otherwise {
-        println("  [FAIL] MAX_FLOAT")
+        println("  [FAIL] MAX_F64")
         failed += 1
     }
-    if math.MIN_FLOAT > math.NEG_INF && math.is_finite(math.MIN_FLOAT) && math.MIN_FLOAT + math.MAX_FLOAT == 0.0 {
-        println("  [PASS] MIN_FLOAT")
+    if math.MIN_F64 > math.NEG_INF && math.is_finite(math.MIN_F64) && math.MIN_F64 + math.MAX_F64 == 0.0 {
+        println("  [PASS] MIN_F64")
         passed += 1
     } otherwise {
-        println("  [FAIL] MIN_FLOAT")
+        println("  [FAIL] MIN_F64")
         failed += 1
     }
 
-    // -- MAX_INT is an i64, not a f64: usable where an i64 is required --
-    mut bound i64 = math.MAX_INT
-    if bound == math.MAX_INT {
-        println("  [PASS] MAX_INT is i64-typed")
+    // -- MAX_I64 is an i64, not a f64: usable where an i64 is required --
+    mut bound i64 = math.MAX_I64
+    if bound == math.MAX_I64 {
+        println("  [PASS] MAX_I64 is i64-typed")
         passed += 1
     } otherwise {
-        println("  [FAIL] MAX_INT is i64-typed")
+        println("  [FAIL] MAX_I64 is i64-typed")
         failed += 1
     }
 

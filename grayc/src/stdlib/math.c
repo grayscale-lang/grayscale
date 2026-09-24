@@ -90,7 +90,7 @@ bool gray_math_is_power_of_two(int64_t number) {
 int64_t gray_math_next_power_of_two(int64_t number) {
     if (number <= 1) return 1;
     /* 2^62 is the largest power of two an int64 holds; anything above it
-     * would round up past MAX_INT. */
+     * would round up past MAX_I64. */
     if (number > (int64_t)1 << 62) {
         gray_panic_code("P0106",
             "math.next_power_of_two() result is too large for i64, got %lld", (long long)number);

@@ -1,5 +1,5 @@
 /*
- * Error Test: E5009 - invalid base for strconv.format_uint
+ * Error Test: E5009 - invalid base for strconv.format_u64
  * Expected: "invalid base" error at compile time
  */
 
@@ -9,6 +9,6 @@ import @strconv
 
 do main() {
     mut n u64 = 255
-    mut s string = strconv.format_uint(n, 99)
+    mut s string = strconv.format_u64(n, 99)
     println(s)
 }

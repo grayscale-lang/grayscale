@@ -753,16 +753,16 @@ GrayResult_map gray_json_decode_result(GrayArena *arena, GrayString text) {
 
 void gray_json_field_decode(GrayString text, int32_t kind, void *output, const char *file, int line) {
     switch (kind) {
-    case GRAY_ELEM_I8:  *(int8_t *)output  = (int8_t)gray_cast_check(gray_strconv_to_int(text, 10), INT8_MIN, INT8_MAX, "i8", file, line); break;
-    case GRAY_ELEM_I16: *(int16_t *)output = (int16_t)gray_cast_check(gray_strconv_to_int(text, 10), INT16_MIN, INT16_MAX, "i16", file, line); break;
-    case GRAY_ELEM_I32: *(int32_t *)output = (int32_t)gray_cast_check(gray_strconv_to_int(text, 10), INT32_MIN, INT32_MAX, "i32", file, line); break;
-    case GRAY_ELEM_I64: *(int64_t *)output = gray_strconv_to_int(text, 10); break;
-    case GRAY_ELEM_U8:  *(uint8_t *)output  = (uint8_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT8_MAX, "u8", file, line); break;
-    case GRAY_ELEM_U16: *(uint16_t *)output = (uint16_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT16_MAX, "u16", file, line); break;
-    case GRAY_ELEM_U32: *(uint32_t *)output = (uint32_t)gray_ucast_check_u64(gray_strconv_to_uint(text, 10), UINT32_MAX, "u32", file, line); break;
-    case GRAY_ELEM_U64: *(uint64_t *)output = gray_strconv_to_uint(text, 10); break;
-    case GRAY_ELEM_F32: *(float *)output  = (float)gray_strconv_to_float(text); break;
-    case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_float(text); break;
+    case GRAY_ELEM_I8:  *(int8_t *)output  = (int8_t)gray_cast_check(gray_strconv_to_i64(text, 10), INT8_MIN, INT8_MAX, "i8", file, line); break;
+    case GRAY_ELEM_I16: *(int16_t *)output = (int16_t)gray_cast_check(gray_strconv_to_i64(text, 10), INT16_MIN, INT16_MAX, "i16", file, line); break;
+    case GRAY_ELEM_I32: *(int32_t *)output = (int32_t)gray_cast_check(gray_strconv_to_i64(text, 10), INT32_MIN, INT32_MAX, "i32", file, line); break;
+    case GRAY_ELEM_I64: *(int64_t *)output = gray_strconv_to_i64(text, 10); break;
+    case GRAY_ELEM_U8:  *(uint8_t *)output  = (uint8_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT8_MAX, "u8", file, line); break;
+    case GRAY_ELEM_U16: *(uint16_t *)output = (uint16_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT16_MAX, "u16", file, line); break;
+    case GRAY_ELEM_U32: *(uint32_t *)output = (uint32_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT32_MAX, "u32", file, line); break;
+    case GRAY_ELEM_U64: *(uint64_t *)output = gray_strconv_to_u64(text, 10); break;
+    case GRAY_ELEM_F32: *(float *)output  = (float)gray_strconv_to_f64(text); break;
+    case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_f64(text); break;
     case GRAY_ELEM_I128: case GRAY_ELEM_U128: case GRAY_ELEM_I256: case GRAY_ELEM_U256: {
         /* The wide parsers read a NUL-terminated decimal. */
         char digits[96];

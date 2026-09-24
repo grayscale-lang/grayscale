@@ -22,44 +22,44 @@ typedef struct { bool v0; GrayError *v1; } GrayResult_bool;
 typedef struct { uint64_t v0; GrayError *v1; } GrayResult_u64;
 typedef struct { double v0; GrayError *v1; } GrayResult_f64;
 
-/*@man to_int
+/*@man to_i64
  *@module strconv
  *@group Parsing
- *@sig to_int(s string, base i64 = 10) -> (i64, Error)
+ *@sig to_i64(s string, base i64 = 10) -> (i64, Error)
  *@desc Parses s as a signed integer in the given base (2–36). Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0. Leading/trailing whitespace is not tolerated.
  *@example
  *   import @strconv
- *   mut n, err = strconv.to_int("42")
- *   mut val, err = strconv.to_int("ff", strconv.BASE_16)
+ *   mut n, err = strconv.to_i64("42")
+ *   mut val, err = strconv.to_i64("ff", strconv.BASE_16)
  *@end
  */
-int64_t gray_strconv_to_int(GrayString string, int64_t base);
+int64_t gray_strconv_to_i64(GrayString string, int64_t base);
 
-/*@man to_uint
+/*@man to_u64
  *@module strconv
  *@group Parsing
- *@sig to_uint(s string, base i64 = 10) -> (u64, Error)
+ *@sig to_u64(s string, base i64 = 10) -> (u64, Error)
  *@desc Parses s as an unsigned integer in the given base (2–36). Rejects strings with a leading minus sign. Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0.
  *@example
  *   import @strconv
- *   mut n, err = strconv.to_uint("255")
- *   mut val, err = strconv.to_uint("ff", strconv.BASE_16)
+ *   mut n, err = strconv.to_u64("255")
+ *   mut val, err = strconv.to_u64("ff", strconv.BASE_16)
  *@end
  */
-uint64_t gray_strconv_to_uint(GrayString string, int64_t base);
+uint64_t gray_strconv_to_u64(GrayString string, int64_t base);
 
-/*@man to_float
+/*@man to_f64
  *@module strconv
  *@group Parsing
- *@sig to_float(s string) -> (f64, Error)
+ *@sig to_f64(s string) -> (f64, Error)
  *@desc Parses s as a floating-point number. Accepts standard decimal notation and "inf", "infinity", "nan" (case-insensitive). Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0.0.
  *@example
  *   import @strconv
- *   mut f, err = strconv.to_float("3.14")
- *   mut val, err = strconv.to_float("not a number")
+ *   mut f, err = strconv.to_f64("3.14")
+ *   mut val, err = strconv.to_f64("not a number")
  *@end
  */
-double gray_strconv_to_float(GrayString string);
+double gray_strconv_to_f64(GrayString string);
 
 /*@man to_bool
  *@module strconv
@@ -77,77 +77,77 @@ bool gray_strconv_to_bool(GrayString string);
 /* Result forms — every Grayscale call compiles to one of these. The bare
  * forms above are no longer reachable (single-var assignment of a fallible
  * call is rejected with E3089). */
-GrayResult_i64 gray_strconv_to_int_result(GrayString string, int64_t base);
-GrayResult_u64 gray_strconv_to_uint_result(GrayString string, int64_t base);
-GrayResult_f64 gray_strconv_to_float_result(GrayString string);
+GrayResult_i64 gray_strconv_to_i64_result(GrayString string, int64_t base);
+GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base);
+GrayResult_f64 gray_strconv_to_f64_result(GrayString string);
 GrayResult_bool gray_strconv_to_bool_result(GrayString string);
 
-/*@man from_int
+/*@man from_i64
  *@module strconv
  *@group Formatting
- *@sig from_int(n i64) -> string
+ *@sig from_i64(n i64) -> string
  *@desc Converts an integer to its decimal string representation. Never fails.
  *@example
  *   import @strconv
- *   println(strconv.from_int(42))
+ *   println(strconv.from_i64(42))
  *@end
  */
 /* Format a floating-point value using the shortest representation that round-trips at
  * `bit_size` (32 or 64). Used by both builtins (print, to_string) and strconv
- * (from_float). */
+ * (from_f64). */
 int gray_fmt_shortest_float(char *buffer, size_t buffer_size, double value, int bit_size);
 
 /* Type to string conversions */
-GrayString gray_strconv_from_int(GrayArena *arena, int64_t value);
+GrayString gray_strconv_from_i64(GrayArena *arena, int64_t value);
 
-/*@man from_uint
+/*@man from_u64
  *@module strconv
  *@group Formatting
- *@sig from_uint(n u64) -> string
+ *@sig from_u64(n u64) -> string
  *@desc Converts an unsigned integer to its decimal string representation. Never fails.
  *@example
  *   import @strconv
- *   println(strconv.from_uint(255))
+ *   println(strconv.from_u64(255))
  *@end
  */
-GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value);
+GrayString gray_strconv_from_u64(GrayArena *arena, uint64_t value);
 
-/*@man format_int
+/*@man format_i64
  *@module strconv
  *@group Formatting
- *@sig format_int(n i64, base i64) -> string
+ *@sig format_i64(n i64, base i64) -> string
  *@desc Converts a signed integer to its string representation in the given base (2–36). Negative values are prefixed with '-'. Digits above 9 use lowercase letters 'a'–'z'. Panics if base is out of range. Never fails otherwise.
  *@example
  *   import @strconv
- *   println(strconv.format_int(255, 16))
- *   println(strconv.format_int(-10, 2))
+ *   println(strconv.format_i64(255, 16))
+ *   println(strconv.format_i64(-10, 2))
  *@end
  */
-GrayString gray_strconv_format_int(GrayArena *arena, int64_t value, int64_t base);
+GrayString gray_strconv_format_i64(GrayArena *arena, int64_t value, int64_t base);
 
-/*@man format_uint
+/*@man format_u64
  *@module strconv
  *@group Formatting
- *@sig format_uint(n u64, base i64) -> string
+ *@sig format_u64(n u64, base i64) -> string
  *@desc Converts an unsigned integer to its string representation in the given base (2–36). Digits above 9 use lowercase letters 'a'–'z'. Panics if base is out of range. Never fails otherwise.
  *@example
  *   import @strconv
- *   println(strconv.format_uint(255, 16))
+ *   println(strconv.format_u64(255, 16))
  *@end
  */
-GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t value, int64_t base);
+GrayString gray_strconv_format_u64(GrayArena *arena, uint64_t value, int64_t base);
 
-/*@man from_float
+/*@man from_f64
  *@module strconv
  *@group Formatting
- *@sig from_float(f f64) -> string
+ *@sig from_f64(f f64) -> string
  *@desc Converts an f64 to its shortest accurate string representation. Never fails.
  *@example
  *   import @strconv
- *   println(strconv.from_float(3.14))
+ *   println(strconv.from_f64(3.14))
  *@end
  */
-GrayString gray_strconv_from_float(GrayArena *arena, double value);
+GrayString gray_strconv_from_f64(GrayArena *arena, double value);
 
 /*@man from_bool
  *@module strconv
@@ -218,7 +218,7 @@ bool gray_strconv_is_integer(GrayString string);
  *@group Constants
  *@kind const
  *@sig 2
- *@desc Base constant for binary. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
+ *@desc Base constant for binary. Pass as the base argument to to_i64(), to_u64(), format_i64(), or format_u64().
  *@end
  */
 
@@ -227,7 +227,7 @@ bool gray_strconv_is_integer(GrayString string);
  *@group Constants
  *@kind const
  *@sig 8
- *@desc Base constant for octal. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
+ *@desc Base constant for octal. Pass as the base argument to to_i64(), to_u64(), format_i64(), or format_u64().
  *@end
  */
 
@@ -236,7 +236,7 @@ bool gray_strconv_is_integer(GrayString string);
  *@group Constants
  *@kind const
  *@sig 10
- *@desc Base constant for decimal (the default for to_int()/to_uint()). Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
+ *@desc Base constant for decimal (the default for to_i64()/to_u64()). Pass as the base argument to to_i64(), to_u64(), format_i64(), or format_u64().
  *@end
  */
 
@@ -245,7 +245,7 @@ bool gray_strconv_is_integer(GrayString string);
  *@group Constants
  *@kind const
  *@sig 16
- *@desc Base constant for hexadecimal. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
+ *@desc Base constant for hexadecimal. Pass as the base argument to to_i64(), to_u64(), format_i64(), or format_u64().
  *@end
  */
 
@@ -254,7 +254,7 @@ bool gray_strconv_is_integer(GrayString string);
  *@group Constants
  *@kind const
  *@sig 36
- *@desc Base constant for base-36 (digits 0-9 and letters A-Z). Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
+ *@desc Base constant for base-36 (digits 0-9 and letters A-Z). Pass as the base argument to to_i64(), to_u64(), format_i64(), or format_u64().
  *@end
  */
 

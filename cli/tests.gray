@@ -1246,21 +1246,21 @@ do main() {
     println("=== 18. @random ===")
     // =========================================================================
 
-    mut ri i64 = random.rand_int(100)
+    mut ri i64 = random.rand_i64(100)
     if ri >= 0 {
-        println("  [PASS] random.rand_int(100) = ${ri}")
+        println("  [PASS] random.rand_i64(100) = ${ri}")
         passed++
     } otherwise {
-        println("  [FAIL] rand_int: expected >= 0, got ${ri}")
+        println("  [FAIL] rand_i64: expected >= 0, got ${ri}")
         failed++
     }
 
-    mut rf f64 = random.rand_float()
+    mut rf f64 = random.rand_f64()
     if rf >= 0.0 {
-        println("  [PASS] random.rand_float() = ${rf}")
+        println("  [PASS] random.rand_f64() = ${rf}")
         passed++
     } otherwise {
-        println("  [FAIL] rand_float: expected >= 0.0, got ${rf}")
+        println("  [FAIL] rand_f64: expected >= 0.0, got ${rf}")
         failed++
     }
 
@@ -1356,12 +1356,12 @@ do main() {
         failed++
     }
 
-    mut fmt5 string = fmt.float_fixed(3.14159, 2)
+    mut fmt5 string = fmt.f64_to_fixed(3.14159, 2)
     if fmt5 == "3.14" {
-        println("  [PASS] fmt.float_fixed(3.14159, 2) = \"3.14\"")
+        println("  [PASS] fmt.f64_to_fixed(3.14159, 2) = \"3.14\"")
         passed++
     } otherwise {
-        println("  [FAIL] fmt.float_fixed: expected \"3.14\", got \"${fmt5}\"")
+        println("  [FAIL] fmt.f64_to_fixed: expected \"3.14\", got \"${fmt5}\"")
         failed++
     }
 
@@ -1370,21 +1370,21 @@ do main() {
     println("=== 21. @strconv ===")
     // =========================================================================
 
-    mut sc1 string = strconv.from_int(42)
+    mut sc1 string = strconv.from_i64(42)
     if sc1 == "42" {
-        println("  [PASS] strconv.from_int(42) = \"42\"")
+        println("  [PASS] strconv.from_i64(42) = \"42\"")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.from_int: expected \"42\", got \"${sc1}\"")
+        println("  [FAIL] strconv.from_i64: expected \"42\", got \"${sc1}\"")
         failed++
     }
 
-    mut sc2 string = strconv.from_float(3.14)
+    mut sc2 string = strconv.from_f64(3.14)
     if strings.starts_with(sc2, "3.14") {
-        println("  [PASS] strconv.from_float(3.14) starts with \"3.14\"")
+        println("  [PASS] strconv.from_f64(3.14) starts with \"3.14\"")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.from_float: expected starts with \"3.14\", got \"${sc2}\"")
+        println("  [FAIL] strconv.from_f64: expected starts with \"3.14\", got \"${sc2}\"")
         failed++
     }
 
@@ -1397,21 +1397,21 @@ do main() {
         failed++
     }
 
-    mut sc4 i64, _ = strconv.to_int("123")
+    mut sc4 i64, _ = strconv.to_i64("123")
     if sc4 == 123 {
-        println("  [PASS] strconv.to_int(\"123\") = 123")
+        println("  [PASS] strconv.to_i64(\"123\") = 123")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.to_int: expected 123, got ${sc4}")
+        println("  [FAIL] strconv.to_i64: expected 123, got ${sc4}")
         failed++
     }
 
-    mut sc5 f64, _ = strconv.to_float("2.5")
+    mut sc5 f64, _ = strconv.to_f64("2.5")
     if sc5 == 2.5 {
-        println("  [PASS] strconv.to_float(\"2.5\") = 2.5")
+        println("  [PASS] strconv.to_f64(\"2.5\") = 2.5")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.to_float: expected 2.5, got ${sc5}")
+        println("  [FAIL] strconv.to_f64: expected 2.5, got ${sc5}")
         failed++
     }
 
@@ -2503,30 +2503,30 @@ do main() {
     println("=== 47. @strconv (error slot) ===")
     // =========================================================================
 
-    mut sc_n, sc_e = strconv.to_int("123")
+    mut sc_n, sc_e = strconv.to_i64("123")
     if sc_e == nil && sc_n == 123 {
-        println("  [PASS] strconv.to_int(\"123\") = 123, nil error")
+        println("  [PASS] strconv.to_i64(\"123\") = 123, nil error")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.to_int valid: n=${sc_n}")
+        println("  [FAIL] strconv.to_i64 valid: n=${sc_n}")
         failed++
     }
 
-    mut _, sc_e2 = strconv.to_int("not-a-number")
+    mut _, sc_e2 = strconv.to_i64("not-a-number")
     if sc_e2 != nil {
-        println("  [PASS] strconv.to_int reports an error on invalid input")
+        println("  [PASS] strconv.to_i64 reports an error on invalid input")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.to_int(\"not-a-number\") should error")
+        println("  [FAIL] strconv.to_i64(\"not-a-number\") should error")
         failed++
     }
 
-    mut _, sc_ef = strconv.to_float("3.5x")
+    mut _, sc_ef = strconv.to_f64("3.5x")
     if sc_ef != nil {
-        println("  [PASS] strconv.to_float reports an error on invalid input")
+        println("  [PASS] strconv.to_f64 reports an error on invalid input")
         passed++
     } otherwise {
-        println("  [FAIL] strconv.to_float(\"3.5x\") should error")
+        println("  [FAIL] strconv.to_f64(\"3.5x\") should error")
         failed++
     }
 

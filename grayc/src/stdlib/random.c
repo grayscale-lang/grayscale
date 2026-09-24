@@ -62,7 +62,7 @@ double gray_random_f64_unit(void) {
     return (double)rand() / RAND_MAX;
 }
 
-double gray_random_float_range(double minimum, double maximum) {
+double gray_random_f64_range(double minimum, double maximum) {
     return minimum + gray_random_f64_unit() * (maximum - minimum);
 }
 
@@ -99,13 +99,13 @@ static uint64_t rand64(void) {
     return bits;
 }
 
-int64_t gray_random_int_max(int64_t maximum) {
+int64_t gray_random_i64_max(int64_t maximum) {
     ensure_seed();
     if (maximum <= 0) return 0;
     return (int64_t)(rand64() % (uint64_t)maximum);
 }
 
-int64_t gray_random_int_range(int64_t minimum, int64_t maximum) {
+int64_t gray_random_i64_range(int64_t minimum, int64_t maximum) {
     ensure_seed();
     if (minimum >= maximum) return minimum;
     return minimum + (int64_t)(rand64() % (uint64_t)(maximum - minimum));
@@ -116,7 +116,7 @@ bool gray_random_bool(void) {
     return rand() % 2 == 0;
 }
 
-uint8_t gray_random_byte(void) {
+uint8_t gray_random_u8(void) {
     ensure_seed();
     return (uint8_t)(rand() % 256);
 }

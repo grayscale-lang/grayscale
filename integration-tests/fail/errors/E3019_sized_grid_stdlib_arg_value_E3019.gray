@@ -6,7 +6,7 @@ import @fmt
 
 do case_1620() {
     mut src u64 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 
 do main() {

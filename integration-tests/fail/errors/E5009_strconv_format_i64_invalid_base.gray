@@ -1,5 +1,5 @@
 /*
- * Error Test: E5009 - invalid base for strconv.format_int
+ * Error Test: E5009 - invalid base for strconv.format_i64
  * Expected: "invalid base" error at compile time
  */
 
@@ -8,6 +8,6 @@
 import @strconv
 
 do main() {
-    mut s string = strconv.format_int(255, 99)
+    mut s string = strconv.format_i64(255, 99)
     println(s)
 }

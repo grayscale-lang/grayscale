@@ -4,35 +4,35 @@ import @fmt
 
 do case_1609() {
     
-    println(fmt.int_to_hex(0))
+    println(fmt.i64_to_hex(0))
 }
 do case_1611() {
     mut src i8 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1612() {
     mut src i16 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1613() {
     mut src i32 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1614() {
     mut src i64 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1617() {
     mut src u8 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1618() {
     mut src u16 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1619() {
     mut src u32 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 
 do main() {

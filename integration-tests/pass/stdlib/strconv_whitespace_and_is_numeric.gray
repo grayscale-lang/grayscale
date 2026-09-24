@@ -1,6 +1,6 @@
 /*
  * Test: strconv whitespace rejection and is_numeric digit requirement
- * - to_int/to_uint/to_float result variants return errors on leading whitespace
+ * - to_i64/to_u64/to_f64 result variants return errors on leading whitespace
  * - is_numeric returns false for strings with no digits (e.g. ".", "-.", "+.")
  */
 
@@ -21,23 +21,23 @@ do main() {
     if strconv.is_numeric("-42")  { pass += 1 } otherwise { fail += 1 }
 
     // result variants: leading whitespace returns an error
-    mut _, e1 = strconv.to_int("  42")
+    mut _, e1 = strconv.to_i64("  42")
     if e1 != nil { pass += 1 } otherwise { fail += 1 }
 
-    mut _, e2 = strconv.to_uint("  99")
+    mut _, e2 = strconv.to_u64("  99")
     if e2 != nil { pass += 1 } otherwise { fail += 1 }
 
-    mut _, e3 = strconv.to_float("  3.14")
+    mut _, e3 = strconv.to_f64("  3.14")
     if e3 != nil { pass += 1 } otherwise { fail += 1 }
 
     // result variants: no-whitespace inputs still succeed
-    mut v4, e4 = strconv.to_int("7")
+    mut v4, e4 = strconv.to_i64("7")
     if e4 == nil { if v4 == 7 { pass += 1 } otherwise { fail += 1 } } otherwise { fail += 1 }
 
-    mut v5, e5 = strconv.to_uint("8")
+    mut v5, e5 = strconv.to_u64("8")
     if e5 == nil { if v5 == 8 { pass += 1 } otherwise { fail += 1 } } otherwise { fail += 1 }
 
-    mut v6, e6 = strconv.to_float("1.5")
+    mut v6, e6 = strconv.to_f64("1.5")
     if e6 == nil { if v6 > 1.4 { pass += 1 } otherwise { fail += 1 } } otherwise { fail += 1 }
 
     println("strconv_whitespace_and_is_numeric: ${pass} passed, ${fail} failed")

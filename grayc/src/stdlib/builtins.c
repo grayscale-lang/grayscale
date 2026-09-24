@@ -271,11 +271,11 @@ int64_t gray_builtin_system(GrayString command) {
 /* --- to_string --- */
 
 GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value) {
-    return gray_strconv_from_int(arena, value);
+    return gray_strconv_from_i64(arena, value);
 }
 
 GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value) {
-    return gray_strconv_from_uint(arena, value);
+    return gray_strconv_from_u64(arena, value);
 }
 
 GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size) {

@@ -187,7 +187,7 @@ slot_case() {
         builtin_arg)
             printf 'do case_%s() {\n    %s\n    sleep_ns(%s)\n}\n' "$id" "$setup" "$e" ;;
         stdlib_arg)
-            printf 'do case_%s() {\n    %s\n    println(fmt.int_to_hex(%s))\n}\n' "$id" "$setup" "$e" ;;
+            printf 'do case_%s() {\n    %s\n    println(fmt.i64_to_hex(%s))\n}\n' "$id" "$setup" "$e" ;;
         range_start|range_end|range_step|range_bound_with_i128)
             local bounds
             case "$slot" in

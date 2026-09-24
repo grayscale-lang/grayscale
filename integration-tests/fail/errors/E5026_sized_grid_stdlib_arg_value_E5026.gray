@@ -6,11 +6,11 @@ import @fmt
 
 do case_1623() {
     mut src f32 = 0.0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1624() {
     mut src f64 = 0.0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 
 do main() {

@@ -1,20 +1,20 @@
-// Test: strconv.to_int and to_uint reject a base that only fits once narrowed to 32 bits
+// Test: strconv.to_i64 and to_u64 reject a base that only fits once narrowed to 32 bits
 import @strconv
 
 do main() {
     mut base i64 = 4294967298
 
-    mut v, err = strconv.to_int("11", base)
+    mut v, err = strconv.to_i64("11", base)
     if err != nil && v == 0 {
-        println("  [PASS] to_int rejects base 2^32 + 2")
+        println("  [PASS] to_i64 rejects base 2^32 + 2")
     } else {
-        println("  [FAIL] to_int rejects base 2^32 + 2")
+        println("  [FAIL] to_i64 rejects base 2^32 + 2")
     }
 
-    mut u, uerr = strconv.to_uint("11", base)
+    mut u, uerr = strconv.to_u64("11", base)
     if uerr != nil && u == 0 {
-        println("  [PASS] to_uint rejects base 2^32 + 2")
+        println("  [PASS] to_u64 rejects base 2^32 + 2")
     } else {
-        println("  [FAIL] to_uint rejects base 2^32 + 2")
+        println("  [FAIL] to_u64 rejects base 2^32 + 2")
     }
 }

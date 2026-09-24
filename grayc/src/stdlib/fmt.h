@@ -132,65 +132,65 @@ GrayString gray_fmt_pad_right(GrayArena *arena, GrayString string, int64_t width
  */
 GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
-/*@man int_to_hex
+/*@man i64_to_hex
  *@module fmt
  *@group Number Formatting
- *@sig int_to_hex(n i64) -> string
+ *@sig i64_to_hex(n i64) -> string
  *@desc Returns the integer n formatted as a lowercase hexadecimal string with no "0x" prefix.
  *@example
  *   import @fmt
- *   println(fmt.int_to_hex(255))
+ *   println(fmt.i64_to_hex(255))
  *@end
  */
-GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_hex(GrayArena *arena, int64_t value);
 
-/*@man int_to_binary
+/*@man i64_to_binary
  *@module fmt
  *@group Number Formatting
- *@sig int_to_binary(n i64) -> string
+ *@sig i64_to_binary(n i64) -> string
  *@desc Returns the integer n formatted as a binary string with no "0b" prefix.
  *@example
  *   import @fmt
- *   println(fmt.int_to_binary(10))
+ *   println(fmt.i64_to_binary(10))
  *@end
  */
-GrayString gray_fmt_int_to_binary(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_binary(GrayArena *arena, int64_t value);
 
-/*@man int_to_octal
+/*@man i64_to_octal
  *@module fmt
  *@group Number Formatting
- *@sig int_to_octal(n i64) -> string
+ *@sig i64_to_octal(n i64) -> string
  *@desc Returns the integer n formatted as an octal string with no "0o" prefix.
  *@example
  *   import @fmt
- *   println(fmt.int_to_octal(8))
+ *   println(fmt.i64_to_octal(8))
  *@end
  */
-GrayString gray_fmt_int_to_octal(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_octal(GrayArena *arena, int64_t value);
 
-/*@man float_fixed
+/*@man f64_to_fixed
  *@module fmt
  *@group Number Formatting
- *@sig float_fixed(f f64, decimals i64) -> string
+ *@sig f64_to_fixed(f f64, decimals i64) -> string
  *@desc Returns f formatted with exactly decimals digits after the decimal point.
  *@example
  *   import @fmt
- *   println(fmt.float_fixed(3.14159, 2))
+ *   println(fmt.f64_to_fixed(3.14159, 2))
  *@end
  */
-GrayString gray_fmt_float_fixed(GrayArena *arena, double value, int64_t decimals);
+GrayString gray_fmt_f64_to_fixed(GrayArena *arena, double value, int64_t decimals);
 
-/*@man float_sci
+/*@man f64_to_scientific
  *@module fmt
  *@group Number Formatting
- *@sig float_sci(f f64) -> string
+ *@sig f64_to_scientific(f f64) -> string
  *@desc Returns f formatted in scientific notation (e.g. "3.14e+00").
  *@example
  *   import @fmt
- *   println(fmt.float_sci(0.000123))
+ *   println(fmt.f64_to_scientific(0.000123))
  *@end
  */
-GrayString gray_fmt_float_sci(GrayArena *arena, double value);
+GrayString gray_fmt_f64_to_scientific(GrayArena *arena, double value);
 
 /*@man format_number
  *@module fmt

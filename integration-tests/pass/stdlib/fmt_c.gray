@@ -59,103 +59,103 @@ do main() {
         failed += 1
     }
 
-    // int_to_hex
-    mut hex_val string = fmt.int_to_hex(255)
+    // i64_to_hex
+    mut hex_val string = fmt.i64_to_hex(255)
     if hex_val == "ff" {
-        println("  [PASS] int_to_hex")
+        println("  [PASS] i64_to_hex")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_hex: expected 'ff', got '${hex_val}'")
+        println("  [FAIL] i64_to_hex: expected 'ff', got '${hex_val}'")
         failed += 1
     }
 
-    // int_to_hex - zero
-    mut hex_zero string = fmt.int_to_hex(0)
+    // i64_to_hex - zero
+    mut hex_zero string = fmt.i64_to_hex(0)
     if hex_zero == "0" {
-        println("  [PASS] int_to_hex (zero)")
+        println("  [PASS] i64_to_hex (zero)")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_hex (zero): expected '0', got '${hex_zero}'")
+        println("  [FAIL] i64_to_hex (zero): expected '0', got '${hex_zero}'")
         failed += 1
     }
 
-    // int_to_hex - large number
-    mut hex_large string = fmt.int_to_hex(256)
+    // i64_to_hex - large number
+    mut hex_large string = fmt.i64_to_hex(256)
     if hex_large == "100" {
-        println("  [PASS] int_to_hex (256)")
+        println("  [PASS] i64_to_hex (256)")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_hex (256): expected '100', got '${hex_large}'")
+        println("  [FAIL] i64_to_hex (256): expected '100', got '${hex_large}'")
         failed += 1
     }
 
-    // int_to_binary
-    mut bin_val string = fmt.int_to_binary(10)
+    // i64_to_binary
+    mut bin_val string = fmt.i64_to_binary(10)
     if bin_val == "1010" {
-        println("  [PASS] int_to_binary")
+        println("  [PASS] i64_to_binary")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_binary: expected '1010', got '${bin_val}'")
+        println("  [FAIL] i64_to_binary: expected '1010', got '${bin_val}'")
         failed += 1
     }
 
-    // int_to_binary - 1
-    mut bin_one string = fmt.int_to_binary(1)
+    // i64_to_binary - 1
+    mut bin_one string = fmt.i64_to_binary(1)
     if bin_one == "1" {
-        println("  [PASS] int_to_binary (1)")
+        println("  [PASS] i64_to_binary (1)")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_binary (1): expected '1', got '${bin_one}'")
+        println("  [FAIL] i64_to_binary (1): expected '1', got '${bin_one}'")
         failed += 1
     }
 
-    // int_to_octal
-    mut oct_val string = fmt.int_to_octal(8)
+    // i64_to_octal
+    mut oct_val string = fmt.i64_to_octal(8)
     if oct_val == "10" {
-        println("  [PASS] int_to_octal")
+        println("  [PASS] i64_to_octal")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_octal: expected '10', got '${oct_val}'")
+        println("  [FAIL] i64_to_octal: expected '10', got '${oct_val}'")
         failed += 1
     }
 
-    // int_to_octal - 7
-    mut oct_seven string = fmt.int_to_octal(7)
+    // i64_to_octal - 7
+    mut oct_seven string = fmt.i64_to_octal(7)
     if oct_seven == "7" {
-        println("  [PASS] int_to_octal (7)")
+        println("  [PASS] i64_to_octal (7)")
         passed += 1
     } otherwise {
-        println("  [FAIL] int_to_octal (7): expected '7', got '${oct_seven}'")
+        println("  [FAIL] i64_to_octal (7): expected '7', got '${oct_seven}'")
         failed += 1
     }
 
-    // float_fixed
-    mut ff_val string = fmt.float_fixed(3.14159, 2)
+    // f64_to_fixed
+    mut ff_val string = fmt.f64_to_fixed(3.14159, 2)
     if ff_val == "3.14" {
-        println("  [PASS] float_fixed")
+        println("  [PASS] f64_to_fixed")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_fixed: expected '3.14', got '${ff_val}'")
+        println("  [FAIL] f64_to_fixed: expected '3.14', got '${ff_val}'")
         failed += 1
     }
 
-    // float_fixed - zero decimals
-    mut ff_zero string = fmt.float_fixed(3.14159, 0)
+    // f64_to_fixed - zero decimals
+    mut ff_zero string = fmt.f64_to_fixed(3.14159, 0)
     if ff_zero == "3" {
-        println("  [PASS] float_fixed (0 decimals)")
+        println("  [PASS] f64_to_fixed (0 decimals)")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_fixed (0 decimals): expected '3', got '${ff_zero}'")
+        println("  [FAIL] f64_to_fixed (0 decimals): expected '3', got '${ff_zero}'")
         failed += 1
     }
 
-    // float_sci
-    mut fs_val string = fmt.float_sci(1234.5)
+    // f64_to_scientific
+    mut fs_val string = fmt.f64_to_scientific(1234.5)
     if len(fs_val) > 0 {
-        println("  [PASS] float_sci (output: ${fs_val})")
+        println("  [PASS] f64_to_scientific (output: ${fs_val})")
         passed += 1
     } otherwise {
-        println("  [FAIL] float_sci: empty result")
+        println("  [FAIL] f64_to_scientific: empty result")
         failed += 1
     }
 

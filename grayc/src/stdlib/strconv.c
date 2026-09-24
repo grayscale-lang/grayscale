@@ -20,7 +20,7 @@
 /* Format a floating-point value using the shortest representation that round-trips at
  * `bit_size` (32 or 64): 6-9 significant digits for a 32-bit floating-point value, 15-17
  * for a 64-bit double. Shared by builtins (print, to_string) and strconv
- * (from_float). */
+ * (from_f64). */
 int gray_fmt_shortest_float(char *buffer, size_t buffer_size, double value, int bit_size) {
     int minimum_precision = bit_size == 32 ? 6 : 15;
     int maximum_precision = bit_size == 32 ? 9 : 17;
@@ -57,52 +57,52 @@ static int strconv_prepare(GrayString string, char *buffer, size_t buffer_size) 
 
 /* --- Panicking conversions --- */
 
-int64_t gray_strconv_to_int(GrayString string, int64_t base) {
+int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
     if (base < 2 || base > 36)
-        gray_panic_code("P0054", "strconv.to_int: invalid base %lld; must be between 2 and 36", (long long)base);
+        gray_panic_code("P0054", "strconv.to_i64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
     if (length > 0 && isspace((unsigned char)buffer[0]))
-        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
+        gray_panic_code("P0055", "strconv.to_i64: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
     char *end_cursor = NULL;
     errno = 0;
     int64_t result = strtoll(buffer, &end_cursor, base);
     if (end_cursor == buffer || *end_cursor != '\0' || errno == ERANGE)
-        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
+        gray_panic_code("P0055", "strconv.to_i64: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
     return result;
 }
 
-uint64_t gray_strconv_to_uint(GrayString string, int64_t base) {
+uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
     if (base < 2 || base > 36)
-        gray_panic_code("P0056", "strconv.to_uint: invalid base %lld; must be between 2 and 36", (long long)base);
+        gray_panic_code("P0056", "strconv.to_u64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
     if (length > 0 && isspace((unsigned char)buffer[0]))
-        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
+        gray_panic_code("P0057", "strconv.to_u64: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
     /* Reject negative numbers */
     for (int i = 0; i < length; i++) {
         if (buffer[i] == '-')
-            gray_panic_code("P0058", "strconv.to_uint: cannot convert '%s' to u64; value is negative", buffer);
+            gray_panic_code("P0058", "strconv.to_u64: cannot convert '%s' to u64; value is negative", buffer);
         if (!isspace((unsigned char)buffer[i])) break;
     }
     char *end_cursor = NULL;
     errno = 0;
     uint64_t result = strtoull(buffer, &end_cursor, base);
     if (end_cursor == buffer || *end_cursor != '\0' || errno == ERANGE)
-        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
+        gray_panic_code("P0057", "strconv.to_u64: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
     return result;
 }
 
-double gray_strconv_to_float(GrayString string) {
+double gray_strconv_to_f64(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
     if (length > 0 && isspace((unsigned char)buffer[0]))
-        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to f64", buffer);
+        gray_panic_code("P0059", "strconv.to_f64: cannot convert '%s' to f64", buffer);
     char *end_cursor = NULL;
     errno = 0;
     double result = strtod(buffer, &end_cursor);
     if (end_cursor == buffer || *end_cursor != '\0' || errno == ERANGE)
-        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to f64", buffer);
+        gray_panic_code("P0059", "strconv.to_f64: cannot convert '%s' to f64", buffer);
     return result;
 }
 
@@ -116,7 +116,7 @@ bool gray_strconv_to_bool(GrayString string) {
 
 /* --- Fallible conversions (result versions) --- */
 
-GrayResult_i64 gray_strconv_to_int_result(GrayString string, int64_t base) {
+GrayResult_i64 gray_strconv_to_i64_result(GrayString string, int64_t base) {
     if (base < 2 || base > 36) {
         GrayString message = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, message);
@@ -140,7 +140,7 @@ GrayResult_i64 gray_strconv_to_int_result(GrayString string, int64_t base) {
     return (GrayResult_i64){result, NULL};
 }
 
-GrayResult_u64 gray_strconv_to_uint_result(GrayString string, int64_t base) {
+GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
     if (base < 2 || base > 36) {
         GrayString message = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, message);
@@ -173,7 +173,7 @@ GrayResult_u64 gray_strconv_to_uint_result(GrayString string, int64_t base) {
     return (GrayResult_u64){result, NULL};
 }
 
-GrayResult_f64 gray_strconv_to_float_result(GrayString string) {
+GrayResult_f64 gray_strconv_to_f64_result(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
     if (length > 0 && isspace((unsigned char)buffer[0])) {
@@ -206,7 +206,7 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString string) {
 
 /* --- Type to string conversions --- */
 
-GrayString gray_strconv_from_int(GrayArena *arena, int64_t value) {
+GrayString gray_strconv_from_i64(GrayArena *arena, int64_t value) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = snprintf(buffer, sizeof(buffer), "%" PRId64, value);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
@@ -214,7 +214,7 @@ GrayString gray_strconv_from_int(GrayArena *arena, int64_t value) {
     return (GrayString){data, (int32_t)length};
 }
 
-GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value) {
+GrayString gray_strconv_from_u64(GrayArena *arena, uint64_t value) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = snprintf(buffer, sizeof(buffer), "%" PRIu64, value);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
@@ -222,7 +222,7 @@ GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value) {
     return (GrayString){data, (int32_t)length};
 }
 
-GrayString gray_strconv_from_float(GrayArena *arena, double value) {
+GrayString gray_strconv_from_f64(GrayArena *arena, double value) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = gray_fmt_shortest_float(buffer, sizeof(buffer), value, 64);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
@@ -253,9 +253,9 @@ static int strconv_format_digits(char *buffer, uint64_t value, int base) {
     return length;
 }
 
-GrayString gray_strconv_format_int(GrayArena *arena, int64_t value, int64_t base) {
+GrayString gray_strconv_format_i64(GrayArena *arena, int64_t value, int64_t base) {
     if (base < 2 || base > 36)
-        gray_panic_code("P0110", "strconv.format_int: invalid base %lld; must be between 2 and 36",
+        gray_panic_code("P0110", "strconv.format_i64: invalid base %lld; must be between 2 and 36",
             (long long)base);
     bool is_negative = value < 0;
     /* Negate in unsigned space so INT64_MIN does not overflow. */
@@ -270,9 +270,9 @@ GrayString gray_strconv_format_int(GrayArena *arena, int64_t value, int64_t base
     return (GrayString){data, (int32_t)offset};
 }
 
-GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t value, int64_t base) {
+GrayString gray_strconv_format_u64(GrayArena *arena, uint64_t value, int64_t base) {
     if (base < 2 || base > 36)
-        gray_panic_code("P0111", "strconv.format_uint: invalid base %lld; must be between 2 and 36",
+        gray_panic_code("P0111", "strconv.format_u64: invalid base %lld; must be between 2 and 36",
             (long long)base);
     char temporary[64];
     int length = strconv_format_digits(temporary, value, (int)base);

@@ -154,7 +154,7 @@
  *@desc Keeps row 0 (the header) unconditionally and each later row for which predicate returns true. The header is never passed to predicate.
  *@example
  *   import @csv
- *   do adult(row [string]) -> bool { return strconv.to_int(row[1], 10) >= 18 }
+ *   do adult(row [string]) -> bool { return strconv.to_i64(row[1], 10) >= 18 }
  *   mut adults = csv.filter_rows(rows, ()adult)
  *@end
  */

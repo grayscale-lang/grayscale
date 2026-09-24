@@ -9,33 +9,33 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // rand_int in range over 100 calls
+    // rand_i64 in range over 100 calls
     mut all_in_range bool = true
     for i in range(0, 100) {
-        mut r i64 = random.rand_int(0, 100)
+        mut r i64 = random.rand_i64(0, 100)
         if r < 0 || r > 100 {
             all_in_range = false
             break
         }
     }
     if all_in_range {
-        println("  [PASS] rand_int(0,100) in range over 100 calls")
+        println("  [PASS] rand_i64(0,100) in range over 100 calls")
         passed += 1
-    } otherwise { println("  [FAIL] rand_int out of range") failed += 1 }
+    } otherwise { println("  [FAIL] rand_i64 out of range") failed += 1 }
 
-    // rand_float in range
+    // rand_f64 in range
     mut float_ok bool = true
     for i in range(0, 100) {
-        mut r f64 = random.rand_float(0.0, 1.0)
+        mut r f64 = random.rand_f64(0.0, 1.0)
         if r < 0.0 || r > 1.0 {
             float_ok = false
             break
         }
     }
     if float_ok {
-        println("  [PASS] rand_float(0,1) in range over 100 calls")
+        println("  [PASS] rand_f64(0,1) in range over 100 calls")
         passed += 1
-    } otherwise { println("  [FAIL] rand_float out of range") failed += 1 }
+    } otherwise { println("  [FAIL] rand_f64 out of range") failed += 1 }
 
     // rand_bool — should get at least one true and one false in 100 calls
     mut got_true bool = false

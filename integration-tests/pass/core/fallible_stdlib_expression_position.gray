@@ -6,7 +6,7 @@
 import @strconv
 
 do double(s string) -> (i64, Error) {
-    mut n = strconv.to_int(s) or_return
+    mut n = strconv.to_i64(s) or_return
     return n * 2, nil
 }
 
@@ -15,7 +15,7 @@ do main() {
     mut failed i64 = 0
 
     // Form 1: handle the error
-    mut a, err = strconv.to_int("42")
+    mut a, err = strconv.to_i64("42")
     if err == nil && a == 42 {
         println("  [PASS] handle form")
         passed += 1
@@ -25,7 +25,7 @@ do main() {
     }
 
     // Form 2: discard the error (zero value on failure)
-    mut b, _ = strconv.to_int("nope")
+    mut b, _ = strconv.to_i64("nope")
     if b == 0 {
         println("  [PASS] discard form yields zero value")
         passed += 1
@@ -45,7 +45,7 @@ do main() {
     }
 
     // A destructured value is a plain value: usable as an argument and operand
-    mut n, _ = strconv.to_int("10")
+    mut n, _ = strconv.to_i64("10")
     if n + 5 == 15 {
         println("  [PASS] destructured value used as operand")
         passed += 1

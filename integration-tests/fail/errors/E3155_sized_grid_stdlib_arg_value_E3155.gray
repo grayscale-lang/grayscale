@@ -6,19 +6,19 @@ import @fmt
 
 do case_1615() {
     mut src i128 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1616() {
     mut src i256 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1621() {
     mut src u128 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 do case_1622() {
     mut src u256 = 0
-    println(fmt.int_to_hex(src))
+    println(fmt.i64_to_hex(src))
 }
 
 do main() {

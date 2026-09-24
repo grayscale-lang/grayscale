@@ -3530,7 +3530,7 @@ plain (immutable) parameter is a compile error (E5007).
 | `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
 | `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
 | `builder_append_bytes` | `(b Builder, data [u8]) -> void` | Append every byte of `data` |
-| `builder_append_int` | `(b Builder, n i64) -> void` | Append the decimal text of `n` |
+| `builder_append_i64` | `(b Builder, n i64) -> void` | Append the decimal text of `n` |
 | `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
 | `builder_len` | `(b Builder) -> i64` | Bytes accumulated so far |
 | `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
@@ -3660,7 +3660,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `is_nan` | `(n f64) -> bool` | Check if NaN |
 | `is_finite` | `(n f64) -> bool` | Check if finite (not infinite or NaN) |
 | `is_power_of_two` | `(n i64) -> bool` | Check if a positive power of two; zero and negatives are not |
-| `next_power_of_two` | `(n i64) -> i64` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_INT` |
+| `next_power_of_two` | `(n i64) -> i64` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_I64` |
 
 #### Utility
 
@@ -3683,10 +3683,10 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 - `INF` - Positive infinity
 - `NEG_INF` - Negative infinity
 - `EPSILON` - Smallest representable f64 difference
-- `MAX_INT` - Largest value an `i64` can hold (9223372036854775807)
-- `MIN_INT` - Smallest value an `i64` can hold (-9223372036854775808)
-- `MAX_FLOAT` - Largest finite value an `f64` can hold (1.7976931348623157e308)
-- `MIN_FLOAT` - Smallest, i.e. most negative, finite value an `f64` can hold (-1.7976931348623157e308)
+- `MAX_I64` - Largest value an `i64` can hold (9223372036854775807)
+- `MIN_I64` - Smallest value an `i64` can hold (-9223372036854775808)
+- `MAX_F64` - Largest finite value an `f64` can hold (1.7976931348623157e308)
+- `MIN_F64` - Smallest, i.e. most negative, finite value an `f64` can hold (-1.7976931348623157e308)
 
 ### 9.6 Time Module (`@time`)
 
@@ -3759,16 +3759,16 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 
 ### 9.7 Random Module (`@random`)
 
-Some random functions accept a variable number of arguments (e.g., `rand_int` with 1 or 2 args). This is not general function overloading; it is special-case codegen dispatching within the stdlib only.
+Some random functions accept a variable number of arguments (e.g., `rand_i64` with 1 or 2 args). This is not general function overloading; it is special-case codegen dispatching within the stdlib only.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `rand_float` | `() -> f64` | Random f64 [0.0, 1.0) |
-| `rand_float` | `(min f64, max f64) -> f64` | Random f64 [min, max) |
-| `rand_int` | `(max i64) -> i64` | Random i64 [0, max) |
-| `rand_int` | `(min i64, max i64) -> i64` | Random i64 [min, max) |
+| `rand_f64` | `() -> f64` | Random f64 [0.0, 1.0) |
+| `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max) |
+| `rand_i64` | `(max i64) -> i64` | Random i64 [0, max) |
+| `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max) |
 | `rand_bool` | `() -> bool` | Random boolean |
-| `rand_byte` | `() -> u8` | Random u8 [0, 255] |
+| `rand_u8` | `() -> u8` | Random u8 [0, 255] |
 | `rand_char` | `() -> char` | Random printable char |
 | `rand_char` | `(min char, max char) -> char` | Random char in range |
 | `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
@@ -4465,11 +4465,11 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `int_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
-| `int_to_binary` | `(n i64) -> string` | Format integer as binary |
-| `int_to_octal` | `(n i64) -> string` | Format integer as octal |
-| `float_fixed` | `(f f64, decimals i64) -> string` | Format f64 with fixed decimal places |
-| `float_sci` | `(f f64) -> string` | Format f64 in scientific notation |
+| `i64_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
+| `i64_to_binary` | `(n i64) -> string` | Format integer as binary |
+| `i64_to_octal` | `(n i64) -> string` | Format integer as octal |
+| `f64_to_fixed` | `(f f64, decimals i64) -> string` | Format f64 with fixed decimal places |
+| `f64_to_scientific` | `(f f64) -> string` | Format f64 in scientific notation |
 | `format_number` | `(n i64) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
 | `format_bytes` | `(n i64) -> string` | Human-readable byte count in binary units B/KiB/MiB/GiB/TiB/PiB; whole bytes below 1024 (`"1023 B"`), one decimal above (`"1.5 KiB"`) |
 
@@ -4483,23 +4483,23 @@ String-to-type and type-to-string conversion functions with proper error handlin
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_int` | `(s string, base i64 = 10) -> (i64, Error)` | Parse string as signed integer in given base |
-| `to_uint` | `(s string, base i64 = 10) -> (u64, Error)` | Parse string as unsigned integer in given base |
-| `to_float` | `(s string) -> (f64, Error)` | Parse string as floating-point number |
+| `to_i64` | `(s string, base i64 = 10) -> (i64, Error)` | Parse string as signed integer in given base |
+| `to_u64` | `(s string, base i64 = 10) -> (u64, Error)` | Parse string as unsigned integer in given base |
+| `to_f64` | `(s string) -> (f64, Error)` | Parse string as floating-point number |
 | `to_bool` | `(s string) -> (bool, Error)` | Parse string as boolean |
 
 **Behavior:**
-- These are fallible functions. Single-variable assignment (`mut n i64 = strconv.to_int("42")`) is a compile-time error (`E3089`); the result must be destructured.
-- `mut n, err = strconv.to_int(s)` — inspect `err` (non-nil on invalid input).
-- `mut n, _ = strconv.to_int(s)` — discard the error; on invalid input `n` is the zero value (`0`), no panic.
+- These are fallible functions. Single-variable assignment (`mut n i64 = strconv.to_i64("42")`) is a compile-time error (`E3089`); the result must be destructured.
+- `mut n, err = strconv.to_i64(s)` — inspect `err` (non-nil on invalid input).
+- `mut n, _ = strconv.to_i64(s)` — discard the error; on invalid input `n` is the zero value (`0`), no panic.
 
-**`to_int` / `to_uint` rules:**
+**`to_i64` / `to_u64` rules:**
 - The `base` parameter must be an integer between **2 and 36** (inclusive). Invalid bases produce a compile-time error when passed as a literal, or a runtime panic when passed as a variable.
 - Leading/trailing whitespace is **not** tolerated; the entire string must be a valid representation.
-- `to_uint` rejects strings containing a `-` sign (returns a non-nil error).
+- `to_u64` rejects strings containing a `-` sign (returns a non-nil error).
 - For bases > 10, letters `A`–`Z` (case-insensitive) represent digits 10–35.
 
-**`to_float` rules:**
+**`to_f64` rules:**
 - Accepts standard decimal notation (e.g. `"3.14"`, `"-0.5"`, `"100"`).
 - Accepts `"inf"`, `"infinity"`, and `"nan"` (case-insensitive), returning `±Inf` / `NaN` respectively. This matches the underlying `strtod` semantics used by the implementation.
 - Does **not** accept hex floats.
@@ -4512,23 +4512,23 @@ String-to-type and type-to-string conversion functions with proper error handlin
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `from_int` | `(n i64) -> string` | Convert integer to decimal string |
-| `from_uint` | `(n u64) -> string` | Convert unsigned integer to decimal string |
-| `from_float` | `(f f64) -> string` | Convert f64 to string (shortest representation) |
+| `from_i64` | `(n i64) -> string` | Convert integer to decimal string |
+| `from_u64` | `(n u64) -> string` | Convert unsigned integer to decimal string |
+| `from_f64` | `(f f64) -> string` | Convert f64 to string (shortest representation) |
 | `from_bool` | `(b bool) -> string` | Convert boolean to `"true"` or `"false"` |
-| `format_int` | `(n i64, base i64) -> string` | Convert signed integer to a string in any base 2–36 |
-| `format_uint` | `(n u64, base i64) -> string` | Convert unsigned integer to a string in any base 2–36 |
+| `format_i64` | `(n i64, base i64) -> string` | Convert signed integer to a string in any base 2–36 |
+| `format_u64` | `(n u64, base i64) -> string` | Convert unsigned integer to a string in any base 2–36 |
 
-These functions never fail, except `format_int` / `format_uint` panic when `base` is
+These functions never fail, except `format_i64` / `format_u64` panic when `base` is
 outside 2–36 (a compile-time error when the base is a literal).
 
-**`format_int` / `format_uint` rules:**
+**`format_i64` / `format_u64` rules:**
 - `base` must be an integer between **2 and 36** (inclusive).
 - Digits above 9 are lowercase letters `a`–`z`.
-- `format_int` prefixes negative values with `-`; `format_uint` treats its argument as unsigned.
-- The inverse of `to_int` / `to_uint`: `to_int(format_int(n, b), b) == n`.
-- `fmt.int_to_hex` / `fmt.int_to_binary` / `fmt.int_to_octal` remain available; they format the raw
-  two's-complement bit pattern for their fixed base, whereas `format_int` produces a signed representation.
+- `format_i64` prefixes negative values with `-`; `format_u64` treats its argument as unsigned.
+- The inverse of `to_i64` / `to_u64`: `to_i64(format_i64(n, b), b) == n`.
+- `fmt.i64_to_hex` / `fmt.i64_to_binary` / `fmt.i64_to_octal` remain available; they format the raw
+  two's-complement bit pattern for their fixed base, whereas `format_i64` produces a signed representation.
 
 #### Quoting (string ↔ quoted literal)
 

@@ -6,7 +6,7 @@ import @fmt
 
 do case_1610() {
     
-    println(fmt.int_to_hex(9223372036854775808))
+    println(fmt.i64_to_hex(9223372036854775808))
 }
 
 do main() {

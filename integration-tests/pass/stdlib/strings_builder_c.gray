@@ -1,7 +1,7 @@
 /*
  * strings_builder_c.gray - Integration test for strings.Builder (compiler)
  * Covers: builder, builder_append, builder_append_char, builder_append_bytes,
- * builder_append_int, builder_append_line, builder_len, builder_clear, build.
+ * builder_append_i64, builder_append_line, builder_len, builder_clear, build.
  */
 
 import @strings
@@ -66,9 +66,9 @@ do main() {
     // -- append_int --
     mut n Builder = strings.builder()
     strings.builder_append(n, "x=")
-    strings.builder_append_int(n, 2637)
+    strings.builder_append_i64(n, 2637)
     strings.builder_append(n, " y=")
-    strings.builder_append_int(n, -42)
+    strings.builder_append_i64(n, -42)
     check("append_int build", strings.build(n), "x=2637 y=-42", passed, failed)
 
     // -- append_bytes --

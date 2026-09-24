@@ -547,7 +547,7 @@ int64_t gray_math_factorial(int64_t number);
 int64_t gray_math_gcd(int64_t left, int64_t right);
 
 /* Not wired to any Grayscale-callable name (no typechecker/codegen dispatch
- * targets these); @random's own generator backs random.rand_int/rand_float
+ * targets these); @random's own generator backs random.rand_i64/rand_f64
  * instead. Declared here only so the linked, existing symbols are callable
  * for testing. */
 int64_t gray_math_random_int(int64_t minimum, int64_t maximum);
@@ -711,7 +711,7 @@ bool gray_math_is_power_of_two(int64_t number);
  *@module math
  *@group Integer
  *@sig next_power_of_two(n i64) -> i64
- *@desc Returns the smallest power of two greater than or equal to n, or 1 when n is zero or negative. Panics if the result would exceed MAX_INT.
+ *@desc Returns the smallest power of two greater than or equal to n, or 1 when n is zero or negative. Panics if the result would exceed MAX_I64.
  *@example
  *   import @math
  *   println(math.next_power_of_two(100))
@@ -800,7 +800,7 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@end
  */
 
-/*@man MAX_INT
+/*@man MAX_I64
  *@module math
  *@group Constants
  *@kind const
@@ -809,7 +809,7 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@end
  */
 
-/*@man MIN_INT
+/*@man MIN_I64
  *@module math
  *@group Constants
  *@kind const
@@ -818,7 +818,7 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@end
  */
 
-/*@man MAX_FLOAT
+/*@man MAX_F64
  *@module math
  *@group Constants
  *@kind const
@@ -827,7 +827,7 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@end
  */
 
-/*@man MIN_FLOAT
+/*@man MIN_F64
  *@module math
  *@group Constants
  *@kind const

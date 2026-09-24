@@ -697,18 +697,18 @@ void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codep
  */
 void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray data);
 
-/*@man builder_append_int
+/*@man builder_append_i64
  *@module strings
  *@group Builder
- *@sig builder_append_int(b Builder, n i64) -> void
+ *@sig builder_append_i64(b Builder, n i64) -> void
  *@desc Appends the decimal text of n to the builder (e.g. -42 appends "-42").
  *@example
  *   import @strings
  *   mut b Builder = strings.builder()
- *   strings.builder_append_int(b, 2637)
+ *   strings.builder_append_i64(b, 2637)
  *@end
  */
-void gray_strings_builder_append_int(GrayStringsBuilder *builder, int64_t value);
+void gray_strings_builder_append_i64(GrayStringsBuilder *builder, int64_t value);
 
 /*@man builder_append_line
  *@module strings

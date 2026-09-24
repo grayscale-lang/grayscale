@@ -833,7 +833,7 @@ static void test_math_distance(void) {
 }
 
 /* Not currently reachable from Grayscale source (no typechecker/codegen
- * wiring calls these) — the language-visible random.rand_int/rand_float
+ * wiring calls these) — the language-visible random.rand_i64/rand_f64
  * go through @random's own generator instead. Tested directly since a
  * public, linkable C entry point exists regardless. */
 static void test_math_random_int(void) {
@@ -878,31 +878,31 @@ static void test_fmt_center_odd(void) {
     ASSERT_GRAY_STR(r, "--hi---");
 }
 
-static void test_fmt_int_to_hex(void) {
-    ASSERT_GRAY_STR(gray_fmt_int_to_hex(arena, 255), "ff");
-    ASSERT_GRAY_STR(gray_fmt_int_to_hex(arena, 0), "0");
-    ASSERT_GRAY_STR(gray_fmt_int_to_hex(arena, 16), "10");
+static void test_fmt_i64_to_hex(void) {
+    ASSERT_GRAY_STR(gray_fmt_i64_to_hex(arena, 255), "ff");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_hex(arena, 0), "0");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_hex(arena, 16), "10");
 }
 
-static void test_fmt_int_to_binary(void) {
-    ASSERT_GRAY_STR(gray_fmt_int_to_binary(arena, 10), "1010");
-    ASSERT_GRAY_STR(gray_fmt_int_to_binary(arena, 0), "0");
-    ASSERT_GRAY_STR(gray_fmt_int_to_binary(arena, 1), "1");
+static void test_fmt_i64_to_binary(void) {
+    ASSERT_GRAY_STR(gray_fmt_i64_to_binary(arena, 10), "1010");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_binary(arena, 0), "0");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_binary(arena, 1), "1");
 }
 
-static void test_fmt_int_to_octal(void) {
-    ASSERT_GRAY_STR(gray_fmt_int_to_octal(arena, 8), "10");
-    ASSERT_GRAY_STR(gray_fmt_int_to_octal(arena, 0), "0");
-    ASSERT_GRAY_STR(gray_fmt_int_to_octal(arena, 255), "377");
+static void test_fmt_i64_to_octal(void) {
+    ASSERT_GRAY_STR(gray_fmt_i64_to_octal(arena, 8), "10");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_octal(arena, 0), "0");
+    ASSERT_GRAY_STR(gray_fmt_i64_to_octal(arena, 255), "377");
 }
 
-static void test_fmt_float_fixed(void) {
-    ASSERT_GRAY_STR(gray_fmt_float_fixed(arena, 3.14159, 2), "3.14");
-    ASSERT_GRAY_STR(gray_fmt_float_fixed(arena, 1.0, 0), "1");
+static void test_fmt_f64_to_fixed(void) {
+    ASSERT_GRAY_STR(gray_fmt_f64_to_fixed(arena, 3.14159, 2), "3.14");
+    ASSERT_GRAY_STR(gray_fmt_f64_to_fixed(arena, 1.0, 0), "1");
 }
 
-static void test_fmt_float_sci(void) {
-    GrayString r = gray_fmt_float_sci(arena, 1234.5);
+static void test_fmt_f64_to_scientific(void) {
+    GrayString r = gray_fmt_f64_to_scientific(arena, 1234.5);
     /* Output is platform-dependent in exponent width, just verify it starts right */
     ASSERT(gray_strings_starts_with(r, gray_string_lit("1.2345")));
     ASSERT(gray_strings_contains(r, gray_string_lit("e+")));
@@ -965,22 +965,22 @@ static void test_encoding_url_roundtrip(void) {
 
 /* ===== strconv module ===== */
 
-static void test_strconv_to_int(void) {
-    ASSERT_EQ(gray_strconv_to_int(gray_string_lit("42"), 10), 42);
-    ASSERT_EQ(gray_strconv_to_int(gray_string_lit("-100"), 10), -100);
-    ASSERT_EQ(gray_strconv_to_int(gray_string_lit("ff"), 16), 255);
-    ASSERT_EQ(gray_strconv_to_int(gray_string_lit("101"), 2), 5);
+static void test_strconv_to_i64(void) {
+    ASSERT_EQ(gray_strconv_to_i64(gray_string_lit("42"), 10), 42);
+    ASSERT_EQ(gray_strconv_to_i64(gray_string_lit("-100"), 10), -100);
+    ASSERT_EQ(gray_strconv_to_i64(gray_string_lit("ff"), 16), 255);
+    ASSERT_EQ(gray_strconv_to_i64(gray_string_lit("101"), 2), 5);
 }
 
-static void test_strconv_to_uint(void) {
-    ASSERT_EQ((int64_t)gray_strconv_to_uint(gray_string_lit("255"), 10), 255);
-    ASSERT_EQ((int64_t)gray_strconv_to_uint(gray_string_lit("ff"), 16), 255);
+static void test_strconv_to_u64(void) {
+    ASSERT_EQ((int64_t)gray_strconv_to_u64(gray_string_lit("255"), 10), 255);
+    ASSERT_EQ((int64_t)gray_strconv_to_u64(gray_string_lit("ff"), 16), 255);
 }
 
-static void test_strconv_to_float(void) {
-    ASSERT_FLOAT_EQ(gray_strconv_to_float(gray_string_lit("3.14")), 3.14);
-    ASSERT_FLOAT_EQ(gray_strconv_to_float(gray_string_lit("0.0")), 0.0);
-    ASSERT_FLOAT_EQ(gray_strconv_to_float(gray_string_lit("-1.5")), -1.5);
+static void test_strconv_to_f64(void) {
+    ASSERT_FLOAT_EQ(gray_strconv_to_f64(gray_string_lit("3.14")), 3.14);
+    ASSERT_FLOAT_EQ(gray_strconv_to_f64(gray_string_lit("0.0")), 0.0);
+    ASSERT_FLOAT_EQ(gray_strconv_to_f64(gray_string_lit("-1.5")), -1.5);
 }
 
 static void test_strconv_to_bool(void) {
@@ -990,30 +990,30 @@ static void test_strconv_to_bool(void) {
     ASSERT_EQ(gray_strconv_to_bool(gray_string_lit("False")), false);
 }
 
-static void test_strconv_to_int_result_ok(void) {
-    GrayResult_i64 r = gray_strconv_to_int_result(gray_string_lit("42"), 10);
+static void test_strconv_to_i64_result_ok(void) {
+    GrayResult_i64 r = gray_strconv_to_i64_result(gray_string_lit("42"), 10);
     ASSERT_EQ(r.v0, 42);
     ASSERT(r.v1 == NULL);
 }
 
-static void test_strconv_to_int_result_err(void) {
-    GrayResult_i64 r = gray_strconv_to_int_result(gray_string_lit("abc"), 10);
+static void test_strconv_to_i64_result_err(void) {
+    GrayResult_i64 r = gray_strconv_to_i64_result(gray_string_lit("abc"), 10);
     ASSERT_NOT_NULL(r.v1);
 }
 
-static void test_strconv_to_uint_result_negative(void) {
-    GrayResult_u64 r = gray_strconv_to_uint_result(gray_string_lit("-5"), 10);
+static void test_strconv_to_u64_result_negative(void) {
+    GrayResult_u64 r = gray_strconv_to_u64_result(gray_string_lit("-5"), 10);
     ASSERT_NOT_NULL(r.v1);
 }
 
-static void test_strconv_to_float_result_ok(void) {
-    GrayResult_f64 r = gray_strconv_to_float_result(gray_string_lit("3.14"));
+static void test_strconv_to_f64_result_ok(void) {
+    GrayResult_f64 r = gray_strconv_to_f64_result(gray_string_lit("3.14"));
     ASSERT_FLOAT_EQ(r.v0, 3.14);
     ASSERT(r.v1 == NULL);
 }
 
-static void test_strconv_to_float_result_err(void) {
-    GrayResult_f64 r = gray_strconv_to_float_result(gray_string_lit("xyz"));
+static void test_strconv_to_f64_result_err(void) {
+    GrayResult_f64 r = gray_strconv_to_f64_result(gray_string_lit("xyz"));
     ASSERT_NOT_NULL(r.v1);
 }
 
@@ -1028,20 +1028,20 @@ static void test_strconv_to_bool_result_err(void) {
     ASSERT_NOT_NULL(r.v1);
 }
 
-static void test_strconv_from_int(void) {
-    ASSERT_GRAY_STR(gray_strconv_from_int(arena, 42), "42");
-    ASSERT_GRAY_STR(gray_strconv_from_int(arena, -100), "-100");
-    ASSERT_GRAY_STR(gray_strconv_from_int(arena, 0), "0");
+static void test_strconv_from_i64(void) {
+    ASSERT_GRAY_STR(gray_strconv_from_i64(arena, 42), "42");
+    ASSERT_GRAY_STR(gray_strconv_from_i64(arena, -100), "-100");
+    ASSERT_GRAY_STR(gray_strconv_from_i64(arena, 0), "0");
 }
 
-static void test_strconv_from_uint(void) {
-    ASSERT_GRAY_STR(gray_strconv_from_uint(arena, 255), "255");
-    ASSERT_GRAY_STR(gray_strconv_from_uint(arena, 0), "0");
+static void test_strconv_from_u64(void) {
+    ASSERT_GRAY_STR(gray_strconv_from_u64(arena, 255), "255");
+    ASSERT_GRAY_STR(gray_strconv_from_u64(arena, 0), "0");
 }
 
-static void test_strconv_from_float(void) {
-    ASSERT_GRAY_STR(gray_strconv_from_float(arena, 3.14), "3.14");
-    ASSERT_GRAY_STR(gray_strconv_from_float(arena, 0.0), "0.0");
+static void test_strconv_from_f64(void) {
+    ASSERT_GRAY_STR(gray_strconv_from_f64(arena, 3.14), "3.14");
+    ASSERT_GRAY_STR(gray_strconv_from_f64(arena, 0.0), "0.0");
 }
 
 static void test_strconv_from_bool(void) {
@@ -1067,25 +1067,25 @@ static void test_strconv_is_integer(void) {
     ASSERT(!gray_strconv_is_integer(gray_string_lit("")));
 }
 
-/* --- format_int / format_uint / quote / unquote (#2434) --- */
+/* --- format_i64 / format_u64 / quote / unquote (#2434) --- */
 
-static void test_strconv_format_int(void) {
-    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 255, 16), "ff");
-    ASSERT_GRAY_STR(gray_strconv_format_int(arena, -10, 2), "-1010");
-    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 0, 10), "0");
-    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 35, 36), "z");   /* digits above 9 are a-z */
+static void test_strconv_format_i64(void) {
+    ASSERT_GRAY_STR(gray_strconv_format_i64(arena, 255, 16), "ff");
+    ASSERT_GRAY_STR(gray_strconv_format_i64(arena, -10, 2), "-1010");
+    ASSERT_GRAY_STR(gray_strconv_format_i64(arena, 0, 10), "0");
+    ASSERT_GRAY_STR(gray_strconv_format_i64(arena, 35, 36), "z");   /* digits above 9 are a-z */
 }
 
-static void test_strconv_format_uint(void) {
-    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 255, 16), "ff");
-    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 8, 8), "10");
-    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 0, 2), "0");
+static void test_strconv_format_u64(void) {
+    ASSERT_GRAY_STR(gray_strconv_format_u64(arena, 255, 16), "ff");
+    ASSERT_GRAY_STR(gray_strconv_format_u64(arena, 8, 8), "10");
+    ASSERT_GRAY_STR(gray_strconv_format_u64(arena, 0, 2), "0");
 }
 
-/* STANDARD: to_int(format_int(n, b), b) == n */
-static void test_strconv_format_int_roundtrip(void) {
-    GrayString s = gray_strconv_format_int(arena, -12345, 16);
-    ASSERT_EQ(gray_strconv_to_int(s, 16), -12345);
+/* STANDARD: to_i64(format_i64(n, b), b) == n */
+static void test_strconv_format_i64_roundtrip(void) {
+    GrayString s = gray_strconv_format_i64(arena, -12345, 16);
+    ASSERT_EQ(gray_strconv_to_i64(s, 16), -12345);
 }
 
 static void test_strconv_quote(void) {
@@ -1601,11 +1601,11 @@ int main(void) {
     RUN_TEST(test_fmt_pad_right);
     RUN_TEST(test_fmt_center);
     RUN_TEST(test_fmt_center_odd);
-    RUN_TEST(test_fmt_int_to_hex);
-    RUN_TEST(test_fmt_int_to_binary);
-    RUN_TEST(test_fmt_int_to_octal);
-    RUN_TEST(test_fmt_float_fixed);
-    RUN_TEST(test_fmt_float_sci);
+    RUN_TEST(test_fmt_i64_to_hex);
+    RUN_TEST(test_fmt_i64_to_binary);
+    RUN_TEST(test_fmt_i64_to_octal);
+    RUN_TEST(test_fmt_f64_to_fixed);
+    RUN_TEST(test_fmt_f64_to_scientific);
 
     printf("--- encoding ---\n");
     RUN_TEST(test_encoding_base64_encode);
@@ -1619,26 +1619,26 @@ int main(void) {
     RUN_TEST(test_encoding_url_roundtrip);
 
     printf("--- strconv ---\n");
-    RUN_TEST(test_strconv_to_int);
-    RUN_TEST(test_strconv_to_uint);
-    RUN_TEST(test_strconv_to_float);
+    RUN_TEST(test_strconv_to_i64);
+    RUN_TEST(test_strconv_to_u64);
+    RUN_TEST(test_strconv_to_f64);
     RUN_TEST(test_strconv_to_bool);
-    RUN_TEST(test_strconv_to_int_result_ok);
-    RUN_TEST(test_strconv_to_int_result_err);
-    RUN_TEST(test_strconv_to_uint_result_negative);
-    RUN_TEST(test_strconv_to_float_result_ok);
-    RUN_TEST(test_strconv_to_float_result_err);
+    RUN_TEST(test_strconv_to_i64_result_ok);
+    RUN_TEST(test_strconv_to_i64_result_err);
+    RUN_TEST(test_strconv_to_u64_result_negative);
+    RUN_TEST(test_strconv_to_f64_result_ok);
+    RUN_TEST(test_strconv_to_f64_result_err);
     RUN_TEST(test_strconv_to_bool_result_ok);
     RUN_TEST(test_strconv_to_bool_result_err);
-    RUN_TEST(test_strconv_from_int);
-    RUN_TEST(test_strconv_from_uint);
-    RUN_TEST(test_strconv_from_float);
+    RUN_TEST(test_strconv_from_i64);
+    RUN_TEST(test_strconv_from_u64);
+    RUN_TEST(test_strconv_from_f64);
     RUN_TEST(test_strconv_from_bool);
     RUN_TEST(test_strconv_is_numeric);
     RUN_TEST(test_strconv_is_integer);
-    RUN_TEST(test_strconv_format_int);
-    RUN_TEST(test_strconv_format_uint);
-    RUN_TEST(test_strconv_format_int_roundtrip);
+    RUN_TEST(test_strconv_format_i64);
+    RUN_TEST(test_strconv_format_u64);
+    RUN_TEST(test_strconv_format_i64_roundtrip);
     RUN_TEST(test_strconv_quote);
     RUN_TEST(test_strconv_unquote_ok);
     RUN_TEST(test_strconv_unquote_err);

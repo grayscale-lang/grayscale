@@ -23,11 +23,11 @@ do main() {
         println("  [FAIL] slice start past 2^32 is empty")
     }
 
-    mut s3 [i64] = arrays.slice(a, 0, math.MAX_INT)
+    mut s3 [i64] = arrays.slice(a, 0, math.MAX_I64)
     if arrays.is_equal(s3, whole) {
-        println("  [PASS] slice end MAX_INT clamps to length")
+        println("  [PASS] slice end MAX_I64 clamps to length")
     } else {
-        println("  [FAIL] slice end MAX_INT clamps to length")
+        println("  [FAIL] slice end MAX_I64 clamps to length")
     }
 
     mut r1 [i64] = arrays.rotate(a, 4294967297)
@@ -37,10 +37,10 @@ do main() {
         println("  [FAIL] rotate by 2^32 + 1")
     }
 
-    mut r2 [i64] = arrays.rotate(src, math.MAX_INT)
+    mut r2 [i64] = arrays.rotate(src, math.MAX_I64)
     if arrays.is_equal(r2, rot1) {
-        println("  [PASS] rotate by MAX_INT")
+        println("  [PASS] rotate by MAX_I64")
     } else {
-        println("  [FAIL] rotate by MAX_INT")
+        println("  [FAIL] rotate by MAX_I64")
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Test: strconv module base parameter for to_int/to_uint
+ * Test: strconv module base parameter for to_i64/to_u64
  * Verifies base conversion with constants and raw i64 values.
  */
 
@@ -10,117 +10,117 @@ do main() {
     mut failed i64 = 0
 
     // Test 1: base 16 with raw i64
-    mut hex, _ = strconv.to_int("FF", 16)
+    mut hex, _ = strconv.to_i64("FF", 16)
     if hex == 255 {
-        println("  [PASS] to_int(\"FF\", 16) = 255")
+        println("  [PASS] to_i64(\"FF\", 16) = 255")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"FF\", 16) = ${hex}")
+        println("  [FAIL] to_i64(\"FF\", 16) = ${hex}")
         failed += 1
     }
 
     // Test 2: base 2 with raw i64
-    mut bin, _ = strconv.to_int("1010", 2)
+    mut bin, _ = strconv.to_i64("1010", 2)
     if bin == 10 {
-        println("  [PASS] to_int(\"1010\", 2) = 10")
+        println("  [PASS] to_i64(\"1010\", 2) = 10")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"1010\", 2) = ${bin}")
+        println("  [FAIL] to_i64(\"1010\", 2) = ${bin}")
         failed += 1
     }
 
     // Test 3: base 8 with raw i64
-    mut oct, _ = strconv.to_int("77", 8)
+    mut oct, _ = strconv.to_i64("77", 8)
     if oct == 63 {
-        println("  [PASS] to_int(\"77\", 8) = 63")
+        println("  [PASS] to_i64(\"77\", 8) = 63")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"77\", 8) = ${oct}")
+        println("  [FAIL] to_i64(\"77\", 8) = ${oct}")
         failed += 1
     }
 
     // Test 4: BASE_16 constant
-    mut h2, _ = strconv.to_int("1A", strconv.BASE_16)
+    mut h2, _ = strconv.to_i64("1A", strconv.BASE_16)
     if h2 == 26 {
-        println("  [PASS] to_int(\"1A\", BASE_16) = 26")
+        println("  [PASS] to_i64(\"1A\", BASE_16) = 26")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"1A\", BASE_16) = ${h2}")
+        println("  [FAIL] to_i64(\"1A\", BASE_16) = ${h2}")
         failed += 1
     }
 
     // Test 5: BASE_2 constant
-    mut b2, _ = strconv.to_int("1111", strconv.BASE_2)
+    mut b2, _ = strconv.to_i64("1111", strconv.BASE_2)
     if b2 == 15 {
-        println("  [PASS] to_int(\"1111\", BASE_2) = 15")
+        println("  [PASS] to_i64(\"1111\", BASE_2) = 15")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"1111\", BASE_2) = ${b2}")
+        println("  [FAIL] to_i64(\"1111\", BASE_2) = ${b2}")
         failed += 1
     }
 
     // Test 6: BASE_8 constant
-    mut b8, _ = strconv.to_int("17", strconv.BASE_8)
+    mut b8, _ = strconv.to_i64("17", strconv.BASE_8)
     if b8 == 15 {
-        println("  [PASS] to_int(\"17\", BASE_8) = 15")
+        println("  [PASS] to_i64(\"17\", BASE_8) = 15")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"17\", BASE_8) = ${b8}")
+        println("  [FAIL] to_i64(\"17\", BASE_8) = ${b8}")
         failed += 1
     }
 
     // Test 7: BASE_36 constant
-    mut b36, _ = strconv.to_int("Z", strconv.BASE_36)
+    mut b36, _ = strconv.to_i64("Z", strconv.BASE_36)
     if b36 == 35 {
-        println("  [PASS] to_int(\"Z\", BASE_36) = 35")
+        println("  [PASS] to_i64(\"Z\", BASE_36) = 35")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"Z\", BASE_36) = ${b36}")
+        println("  [FAIL] to_i64(\"Z\", BASE_36) = ${b36}")
         failed += 1
     }
 
-    // Test 8: to_uint with base 16
-    mut uhex, _ = strconv.to_uint("FF", strconv.BASE_16)
+    // Test 8: to_u64 with base 16
+    mut uhex, _ = strconv.to_u64("FF", strconv.BASE_16)
     if uhex == 255 {
-        println("  [PASS] to_uint(\"FF\", BASE_16) = 255")
+        println("  [PASS] to_u64(\"FF\", BASE_16) = 255")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_uint(\"FF\", BASE_16) unexpected")
+        println("  [FAIL] to_u64(\"FF\", BASE_16) unexpected")
         failed += 1
     }
 
     // Test 9: default base (no second arg) = base 10
-    mut dec, _ = strconv.to_int("42")
+    mut dec, _ = strconv.to_i64("42")
     if dec == 42 {
-        println("  [PASS] to_int(\"42\") default = 42")
+        println("  [PASS] to_i64(\"42\") default = 42")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int(\"42\") default = ${dec}")
+        println("  [FAIL] to_i64(\"42\") default = ${dec}")
         failed += 1
     }
 
     // Test 10: multi-var with base
-    mut val, err = strconv.to_int("FF", strconv.BASE_16)
+    mut val, err = strconv.to_i64("FF", strconv.BASE_16)
     if err == nil {
         if val == 255 {
-            println("  [PASS] to_int result(\"FF\", BASE_16) = 255")
+            println("  [PASS] to_i64 result(\"FF\", BASE_16) = 255")
             passed += 1
         } otherwise {
-            println("  [FAIL] to_int result(\"FF\", BASE_16) = ${val}")
+            println("  [FAIL] to_i64 result(\"FF\", BASE_16) = ${val}")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] to_int result(\"FF\", BASE_16) returned error")
+        println("  [FAIL] to_i64 result(\"FF\", BASE_16) returned error")
         failed += 1
     }
 
     // Test 11: multi-var error with base (invalid digit for base)
-    mut val2, err2 = strconv.to_int("GG", strconv.BASE_16)
+    mut val2, err2 = strconv.to_i64("GG", strconv.BASE_16)
     if err2 != nil {
-        println("  [PASS] to_int result(\"GG\", BASE_16) returned error")
+        println("  [PASS] to_i64 result(\"GG\", BASE_16) returned error")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int result(\"GG\", BASE_16) no error, val=${val2}")
+        println("  [FAIL] to_i64 result(\"GG\", BASE_16) no error, val=${val2}")
         failed += 1
     }
 

@@ -19,7 +19,7 @@ do check(label string, got string, want string, &passed i64, &failed i64) {
 }
 
 do adult(row [string]) -> bool {
-    mut n, _ = strconv.to_int(row[1], 10)
+    mut n, _ = strconv.to_i64(row[1], 10)
     return n >= 18
 }
 

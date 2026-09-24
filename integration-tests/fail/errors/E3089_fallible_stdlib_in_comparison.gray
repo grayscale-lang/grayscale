@@ -8,6 +8,6 @@
 import @strconv
 
 do main() {
-    mut ok bool = strconv.to_int("1") == 1
+    mut ok bool = strconv.to_i64("1") == 1
     println(ok)
 }

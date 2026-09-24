@@ -1732,8 +1732,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         {"SQRT2","math","1.41421356237309504880"},{"LN2","math","0.69314718055994530942"},
         {"LN10","math","2.30258509299404568402"},{"INF","math","(1.0/0.0)"},
         {"NEG_INF","math","(-1.0/0.0)"},{"EPSILON","math","2.2204460492503131e-16"},
-        {"MAX_INT","math","9223372036854775807LL"},{"MIN_INT","math","(-9223372036854775807LL - 1)"},
-        {"MAX_FLOAT","math","1.7976931348623157e308"},{"MIN_FLOAT","math","-1.7976931348623157e308"},
+        {"MAX_I64","math","9223372036854775807LL"},{"MIN_I64","math","(-9223372036854775807LL - 1)"},
+        {"MAX_F64","math","1.7976931348623157e308"},{"MIN_F64","math","-1.7976931348623157e308"},
         {"MAC_OS","os","GrayEnum_Platform_MAC_OS"},{"LINUX","os","GrayEnum_Platform_LINUX"},
         {"WINDOWS","os","GrayEnum_Platform_WINDOWS"},{"OTHER","os","GrayEnum_Platform_OTHER"},
         {"O_RDONLY","io","GrayEnum_OpenFlag_O_RDONLY"},{"O_WRONLY","io","GrayEnum_OpenFlag_O_WRONLY"},
@@ -3342,10 +3342,10 @@ static void emit_member_expression(CodeGen *codegen, AstNode *node) {
             if (strcmp(member_name, "INF") == 0)     { emit(codegen, "(1.0/0.0)"); return; }
             if (strcmp(member_name, "NEG_INF") == 0) { emit(codegen, "(-1.0/0.0)"); return; }
             if (strcmp(member_name, "EPSILON") == 0) { emit(codegen, "2.2204460492503131e-16"); return; }
-            if (strcmp(member_name, "MAX_INT") == 0) { emit(codegen, "9223372036854775807LL"); return; }
-            if (strcmp(member_name, "MIN_INT") == 0) { emit(codegen, "(-9223372036854775807LL - 1)"); return; }
-            if (strcmp(member_name, "MAX_FLOAT") == 0) { emit(codegen, "1.7976931348623157e308"); return; }
-            if (strcmp(member_name, "MIN_FLOAT") == 0) { emit(codegen, "-1.7976931348623157e308"); return; }
+            if (strcmp(member_name, "MAX_I64") == 0) { emit(codegen, "9223372036854775807LL"); return; }
+            if (strcmp(member_name, "MIN_I64") == 0) { emit(codegen, "(-9223372036854775807LL - 1)"); return; }
+            if (strcmp(member_name, "MAX_F64") == 0) { emit(codegen, "1.7976931348623157e308"); return; }
+            if (strcmp(member_name, "MIN_F64") == 0) { emit(codegen, "-1.7976931348623157e308"); return; }
         }
 
         /* @io OpenFlag enum via the module.VARIANT spelling */
@@ -7140,11 +7140,11 @@ static const PassthroughCall random_passthrough[] = {
 };
 
 static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    if (strcmp(function_name, "rand_float") == 0) {
+    if (strcmp(function_name, "rand_f64") == 0) {
         if (node->data.call.argument_count == 0) {
             emit(codegen, "gray_random_f64_unit()");
         } else if (node->data.call.argument_count == 2) {
-            emit(codegen, "gray_random_float_range(");
+            emit(codegen, "gray_random_f64_range(");
             emit_expression(codegen, node->data.call.arguments[0]);
             emit(codegen, ", ");
             emit_expression(codegen, node->data.call.arguments[1]);
@@ -7152,13 +7152,13 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
         }
         return true;
     }
-    if (strcmp(function_name, "rand_int") == 0) {
+    if (strcmp(function_name, "rand_i64") == 0) {
         if (node->data.call.argument_count == 1) {
-            emit(codegen, "gray_random_int_max(");
+            emit(codegen, "gray_random_i64_max(");
             emit_expression(codegen, node->data.call.arguments[0]);
             emit(codegen, ")");
         } else if (node->data.call.argument_count == 2) {
-            emit(codegen, "gray_random_int_range(");
+            emit(codegen, "gray_random_i64_range(");
             emit_expression(codegen, node->data.call.arguments[0]);
             emit(codegen, ", ");
             emit_expression(codegen, node->data.call.arguments[1]);
@@ -7167,7 +7167,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "rand_bool") == 0) { emit(codegen, "gray_random_bool()"); return true; }
-    if (strcmp(function_name, "rand_byte") == 0) { emit(codegen, "gray_random_byte()"); return true; }
+    if (strcmp(function_name, "rand_u8") == 0) { emit(codegen, "gray_random_u8()"); return true; }
     if (strcmp(function_name, "rand_char") == 0) {
         if (node->data.call.argument_count == 2) {
             emit(codegen, "gray_random_char_range(");
@@ -7221,7 +7221,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
             }
         }
         if (expression_is_assignable(node->data.call.arguments[0])) {
-            emit(codegen, "({ int32_t _ri = gray_random_int_max(");
+            emit(codegen, "({ int32_t _ri = gray_random_i64_max(");
             emit_expression(codegen, node->data.call.arguments[0]);
             emit_formatted(codegen, ".len); *(%s *)gray_array_get_ptr(&", c_element_type);
             emit_expression(codegen, node->data.call.arguments[0]);
@@ -7229,7 +7229,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
         } else {
             emit(codegen, "({ __auto_type _ra = ");
             emit_expression(codegen, node->data.call.arguments[0]);
-            emit_formatted(codegen, "; int32_t _ri = gray_random_int_max(_ra.len); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", c_element_type, codegen->file, node->token.line);
+            emit_formatted(codegen, "; int32_t _ri = gray_random_i64_max(_ra.len); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", c_element_type, codegen->file, node->token.line);
         }
         return true;
     }
@@ -7959,29 +7959,29 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
 
-    if (strcmp(function_name, "int_to_hex") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_fmt_int_to_hex(gray_default_arena, ");
+    if (strcmp(function_name, "i64_to_hex") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_fmt_i64_to_hex(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
         return true;
     }
 
-    if (strcmp(function_name, "int_to_binary") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_fmt_int_to_binary(gray_default_arena, ");
+    if (strcmp(function_name, "i64_to_binary") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_fmt_i64_to_binary(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
         return true;
     }
 
-    if (strcmp(function_name, "int_to_octal") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_fmt_int_to_octal(gray_default_arena, ");
+    if (strcmp(function_name, "i64_to_octal") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_fmt_i64_to_octal(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
         return true;
     }
 
-    if (strcmp(function_name, "float_fixed") == 0 && node->data.call.argument_count == 2) {
-        emit(codegen, "gray_fmt_float_fixed(gray_default_arena, ");
+    if (strcmp(function_name, "f64_to_fixed") == 0 && node->data.call.argument_count == 2) {
+        emit(codegen, "gray_fmt_f64_to_fixed(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -7989,8 +7989,8 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
 
-    if (strcmp(function_name, "float_sci") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_fmt_float_sci(gray_default_arena, ");
+    if (strcmp(function_name, "f64_to_scientific") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_fmt_f64_to_scientific(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
         return true;
@@ -8078,18 +8078,18 @@ static bool emit_chars_call(CodeGen *codegen, AstNode *node, const char *functio
 /* --- strconv module --- */
 
 static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    bool is_fallible = (strcmp(function_name, "to_int") == 0 ||
-        strcmp(function_name, "to_uint") == 0 ||
-        strcmp(function_name, "to_float") == 0 ||
+    bool is_fallible = (strcmp(function_name, "to_i64") == 0 ||
+        strcmp(function_name, "to_u64") == 0 ||
+        strcmp(function_name, "to_f64") == 0 ||
         strcmp(function_name, "to_bool") == 0 ||
         strcmp(function_name, "unquote") == 0);
-    bool has_base = (strcmp(function_name, "to_int") == 0 ||
-        strcmp(function_name, "to_uint") == 0);
-    bool needs_arena = (strcmp(function_name, "from_int") == 0 ||
-        strcmp(function_name, "from_uint") == 0 ||
-        strcmp(function_name, "from_float") == 0 ||
-        strcmp(function_name, "format_int") == 0 ||
-        strcmp(function_name, "format_uint") == 0 ||
+    bool has_base = (strcmp(function_name, "to_i64") == 0 ||
+        strcmp(function_name, "to_u64") == 0);
+    bool needs_arena = (strcmp(function_name, "from_i64") == 0 ||
+        strcmp(function_name, "from_u64") == 0 ||
+        strcmp(function_name, "from_f64") == 0 ||
+        strcmp(function_name, "format_i64") == 0 ||
+        strcmp(function_name, "format_u64") == 0 ||
         strcmp(function_name, "quote") == 0 ||
         strcmp(function_name, "unquote") == 0);
 
@@ -8105,7 +8105,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *funct
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.call.arguments[i]);
         }
-        /* Default base=10 for to_int/to_uint when not provided */
+        /* Default base=10 for to_i64/to_u64 when not provided */
         if (has_base && node->data.call.argument_count == 1) {
             emit(codegen, ", 10");
         }

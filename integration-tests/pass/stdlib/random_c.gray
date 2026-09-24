@@ -8,20 +8,20 @@ do main() {
     mut pass i64 = 0
     mut fail i64 = 0
 
-    // random.rand_int(min, max) bounds check
-    mut i1 i64 = random.rand_int(1, 10)
+    // random.rand_i64(min, max) bounds check
+    mut i1 i64 = random.rand_i64(1, 10)
     if i1 >= 1 && i1 < 10 { pass += 1 } otherwise { fail += 1 }
 
-    // random.rand_int(max) bounds check
-    mut i2 i64 = random.rand_int(100)
+    // random.rand_i64(max) bounds check
+    mut i2 i64 = random.rand_i64(100)
     if i2 >= 0 && i2 < 100 { pass += 1 } otherwise { fail += 1 }
 
-    // random.rand_float() in [0, 1)
-    mut f1 f64 = random.rand_float()
+    // random.rand_f64() in [0, 1)
+    mut f1 f64 = random.rand_f64()
     if f1 >= 0.0 && f1 < 1.0 { pass += 1 } otherwise { fail += 1 }
 
-    // random.rand_float(min, max) in range
-    mut f2 f64 = random.rand_float(5.0, 10.0)
+    // random.rand_f64(min, max) in range
+    mut f2 f64 = random.rand_f64(5.0, 10.0)
     if f2 >= 5.0 && f2 < 10.0 { pass += 1 } otherwise { fail += 1 }
 
     // random.rand_bool() returns a boolean

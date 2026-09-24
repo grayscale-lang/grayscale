@@ -9,6 +9,6 @@
 
 import @strconv
 
-do greet(n i64 = strconv.to_int("not_a_number")) { println("${n}") }
+do greet(n i64 = strconv.to_i64("not_a_number")) { println("${n}") }
 
 do main() { greet() }

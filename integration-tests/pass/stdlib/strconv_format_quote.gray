@@ -1,5 +1,5 @@
 /*
- * Test: strconv format_int / format_uint / quote / unquote
+ * Test: strconv format_i64 / format_u64 / quote / unquote
  * Verifies arbitrary-base formatting and quoted-literal round-tripping.
  */
 
@@ -9,61 +9,61 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // Test 1: format_int base 16
-    mut h string = strconv.format_int(255, 16)
+    // Test 1: format_i64 base 16
+    mut h string = strconv.format_i64(255, 16)
     if h == "ff" {
-        println("  [PASS] format_int(255, 16) = ff")
+        println("  [PASS] format_i64(255, 16) = ff")
         passed += 1
     } otherwise {
-        println("  [FAIL] format_int(255, 16) = ${h}")
+        println("  [FAIL] format_i64(255, 16) = ${h}")
         failed += 1
     }
 
-    // Test 2: format_int negative, base 2
-    mut b string = strconv.format_int(-10, 2)
+    // Test 2: format_i64 negative, base 2
+    mut b string = strconv.format_i64(-10, 2)
     if b == "-1010" {
-        println("  [PASS] format_int(-10, 2) = -1010")
+        println("  [PASS] format_i64(-10, 2) = -1010")
         passed += 1
     } otherwise {
-        println("  [FAIL] format_int(-10, 2) = ${b}")
+        println("  [FAIL] format_i64(-10, 2) = ${b}")
         failed += 1
     }
 
-    // Test 3: format_int base 36
-    mut z string = strconv.format_int(35, 36)
+    // Test 3: format_i64 base 36
+    mut z string = strconv.format_i64(35, 36)
     if z == "z" {
-        println("  [PASS] format_int(35, 36) = z")
+        println("  [PASS] format_i64(35, 36) = z")
         passed += 1
     } otherwise {
-        println("  [FAIL] format_int(35, 36) = ${z}")
+        println("  [FAIL] format_i64(35, 36) = ${z}")
         failed += 1
     }
 
-    // Test 4: format_int zero
-    mut zero string = strconv.format_int(0, 10)
+    // Test 4: format_i64 zero
+    mut zero string = strconv.format_i64(0, 10)
     if zero == "0" {
-        println("  [PASS] format_int(0, 10) = 0")
+        println("  [PASS] format_i64(0, 10) = 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] format_int(0, 10) = ${zero}")
+        println("  [FAIL] format_i64(0, 10) = ${zero}")
         failed += 1
     }
 
-    // Test 5: format_uint base 16
+    // Test 5: format_u64 base 16
     mut u u64 = 255
-    mut uh string = strconv.format_uint(u, 16)
+    mut uh string = strconv.format_u64(u, 16)
     if uh == "ff" {
-        println("  [PASS] format_uint(255, 16) = ff")
+        println("  [PASS] format_u64(255, 16) = ff")
         passed += 1
     } otherwise {
-        println("  [FAIL] format_uint(255, 16) = ${uh}")
+        println("  [FAIL] format_u64(255, 16) = ${uh}")
         failed += 1
     }
 
-    // Test 6: format_int round-trips through to_int
-    mut back, _ = strconv.to_int(strconv.format_int(-12345, 16), 16)
+    // Test 6: format_i64 round-trips through to_i64
+    mut back, _ = strconv.to_i64(strconv.format_i64(-12345, 16), 16)
     if back == -12345 {
-        println("  [PASS] to_int(format_int(-12345, 16), 16) = -12345")
+        println("  [PASS] to_i64(format_i64(-12345, 16), 16) = -12345")
         passed += 1
     } otherwise {
         println("  [FAIL] round-trip = ${back}")

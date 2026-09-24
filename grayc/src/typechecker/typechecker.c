@@ -3321,13 +3321,13 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"fmt", "center",        3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"fmt", "eprintf",       1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"fmt", "eprintfln",     1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
-    {"fmt", "float_fixed",   2, 2,  false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"fmt", "float_sci",     1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "string"},
+    {"fmt", "f64_to_fixed",  2, 2,  false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"fmt", "f64_to_scientific", 1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "string"},
     {"fmt", "format_bytes",  1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
     {"fmt", "format_number", 1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"fmt", "int_to_binary", 1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"fmt", "int_to_hex",    1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"fmt", "int_to_octal",  1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"fmt", "i64_to_binary", 1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"fmt", "i64_to_hex",    1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"fmt", "i64_to_octal",  1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
     {"fmt", "pad_left",      3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"fmt", "pad_right",     3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"fmt", "printf",        1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
@@ -3482,11 +3482,11 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     /* random */
     {"random", "choice",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "$elem0"},
     {"random", "rand_bool",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"random", "rand_byte",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"u8"},
     {"random", "rand_char",  0, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHAR}, {1, EXPECTED_ARGUMENT_CHAR}}, "char"},
-    {"random", "rand_float", 0, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"random", "rand_int",   1, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
+    {"random", "rand_f64",   0, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"random", "rand_i64",   1, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
     {"random", "rand_string", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"random", "rand_u8",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"u8"},
     {"random", "sample",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_I64}}, "$0"},
     {"random", "seed",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "void"},
     {"random", "shuffle",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "$0"},
@@ -3532,19 +3532,19 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"sqlite", "query",        2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
     {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
     /* strconv */
-    {"strconv", "format_int",  2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"strconv", "format_uint", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_U64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"strconv", "format_i64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"strconv", "format_u64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_U64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"strconv", "from_bool",  1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_BOOL}}, "string"},
-    {"strconv", "from_float", 1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_F64}}, "string"},
-    {"strconv", "from_int",   1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
-    {"strconv", "from_uint",  1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_U64}}, "string"},
+    {"strconv", "from_f64",   1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_F64}}, "string"},
+    {"strconv", "from_i64",   1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
+    {"strconv", "from_u64",   1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_U64}}, "string"},
     {"strconv", "is_integer", 1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"strconv", "is_numeric", 1, 1, false, FALLIBLE_TYPE_NONE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"strconv", "quote",      1, 1, false, FALLIBLE_TYPE_NONE,   1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"strconv", "to_bool",    1, 1, true,  FALLIBLE_TYPE_BOOL,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"strconv", "to_float",   1, 1, true,  FALLIBLE_TYPE_F64, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "f64"},
-    {"strconv", "to_int",     1, 2, true,  FALLIBLE_TYPE_I64,   2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"strconv", "to_uint",    1, 2, true,  FALLIBLE_TYPE_U64,  2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "u64"},
+    {"strconv", "to_f64",     1, 1, true,  FALLIBLE_TYPE_F64, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "f64"},
+    {"strconv", "to_i64",     1, 2, true,  FALLIBLE_TYPE_I64,   2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
+    {"strconv", "to_u64",     1, 2, true,  FALLIBLE_TYPE_U64,  2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "u64"},
     {"strconv", "unquote",    1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* strings */
     {"strings", "append_char",   2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_CHAR}}, "string"},
@@ -3553,7 +3553,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"strings", "builder_append",      2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"strings", "builder_append_bytes", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_U8_ARRAY}}, "void"},
     {"strings", "builder_append_char", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_CHAR}}, "void"},
-    {"strings", "builder_append_int",  2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
+    {"strings", "builder_append_i64",  2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
     {"strings", "builder_append_line", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_BUILDER}, {1, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"strings", "builder_clear",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_BUILDER}}, "void"},
     {"strings", "builder_len",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_BUILDER}}, "i64"},
@@ -3807,14 +3807,14 @@ static void typechecker_check_stdlib_argument_count(TypeChecker *checker, const 
 }
 
 /* Compile-time validation for strconv base parameter.
- * When the second arg to to_int/to_uint/format_int/format_uint is a literal
+ * When the second arg to to_i64/to_u64/format_i64/format_u64 is a literal
  * integer, verify it's in the valid range [2, 36]. */
 static void typechecker_check_strconv_base(TypeChecker *checker, const char *module_name,
     const char *function_name, AstNode *node)
 {
     if (strcmp(module_name, "strconv") != 0) return;
-    if (strcmp(function_name, "to_int") != 0 && strcmp(function_name, "to_uint") != 0 &&
-        strcmp(function_name, "format_int") != 0 && strcmp(function_name, "format_uint") != 0) return;
+    if (strcmp(function_name, "to_i64") != 0 && strcmp(function_name, "to_u64") != 0 &&
+        strcmp(function_name, "format_i64") != 0 && strcmp(function_name, "format_u64") != 0) return;
     if (node->data.call.argument_count < 2) return;
     AstNode *base_argument = node->data.call.arguments[1];
     if (base_argument->kind != NODE_INTEGER_LITERAL) return;
@@ -4402,8 +4402,8 @@ static const UsingConst using_constants[] = {
     {"PHI","math",TYPE_KIND_FLOATING_POINT,NULL},{"SQRT2","math",TYPE_KIND_FLOATING_POINT,NULL},{"LN2","math",TYPE_KIND_FLOATING_POINT,NULL},
     {"LN10","math",TYPE_KIND_FLOATING_POINT,NULL},{"INF","math",TYPE_KIND_FLOATING_POINT,NULL},{"NEG_INF","math",TYPE_KIND_FLOATING_POINT,NULL},
     {"EPSILON","math",TYPE_KIND_FLOATING_POINT,NULL},
-    {"MAX_INT","math",TYPE_KIND_SIGNED_INTEGER,NULL},{"MIN_INT","math",TYPE_KIND_SIGNED_INTEGER,NULL},
-    {"MAX_FLOAT","math",TYPE_KIND_FLOATING_POINT,NULL},{"MIN_FLOAT","math",TYPE_KIND_FLOATING_POINT,NULL},
+    {"MAX_I64","math",TYPE_KIND_SIGNED_INTEGER,NULL},{"MIN_I64","math",TYPE_KIND_SIGNED_INTEGER,NULL},
+    {"MAX_F64","math",TYPE_KIND_FLOATING_POINT,NULL},{"MIN_F64","math",TYPE_KIND_FLOATING_POINT,NULL},
     {"MAC_OS","os",TYPE_KIND_ENUM,"Platform"},{"LINUX","os",TYPE_KIND_ENUM,"Platform"},{"WINDOWS","os",TYPE_KIND_ENUM,"Platform"},{"OTHER","os",TYPE_KIND_ENUM,"Platform"},
     {"O_RDONLY","io",TYPE_KIND_ENUM,"OpenFlag"},{"O_WRONLY","io",TYPE_KIND_ENUM,"OpenFlag"},{"O_RDWR","io",TYPE_KIND_ENUM,"OpenFlag"},
     {"BASE_2","strconv",TYPE_KIND_SIGNED_INTEGER,NULL},{"BASE_8","strconv",TYPE_KIND_SIGNED_INTEGER,NULL},{"BASE_10","strconv",TYPE_KIND_SIGNED_INTEGER,NULL},
@@ -7219,7 +7219,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
          * that appends must take '&b Builder'. */
         if ((strcmp(member_function_name, "builder_reserve") == 0 || strcmp(member_function_name, "builder_append") == 0 ||
              strcmp(member_function_name, "builder_append_char") == 0 || strcmp(member_function_name, "builder_append_bytes") == 0 ||
-             strcmp(member_function_name, "builder_append_int") == 0 || strcmp(member_function_name, "builder_append_line") == 0 ||
+             strcmp(member_function_name, "builder_append_i64") == 0 || strcmp(member_function_name, "builder_append_line") == 0 ||
              strcmp(member_function_name, "builder_clear") == 0) &&
             node->data.call.argument_count > 0) {
             AstNode *first_argument_node = node->data.call.arguments[0];

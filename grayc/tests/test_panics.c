@@ -247,32 +247,32 @@ static void test_panic_P0067(void) { ASSERT_PANICS("P0067", trigger_P0067); }
  * ===========================================================================*/
 
 static void trigger_P0054(void) {
-    gray_strconv_to_int(gray_string_lit("42"), 0);
+    gray_strconv_to_i64(gray_string_lit("42"), 0);
 }
 static void test_panic_P0054(void) { ASSERT_PANICS("P0054", trigger_P0054); }
 
 static void trigger_P0055(void) {
-    gray_strconv_to_int(gray_string_lit("abc"), 10);
+    gray_strconv_to_i64(gray_string_lit("abc"), 10);
 }
 static void test_panic_P0055(void) { ASSERT_PANICS("P0055", trigger_P0055); }
 
 static void trigger_P0056(void) {
-    gray_strconv_to_uint(gray_string_lit("42"), 0);
+    gray_strconv_to_u64(gray_string_lit("42"), 0);
 }
 static void test_panic_P0056(void) { ASSERT_PANICS("P0056", trigger_P0056); }
 
 static void trigger_P0057(void) {
-    gray_strconv_to_uint(gray_string_lit("abc"), 10);
+    gray_strconv_to_u64(gray_string_lit("abc"), 10);
 }
 static void test_panic_P0057(void) { ASSERT_PANICS("P0057", trigger_P0057); }
 
 static void trigger_P0058(void) {
-    gray_strconv_to_uint(gray_string_lit("-5"), 10);
+    gray_strconv_to_u64(gray_string_lit("-5"), 10);
 }
 static void test_panic_P0058(void) { ASSERT_PANICS("P0058", trigger_P0058); }
 
 static void trigger_P0059(void) {
-    gray_strconv_to_float(gray_string_lit("xyz"));
+    gray_strconv_to_f64(gray_string_lit("xyz"));
 }
 static void test_panic_P0059(void) { ASSERT_PANICS("P0059", trigger_P0059); }
 

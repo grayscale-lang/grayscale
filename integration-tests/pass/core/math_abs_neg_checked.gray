@@ -35,7 +35,7 @@ do main() {
         failed++
     }
 
-    if math.gcd(math.MIN_INT, 6) == 2 && math.gcd(-12, 18) == 6 {
+    if math.gcd(math.MIN_I64, 6) == 2 && math.gcd(-12, 18) == 6 {
         passed++
     } otherwise {
         println("FAIL: gcd")

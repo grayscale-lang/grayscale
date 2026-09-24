@@ -2,5 +2,5 @@
 import @math
 
 do main() {
-    println(math.neg(math.MIN_INT))
+    println(math.neg(math.MIN_I64))
 }

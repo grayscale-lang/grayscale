@@ -9,49 +9,49 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // ==================== random.rand_float ====================
-    println("  -- random.rand_float --")
+    // ==================== random.rand_f64 ====================
+    println("  -- random.rand_f64 --")
 
-    // Test 1: random.rand_float() returns value in [0, 1)
-    mut f1 f64 = random.rand_float()
+    // Test 1: random.rand_f64() returns value in [0, 1)
+    mut f1 f64 = random.rand_f64()
     if f1 >= 0.0 && f1 < 1.0 {
-        println("  [PASS] random.rand_float() in range [0, 1)")
+        println("  [PASS] random.rand_f64() in range [0, 1)")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_float(): got ${f1}, expected [0, 1)")
+        println("  [FAIL] random.rand_f64(): got ${f1}, expected [0, 1)")
         failed += 1
     }
 
-    // Test 2: random.rand_float(min, max) returns value in [min, max)
-    mut f2 f64 = random.rand_float(10.0, 20.0)
+    // Test 2: random.rand_f64(min, max) returns value in [min, max)
+    mut f2 f64 = random.rand_f64(10.0, 20.0)
     if f2 >= 10.0 && f2 < 20.0 {
-        println("  [PASS] random.rand_float(10, 20) in range")
+        println("  [PASS] random.rand_f64(10, 20) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_float(10, 20): got ${f2}")
+        println("  [FAIL] random.rand_f64(10, 20): got ${f2}")
         failed += 1
     }
 
-    // ==================== random.rand_int ====================
-    println("  -- random.rand_int --")
+    // ==================== random.rand_i64 ====================
+    println("  -- random.rand_i64 --")
 
-    // Test 3: random.rand_int(max) returns value in [0, max)
-    mut i1 i64 = random.rand_int(100)
+    // Test 3: random.rand_i64(max) returns value in [0, max)
+    mut i1 i64 = random.rand_i64(100)
     if i1 >= 0 && i1 < 100 {
-        println("  [PASS] random.rand_int(100) in range [0, 100)")
+        println("  [PASS] random.rand_i64(100) in range [0, 100)")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_int(100): got ${i1}")
+        println("  [FAIL] random.rand_i64(100): got ${i1}")
         failed += 1
     }
 
-    // Test 4: random.rand_int(min, max) returns value in [min, max)
-    mut i2 i64 = random.rand_int(50, 60)
+    // Test 4: random.rand_i64(min, max) returns value in [min, max)
+    mut i2 i64 = random.rand_i64(50, 60)
     if i2 >= 50 && i2 < 60 {
-        println("  [PASS] random.rand_int(50, 60) in range")
+        println("  [PASS] random.rand_i64(50, 60) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_int(50, 60): got ${i2}")
+        println("  [FAIL] random.rand_i64(50, 60): got ${i2}")
         failed += 1
     }
 
@@ -86,16 +86,16 @@ do main() {
         failed += 1
     }
 
-    // ==================== random.rand_byte ====================
-    println("  -- random.rand_byte --")
+    // ==================== random.rand_u8 ====================
+    println("  -- random.rand_u8 --")
 
-    // Test 7: random.rand_byte() returns value in [0, 255]
-    mut by u8 = random.rand_byte()
+    // Test 7: random.rand_u8() returns value in [0, 255]
+    mut by u8 = random.rand_u8()
     if by >= 0 && by <= 255 {
-        println("  [PASS] random.rand_byte() in range [0, 255]")
+        println("  [PASS] random.rand_u8() in range [0, 255]")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_byte(): got ${by}")
+        println("  [FAIL] random.rand_u8(): got ${by}")
         failed += 1
     }
 
