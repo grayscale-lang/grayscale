@@ -34,7 +34,7 @@ typedef struct {
 /*@man spawn
  *@module threads
  *@group Lifecycle
- *@sig spawn(fn func()) -> Thread
+ *@sig spawn(fn func(), [arg i64]) -> Thread
  *@desc Spawn a new thread running fn. To pass an i64 argument to fn, use spawn_arg (or call spawn with a second i64 argument, which forwards to spawn_arg).
  *@example
  *   import @threads
@@ -67,7 +67,7 @@ GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t argument);
  *@desc Wait for a thread to finish. Frees the underlying handle.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(work)
+ *   mut t Thread = threads.spawn(()work)
  *   threads.join(t)
  *@end
  */
@@ -81,7 +81,7 @@ void gray_threads_join(GrayThread thread);
  *@desc Release ownership; the thread runs independently. After detach the handle must not be joined or queried.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(background_work)
+ *   mut t Thread = threads.spawn(()background_work)
  *   threads.detach(t)
  *@end
  */
@@ -97,7 +97,7 @@ void gray_threads_detach(GrayThread thread);
  *@desc True while the thread's body has not returned. Not valid after detach or join.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(work)
+ *   mut t Thread = threads.spawn(()work)
  *   if threads.is_alive(t) { println("still running") }
  *@end
  */

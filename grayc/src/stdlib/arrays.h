@@ -561,7 +561,7 @@ double gray_arrays_average(GrayArray *array, const char *file, int line);
  *@desc Reduces arr to a single value by applying accumulator(acc, element) for each element, starting with initial. accumulator must take two T parameters and return T. Does not modify the original.
  *@example
  *   import @arrays
- *   do add(an i64, b i64) -> i64 { return a + b }
+ *   do add(a i64, b i64) -> i64 { return a + b }
  *   mut nums [i64] = {1, 2, 3, 4}
  *   mut total i64 = arrays.reduce(nums, 0, ()add)
  *   println(total)

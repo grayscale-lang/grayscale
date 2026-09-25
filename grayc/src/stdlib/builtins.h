@@ -16,7 +16,7 @@
 #include "../runtime/map.h"
 
 /*@man println
- *@sig println(value T)
+ *@sig println([value T])
  *@desc Prints any value to stdout followed by a newline. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   println("hello, world")
@@ -60,7 +60,7 @@ void gray_builtin_print_addr(uintptr_t value);
 void gray_builtin_flush(void);
 
 /*@man eprintln
- *@sig eprintln(value T)
+ *@sig eprintln([value T])
  *@desc Prints any value to stderr followed by a newline. Supports all types: string, i64, u64, f64, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   eprintln("error: something went wrong")
@@ -218,7 +218,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@sig i128(value T) -> i128
  *@desc 128-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
- *   mut an i128 = i128(99999999999999999999)
+ *   mut a i128 = i128(99999999999999999999)
  *   mut b i128 = a * i128(2)
  *   println(b)
  *@end
@@ -344,7 +344,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  */
 
 /*@man error
- *@sig error(code ErrorCode = .Unknown, message string = "") -> Error
+ *@sig error(message string) -> Error  |  error(code ErrorCode) -> Error  |  error(code ErrorCode, message string) -> Error
  *@desc Creates an Error value. Forms: error("msg") (code defaults to .Unknown), error(.Code), or error(.Code, "msg"). Inspect err.code with == or `when`; err.msg holds the message.
  *@example
  *   mut err Error = error(.NotFound, "file not found")
@@ -353,7 +353,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  */
 
 /*@man range
- *@sig range(start i64, end i64, step i64 = 1) -> Range
+ *@sig range(start i64, end i64, step i64 = 1) -> Range<i64>
  *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime.
  *@example
  *   for i in range(0, 5) { println(i) }

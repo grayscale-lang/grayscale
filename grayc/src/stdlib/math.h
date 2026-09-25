@@ -37,7 +37,7 @@
  *@module math
  *@group Arithmetic
  *@sig abs(n T) -> T
- *@desc Returns the absolute value of n. Works on i64 and f64. Returns the same type as the input.
+ *@desc Returns the absolute value of n. Works on every sized integer type (i8 to i256, u8 to u256) and on f32 and f64. Returns the same type as the input.
  *@example
  *   import @math
  *   println(math.abs(-5))
@@ -52,7 +52,7 @@ static inline double   gray_math_abs_f64(double value) { return fabs(value); }
  *@module math
  *@group Arithmetic
  *@sig neg(n T) -> T
- *@desc Returns the negation of n. Works on i64 and f64. Returns the same type as the input.
+ *@desc Returns the negation of n. Works on every signed integer type (i8 to i256) and on f32 and f64; unsigned types are rejected. Returns the same type as the input.
  *@example
  *   import @math
  *   println(math.neg(5))
@@ -537,7 +537,7 @@ int64_t gray_math_factorial(int64_t number);
 /*@man gcd
  *@module math
  *@group Statistical
- *@sig gcd(an i64, b i64) -> i64
+ *@sig gcd(a i64, b i64) -> i64
  *@desc Returns the greatest common divisor of a and b.
  *@example
  *   import @math
@@ -556,7 +556,7 @@ double gray_math_random_float(double minimum, double maximum);
 /*@man lcm
  *@module math
  *@group Statistical
- *@sig lcm(an i64, b i64) -> i64
+ *@sig lcm(a i64, b i64) -> i64
  *@desc Returns the least common multiple of a and b.
  *@example
  *   import @math
@@ -581,7 +581,7 @@ bool gray_math_is_prime(int64_t number);
 /*@man lerp
  *@module math
  *@group Utility
- *@sig lerp(an f64, b f64, t f64) -> f64
+ *@sig lerp(a f64, b f64, t f64) -> f64
  *@desc Linearly interpolates between a and b by factor t. t=0 returns a, t=1 returns b.
  *@example
  *   import @math
@@ -611,7 +611,7 @@ static inline double gray_math_remap(double value, double in_lo, double in_hi,
 /*@man approx_equal
  *@module math
  *@group Comparison
- *@sig approx_equal(an f64, b f64, epsilon f64) -> bool
+ *@sig approx_equal(a f64, b f64, epsilon f64) -> bool
  *@desc Returns true if the absolute difference between a and b is at most epsilon.
  *@example
  *   import @math
@@ -800,6 +800,15 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@end
  */
 
+/*@man EPSILON
+ *@module math
+ *@group Constants
+ *@kind const
+ *@sig 2.2204460492503131e-16
+ *@desc The difference between 1.0 and the next larger f64.
+ *@end
+ */
+
 /*@man MAX_I64
  *@module math
  *@group Constants
@@ -832,7 +841,7 @@ int64_t gray_math_next_power_of_two(int64_t number);
  *@group Constants
  *@kind const
  *@sig -1.7976931348623157e308
- *@desc The smallest (most negative) finite value an f64 can hold. For the smallest positive magnitude an f64 can represent, see EPSILON.
+ *@desc The smallest (most negative) finite value an f64 can hold.
  *@end
  */
 

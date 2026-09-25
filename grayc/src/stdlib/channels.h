@@ -92,7 +92,7 @@ bool gray_channels_try_send(GrayChannel handle, int64_t value);
  *@desc Non-blocking receive. Returns the value and true if available, or (0, false) if empty. Always use destructuring.
  *@example
  *   import @channels
- *   mut val i64, mut ok bool = channels.try_receive(ch)
+ *   mut val i64, ok bool = channels.try_receive(ch)
  *   if ok { println("got ${val}") }
  *@end
  */

@@ -50,7 +50,7 @@
  *   mut db, _ = sqlite.open("myapp.db")
  *   mut ok, err = sqlite.exec(db, "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT)")
  *   if err != nil { println("exec failed: ${err}") }
- *   mut ok, _ = sqlite.exec(db, "INSERT INTO users (name) VALUES ('Alice')")
+ *   mut inserted, _ = sqlite.exec(db, "INSERT INTO users (name) VALUES ('Alice')")
  *@end
  */
 

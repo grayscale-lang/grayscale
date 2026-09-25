@@ -38,7 +38,7 @@
  *   import @io
  *   mut content, err = io.read_file("data.txt")
  *   if err != nil { println("failed: ${err}") }
- *   mut content, _ = io.read_file("data.txt")
+ *   mut unchecked_content, _ = io.read_file("data.txt")
  *@end
  */
 GrayString gray_io_read_file(GrayArena *arena, GrayString path);
@@ -78,8 +78,8 @@ GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
  *@desc Reads all of standard input to end of file and returns it as one string.
  *@example
  *   import @io
- *   mut input string = io.read_stdin_all()
- *   println("read ${len(input)} bytes")
+ *   mut contents string = io.read_stdin_all()
+ *   println("read ${len(contents)} bytes")
  *@end
  */
 GrayString gray_io_read_stdin_all(GrayArena *arena);
@@ -343,7 +343,7 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *@desc Returns all file paths matching the glob pattern. Returns an empty array if there are no matches. Always use destructuring — single-variable assignment is a compile error. Glob patterns are matched relative to the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut files, _ = io.glob("src/\*.gray")
+ *   mut files, _ = io.glob("src/test_*.gray")
  *@end
  */
 GrayArray gray_io_glob(GrayArena *arena, GrayString pattern);

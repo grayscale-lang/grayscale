@@ -18,7 +18,7 @@
  *@module random
  *@group Generation
  *@sig rand_f64() -> f64  |  rand_f64(min f64, max f64) -> f64
- *@desc Returns a random f64. With no arguments returns a value in [0.0, 1.0). With two arguments returns a value in [min, max).
+ *@desc Returns a random f64. With no arguments returns a value from 0.0 up to but not including 1.0. With two arguments returns a value from min up to but not including max.
  *@example
  *   import @random
  *   mut f f64 = random.rand_f64()
@@ -30,7 +30,7 @@
  *@module random
  *@group Generation
  *@sig rand_i64(max i64) -> i64  |  rand_i64(min i64, max i64) -> i64
- *@desc Returns a random integer. With one argument returns a value in [0, max). With two arguments returns a value in [min, max).
+ *@desc Returns a random integer. With one argument returns a value from 0 up to but not including max. With two arguments returns a value from min up to but not including max.
  *@example
  *   import @random
  *   mut n i64 = random.rand_i64(100)
@@ -53,7 +53,7 @@
  *@module random
  *@group Generation
  *@sig rand_u8() -> u8
- *@desc Returns a random u8 value in [0, 255].
+ *@desc Returns a random u8 value from 0 to 255 inclusive.
  *@example
  *   import @random
  *   mut b u8 = random.rand_u8()
@@ -64,7 +64,7 @@
  *@module random
  *@group Generation
  *@sig rand_char() -> char  |  rand_char(min char, max char) -> char
- *@desc Returns a random character. With no arguments returns a random printable ASCII character. With two arguments returns a character in the range [min, max].
+ *@desc Returns a random character. With no arguments returns a random printable ASCII character. With two arguments returns a character from min up to but not including max.
  *@example
  *   import @random
  *   mut c char = random.rand_char()

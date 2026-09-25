@@ -26,7 +26,7 @@
  *@module fmt
  *@group Output
  *@sig printf(format string, args [T])
- *@desc Prints a formatted string to stdout. Uses C-style format directives: %d (i64), %f (f64), %s (string), %b (bool), %c (char). Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char). Pass one argument per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.printf("hello %s, you are %d years old\n", "alice", 30)
@@ -38,7 +38,7 @@
  *@module fmt
  *@group Output
  *@sig sprintf(format string, args [T]) -> string
- *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
  *   mut s string = fmt.sprintf("x = %d", 42)
@@ -51,7 +51,7 @@
  *@module fmt
  *@group Output
  *@sig printfln(format string, args [T])
- *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.printfln("hello %s, you are %d years old", "alice", 30)
@@ -63,7 +63,7 @@
  *@module fmt
  *@group Output
  *@sig eprintf(format string, args [T])
- *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.eprintf("error: %s\n", "something went wrong")
@@ -75,7 +75,7 @@
  *@module fmt
  *@group Output
  *@sig eprintfln(format string, args [T])
- *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.eprintfln("error: %s", "something went wrong")
@@ -87,7 +87,7 @@
  *@module fmt
  *@group Output
  *@sig sprintfln(format string, args [T]) -> string
- *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one argument per format directive; each argument is independently i64, u64, f64, string, bool, or char. Composite types are rejected.
+ *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
  *   mut s string = fmt.sprintfln("x = %d", 42)
@@ -136,7 +136,7 @@ GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, i
  *@module fmt
  *@group Number Formatting
  *@sig i64_to_hex(n i64) -> string
- *@desc Returns the integer n formatted as a lowercase hexadecimal string with no "0x" prefix.
+ *@desc Returns the integer n formatted as a lowercase hexadecimal string with no "0x" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
  *   println(fmt.i64_to_hex(255))
@@ -148,7 +148,7 @@ GrayString gray_fmt_i64_to_hex(GrayArena *arena, int64_t value);
  *@module fmt
  *@group Number Formatting
  *@sig i64_to_binary(n i64) -> string
- *@desc Returns the integer n formatted as a binary string with no "0b" prefix.
+ *@desc Returns the integer n formatted as a binary string with no "0b" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
  *   println(fmt.i64_to_binary(10))
@@ -160,7 +160,7 @@ GrayString gray_fmt_i64_to_binary(GrayArena *arena, int64_t value);
  *@module fmt
  *@group Number Formatting
  *@sig i64_to_octal(n i64) -> string
- *@desc Returns the integer n formatted as an octal string with no "0o" prefix.
+ *@desc Returns the integer n formatted as an octal string with no "0o" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
  *   println(fmt.i64_to_octal(8))

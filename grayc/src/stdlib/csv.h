@@ -35,7 +35,7 @@
  *@desc Converts an array of rows (each row an array of strings) into a CSV-formatted string. A field containing a comma, double-quote, carriage return, or line feed is quoted per RFC 4180, with embedded double-quotes doubled. Returns a single value; do not use destructuring.
  *@example
  *   import @csv
- *   mut data = {{"Alice", "30"}, {"Bob", "25"}}
+ *   mut data [[string]] = {{"Alice", "30"}, {"Bob", "25"}}
  *   mut out = csv.encode(data)
  *   println(out)
  *@end
@@ -63,7 +63,7 @@
  *   import @csv
  *   mut rows, err = csv.read_file("data.csv")
  *   if err != nil { println("failed: ${err}") }
- *   mut rows, _ = csv.read_file("data.csv")
+ *   mut unchecked_rows, _ = csv.read_file("data.csv")
  *@end
  */
 
@@ -74,7 +74,7 @@
  *@desc Writes an array of rows (each row an array of strings) to a CSV file at path, with the same RFC 4180 field quoting as encode. Creates the file if it does not exist; overwrites if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @csv
- *   mut data = {{"name", "age"}, {"Alice", "30"}}
+ *   mut data [[string]] = {{"name", "age"}, {"Alice", "30"}}
  *   mut ok, err = csv.write_file("out.csv", data)
  *   if err != nil { println("failed: ${err}") }
  *@end
@@ -154,7 +154,11 @@
  *@desc Keeps row 0 (the header) unconditionally and each later row for which predicate returns true. The header is never passed to predicate.
  *@example
  *   import @csv
- *   do adult(row [string]) -> bool { return strconv.to_i64(row[1], 10) >= 18 }
+ *   import @strconv
+ *   do adult(row [string]) -> bool {
+ *       mut age, _ = strconv.to_i64(row[1], 10)
+ *       return age >= 18
+ *   }
  *   mut adults = csv.filter_rows(rows, ()adult)
  *@end
  */

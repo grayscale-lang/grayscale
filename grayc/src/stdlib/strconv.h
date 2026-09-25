@@ -30,7 +30,7 @@ typedef struct { double v0; GrayError *v1; } GrayResult_f64;
  *@example
  *   import @strconv
  *   mut n, err = strconv.to_i64("42")
- *   mut val, err = strconv.to_i64("ff", strconv.BASE_16)
+ *   mut val, val_err = strconv.to_i64("ff", strconv.BASE_16)
  *@end
  */
 int64_t gray_strconv_to_i64(GrayString string, int64_t base);
@@ -43,7 +43,7 @@ int64_t gray_strconv_to_i64(GrayString string, int64_t base);
  *@example
  *   import @strconv
  *   mut n, err = strconv.to_u64("255")
- *   mut val, err = strconv.to_u64("ff", strconv.BASE_16)
+ *   mut val, val_err = strconv.to_u64("ff", strconv.BASE_16)
  *@end
  */
 uint64_t gray_strconv_to_u64(GrayString string, int64_t base);
@@ -56,7 +56,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base);
  *@example
  *   import @strconv
  *   mut f, err = strconv.to_f64("3.14")
- *   mut val, err = strconv.to_f64("not a number")
+ *   mut val, val_err = strconv.to_f64("not a number")
  *@end
  */
 double gray_strconv_to_f64(GrayString string);
@@ -69,7 +69,7 @@ double gray_strconv_to_f64(GrayString string);
  *@example
  *   import @strconv
  *   mut b, err = strconv.to_bool("true")
- *   mut val, err = strconv.to_bool("yes")
+ *   mut val, val_err = strconv.to_bool("yes")
  *@end
  */
 bool gray_strconv_to_bool(GrayString string);

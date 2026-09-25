@@ -525,7 +525,7 @@
  *@module binary
  *@group Floats
  *@sig encode_f32_le(val f32) -> [u8]
- *@desc Encodes an f64 as a 4-byte IEEE 754 little-endian array.
+ *@desc Encodes an f32 as a 4-byte IEEE 754 little-endian array.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_le(3.14)
@@ -536,7 +536,7 @@
  *@module binary
  *@group Floats
  *@sig decode_f32_le(bytes [u8]) -> f32
- *@desc Decodes a 4-byte IEEE 754 little-endian array as an f64.
+ *@desc Decodes a 4-byte IEEE 754 little-endian array as an f32.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_le(3.14)
@@ -548,7 +548,7 @@
  *@module binary
  *@group Floats
  *@sig encode_f32_be(val f32) -> [u8]
- *@desc Encodes an f64 as a 4-byte IEEE 754 big-endian array.
+ *@desc Encodes an f32 as a 4-byte IEEE 754 big-endian array.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_be(3.14)
@@ -559,7 +559,7 @@
  *@module binary
  *@group Floats
  *@sig decode_f32_be(bytes [u8]) -> f32
- *@desc Decodes a 4-byte IEEE 754 big-endian array as an f64.
+ *@desc Decodes a 4-byte IEEE 754 big-endian array as an f32.
  *@example
  *   import @binary
  *   mut bytes [u8] = binary.encode_f32_be(3.14)

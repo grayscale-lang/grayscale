@@ -35,8 +35,8 @@ typedef struct {
 /*@man listen
  *@module net
  *@group Server
- *@sig listen(port i64) -> (Listener, Error)
- *@desc Opens a TCP listener on port. Pass a host string as an optional first argument to bind a specific interface, e.g. listen("127.0.0.1", 8080). Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
+ *@sig listen([host string], port i64) -> (Listener, Error)
+ *@desc Opens a TCP listener on port. Pass a host string as an optional first argument to bind a specific interface, e.g. listen("127.0.0.1", 8080); without it the listener binds all interfaces. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut listener, err = net.listen(8080)

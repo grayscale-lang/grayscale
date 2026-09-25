@@ -510,8 +510,8 @@ GrayString gray_strings_set_char_at(GrayArena *arena, GrayString string, int64_t
  *@desc Converts a string to an array of its individual characters.
  *@example
  *   import @strings
- *   mut chars [char] = strings.to_chars("hello")
- *   println(chars[0])
+ *   mut characters [char] = strings.to_chars("hello")
+ *   println(characters[0])
  *@end
  */
 GrayArray gray_strings_to_chars(GrayArena *arena, GrayString string);
@@ -519,12 +519,12 @@ GrayArray gray_strings_to_chars(GrayArena *arena, GrayString string);
 /*@man from_chars
  *@module strings
  *@group Conversion
- *@sig from_chars(chars [char]) -> string
+ *@sig from_chars(characters [char]) -> string
  *@desc Converts an array of characters back into a string.
  *@example
  *   import @strings
- *   mut chars [char] = strings.to_chars("hello")
- *   mut s string = strings.from_chars(chars)
+ *   mut characters [char] = strings.to_chars("hello")
+ *   mut s string = strings.from_chars(characters)
  *   println(s)
  *@end
  */
@@ -647,7 +647,7 @@ GrayStringsBuilder *gray_strings_builder(GrayArena *arena);
 /*@man builder_reserve
  *@module strings
  *@group Builder
- *@sig builder_reserve(b Builder, n i64) -> void
+ *@sig builder_reserve(&b Builder, n i64) -> void
  *@desc Grows the builder's buffer so it can hold at least n bytes without reallocating. Optional; use it when the final size is known ahead of time. A negative n is ignored.
  *@example
  *   import @strings
@@ -660,7 +660,7 @@ void gray_strings_builder_reserve(GrayStringsBuilder *builder, int64_t capacity)
 /*@man builder_append
  *@module strings
  *@group Builder
- *@sig builder_append(b Builder, s string) -> void
+ *@sig builder_append(&b Builder, s string) -> void
  *@desc Appends the bytes of s to the builder.
  *@example
  *   import @strings
@@ -673,7 +673,7 @@ void gray_strings_builder_append(GrayStringsBuilder *builder, GrayString string)
 /*@man builder_append_char
  *@module strings
  *@group Builder
- *@sig builder_append_char(b Builder, c char) -> void
+ *@sig builder_append_char(&b Builder, c char) -> void
  *@desc Appends the codepoint c to the builder, UTF-8 encoded (1 to 4 bytes).
  *@example
  *   import @strings
@@ -686,7 +686,7 @@ void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codep
 /*@man builder_append_bytes
  *@module strings
  *@group Builder
- *@sig builder_append_bytes(b Builder, data [u8]) -> void
+ *@sig builder_append_bytes(&b Builder, data [u8]) -> void
  *@desc Appends every byte of data to the builder.
  *@example
  *   import @strings
@@ -700,7 +700,7 @@ void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray da
 /*@man builder_append_i64
  *@module strings
  *@group Builder
- *@sig builder_append_i64(b Builder, n i64) -> void
+ *@sig builder_append_i64(&b Builder, n i64) -> void
  *@desc Appends the decimal text of n to the builder (e.g. -42 appends "-42").
  *@example
  *   import @strings
@@ -713,7 +713,7 @@ void gray_strings_builder_append_i64(GrayStringsBuilder *builder, int64_t value)
 /*@man builder_append_line
  *@module strings
  *@group Builder
- *@sig builder_append_line(b Builder, s string) -> void
+ *@sig builder_append_line(&b Builder, s string) -> void
  *@desc Appends s followed by a newline character.
  *@example
  *   import @strings
@@ -741,7 +741,7 @@ int64_t gray_strings_builder_len(GrayStringsBuilder *builder);
 /*@man builder_clear
  *@module strings
  *@group Builder
- *@sig builder_clear(b Builder) -> void
+ *@sig builder_clear(&b Builder) -> void
  *@desc Resets the builder's length to zero while keeping its allocated capacity, so it can be reused without reallocating.
  *@example
  *   import @strings

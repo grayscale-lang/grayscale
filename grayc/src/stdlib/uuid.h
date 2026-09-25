@@ -106,7 +106,7 @@
  *@example
  *   import @uuid
  *   mut id UUID = uuid.generate()
- *   mut raw [u8] = uuid.to_bytes(id)
+ *   mut bytes [u8] = uuid.to_bytes(id)
  *@end
  */
 

@@ -132,8 +132,8 @@ void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern
 /*@man listen
  *@module server
  *@group Routing
- *@sig listen(router Router, port i64)
- *@desc Starts the HTTP server on the given port. Blocks until the process is killed.
+ *@sig listen(router Router, port i64, [host string])
+ *@desc Starts the HTTP server on the given port, bound to host. host defaults to "0.0.0.0" (all interfaces). Blocks until the process is killed.
  *@example
  *   import @server
  *   mut r = server.add_router()
