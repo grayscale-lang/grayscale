@@ -4200,7 +4200,7 @@ An HTTP server module with dynamic handlers and path parameters.
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
 | `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
-| `listen` | `(router Router, port i64)` | Start HTTP server on port (blocks until killed) |
+| `listen` | `(router Router, port i64, [host string])` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
 | `use` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
@@ -4299,7 +4299,7 @@ TCP sockets and DNS resolution.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `connect` | `(host string, port i64) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
-| `listen` | `(port i64) -> (Listener, Error)` | Listen for incoming connections on a port — always use destructuring |
+| `listen` | `([host string], port i64) -> (Listener, Error)` | Listen for incoming connections on a port, bound to host (default: all interfaces) — always use destructuring |
 | `accept` | `(listener Listener) -> (Socket, Error)` | Accept an incoming connection — always use destructuring |
 | `send` | `(sock Socket, data string) -> (i64, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
 | `receive` | `(sock Socket, max_bytes i64) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
