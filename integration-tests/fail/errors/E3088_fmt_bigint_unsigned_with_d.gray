@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3088 - %d format directive rejects an unsigned bigint argument
+ * Expected: "format directive '%d' expects signed integer or char but argument 1 has type 'u128'"
+ */
+
+// expect-error: E3088
+
+import @fmt
+
+do main() {
+    mut a u128 = 7
+    fmt.printfln("%d", a)
+}

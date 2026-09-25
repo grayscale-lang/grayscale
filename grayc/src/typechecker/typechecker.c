@@ -7064,13 +7064,11 @@ static GrayType *resolve_fmt_call(TypeChecker *checker, AstNode *node, const cha
                     switch (specifier) {
                     case 'd': case 'i':
                         expected = "signed integer or char";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_SIGNED_INTEGER || directive_argument_type->kind == TYPE_KIND_CHAR ||
-                             (directive_argument_type->name && is_wide_integer_type_name(directive_argument_type->name));
+                        is_valid = directive_argument_type->kind == TYPE_KIND_SIGNED_INTEGER || directive_argument_type->kind == TYPE_KIND_CHAR;
                         break;
                     case 'u':
                         expected = "unsigned integer";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER ||
-                             (directive_argument_type->name && is_wide_integer_type_name(directive_argument_type->name));
+                        is_valid = directive_argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER;
                         break;
                     case 'x': case 'X': case 'o':
                         expected = "integer";

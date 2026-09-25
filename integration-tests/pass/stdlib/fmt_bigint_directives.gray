@@ -34,14 +34,14 @@ do main() {
     passed += check("u128 %x", fmt.sprintf("%x", b), "1000")
 
     mut bmax u128 = 340282366920938463463374607431768211455
-    passed += check("u128 max %d", fmt.sprintf("%d", bmax), "340282366920938463463374607431768211455")
+    passed += check("u128 max %u", fmt.sprintf("%u", bmax), "340282366920938463463374607431768211455")
 
     mut c i256 = 12345
     passed += check("i256 %d", fmt.sprintf("%d", c), "12345")
     passed += check("i256 %o", fmt.sprintf("%o", c), "30071")
 
     mut d u256 = 0
-    passed += check("u256 zero %d", fmt.sprintf("%d", d), "0")
+    passed += check("u256 zero %u", fmt.sprintf("%u", d), "0")
     passed += check("u256 zero %x", fmt.sprintf("%x", d), "0")
 
     // multiple bigint directives in one call, mixed with a plain i64
