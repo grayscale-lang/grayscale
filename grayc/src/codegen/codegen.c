@@ -713,7 +713,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "Channel") == 0)  return "GrayChannel";
     if (strcmp(type_name, "Socket") == 0)   return "GraySocket";
     if (strcmp(type_name, "Listener") == 0) return "GraySocket";
-    if (strcmp(type_name, "Database") == 0) return "GraySqlite";
+    if (strcmp(type_name, "Database") == 0) return "GraySqlite *";
     if (strcmp(type_name, "Router") == 0)   return "GrayRouter";
     if (strcmp(type_name, "UUID") == 0)     return "GrayUUID";
     if (strcmp(type_name, "Arena") == 0)    return "GrayArena *";

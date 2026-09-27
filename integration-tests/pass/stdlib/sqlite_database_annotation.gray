@@ -1,0 +1,46 @@
+/*
+ * sqlite_database_annotation.gray - Database written as a type annotation on
+ * a destructuring target and on a function parameter.
+ */
+
+import @sqlite
+
+do row_count(db Database) -> i64 {
+    mut _, _ = sqlite.exec(db, "CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)")
+    mut _, _ = sqlite.exec(db, "INSERT INTO test (id, name) VALUES (1, 'Alice')")
+    mut rows, _ = sqlite.query(db, "SELECT * FROM test")
+    sqlite.close(db)
+    return len(rows)
+}
+
+do main() {
+    println("=== SQLite Database annotation ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut db Database, err Error = sqlite.open(":memory:")
+    if err == nil {
+        println("  [PASS] typed destructure of sqlite.open")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] typed destructure of sqlite.open")
+        failed += 1
+    }
+
+    if row_count(db) == 1 {
+        println("  [PASS] Database parameter runs exec, query and close")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Database parameter runs exec, query and close")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
