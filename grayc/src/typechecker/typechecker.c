@@ -3803,6 +3803,11 @@ static void typechecker_check_stdlib_argument_count(TypeChecker *checker, const 
                 module_name, function_name, metadata->minimum_arguments, metadata->maximum_arguments, argument_count);
         }
         typechecker_error_arity(checker, node, message);
+    } else if (argument_count == 1 && strcmp(module_name, "random") == 0 &&
+               (strcmp(function_name, "rand_f64") == 0 || strcmp(function_name, "rand_char") == 0)) {
+        /* These take no bounds or both bounds, never one. */
+        typechecker_error_arity(checker, node, typechecker_format(checker,
+            "function '%s.%s' expects 0 or 2 argument(s), got 1", module_name, function_name));
     }
 }
 

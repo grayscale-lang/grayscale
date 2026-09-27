@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5008 - random.rand_f64 takes no bounds or both bounds
+ * Expected: "expects 0 or 2 argument(s), got 1"
+ */
+// expect-error: E5008
+// expect-error-count: 1
+import @random
+
+do main() {
+    mut x f64 = random.rand_f64(5.0)
+    println(x)
+}
