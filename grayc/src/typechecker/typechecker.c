@@ -7230,24 +7230,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-        /* E7004: strings.repeat() second arg must be integer */
-        if (strcmp(member_function_name, "repeat") == 0 && node->data.call.argument_count >= 2) {
-            GrayType *count_type = type_table_get(checker->type_table, node->data.call.arguments[1]);
-            if (count_type && count_type->kind == TYPE_KIND_FLOATING_POINT) {
-                typechecker_error_at(checker, "E7004", node->data.call.arguments[1],
-                    "'strings.repeat()' count must be an integer, not a float");
-            }
-        }
-        /* E7004: strings.slice() bounds must be integers */
-        if (strcmp(member_function_name, "slice") == 0 && node->data.call.argument_count >= 3) {
-            for (int slice_index = 1; slice_index <= 2 && slice_index < node->data.call.argument_count; slice_index++) {
-                GrayType *base_type = type_table_get(checker->type_table, node->data.call.arguments[slice_index]);
-                if (base_type && base_type->kind == TYPE_KIND_FLOATING_POINT) {
-                    typechecker_error_at(checker, "E7004", node->data.call.arguments[slice_index],
-                        "'strings.slice()' bounds must be integers, not floats");
-                }
-            }
-        }
     } else if (strcmp(module_name, "threads") == 0) {
         if ((strcmp(member_function_name, "spawn") == 0 || strcmp(member_function_name, "spawn_arg") == 0) &&
             node->data.call.argument_count >= 1) {

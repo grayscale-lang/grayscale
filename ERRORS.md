@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 483 codes** (335 errors, 17 warnings, 131 panics)
+**Total: 482 codes** (334 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -332,7 +332,6 @@
 | `E6014` | imports | malformed import statement |
 | `E6015` | imports | C header '%s' could not be found for the current target |
 | `E6016` | imports | C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types |
-| `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111) |
 | `E7015` | stdlib | 'len()' is not supported for type '%s'; 'len()' works on string, array, and map types |
@@ -534,4 +533,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-24 15:35:17 UTC*
+*Generated on 2026-09-27 23:28:54 UTC*

@@ -938,14 +938,6 @@ static void test_error_E6001_unknown_module(void) {
 
 /* --- Stdlib type errors in typechecker --- */
 
-static void test_error_E7004_repeat_float_count(void) {
-    DiagnosticList *diagnostics = typecheck_diagnostics(
-        "import @strings\n"
-        "do main() { mut s = strings.repeat(\"ha\", 3.5) }");
-    ASSERT(has_error_code(diagnostics, "E7004"));
-    diagnostic_destroy(diagnostics);
-}
-
 static void test_error_E9002_sum_non_numeric(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @arrays\n"
@@ -2927,7 +2919,6 @@ int main(void) {
     RUN_TEST(test_error_E6001_unknown_module);
 
     /* Stdlib type errors */
-    RUN_TEST(test_error_E7004_repeat_float_count);
     RUN_TEST(test_error_E9002_sum_non_numeric);
     RUN_TEST(test_error_E9005_invalid_range);
     RUN_TEST(test_error_E12001_map_func_on_array);
