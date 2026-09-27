@@ -1,0 +1,73 @@
+/*
+ * array_literal_sized_variable_with_literal.gray - An array literal that
+ * mixes a sized-type variable with plain number literals gives each literal
+ * the array's element type, in every position.
+ */
+
+const Box struct {
+    data [i32]
+}
+
+do make_pair(a i8) -> [i8] {
+    return {a, 7}
+}
+
+do sum(xs [i8]) -> i8 {
+    return xs[0] + xs[1]
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== array literal: sized variable with literal ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a i8 = 5
+    mut f [i8] = {a, 7}
+    check("variable first", f[0] == 5 && f[1] == 7, addr(passed), addr(failed))
+
+    mut g [i8] = {7, a}
+    check("literal first", g[0] == 7 && g[1] == 5, addr(passed), addr(failed))
+
+    f = {9, a}
+    check("reassignment", f[0] == 9 && f[1] == 5, addr(passed), addr(failed))
+
+    mut n [[i8]] = {{a}, {7}}
+    check("nested array", n[0][0] == 5 && n[1][0] == 7, addr(passed), addr(failed))
+
+    mut z f32 = 1.5
+    mut h [f32] = {z, 2.5}
+    check("f32 element", h[0] == 1.5 && h[1] == 2.5, addr(passed), addr(failed))
+
+    mut w i32 = 5
+    mut b Box = Box{data: {w, 7}}
+    check("struct field", b.data[0] == 5 && b.data[1] == 7, addr(passed), addr(failed))
+
+    check("function argument", sum({a, 7}) == 12, addr(passed), addr(failed))
+
+    mut r [i8] = make_pair(a)
+    check("return value", r[0] == 5 && r[1] == 7, addr(passed), addr(failed))
+
+    mut m map[string:[u16]] = {:}
+    mut u u16 = 3
+    m = {"k": {u, 60000}}
+    check("map value", m["k"][0] == 3 && m["k"][1] == 60000, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
