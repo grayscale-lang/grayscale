@@ -3380,6 +3380,18 @@ static AstNode *parse_alias_declaration(Parser *parser) {
         return NULL;
     }
 
+    /* E2001: a keyword, literal or punctuation mark cannot start a type. */
+    if (!current_token_is(parser, TOKEN_IDENTIFIER) && !current_token_is(parser, TOKEN_LEFT_BRACKET) &&
+        !current_token_is(parser, TOKEN_CARET) && !current_token_is(parser, TOKEN_QUESTION)) {
+        char message[MESSAGE_BUFFER_SIZE];
+        snprintf(message, sizeof(message),
+            "unexpected token '%s' in alias declaration; expected a type",
+            parser->current_token.literal ? parser->current_token.literal : "?");
+        diagnostic_error_message(parser->diagnostics, "E2001", arena_copy_string(parser->arena, message),
+            parser->file, parser->current_token.line, parser->current_token.column, 0);
+        return NULL;
+    }
+
     const char *target = parse_complex_type(parser);
     if (!target) return NULL;
     node->data.alias_declaration.target_type = target;

@@ -19114,6 +19114,8 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     register_declaration_consts(checker, program);
     check_mangle_collisions(checker);
 
+    checker->is_registering = false;
+
     /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {
         AstNode *declaration = checker->type_alias_nodes[i];
@@ -19131,20 +19133,15 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
                     declaration->data.alias_declaration.name, target_entry->name);
             }
         }
-        /* Check if the resolved name is a known type */
-        GrayType *resolved_type = type_from_name(resolved);
-        if (resolved_type->kind == TYPE_KIND_STRUCT) {
-            /* Uppercase name — must be a registered struct or enum */
-            if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
-                strcmp(resolved, "Error") != 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3132",
-                    NODE_FILE(checker, declaration), declaration->token.line, declaration->token.column, 0,
-                    declaration->data.alias_declaration.target_type);
-            }
+        /* E3132: every leaf of the resolved target must name a type */
+        char leaf[MESSAGE_BUFFER_SIZE];
+        const char *undefined = undefined_type_leaf(checker, resolved, leaf, sizeof(leaf));
+        if (undefined) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3132",
+                NODE_FILE(checker, declaration), declaration->token.line, declaration->token.column, 0,
+                undefined);
         }
     }
-
-    checker->is_registering = false;
 }
 
 /* --- qualified-name resolution ----------------------------------------

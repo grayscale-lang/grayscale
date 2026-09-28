@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3132 - an alias target whose element type is undefined
+ * Expected: "alias target type 'Bogus' is not defined"
+ */
+
+// expect-error: E3132
+// expect-error-count: 1
+
+alias Nopes = map[string:[Bogus]]
+
+do main() {
+    println("ok")
+}

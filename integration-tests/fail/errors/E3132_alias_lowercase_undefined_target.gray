@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3132 - an alias target that is an undefined lowercase name
+ * Expected: "alias target type 'bogus' is not defined"
+ */
+
+// expect-error: E3132
+// expect-error-count: 1
+
+alias Nope = bogus
+
+do main() {
+    println("ok")
+}
