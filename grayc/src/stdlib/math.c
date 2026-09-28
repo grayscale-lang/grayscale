@@ -1,7 +1,6 @@
 /*
  * math.c — Implementation of the math stdlib module.
- * Provides factorial, GCD/LCM, primality testing, and random number
- * generation (non-inline functions).
+ * Provides factorial, GCD/LCM, and primality testing (non-inline functions).
  *
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -9,43 +8,6 @@
  */
 
 #include "math.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include <unistd.h>
-
-/* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
-#if defined(__APPLE__) || defined(__FreeBSD__)
-void arc4random_buf(void *buf, size_t nbytes);
-#endif
-
-static bool _rand_seeded = false;
-static void ensure_seeded(void) {
-    if (!_rand_seeded) {
-        unsigned seed;
-#if defined(__APPLE__) || defined(__FreeBSD__)
-        arc4random_buf(&seed, sizeof(seed));
-#else
-        FILE *urandom = fopen("/dev/urandom", "rb");
-        if (urandom) { fread(&seed, sizeof(seed), 1, urandom); fclose(urandom); }
-        else { seed = (unsigned)time(NULL) ^ (unsigned)getpid(); }
-#endif
-        srand(seed);
-        _rand_seeded = true;
-    }
-}
-
-int64_t gray_math_random_int(int64_t minimum, int64_t maximum) {
-    ensure_seeded();
-    if (minimum >= maximum) return minimum;
-    return minimum + (int64_t)(rand() % (int)(maximum - minimum));
-}
-
-double gray_math_random_float(double minimum, double maximum) {
-    ensure_seeded();
-    return minimum + ((double)rand() / RAND_MAX) * (maximum - minimum);
-}
-
 int64_t gray_math_factorial(int64_t number) {
     if (number < 0) gray_panic_code("P0070", "math.factorial() requires a non-negative integer, got %lld", (long long)number);
     if (number <= 1) return 1;

@@ -552,13 +552,6 @@ int64_t gray_math_factorial(int64_t number);
  */
 int64_t gray_math_gcd(int64_t left, int64_t right);
 
-/* Not wired to any Grayscale-callable name (no typechecker/codegen dispatch
- * targets these); @random's own generator backs random.rand_i64/rand_f64
- * instead. Declared here only so the linked, existing symbols are callable
- * for testing. */
-int64_t gray_math_random_int(int64_t minimum, int64_t maximum);
-double gray_math_random_float(double minimum, double maximum);
-
 /*@man lcm
  *@module math
  *@group Statistical

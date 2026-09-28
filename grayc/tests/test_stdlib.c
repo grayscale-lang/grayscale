@@ -832,24 +832,6 @@ static void test_math_distance(void) {
     ASSERT_FLOAT_EQ(gray_math_distance(1.0, 1.0, 1.0, 1.0), 0.0);
 }
 
-/* Not currently reachable from Grayscale source (no typechecker/codegen
- * wiring calls these) — the language-visible random.rand_i64/rand_f64
- * go through @random's own generator instead. Tested directly since a
- * public, linkable C entry point exists regardless. */
-static void test_math_random_int(void) {
-    for (int i = 0; i < 100; i++) {
-        int64_t v = gray_math_random_int(5, 10);
-        ASSERT(v >= 5 && v < 10);
-    }
-}
-
-static void test_math_random_float(void) {
-    for (int i = 0; i < 100; i++) {
-        double v = gray_math_random_float(1.0, 2.0);
-        ASSERT(v >= 1.0 && v < 2.0);
-    }
-}
-
 /* ===== fmt module ===== */
 
 static void test_fmt_pad_left(void) {
@@ -1592,8 +1574,6 @@ int main(void) {
     RUN_TEST(test_math_is_prime);
     RUN_TEST(test_math_lerp);
     RUN_TEST(test_math_distance);
-    RUN_TEST(test_math_random_int);
-    RUN_TEST(test_math_random_float);
 
     printf("--- fmt ---\n");
     RUN_TEST(test_fmt_pad_left);
