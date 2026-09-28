@@ -74,7 +74,7 @@
     GRAY_ERROR("E2066", "syntax", "struct field '%s' cannot have the same name as its struct type '%s'") \
     GRAY_ERROR("E2067", "syntax", "struct '%s' has no fields; a struct must have at least one field") \
     GRAY_ERROR("E2068", "syntax", "%ss must be declared with 'const', not 'mut'; change 'mut' to 'const'") \
-    GRAY_ERROR("E2069", "syntax", "unexpected semicolon; statements and declarations are separated by newlines, not semicolons") \
+    GRAY_ERROR("E2069", "syntax", "members on the same line must be separated by ';'; add ';' between them or start the next member on a new line") \
     GRAY_ERROR("E2070", "syntax", "wildcard type '?' is only allowed in function parameter and return types; not in variable declarations, struct fields, or enum types") \
     GRAY_ERROR("E2071", "syntax", "empty string interpolation '${}'; interpolation requires an expression between the braces") \
     GRAY_ERROR("E2072", "syntax", "'&' is not a valid operator; use 'addr(x)' to take the address of a variable") \
@@ -99,7 +99,7 @@
     GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
     GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list") \
     GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
-    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own line and tag")
+    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \

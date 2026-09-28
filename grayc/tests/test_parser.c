@@ -875,8 +875,8 @@ static void test_parse_error_E2068_mut_struct(void) {
     ASSERT(parser_has_code(diagnostics, "E2068"));
 }
 
-static void test_parse_error_E2069_semicolon_in_struct(void) {
-    AstNode *program = parse_test_input("const S struct { x i64; y i64 }");
+static void test_parse_error_E2069_missing_separator_in_struct(void) {
+    AstNode *program = parse_test_input("const S struct { x i64 y i64 }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2069"));
 }
@@ -1166,7 +1166,7 @@ int main(void) {
     RUN_TEST(test_parse_error_E2060_too_many_returns);
     RUN_TEST(test_parse_error_E2062_too_many_multi_vars);
     RUN_TEST(test_parse_error_E2068_mut_struct);
-    RUN_TEST(test_parse_error_E2069_semicolon_in_struct);
+    RUN_TEST(test_parse_error_E2069_missing_separator_in_struct);
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
     RUN_TEST(test_parse_error_E2077_empty_index);

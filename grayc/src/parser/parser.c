@@ -1876,6 +1876,10 @@ static AstNode *parse_block_statement(Parser *parser) {
     next_token(parser); /* skip { */
 
     while (!current_token_is(parser, TOKEN_RIGHT_BRACE) && !current_token_is(parser, TOKEN_END_OF_FILE)) {
+        if (current_token_is(parser, TOKEN_SEMICOLON)) {
+            next_token(parser);
+            continue;
+        }
         parser->seen_attribute_mask = 0;
         AstNode *statement = parse_statement(parser);
         if (statement) {
@@ -2518,17 +2522,10 @@ static AstNode *parse_struct_declaration(Parser *parser) {
 
     next_token(parser); /* skip 'struct' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
-    int brace_line = parser->current_token.line;
     next_token(parser); /* skip { */
 
-    /* Reject inline struct declarations; fields must be on separate lines */
-    if (parser->current_token.line == brace_line && !current_token_is(parser, TOKEN_RIGHT_BRACE)) {
-        diagnostic_error_message(parser->diagnostics, "E2002",
-            arena_copy_string(parser->arena,"struct fields must be on separate lines; inline struct declarations are not allowed"),
-            parser->file, parser->current_token.line, parser->current_token.column, 0);
-    }
-
     int previous_field_line = -1;
+    bool field_separated = false;
     int field_capacity = GROW_ARRAY_INITIAL_CAPACITY;
     int function_capacity = GROW_ARRAY_INITIAL_CAPACITY;
     node->data.struct_declaration.field_count = 0;
@@ -2700,12 +2697,13 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             pending_deprecated_message = NULL;
         }
 
-        /* E2002: multiple fields on the same line */
-        if (previous_field_line >= 0 && parser->current_token.line == previous_field_line) {
-            diagnostic_error_message(parser->diagnostics, "E2002",
-                arena_copy_string(parser->arena,"struct fields must be on separate lines"),
+        /* E2069: fields on the same line must be separated by ';' */
+        if (previous_field_line >= 0 && parser->current_token.line == previous_field_line && !field_separated) {
+            diagnostic_error_message(parser->diagnostics, "E2069",
+                arena_copy_string(parser->arena,"struct fields on the same line must be separated by ';'; add ';' between them or start the next field on a new line"),
                 parser->file, parser->current_token.line, parser->current_token.column, 0);
         }
+        field_separated = false;
         previous_field_line = parser->current_token.line;
 
         /* Collect one or more comma-separated field names, then read the
@@ -2781,7 +2779,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             if (node->data.struct_declaration.field_count - group_start > 1) {
                 diagnostic_error_message(parser->diagnostics, "E2095",
                     arena_copy_string(parser->arena,
-                        "a field tag cannot be shared across grouped field names; give each field its own line and tag"),
+                        "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line"),
                     parser->file, parser->current_token.line, parser->current_token.column, 0);
             } else {
                 const char *tag = parser->current_token.literal;
@@ -2803,11 +2801,9 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Skip optional trailing comma after a field type */
         if (current_token_is(parser, TOKEN_COMMA)) next_token(parser);
 
-        /* Reject semicolons */
-        if (current_token_is(parser, TOKEN_SEMICOLON)) {
-            diagnostic_error_message(parser->diagnostics, "E2069",
-                arena_copy_string(parser->arena,"semicolons are not used; put each struct field on its own line"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
+        /* ';' separates fields on one line */
+        while (current_token_is(parser, TOKEN_SEMICOLON)) {
+            field_separated = true;
             next_token(parser);
         }
     }
@@ -2825,17 +2821,10 @@ static AstNode *parse_enum_declaration(Parser *parser) {
 
     next_token(parser); /* skip 'enum' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
-    int enum_brace_line = parser->current_token.line;
     next_token(parser); /* skip { */
 
-    /* Reject inline enum declarations; variants must be on separate lines */
-    if (parser->current_token.line == enum_brace_line && !current_token_is(parser, TOKEN_RIGHT_BRACE)) {
-        diagnostic_error_message(parser->diagnostics, "E2002",
-            arena_copy_string(parser->arena,"enum variants must be on separate lines; inline enum declarations are not allowed"),
-            parser->file, parser->current_token.line, parser->current_token.column, 0);
-    }
-
     int previous_variant_line = -1;
+    bool variant_separated = false;
     int value_capacity = GROW_ARRAY_INITIAL_CAPACITY;
     node->data.enum_declaration.value_count = 0;
     node->data.enum_declaration.values = arena_allocate(parser->arena, sizeof(EnumValue) * value_capacity);
@@ -2908,12 +2897,13 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             continue;
         }
 
-        /* E2002: multiple variants on the same line */
-        if (previous_variant_line >= 0 && parser->current_token.line == previous_variant_line) {
-            diagnostic_error_message(parser->diagnostics, "E2002",
-                arena_copy_string(parser->arena,"enum variants must be on separate lines"),
+        /* E2069: variants on the same line must be separated by ';' */
+        if (previous_variant_line >= 0 && parser->current_token.line == previous_variant_line && !variant_separated) {
+            diagnostic_error_message(parser->diagnostics, "E2069",
+                arena_copy_string(parser->arena,"enum variants on the same line must be separated by ';'; add ';' between them or start the next variant on a new line"),
                 parser->file, parser->current_token.line, parser->current_token.column, 0);
         }
+        variant_separated = false;
         previous_variant_line = parser->current_token.line;
 
         EnumValue *variant = &node->data.enum_declaration.values[node->data.enum_declaration.value_count];
@@ -2959,11 +2949,9 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         }
         next_token(parser);
 
-        /* Reject semicolons */
-        if (current_token_is(parser, TOKEN_SEMICOLON)) {
-            diagnostic_error_message(parser->diagnostics, "E2069",
-                arena_copy_string(parser->arena,"semicolons are not used; put each enum variant on its own line"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
+        /* ';' separates variants on one line */
+        while (current_token_is(parser, TOKEN_SEMICOLON)) {
+            variant_separated = true;
             next_token(parser);
         }
     }
@@ -3868,6 +3856,10 @@ AstNode *parser_parse_program(Parser *parser) {
         sizeof(AstNode *) * program->data.program.statement_capacity);
 
     while (!current_token_is(parser, TOKEN_END_OF_FILE)) {
+        if (current_token_is(parser, TOKEN_SEMICOLON)) {
+            next_token(parser);
+            continue;
+        }
         parser->seen_attribute_mask = 0;
         AstNode *statement = parse_statement(parser);
         if (statement) {

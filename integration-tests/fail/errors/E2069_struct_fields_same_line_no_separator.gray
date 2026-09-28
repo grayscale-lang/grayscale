@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2069 - struct fields on same line without a separator
+ * Expected: error requiring a semicolon
+ */
+
+const Point struct {
+    x i64 y i64
+    z i64
+}
+
+do main() {
+    mut p = new(Point)
+}

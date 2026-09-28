@@ -51,6 +51,18 @@ Grayscale source files must be encoded in UTF-8. However, identifiers are restri
 
 Line terminators are the ASCII line feed character (LF, U+000A) or the ASCII carriage return character (CR, U+000D) optionally followed by a line feed.
 
+### 2.2.1 Separators
+
+Statements and struct and enum members are separated by newlines. A semicolon `;` is an optional separator equivalent to a newline, needed only to put more than one statement or member on a line:
+
+```gray
+const Point struct { x i64; y i64 }
+const Color enum { RED; GREEN; BLUE }
+do add(a i64, b i64) -> i64 { mut sum i64 = a + b; return sum }
+```
+
+Two struct fields or enum variants on the same line without a `;` between them are an error (E2069).
+
 ### 2.3 Comments
 
 Grayscale supports two forms of comments:
@@ -671,7 +683,7 @@ const Person struct {
 }
 ```
 
-> 💡 **Tip:** Struct and enum declarations must be at the top level of a file, never inside a function or block. Fields must be on separate lines; semicolons are not allowed. This is intentional. Unlike functions and control flow, structs and enums define *types*, not logic. Types belong where they are visible, nameable, and reusable. Burying a type inside a function makes it invisible to the rest of your program and harder to find when reading code.
+> 💡 **Tip:** Struct and enum declarations must be at the top level of a file, never inside a function or block. Fields go on separate lines or, on one line, are separated by `;`. This is intentional. Unlike functions and control flow, structs and enums define *types*, not logic. Types belong where they are visible, nameable, and reusable. Burying a type inside a function makes it invisible to the rest of your program and harder to find when reading code.
 
 A field may be a fixed-size array (`[T,N]`), the same spelling used for a local `const f [T,N]`. Its length never changes: `arrays.append`, `prepend`, `insert_at`, `remove`, `remove_at`, `remove_first`, `remove_last`, `clear`, and `deduplicate` are all rejected on it, whether called directly or through a member-expression chain like `o.inner.items`. Reading and writing individual elements works as long as the containing instance is `mut`. A struct literal that under-initializes the field zero-fills the rest (`W3003`); over-initializing it is an error (`E3052`) — the same rules as a local fixed-size array.
 
@@ -784,7 +796,7 @@ const Foobar enum {
 }
 ```
 
-> 💡 **Tip:** Enum variants must be on separate lines. Inline declarations like `const Color enum { RED; GREEN; BLUE }` are not allowed. Semicolons are never used in enum declarations.
+> 💡 **Tip:** Enum variants go on separate lines or, on one line, are separated by `;`, as in `const Color enum { RED; GREEN; BLUE }`.
 
 > 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `i64` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status i64 = Direction.NORTH` assigns `0`.
 

@@ -61,7 +61,7 @@
 | `E2066` | syntax | struct field '%s' cannot have the same name as its struct type '%s' |
 | `E2067` | syntax | struct '%s' has no fields; a struct must have at least one field |
 | `E2068` | syntax | %ss must be declared with 'const', not 'mut'; change 'mut' to 'const' |
-| `E2069` | syntax | unexpected semicolon; statements and declarations are separated by newlines, not semicolons |
+| `E2069` | syntax | members on the same line must be separated by ';'; add ';' between them or start the next member on a new line |
 | `E2070` | syntax | wildcard type '?' is only allowed in function parameter and return types; not in variable declarations, struct fields, or enum types |
 | `E2071` | syntax | empty string interpolation '${}'; interpolation requires an expression between the braces |
 | `E2072` | syntax | '&' is not a valid operator; use 'addr(x)' to take the address of a variable |
@@ -86,7 +86,7 @@
 | `E2092` | syntax | '#[...]' attribute list must be on a single line |
 | `E2093` | syntax | malformed '#[...]' attribute list |
 | `E2094` | syntax | attribute is applied to the wrong kind of declaration, or its argument is malformed |
-| `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own line and tag |
+| `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -535,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-28 17:25:47 UTC*
+*Generated on 2026-09-28 20:24:01 UTC*
