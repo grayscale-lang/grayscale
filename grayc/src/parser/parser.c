@@ -3376,7 +3376,6 @@ static AstNode *parse_alias_declaration(Parser *parser) {
             node->data.alias_declaration.name);
         diagnostic_error_message(parser->diagnostics, "E3134", arena_copy_string(parser->arena, message),
             parser->file, parser->current_token.line, parser->current_token.column, 0);
-        synchronize_parser(parser);
         return NULL;
     }
 
