@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3010 - HttpResponse has no content_type field; the content
+ * type is headers["Content-Type"]
+ * Expected: "struct 'HttpResponse' has no field 'content_type'"
+ */
+
+// expect-error: E3010
+// expect-error-count: 1
+
+import @server
+
+do main() {
+    mut resp = server.text(200, "ok")
+    println(resp.content_type)
+}

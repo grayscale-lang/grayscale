@@ -4153,7 +4153,8 @@ static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name)
  * or NULL if bare_name isn't one. Shared by is_stdlib_opaque_type_available()
  * and typechecker_mark_type_module_used() so both agree on the mapping. */
 /* The stdlib's opaque types and the module each belongs to. One list, so
- * resolution and registration cannot disagree about it. */
+ * resolution and registration cannot disagree about it. A type two modules
+ * share has an entry for each. */
 static const struct { const char *type; const char *module_name; } stdlib_opaque_map[] = {
         {"Arena",        "mem"},
         {"Builder",      "strings"},
@@ -4167,6 +4168,7 @@ static const struct { const char *type; const char *module_name; } stdlib_opaque
         {"Router",       "server"},
         {"HttpRequest",  "server"},
         {"HttpResponse", "http"},
+        {"HttpResponse", "server"},
         {"UUID",         "uuid"},
         {NULL, NULL}
 };
@@ -4253,12 +4255,13 @@ static void typechecker_mark_type_module_used(TypeChecker *checker, const char *
     }
     const char *separator = strpbrk(type_name, "._");
     if (!separator || separator == type_name) {
-        const char *module_name = stdlib_opaque_module(type_name);
-        if (!module_name) return;
-        for (int import_index = 0; import_index < checker->import_count; import_index++) {
-            if (strcmp(checker->imported_modules[import_index], module_name) == 0) {
-                checker->is_import_used[import_index] = true;
-                return;
+        for (int i = 0; stdlib_opaque_map[i].type; i++) {
+            if (strcmp(type_name, stdlib_opaque_map[i].type) != 0) continue;
+            for (int import_index = 0; import_index < checker->import_count; import_index++) {
+                if (strcmp(checker->imported_modules[import_index], stdlib_opaque_map[i].module_name) == 0) {
+                    checker->is_import_used[import_index] = true;
+                    return;
+                }
             }
         }
         return;
@@ -4648,8 +4651,11 @@ static void register_enum(TypeChecker *checker, const char *name,
  * module is imported. bare_name must already have any module prefix
  * stripped (e.g. "Thread", not "threads_Thread"). */
 static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *bare_name) {
-    const char *module_name = stdlib_opaque_module(bare_name);
-    return module_name && program_imports_module(checker, module_name);
+    for (int i = 0; stdlib_opaque_map[i].type; i++) {
+        if (strcmp(bare_name, stdlib_opaque_map[i].type) == 0 &&
+            program_imports_module(checker, stdlib_opaque_map[i].module_name)) return true;
+    }
+    return false;
 }
 
 /* Resolve a type name, returning TYPE_KIND_ENUM for known enum names instead of
@@ -11568,8 +11574,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
      * the name, since `Database` etc. are free for a user struct otherwise. */
     {
         const char *opaque_bare = unqualified_display_name(struct_name);
-        const char *opaque_owner = stdlib_opaque_module(opaque_bare);
-        if (opaque_owner && program_imports_module(checker, opaque_owner)) {
+        if (is_stdlib_opaque_type_available(checker, opaque_bare)) {
             /* The name resolves to the stdlib opaque type unless a user
              * struct/enum shadows it (only possible when the module is not
              * imported — but be defensive). A compiler-declared entry is
@@ -17052,8 +17057,7 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
         return;
     }
     if (!is_reserved_stdlib_struct_name(name)) return;
-    const char *owner = stdlib_opaque_module(name);
-    if (!owner || program_imports_module(checker, owner)) {
+    if (!stdlib_opaque_module(name) || is_stdlib_opaque_type_available(checker, name)) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3099",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
     }

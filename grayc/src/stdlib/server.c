@@ -12,6 +12,7 @@
 #include "net.h"
 #include "../runtime/atomic.h"
 #include <string.h>
+#include <strings.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "../runtime/net_rt.h"
@@ -79,7 +80,7 @@ GrayRouter gray_server_router(void) {
 }
 
 void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern,
-                     GrayResponse (*handler)(GrayRequest)) {
+                     GrayHttpResponse (*handler)(GrayRequest)) {
     if (router->count >= router->capacity) {
         router->capacity *= 2;
         void *resized_routes = realloc(router->routes, sizeof(GrayRoute) * router->capacity);
@@ -244,6 +245,7 @@ typedef struct {
 } ConnCtx;
 
 static void *cleanup_connection(ConnCtx *connection_context, GrayArena *arena) {
+    gray_default_arena = NULL;
     gray_sock_close(connection_context->client_descriptor);
     free(connection_context);
     gray_arena_destroy(arena, __FILE__, __LINE__);
@@ -252,9 +254,53 @@ static void *cleanup_connection(ConnCtx *connection_context, GrayArena *arena) {
     return NULL;
 }
 
+/* True for a header the server writes itself, so one in the response's
+ * headers map is dropped: a response from http.get() carries the upstream
+ * server's framing headers, which would contradict this one's. */
+static bool is_framing_header(GrayString key) {
+    static const char *const framing[] = {"Content-Length", "Transfer-Encoding", "Connection"};
+    for (size_t i = 0; i < sizeof(framing) / sizeof(framing[0]); i++) {
+        size_t length = strlen(framing[i]);
+        if ((size_t)key.len == length && strncasecmp(key.data, framing[i], length) == 0) return true;
+    }
+    return false;
+}
+
+static bool contains_line_break(GrayString text) {
+    return memchr(text.data, '\r', (size_t)text.len) || memchr(text.data, '\n', (size_t)text.len);
+}
+
+/* Write each "Key: Value\r\n" line of `headers` into `buffer`, in insertion
+ * order. A key or value holding CR or LF would start a header of its own. */
+static void format_response_headers(GrayMap *headers, char *buffer, size_t buffer_size) {
+    size_t used = 0;
+    buffer[0] = '\0';
+    for (int32_t i = 0; i < headers->order_len; i++) {
+        int32_t slot = headers->order[i];
+        if (slot < 0) continue;
+        GrayString key = *(GrayString *)gray_map_key_at(headers, slot);
+        GrayString value = *(GrayString *)gray_map_value_at(headers, slot);
+        if (contains_line_break(key) || contains_line_break(value)) {
+            gray_panic_code("P0132", "server: response header contains CR or LF — HTTP header injection is not allowed");
+        }
+        if (is_framing_header(key)) continue;
+        int written = snprintf(buffer + used, buffer_size - used, "%.*s: %.*s\r\n",
+            (int)key.len, key.data, (int)value.len, value.data);
+        if (written < 0 || (size_t)written >= buffer_size - used) {
+            buffer[used] = '\0';
+            return;
+        }
+        used += (size_t)written;
+    }
+}
+
 static void *handle_connection(void *argument) {
     ConnCtx *connection_context = (ConnCtx *)argument;
     GrayArena *arena = gray_arena_create(GRAY_SERVER_REQUEST_ARENA); /* 64KB per request */
+    /* The handler and middleware allocate in this thread's default arena, and
+     * a handler's returned response is copied into it; it lives until the
+     * response has been sent. */
+    gray_default_arena = arena;
 
     /* Apply read timeout so slow or idle connections don't hold threads indefinitely */
     GRAY_SOCK_TIMEOUT_TYPE timeout_value;
@@ -276,10 +322,7 @@ static void *handle_connection(void *argument) {
     request.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 16, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     request.params = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
-    GrayResponse resp;
-    resp.status = 404;
-    resp.body = gray_string_new(arena, "Not Found", sizeof("Not Found") - 1);
-    resp.content_type = gray_string_new(arena, "text/plain", sizeof("text/plain") - 1);
+    GrayHttpResponse resp = gray_server_text(arena, 404, gray_string_lit("Not Found"));
 
     if (parse_request(arena, buffer, (int)bytes_received, &request)) {
         /* Reject oversized method or path before copying into fixed stack buffers */
@@ -322,37 +365,24 @@ static void *handle_connection(void *argument) {
             connection_context->router->cors_origin);
     }
 
-    char response_buffer[GRAY_SERVER_BUFFER_SIZE];
-    int response_length;
-    int status = (int)resp.status;
-    bool is_redirect = (status >= 300 && status < 400 && resp.body.len > 0);
+    char response_headers[GRAY_SERVER_BUFFER_SIZE];
+    format_response_headers(&resp.headers, response_headers, sizeof(response_headers));
 
-    if (is_redirect) {
-        response_length = snprintf(response_buffer, sizeof(response_buffer),
-            "HTTP/1.1 %d %s\r\n"
-            "Location: %.*s\r\n"
-            "Content-Length: 0\r\n"
-            "%s"
-            "Connection: close\r\n"
-            "\r\n",
-            status, http_reason_phrase(status),
-            (int)resp.body.len, resp.body.data,
-            cors_hdrs);
-    } else {
-        response_length = snprintf(response_buffer, sizeof(response_buffer),
-            "HTTP/1.1 %d %s\r\n"
-            "Content-Type: %.*s\r\n"
-            "Content-Length: %d\r\n"
-            "%s"
-            "Connection: close\r\n"
-            "\r\n"
-            "%.*s",
-            status, http_reason_phrase(status),
-            (int)resp.content_type.len, resp.content_type.data,
-            (int)resp.body.len,
-            cors_hdrs,
-            (int)resp.body.len, resp.body.data);
-    }
+    char response_buffer[GRAY_SERVER_BUFFER_SIZE];
+    int status = (int)resp.status;
+    int response_length = snprintf(response_buffer, sizeof(response_buffer),
+        "HTTP/1.1 %d %s\r\n"
+        "%s"
+        "Content-Length: %d\r\n"
+        "%s"
+        "Connection: close\r\n"
+        "\r\n"
+        "%.*s",
+        status, http_reason_phrase(status),
+        response_headers,
+        (int)resp.body.len,
+        cors_hdrs,
+        (int)resp.body.len, resp.body.data);
 
     size_t send_length = (response_length > 0 && (size_t)response_length < sizeof(response_buffer))
         ? (size_t)response_length : sizeof(response_buffer) - 1;
@@ -410,19 +440,30 @@ void gray_server_listen(int64_t port, GrayRouter *router) {
 }
 
 /* Response builders */
-GrayResponse gray_server_text(int64_t status, GrayString body) {
-    return (GrayResponse){status, body, gray_string_lit("text/plain")};
+
+static GrayHttpResponse response_with_header(GrayArena *arena, int64_t status, GrayString body,
+                                             const char *header_name, GrayString header_value) {
+    GrayHttpResponse response;
+    response.status = status;
+    response.body = body;
+    response.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
+    GrayString key = gray_string_new(arena, header_name, (int32_t)strlen(header_name));
+    GRAY_MAP_SET(arena, &response.headers, &key, &header_value);
+    return response;
 }
 
-GrayResponse gray_server_json(int64_t status, GrayString body) {
-    return (GrayResponse){status, body, gray_string_lit("application/json")};
+GrayHttpResponse gray_server_text(GrayArena *arena, int64_t status, GrayString body) {
+    return response_with_header(arena, status, body, "Content-Type", gray_string_lit("text/plain"));
 }
 
-GrayResponse gray_server_html(int64_t status, GrayString body) {
-    return (GrayResponse){status, body, gray_string_lit("text/html")};
+GrayHttpResponse gray_server_json(GrayArena *arena, int64_t status, GrayString body) {
+    return response_with_header(arena, status, body, "Content-Type", gray_string_lit("application/json"));
 }
 
-GrayResponse gray_server_redirect(int64_t status, GrayString location) {
-    /* For redirect, body contains Location header value */
-    return (GrayResponse){status, location, gray_string_lit("text/plain")};
+GrayHttpResponse gray_server_html(GrayArena *arena, int64_t status, GrayString body) {
+    return response_with_header(arena, status, body, "Content-Type", gray_string_lit("text/html"));
+}
+
+GrayHttpResponse gray_server_redirect(GrayArena *arena, int64_t status, GrayString location) {
+    return response_with_header(arena, status, gray_string_lit(""), "Location", location);
 }

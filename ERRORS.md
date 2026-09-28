@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 482 codes** (334 errors, 17 warnings, 131 panics)
+**Total: 483 codes** (334 errors, 17 warnings, 132 panics)
 
 ---
 
@@ -509,6 +509,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0129` | runtime | cannot convert '%s' to enum %s |
 | `P0130` | runtime | array capacity overflow |
 | `P0131` | bounds | fixed-size array field needs exactly %d elements, but the assigned array has %d |
+| `P0132` | server | server: response header contains CR or LF — HTTP header injection is not allowed |
 
 ---
 
@@ -533,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-27 23:28:54 UTC*
+*Generated on 2026-09-28 15:48:57 UTC*

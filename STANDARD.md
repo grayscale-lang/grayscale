@@ -4026,11 +4026,13 @@ HTTP client for making requests. Currently supports HTTP only.
 
 #### HttpResponse Type
 
-The `HttpResponse` struct is available when either `@http` or `@server` is imported.
+`HttpResponse` is one type shared by `@http` and `@server`: it is available when either is imported, and `HttpResponse`, `http.HttpResponse` and `server.HttpResponse` all name it. A server handler can return a response from `http.get` unchanged.
 
-- `status i64` - HTTP status code
-- `body string` - Response body
-- `headers map` - Response headers
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `i64` | HTTP status code |
+| `body` | `string` | Response body |
+| `headers` | `map[string:string]` | Response headers; the content type is `headers["Content-Type"]` |
 
 ### 9.12 Crypto Module (`@crypto`)
 
@@ -4208,10 +4210,12 @@ An HTTP server module with dynamic handlers and path parameters.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `text` | `(status i64, body string) -> HttpResponse` | Create text/plain response |
-| `json` | `(status i64, data) -> HttpResponse` | Create application/json response |
-| `html` | `(status i64, body string) -> HttpResponse` | Create text/html response |
-| `redirect` | `(status i64, url string) -> HttpResponse` | Create redirect response |
+| `text` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `text/plain` |
+| `json` | `(status i64, data) -> HttpResponse` | Response with `headers["Content-Type"]` set to `application/json` |
+| `html` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `text/html` |
+| `redirect` | `(status i64, url string) -> HttpResponse` | Response with an empty body and `headers["Location"]` set to `url` |
+
+A handler returns an `HttpResponse` (see the HttpResponse Type under `@http`). The server sends every entry in its `headers` map, and sets `Content-Length` and `Connection` itself: a `Content-Length`, `Transfer-Encoding` or `Connection` entry in the map is not sent. A header key or value containing CR or LF panics with `P0132`.
 
 #### Request Type
 

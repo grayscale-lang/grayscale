@@ -1,0 +1,31 @@
+/*
+ * Panic Test: P0132 - a response header containing CR or LF panics instead
+ * of being written, since it would start a header of its own
+ */
+
+// expect-contains: P0132
+
+import @http
+import @server
+import @threads
+
+do home(req HttpRequest) -> HttpResponse {
+    mut resp = server.text(200, "hello")
+    resp.headers["X-Note"] = "a\r\nSet-Cookie: session=stolen"
+    return resp
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "GET", "/", ()home)
+    server.listen(router, 18742, "127.0.0.1")
+}
+
+do main() {
+    mut worker = threads.spawn(()serve)
+    threads.detach(worker)
+    threads.sleep(300)
+    mut headers map[string:string] = {:}
+    mut resp, err = http.get("http://127.0.0.1:18742/", headers)
+    threads.sleep(300)
+}

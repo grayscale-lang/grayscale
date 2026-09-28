@@ -701,7 +701,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         }
     }
     if (strcmp(type_name, "HttpRequest") == 0) return "GrayRequest";
-    if (strcmp(type_name, "HttpResponse") == 0) return "GrayResponse";
+    if (strcmp(type_name, "HttpResponse") == 0) return "GrayHttpResponse";
     /* Stdlib opaque types: scalar path uses __auto_type and never reaches
      * this resolver, but [T] / map[_:T] / struct fields write the type
      * name explicitly and need it mapped here. Without this, the fallback
@@ -899,6 +899,15 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_ty
 
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 
+/* True when `type_name` is the stdlib HttpResponse rather than a user struct
+ * of that name. It has no declaration to walk, but it holds a string and a
+ * map, so a copy that leaves its function's arena has to take both along. */
+static bool is_stdlib_http_response(CodeGen *codegen, const char *type_name) {
+    if (find_struct_declaration(codegen, type_name)) return false;
+    const char *resolved = resolve_type_alias_codegen(codegen, codegen_resolve_type(codegen, type_name));
+    return resolved && strcmp(resolved, "HttpResponse") == 0;
+}
+
 /* Cycle guard for type_needs_deep_copy: tracks struct names currently being
  * visited so circular references (A -> [B] -> B -> A) don't cause infinite
  * recursion and a stack-overflow crash. */
@@ -914,7 +923,7 @@ static bool type_needs_copy_walk(CodeGen *codegen, const char *gray_type_name, b
     if (strcmp(gray_type_name, "string") == 0) return count_strings;
     if (gray_type_name[0] == '^') return false; /* pointers alias; see header comment */
     AstNode *struct_declaration = find_struct_declaration(codegen, gray_type_name);
-    if (!struct_declaration) return false;
+    if (!struct_declaration) return is_stdlib_http_response(codegen, gray_type_name); /* headers map */
     /* Cycle detection: if we're already visiting this struct, stop. */
     for (int j = 0; j < type_name_deep_copy_depth; j++) {
         if (strcmp(type_name_deep_copy_visiting[j], gray_type_name) == 0) return false;
@@ -1089,6 +1098,19 @@ static int emit_struct_deep_copy_depth = 0;
 
 static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name, const char *source_variable) {
     AstNode *struct_declaration = find_struct_declaration(codegen, struct_type_name);
+    if (!struct_declaration && is_stdlib_http_response(codegen, struct_type_name)) {
+        int unique_id = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayHttpResponse _ss%d = %s; GrayHttpResponse _sd%d = _ss%d; _sd%d.body = ",
+            unique_id, source_variable, unique_id, unique_id, unique_id);
+        char source_field[MESSAGE_BUFFER_SIZE];
+        snprintf(source_field, sizeof(source_field), "_ss%d.body", unique_id);
+        emit_value_deep_copy(codegen, "string", source_field);
+        emit_formatted(codegen, "; _sd%d.headers = ", unique_id);
+        snprintf(source_field, sizeof(source_field), "_ss%d.headers", unique_id);
+        emit_value_deep_copy(codegen, "map[string:string]", source_field);
+        emit_formatted(codegen, "; _sd%d; })", unique_id);
+        return;
+    }
     if (!struct_declaration) {
         /* No decl info; bitwise copy is the best we can do. */
         emit_formatted(codegen, "%s", source_variable);
@@ -6618,7 +6640,9 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
 
 /* --- @server module --- */
 
-static const PassthroughCall server_passthrough[] = {
+/* Response builders allocate the response's headers map, so they take the
+ * caller's arena ahead of their arguments. */
+static const PassthroughCall server_response_builders[] = {
     {"text", 2, "gray_server_text"},
     {"json", 2, "gray_server_json"},
     {"html", 2, "gray_server_html"},
@@ -6638,7 +6662,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *functi
         emit_expression(codegen, node->data.call.arguments[1]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[2]);
-        emit(codegen, ", (GrayResponse (*)(GrayRequest))");
+        emit(codegen, ", (GrayHttpResponse (*)(GrayRequest))");
         emit_expression(codegen, node->data.call.arguments[3]);
         emit(codegen, ")");
         return true;
@@ -6663,7 +6687,15 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *functi
         emit(codegen, ")");
         return true;
     }
-    if (emit_passthrough_call(codegen, node, function_name, server_passthrough)) return true;
+    for (const PassthroughCall *builder = server_response_builders; builder->function_name; builder++) {
+        if (strcmp(function_name, builder->function_name) != 0 || node->data.call.argument_count != builder->argument_count) continue;
+        emit_formatted(codegen, "%s(gray_default_arena, ", builder->c_name);
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(function_name, "cors") == 0 && node->data.call.argument_count == 2) {
         emit(codegen, "gray_server_cors(");
         emit_address_of(codegen, node->data.call.arguments[0]);

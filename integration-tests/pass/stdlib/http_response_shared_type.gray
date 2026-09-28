@@ -1,0 +1,97 @@
+/*
+ * http_response_shared_type.gray - http and server share one HttpResponse
+ * type with status, body and headers. The content type is a header, a
+ * handler can return an http.get() response unchanged, and every header in
+ * the map is sent.
+ */
+
+import @http
+import @server
+import @threads
+
+do home(req HttpRequest) -> HttpResponse {
+    mut resp = server.text(200, "hello " + req.path)
+    resp.headers["X-Custom"] = "yes"
+    return resp
+}
+
+do data(req HttpRequest) -> HttpResponse {
+    return server.json(200, "{}")
+}
+
+do relay(req HttpRequest) -> HttpResponse {
+    mut headers map[string:string] = {:}
+    mut upstream http.HttpResponse, err Error = http.get("http://127.0.0.1:18741/data", headers)
+    return upstream
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "GET", "/home", ()home)
+    server.add_route(router, "GET", "/data", ()data)
+    server.add_route(router, "GET", "/relay", ()relay)
+    server.listen(router, 18741, "127.0.0.1")
+}
+
+do build(name string) -> server.HttpResponse {
+    mut resp = server.html(200, "<p>" + name + "</p>")
+    resp.headers["X-Name"] = name + "!"
+    return resp
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut text = server.text(200, "a")
+    mut json_resp = server.json(201, "{}")
+    mut moved = server.redirect(302, "/next")
+    if text.headers["Content-Type"] == "text/plain" && json_resp.headers["Content-Type"] == "application/json" &&
+        moved.body == "" && moved.headers["Location"] == "/next" {
+        println("  [PASS] builders set Content-Type and Location headers")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] builders set Content-Type and Location headers")
+        failed += 1
+    }
+
+    mut built = build("bob")
+    if built.body == "<p>bob</p>" && built.headers["X-Name"] == "bob!" && built.headers["Content-Type"] == "text/html" {
+        println("  [PASS] returned response keeps its body and headers")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned response keeps its body and headers")
+        failed += 1
+    }
+
+    mut worker = threads.spawn(()serve)
+    threads.detach(worker)
+    threads.sleep(300)
+
+    mut headers map[string:string] = {:}
+    mut home_resp HttpResponse, home_err Error = http.get("http://127.0.0.1:18741/home", headers)
+    if home_resp.status == 200 && home_resp.body == "hello /home" && home_resp.headers["X-Custom"] == "yes" &&
+        home_resp.headers["Content-Type"] == "text/plain" {
+        println("  [PASS] server sends every header")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] server sends every header")
+        failed += 1
+    }
+
+    mut relayed, relay_err = http.get("http://127.0.0.1:18741/relay", headers)
+    if relayed.status == 200 && relayed.body == "{}" && relayed.headers["Content-Type"] == "application/json" {
+        println("  [PASS] handler returns an http.get response unchanged")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] handler returns an http.get response unchanged")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
