@@ -490,9 +490,13 @@ static void register_struct(TypeChecker *checker, const char *name,
  * each call site is what lets a reference stay as written all the way from
  * the parser. Resolution is idempotent: a name that names no declaration,
  * an already-mangled key included, comes back unchanged. */
-static StructInfo *find_struct(TypeChecker *checker, const char *name) {
+static DeclarationEntry *resolve_entry_or_mangled(TypeChecker *checker, const char *name) {
     DeclarationEntry *entry = checker_resolve_entry(checker, name);
-    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    return entry ? entry : module_table_find_mangled(checker->modules, name);
+}
+
+static StructInfo *find_struct(TypeChecker *checker, const char *name) {
+    DeclarationEntry *entry = resolve_entry_or_mangled(checker, name);
     if (entry && entry->kind == DECLARATION_STRUCT && entry->registry_index >= 0 &&
         entry->registry_index < checker->struct_count)
         return &checker->structs[entry->registry_index];
@@ -505,10 +509,9 @@ static bool is_struct_name(TypeChecker *checker, const char *name) {
 
 
 
-/* Returns the original index of the named enum via O(log n) bsearch, or -1. */
+/* Returns the registry index of the named enum, or -1. */
 static int find_enum_index(TypeChecker *checker, const char *name) {
-    DeclarationEntry *entry = checker_resolve_entry(checker, name);
-    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    DeclarationEntry *entry = resolve_entry_or_mangled(checker, name);
     if (entry && entry->kind == DECLARATION_ENUM && entry->registry_index >= 0 &&
         entry->registry_index < checker->enum_count)
         return entry->registry_index;
@@ -636,8 +639,7 @@ static int display_name_count(TypeChecker *checker, const char *display) {
 static const char *qualify_ambiguous_name(TypeChecker *checker,
                                           const char *lookup_key, const char *display) {
     if (display == lookup_key || display_name_count(checker, display) < 2) return display;
-    DeclarationEntry *entry = checker_resolve_entry(checker, lookup_key);
-    if (!entry) entry = module_table_find_mangled(checker->modules, lookup_key);
+    DeclarationEntry *entry = resolve_entry_or_mangled(checker, lookup_key);
     if (!entry || !entry->module_name || !entry->module_name[0]) return display;
     static char qualified_buffers[4][TYPE_NAME_MAX];
     static int qualified_slot = 0;
@@ -1243,8 +1245,7 @@ static bool record_instantiation(FunctionSignature *function_signature, const ch
 
 
 static FunctionSignature *find_function(TypeChecker *checker, const char *name) {
-    DeclarationEntry *entry = checker_resolve_entry(checker, name);
-    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    DeclarationEntry *entry = resolve_entry_or_mangled(checker, name);
     if (entry && entry->kind == DECLARATION_FUNCTION && entry->registry_index >= 0 &&
         entry->registry_index < checker->function_count)
         return &checker->functions[entry->registry_index];
