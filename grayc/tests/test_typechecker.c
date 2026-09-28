@@ -984,7 +984,7 @@ static void test_warning_W1004_no_value_declaration(void) {
     diagnostic_destroy(ok);
 }
 
-static void test_warning_W2001_unused_import(void) {
+static void test_warning_W1002_unused_import(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @math\n"
         "do main() { }");
@@ -2926,7 +2926,7 @@ int main(void) {
     /* Additional warnings */
     RUN_TEST(test_warning_W1005_typed_blank);
     RUN_TEST(test_warning_W1004_no_value_declaration);
-    RUN_TEST(test_warning_W2001_unused_import);
+    RUN_TEST(test_warning_W1002_unused_import);
     RUN_TEST(test_warning_W3003_partial_array_init);
 
     /* Additional typechecker coverage */
