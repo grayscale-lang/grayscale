@@ -128,13 +128,6 @@ func shouldCheckForUpdate() bool {
 	return state.LastCheck != today
 }
 
-// parseVersion extracts major, minor, patch from a leading "vX.Y.Z" prefix.
-// Kept for callers that don't care about pre-release suffixes.
-func parseVersion(v string) (major, minor, patch int) {
-	major, minor, patch, _ = parseSemver(v)
-	return
-}
-
 // exactSemverRE matches a fully-qualified semver string (with optional
 // leading 'v' and optional pre-release / build-metadata suffixes). Used
 // by `gray install` to reject partial versions like "2.5".
