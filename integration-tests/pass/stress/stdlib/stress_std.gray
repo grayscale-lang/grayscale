@@ -42,7 +42,7 @@ do main() {
     } otherwise { println("  [FAIL] copy() array") failed += 1 }
 
     // error() and nil
-    mut e Error = error("test error")
+    mut e Error = error(.Unknown, "test error")
     if e != nil {
         println("  [PASS] error() creates non-nil error")
         passed += 1

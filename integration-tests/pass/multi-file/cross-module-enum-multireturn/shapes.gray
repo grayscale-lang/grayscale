@@ -9,7 +9,7 @@ const Plain enum {
 }
 
 do tagged(n i64) -> (Tag, Error) {
-    if n < 0 { return Tag.Nil, error("neg") }
+    if n < 0 { return Tag.Nil, error(.Unknown, "neg") }
     return Tag.Leaf(n), nil
 }
 

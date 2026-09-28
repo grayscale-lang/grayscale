@@ -3473,7 +3473,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"net", "accept",      1, 1, true,  FALLIBLE_TYPE_STRUCT_SOCKET,   0, {{0}},"Socket"},
     {"net", "close",       1, 1, false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
     {"net", "connect",     2, 2, true,  FALLIBLE_TYPE_STRUCT_SOCKET,   2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "Socket"},
-    {"net", "listen",      1, 2, true,  FALLIBLE_TYPE_STRUCT_LISTENER, 1, {{1, EXPECTED_ARGUMENT_I64}}, "Listener"},
+    {"net", "listen",      1, 2, true,  FALLIBLE_TYPE_STRUCT_LISTENER, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_STRING}}, "Listener"},
     {"net", "receive",     2, 2, true,  FALLIBLE_TYPE_STRING,          1, {{1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"net", "resolve",     1, 1, true,  FALLIBLE_TYPE_STRING,          1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"net", "send",        2, 2, true,  FALLIBLE_TYPE_I64,             1, {{1, EXPECTED_ARGUMENT_STRING}}, "i64"},
@@ -3499,7 +3499,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"random", "rand_bool",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
     {"random", "rand_char",  0, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHAR}, {1, EXPECTED_ARGUMENT_CHAR}}, "char"},
     {"random", "rand_f64",   0, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"random", "rand_i64",   1, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
+    {"random", "rand_i64",   2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
     {"random", "rand_string", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"random", "rand_u8",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"u8"},
     {"random", "sample",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_I64}}, "$0"},
@@ -3631,7 +3631,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
     {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"threads", "sleep",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"threads", "spawn",        1, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
+    {"threads", "spawn",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "spawn_arg",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "thread_count", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
     {"threads", "yield",        0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
@@ -9045,60 +9045,46 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "error") == 0) {
-        /* Forms: error(message), error(code), error(code, message). code is an
-         * ErrorCode; a bare message defaults its code to .Unknown. */
+        /* error(code ErrorCode, message string = "") */
         int argument_count = node->data.call.argument_count;
+        result = type_from_name("Error");
         if (argument_count < 1 || argument_count > 2) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5048",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                argument_count == 0 ? "no arguments" : "too many arguments");
-            result = type_from_name("Error");
+            typechecker_error_arity(checker, node, typechecker_format(checker,
+                "'error()' expects 1 or 2 argument(s), got %d", argument_count));
             return result;
         }
-        AstNode *error_argument = node->data.call.arguments[0];
+        AstNode *code_argument = node->data.call.arguments[0];
         GrayType *saved_expected = checker->expected_type;
         checker->expected_type = type_from_name("ErrorCode");
-        GrayType *error_argument_type = resolve_expression(checker, error_argument);
+        GrayType *code_argument_type = resolve_expression(checker, code_argument);
         checker->expected_type = saved_expected;
-        bool is_error_argument_code = error_argument_type && error_argument_type->kind == TYPE_KIND_ENUM && error_argument_type->name &&
-            typechecker_enum_is_error_code(checker, error_argument_type->name);
-        bool is_error_argument_string = error_argument_type && error_argument_type->kind == TYPE_KIND_STRING;
-        /* C interop values (extern.SYMBOL) resolve to TYPE_KIND_UNKNOWN, which the
-         * checks below carve out. Left alone, error(extern.EXIT_FAILURE, ...)
-         * lowers to gray_error_new(arena, (int64_t)(EXIT_FAILURE), ...) and
-         * the constant's raw value is reinterpreted as an ErrorCode slot. */
-        bool is_error_argument_extern = error_argument->kind == NODE_MEMBER_EXPRESSION &&
-            ast_member_qualifier(error_argument) &&
-            strcmp(ast_member_qualifier(error_argument), "extern") == 0;
-        if (is_error_argument_extern) {
-            char *actual_text = typechecker_format(checker,
-                "'extern.%s', a C interop constant, as the code",
-                error_argument->data.member.member);
-            diagnostic_error_code_formatted(checker->diagnostics, "E5048",
-                NODE_FILE(checker, error_argument), error_argument->token.line, error_argument->token.column, 0, actual_text);
+        bool is_code = code_argument_type && code_argument_type->kind == TYPE_KIND_ENUM && code_argument_type->name &&
+            typechecker_enum_is_error_code(checker, code_argument_type->name);
+        /* C interop values (extern.SYMBOL) resolve to TYPE_KIND_UNKNOWN. Left
+         * alone, error(extern.EXIT_FAILURE, ...) lowers to
+         * gray_error_new(arena, (int64_t)(EXIT_FAILURE), ...) and the
+         * constant's raw value is reinterpreted as an ErrorCode slot. */
+        bool is_extern = code_argument->kind == NODE_MEMBER_EXPRESSION &&
+            ast_member_qualifier(code_argument) &&
+            strcmp(ast_member_qualifier(code_argument), "extern") == 0;
+        if (is_extern || (!is_code && code_argument_type && code_argument_type->kind != TYPE_KIND_UNKNOWN)) {
+            const char *actual = is_extern
+                ? typechecker_format(checker, "'extern.%s', a C interop constant", code_argument->data.member.member)
+                : typechecker_format(checker, "'%s'", type_display_name(checker, code_argument_type));
+            diagnostic_error_message(checker->diagnostics, "E5026",
+                typechecker_format(checker, "'error()' expects an 'ErrorCode' as the first argument, got %s", actual),
+                NODE_FILE(checker, code_argument), code_argument->token.line, code_argument->token.column, 0);
         }
-        if (argument_count == 1) {
-            if (!is_error_argument_extern && !is_error_argument_code && !is_error_argument_string && error_argument_type && error_argument_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5044",
-                    NODE_FILE(checker, error_argument), error_argument->token.line, error_argument->token.column, 0,
-                    type_display_name(checker, error_argument_type));
-            }
-        } else {
-            /* error(code, message) */
-            if (!is_error_argument_extern && !is_error_argument_code && error_argument_type && error_argument_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5048",
-                    NODE_FILE(checker, error_argument), error_argument->token.line, error_argument->token.column, 0,
-                    "a message with no code");
-            }
+        if (argument_count == 2) {
             AstNode *message_argument = node->data.call.arguments[1];
             GrayType *message_argument_type = resolve_expression(checker, message_argument);
             if (message_argument_type && message_argument_type->kind != TYPE_KIND_STRING && message_argument_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5044",
-                    NODE_FILE(checker, message_argument), message_argument->token.line, message_argument->token.column, 0,
-                    type_display_name(checker, message_argument_type));
+                diagnostic_error_message(checker->diagnostics, "E5026",
+                    typechecker_format(checker, "'error()' expects a 'string' as the second argument, got '%s'",
+                        type_display_name(checker, message_argument_type)),
+                    NODE_FILE(checker, message_argument), message_argument->token.line, message_argument->token.column, 0);
             }
         }
-        result = type_from_name("Error");
     } else if (strcmp(function_name, "println") == 0 || strcmp(function_name, "eprintln") == 0) {
         /* println/eprintln accept 0 or 1 arguments */
         if (node->data.call.argument_count > 1) {

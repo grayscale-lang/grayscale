@@ -5,12 +5,12 @@
  */
 
 do two(fail bool) -> (i64, i64, Error) {
-    if fail { return 0, 0, error("boom") }
+    if fail { return 0, 0, error(.Unknown, "boom") }
     return 3, 4, nil
 }
 
 do three(fail bool) -> (i64, string, bool, Error) {
-    if fail { return 0, "", false, error("nope") }
+    if fail { return 0, "", false, error(.Unknown, "nope") }
     return 7, "ok", true, nil
 }
 

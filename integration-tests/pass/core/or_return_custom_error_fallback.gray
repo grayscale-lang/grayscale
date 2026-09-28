@@ -1,10 +1,10 @@
 // or_return with user-provided error fallback value
 do read_file(path string) -> (string, Error) {
-    return "", error("file not found")
+    return "", error(.Unknown, "file not found")
 }
 
 do load() -> (string, Error) {
-    mut content = read_file("data.txt") or_return "", error("failed to load")
+    mut content = read_file("data.txt") or_return "", error(.Unknown, "failed to load")
     return content, nil
 }
 

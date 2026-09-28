@@ -160,24 +160,24 @@ do filler_b() {
 
 do validate_age(age i64) -> Error {
     if age < 0 {
-        return error("age cannot be negative")
+        return error(.Unknown, "age cannot be negative")
     }
     return nil
 }
 
 do safe_divide(a i64, b i64) -> (i64, Error) {
     if b == 0 {
-        return 0, error("division by zero")
+        return 0, error(.Unknown, "division by zero")
     }
     return a / b, nil
 }
 
 do check_range(val i64) -> Error {
     if val < 0 {
-        return error("value too low")
+        return error(.Unknown, "value too low")
     }
     if val > 100 {
-        return error("value too high")
+        return error(.Unknown, "value too high")
     }
     return nil
 }
@@ -186,7 +186,7 @@ do parse_positive(n i64) -> (result i64, err Error) {
     mut result i64 = 0
     mut err Error = nil
     if n <= 0 {
-        err = error("not positive")
+        err = error(.Unknown, "not positive")
         return result, err
     }
     result = n

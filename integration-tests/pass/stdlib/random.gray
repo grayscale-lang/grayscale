@@ -35,13 +35,13 @@ do main() {
     // ==================== random.rand_i64 ====================
     println("  -- random.rand_i64 --")
 
-    // Test 3: random.rand_i64(max) returns value in [0, max)
-    mut i1 i64 = random.rand_i64(100)
+    // Test 3: random.rand_i64(0, max) returns value in [0, max)
+    mut i1 i64 = random.rand_i64(0, 100)
     if i1 >= 0 && i1 < 100 {
-        println("  [PASS] random.rand_i64(100) in range [0, 100)")
+        println("  [PASS] random.rand_i64(0, 100) in range [0, 100)")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.rand_i64(100): got ${i1}")
+        println("  [FAIL] random.rand_i64(0, 100): got ${i1}")
         failed += 1
     }
 

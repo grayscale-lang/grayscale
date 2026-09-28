@@ -34,8 +34,8 @@ typedef struct {
 /*@man spawn
  *@module threads
  *@group Lifecycle
- *@sig spawn(fn func(), [arg i64]) -> Thread
- *@desc Spawn a new thread running fn. To pass an i64 argument to fn, use spawn_arg (or call spawn with a second i64 argument, which forwards to spawn_arg).
+ *@sig spawn(fn func()) -> Thread
+ *@desc Spawn a new thread running fn. To pass an i64 argument to fn, use spawn_arg.
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn(()my_func)

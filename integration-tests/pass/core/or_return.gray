@@ -7,14 +7,14 @@
 
 do might_fail(fail bool) -> (i64, Error) {
     if fail {
-        return 0, error("it failed")
+        return 0, error(.Unknown, "it failed")
     }
     return 42, nil
 }
 
 do double_fail(fail bool) -> (string, Error) {
     if fail {
-        return "", error("double failed")
+        return "", error(.Unknown, "double failed")
     }
     return "ok", nil
 }

@@ -1767,7 +1767,7 @@ do load() -> (string, Error) {
 }
 
 // With custom fallback values:
-mut content = read_file("data.txt") or_return "", error("failed to load")
+mut content = read_file("data.txt") or_return "", error(.Unknown, "failed to load")
 
 // Destructuring a call that returns more than one non-error value:
 do consume() -> (i64, Error) {
@@ -1999,7 +1999,7 @@ mut quotient, remainder = divide(17, 5)
 ```gray
 do parse(s string) -> (i64, Error) {
     if s == "" {
-        return 0, error("empty string")
+        return 0, error(.Unknown, "empty string")
     }
     return 42, nil
 }
@@ -3246,7 +3246,7 @@ running the child so output is not reordered.
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
 | `addr` | `(variable T) -> ^T` | Get memory address of a variable |
 | `raw` | `(variable T) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
-| `error` | `(message string) -> Error` | Create error value |
+| `error` | `(code ErrorCode, message string = "") -> Error` | Create error value |
 | `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code i64)` | Exit program with code |
@@ -3759,13 +3759,10 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 
 ### 9.7 Random Module (`@random`)
 
-Some random functions accept a variable number of arguments (e.g., `rand_i64` with 1 or 2 args). This is not general function overloading; it is special-case codegen dispatching within the stdlib only.
-
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `rand_f64` | `() -> f64` | Random f64 [0.0, 1.0) |
 | `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max) |
-| `rand_i64` | `(max i64) -> i64` | Random i64 [0, max) |
 | `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max) |
 | `rand_bool` | `() -> bool` | Random boolean |
 | `rand_u8` | `() -> u8` | Random u8 [0, 255] |
@@ -4303,7 +4300,7 @@ TCP sockets and DNS resolution.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `connect` | `(host string, port i64) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
-| `listen` | `([host string], port i64) -> (Listener, Error)` | Listen for incoming connections on a port, bound to host (default: all interfaces) — always use destructuring |
+| `listen` | `(port i64, host string = "0.0.0.0") -> (Listener, Error)` | Listen for incoming connections on a port, bound to host (default: all interfaces) — always use destructuring |
 | `accept` | `(listener Listener) -> (Socket, Error)` | Accept an incoming connection — always use destructuring |
 | `send` | `(sock Socket, data string) -> (i64, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
 | `receive` | `(sock Socket, max_bytes i64) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
@@ -4320,7 +4317,7 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `spawn` | `(fn func()) -> Thread` | Spawn a new thread running `fn` |
-| `spawn_arg` | `(fn func(i64), arg i64) -> Thread` | Spawn a new thread running `fn`, passing `arg` as its i64 parameter. `spawn` with a second i64 argument forwards here |
+| `spawn_arg` | `(fn func(i64), arg i64) -> Thread` | Spawn a new thread running `fn`, passing `arg` as its i64 parameter |
 | `join` | `(t Thread)` | Wait for a thread to finish |
 | `detach` | `(t Thread)` | Release ownership; the thread runs independently. After detach the handle must not be joined or queried |
 | `is_alive` | `(t Thread) -> bool` | True while the thread's body has not returned. Not valid after `detach` or `join` |
@@ -4684,12 +4681,12 @@ The `Error` type represents an error condition. An `Error` has two fields:
 | `code` | `ErrorCode` | classification of the error (see 10.5) |
 | `msg` | `string` | human-facing message (`.message` is an accepted alias) |
 
-Errors are created with the `error()` function, in one of three forms:
+Errors are created with `error(code ErrorCode, message string = "")`:
 
 ```gray
-error("something went wrong")          // message only; code defaults to .Unknown
-error(.NotFound)                        // code only; message defaults to ""
 error(.NotFound, "no such file")        // code and message
+error(.NotFound)                        // message defaults to ""
+error(.Unknown, "something went wrong") // no more specific code applies
 ```
 
 `.Unknown` (ErrorCode slot 0) is not a "no error" sentinel — "no error" is `nil`, one level up in the `(T, Error)` tuple. Reading `err.code` at all means you are holding a real error.
@@ -4709,7 +4706,7 @@ do read_file(path string) -> (string, Error) {
 }
 ```
 
-Every standard library function that returns an `Error` sets both a specific `ErrorCode` and a fixed message. Only user `error()` calls may omit one.
+Every standard library function that returns an `Error` sets both a specific `ErrorCode` and a fixed message. Only user `error()` calls may omit the message.
 
 ### 10.3 Error Checking
 

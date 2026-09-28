@@ -12,9 +12,9 @@ do main() {
 
     // Test 1: seed produces deterministic output
     random.seed(42)
-    mut a i64 = random.rand_i64(1000)
+    mut a i64 = random.rand_i64(0, 1000)
     random.seed(42)
-    mut b i64 = random.rand_i64(1000)
+    mut b i64 = random.rand_i64(0, 1000)
     if a == b {
         println("  [PASS] same seed produces same value")
         passed += 1
@@ -25,9 +25,9 @@ do main() {
 
     // Test 2: different seeds produce different output (statistical)
     random.seed(1)
-    mut c i64 = random.rand_i64(1000000)
+    mut c i64 = random.rand_i64(0, 1000000)
     random.seed(999)
-    mut d i64 = random.rand_i64(1000000)
+    mut d i64 = random.rand_i64(0, 1000000)
     if c != d {
         println("  [PASS] different seeds produce different values")
         passed += 1
@@ -38,7 +38,7 @@ do main() {
 
     // Test 3: seed with zero
     random.seed(0)
-    mut e i64 = random.rand_i64(100)
+    mut e i64 = random.rand_i64(0, 100)
     if e >= 0 && e < 100 {
         println("  [PASS] seed(0) still produces valid rand_i64")
         passed += 1

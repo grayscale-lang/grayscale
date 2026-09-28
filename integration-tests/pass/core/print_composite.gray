@@ -108,7 +108,7 @@ do main() {
     }
 
     // Test 12: println on Error prints message
-    mut err Error = error("something broke")
+    mut err Error = error(.Unknown, "something broke")
     mut err_str string = "${err}"
     if err_str == "something broke" {
         println("  [PASS] Error prints message")

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5026 - error() takes an ErrorCode as its first argument
+ */
+
+// expect-error: E5026
+
+do main() {
+    mut err = error(42)  // ERROR: not an ErrorCode
+    println(err.message)
+}

@@ -89,7 +89,7 @@ const Bag struct {
 
 do try_div(a i64, b i64) -> (i64, Error) {
     if b == 0 {
-        return 0, error("divide by ${b}")
+        return 0, error(.Unknown, "divide by ${b}")
     }
     return a / b, nil
 }
@@ -1246,9 +1246,9 @@ do main() {
     println("=== 18. @random ===")
     // =========================================================================
 
-    mut ri i64 = random.rand_i64(100)
+    mut ri i64 = random.rand_i64(0, 100)
     if ri >= 0 {
-        println("  [PASS] random.rand_i64(100) = ${ri}")
+        println("  [PASS] random.rand_i64(0, 100) = ${ri}")
         passed++
     } otherwise {
         println("  [FAIL] rand_i64: expected >= 0, got ${ri}")
@@ -1762,7 +1762,7 @@ do main() {
         failed++
     }
 
-    mut eh_err Error = error("boom")
+    mut eh_err Error = error(.Unknown, "boom")
     if eh_err != nil {
         println("  [PASS] error(\"boom\") builds a non-nil Error")
         passed++

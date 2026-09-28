@@ -6,12 +6,12 @@
  */
 
 do risky(fail bool) -> (i64, Error) {
-    if fail { return 0, error("oops") }
+    if fail { return 0, error(.Unknown, "oops") }
     return 42, nil
 }
 
 do risky_str(fail bool) -> (string, Error) {
-    if fail { return "", error("str fail") }
+    if fail { return "", error(.Unknown, "str fail") }
     return "hello", nil
 }
 

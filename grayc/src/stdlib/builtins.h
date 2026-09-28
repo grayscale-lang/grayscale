@@ -344,8 +344,8 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  */
 
 /*@man error
- *@sig error(message string) -> Error  |  error(code ErrorCode) -> Error  |  error(code ErrorCode, message string) -> Error
- *@desc Creates an Error value. Forms: error("msg") (code defaults to .Unknown), error(.Code), or error(.Code, "msg"). Inspect err.code with == or `when`; err.msg holds the message.
+ *@sig error(code ErrorCode, message string = "") -> Error
+ *@desc Creates an Error value with the given code and message, e.g. error(.NotFound, "file not found") or error(.Unknown, "msg"). Inspect err.code with == or `when`; err.msg holds the message.
  *@example
  *   mut err Error = error(.NotFound, "file not found")
  *   when err.code { is .NotFound { println(err.msg) } default { } }
@@ -429,7 +429,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@kind type
  *@desc Represents a runtime error. Opaque type with no accessible fields. Use string interpolation to get the message.
  *@example
- *   mut err Error = error("file not found")
+ *   mut err Error = error(.Unknown, "file not found")
  *   println("${err}")
  *@end
  */

@@ -1425,7 +1425,7 @@ static void test_builtin_sleep_ns_zero(void) {
 
 /* ===== net module ===== */
 
-/* gray_net_listen_host, gray_net_accept, gray_net_send, gray_net_recv, and
+/* gray_net_listen, gray_net_accept, gray_net_send, gray_net_recv, and
  * gray_net_set_timeout have no dedicated coverage anywhere (the integration
  * suite only exercises resolve/listen/close and a connect-refused error) —
  * a real accept+send+recv round trip needs a concurrent peer, so the client
@@ -1444,7 +1444,7 @@ static void *net_client_thread(void *arg) {
 }
 
 static void test_net_listen_host_accept_send_recv(void) {
-    GraySocket listener = gray_net_listen_host(arena, gray_string_lit("127.0.0.1"), TEST_NET_PORT);
+    GraySocket listener = gray_net_listen(arena, TEST_NET_PORT, gray_string_lit("127.0.0.1"));
     gray_net_set_timeout(listener, 2000);
 
     pthread_t client;

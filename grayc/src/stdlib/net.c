@@ -84,38 +84,6 @@ GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t maximum_byte
     return (GrayString){buffer, (int32_t)bytes_received};
 }
 
-GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
-    (void)arena;
-    gray_net_startup();
-    GraySocket sock = {-1};
-
-    int file_descriptor = socket(AF_INET, SOCK_STREAM, 0);
-    if (file_descriptor < 0) return sock;
-
-    /* Allow port reuse */
-    int option = 1;
-    setsockopt(file_descriptor, SOL_SOCKET, SO_REUSEADDR, (const char *)&option, sizeof(option));
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons((uint16_t)port);
-
-    if (bind(file_descriptor, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        gray_sock_close(file_descriptor);
-        return sock;
-    }
-
-    if (listen(file_descriptor, GRAY_NET_LISTEN_BACKLOG) != 0) {
-        gray_sock_close(file_descriptor);
-        return sock;
-    }
-
-    sock.file_descriptor = file_descriptor;
-    return sock;
-}
-
 GraySocket gray_net_accept(GrayArena *arena, GraySocket listener) {
     (void)arena;
     GraySocket sock = {-1};
@@ -174,7 +142,7 @@ GrayResult_socket gray_net_dial_result(GrayArena *arena, GrayString host, int64_
     return result;
 }
 
-GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port) {
+GraySocket gray_net_listen(GrayArena *arena, int64_t port, GrayString host) {
     (void)arena;
     gray_net_startup();
     GraySocket sock = {-1};
@@ -212,21 +180,9 @@ GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port)
     return sock;
 }
 
-GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port) {
+GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port, GrayString host) {
     GrayResult_socket result;
-    result.v0 = gray_net_listen(arena, port);
-    if (result.v0.file_descriptor < 0) {
-        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on port %lld",
-            (long long)port));
-    } else {
-        result.v1 = NULL;
-    }
-    return result;
-}
-
-GrayResult_socket gray_net_listen_host_result(GrayArena *arena, GrayString host, int64_t port) {
-    GrayResult_socket result;
-    result.v0 = gray_net_listen_host(arena, host, port);
+    result.v0 = gray_net_listen(arena, port, host);
     if (result.v0.file_descriptor < 0) {
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on %.*s:%lld",
             host.len, host.data, (long long)port));

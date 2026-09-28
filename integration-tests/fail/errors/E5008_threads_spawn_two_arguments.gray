@@ -1,0 +1,13 @@
+// expect-error: E5008
+// threads.spawn takes only a func(); spawn_arg passes an i64 argument.
+
+import @threads
+
+do f(n i64) {
+    println(n)
+}
+
+do main() {
+    mut t = threads.spawn(()f, 1)
+    threads.join(t)
+}

@@ -1,4 +1,4 @@
-// expect-error: E5048
+// expect-error: E5026
 // expect-error-count: 1
 // A C interop constant resolves to an unknown type, which the error()
 // check used to carve out. error(extern.EXIT_FAILURE, ...) then reused the

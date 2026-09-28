@@ -36,7 +36,7 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    mut listener, lerr = net.listen("127.0.0.1", TEST_PORT)
+    mut listener, lerr = net.listen(TEST_PORT, "127.0.0.1")
     if lerr != nil {
         println("  [FAIL] net.listen error")
         println("SOME TESTS FAILED")

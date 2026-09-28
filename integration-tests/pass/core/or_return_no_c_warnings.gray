@@ -5,14 +5,14 @@ const Item struct {
 
 do risky_int(ok bool) -> (i64, Error) {
     if !ok {
-        return 0, error("i64 failed")
+        return 0, error(.Unknown, "i64 failed")
     }
     return 7, nil
 }
 
 do risky_item(ok bool) -> (Item, Error) {
     if !ok {
-        return Item{name: "", value: 0}, error("item failed")
+        return Item{name: "", value: 0}, error(.Unknown, "item failed")
     }
     return Item{name: "Gem", value: 99}, nil
 }

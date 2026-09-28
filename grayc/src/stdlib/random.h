@@ -29,12 +29,11 @@
 /*@man rand_i64
  *@module random
  *@group Generation
- *@sig rand_i64(max i64) -> i64  |  rand_i64(min i64, max i64) -> i64
- *@desc Returns a random integer. With one argument returns a value from 0 up to but not including max. With two arguments returns a value from min up to but not including max.
+ *@sig rand_i64(min i64, max i64) -> i64
+ *@desc Returns a random integer from min up to but not including max.
  *@example
  *   import @random
- *   mut n i64 = random.rand_i64(100)
- *   mut m i64 = random.rand_i64(10, 50)
+ *   mut n i64 = random.rand_i64(10, 50)
  *@end
  */
 
@@ -130,7 +129,7 @@ GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alpha
  *@example
  *   import @random
  *   random.seed(42)
- *   mut n i64 = random.rand_i64(100)
+ *   mut n i64 = random.rand_i64(0, 100)
  *@end
  */
 

@@ -5760,25 +5760,14 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
         return true;
     }
 
-    if (strcmp(function_name, "error") == 0 && node->data.call.argument_count >= 1) {
-        /* Forms: error(msg), error(code), error(code, msg). The first argument is a
-         * code unless it is a plain string; slot 0 (Unknown) is the default. */
-        AstNode *first_argument = node->data.call.arguments[0];
-        GrayType *first_argument_type = type_table_get(codegen->type_table, first_argument);
-        bool first_is_code = !(first_argument_type && first_argument_type->kind == TYPE_KIND_STRING);
-        emit(codegen, "gray_error_new(gray_default_arena, ");
-        if (first_is_code) {
-            emit(codegen, "(int64_t)(");
-            emit_expression(codegen, first_argument);
-            emit(codegen, "), ");
-            if (node->data.call.argument_count >= 2) {
-                emit_expression(codegen, node->data.call.arguments[1]);
-            } else {
-                emit(codegen, "gray_string_lit(\"\")");
-            }
+    if (strcmp(function_name, "error") == 0) {
+        emit(codegen, "gray_error_new(gray_default_arena, (int64_t)(");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, "), ");
+        if (node->data.call.argument_count == 2) {
+            emit_expression(codegen, node->data.call.arguments[1]);
         } else {
-            emit(codegen, "0, ");
-            emit_expression(codegen, first_argument);
+            emit(codegen, "gray_string_lit(\"\")");
         }
         emit(codegen, ")");
         return true;
@@ -6816,18 +6805,15 @@ static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *function_
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(function_name, "listen") == 0 && node->data.call.argument_count == 1) {
+    if (strcmp(function_name, "listen") == 0) {
         emit_formatted(codegen, "gray_net_listen%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "listen") == 0 && node->data.call.argument_count == 2) {
-        /* Grayscale: net.listen(host, port)  →  C: gray_net_listen_host(arena, host, port) */
-        emit_formatted(codegen, "gray_net_listen_host%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
-        emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        if (node->data.call.argument_count == 2) {
+            emit_expression(codegen, node->data.call.arguments[1]);
+        } else {
+            emit(codegen, "gray_string_lit(\"0.0.0.0\")");
+        }
         emit(codegen, ")");
         return true;
     }
@@ -7264,17 +7250,11 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "rand_i64") == 0) {
-        if (node->data.call.argument_count == 1) {
-            emit(codegen, "gray_random_i64_max(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ")");
-        } else if (node->data.call.argument_count == 2) {
-            emit(codegen, "gray_random_i64_range(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[1]);
-            emit(codegen, ")");
-        }
+        emit(codegen, "gray_random_i64_range(");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "rand_bool") == 0) { emit(codegen, "gray_random_bool()"); return true; }
@@ -8119,18 +8099,10 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *functi
 }
 
 static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    if (strcmp(function_name, "spawn") == 0 && node->data.call.argument_count >= 1) {
-        if (node->data.call.argument_count == 1) {
-            emit(codegen, "gray_threads_spawn(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ")");
-        } else {
-            emit(codegen, "gray_threads_spawn_arg(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[1]);
-            emit(codegen, ")");
-        }
+    if (strcmp(function_name, "spawn") == 0) {
+        emit(codegen, "gray_threads_spawn(");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "join") == 0) {

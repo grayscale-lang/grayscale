@@ -6,10 +6,10 @@
 // Function that can fail - uses Error type
 do parse_int(s string) -> (i64, Error) {
     if s == "" {
-        return 0, error("empty string")
+        return 0, error(.Unknown, "empty string")
     }
     if s == "bad" {
-        return 0, error("invalid input")
+        return 0, error(.Unknown, "invalid input")
     }
     return 42, nil
 }
@@ -17,7 +17,7 @@ do parse_int(s string) -> (i64, Error) {
 // Function using Error type (capitalized) - should also work
 do parse_float(s string) -> (f64, Error) {
     if s == "" {
-        return 0.0, error("empty string")
+        return 0.0, error(.Unknown, "empty string")
     }
     return 3.14, nil
 }

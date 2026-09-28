@@ -35,8 +35,8 @@ typedef struct {
 /*@man listen
  *@module net
  *@group Server
- *@sig listen([host string], port i64) -> (Listener, Error)
- *@desc Opens a TCP listener on port. Pass a host string as an optional first argument to bind a specific interface, e.g. listen("127.0.0.1", 8080); without it the listener binds all interfaces. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
+ *@sig listen(port i64, host string = "0.0.0.0") -> (Listener, Error)
+ *@desc Opens a TCP listener on port, bound to host. Pass a host to bind a specific interface, e.g. listen(8080, "127.0.0.1"); the default "0.0.0.0" binds all interfaces. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut listener, err = net.listen(8080)
@@ -130,8 +130,7 @@ int64_t gray_net_send(GraySocket sock, GrayString data);
 GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t maximum_bytes);
 
 /* TCP server */
-GraySocket gray_net_listen(GrayArena *arena, int64_t port);
-GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port);
+GraySocket gray_net_listen(GrayArena *arena, int64_t port, GrayString host);
 GraySocket gray_net_accept(GrayArena *arena, GraySocket listener);
 
 /* Socket options */
@@ -144,8 +143,7 @@ GrayString gray_net_resolve(GrayArena *arena, GrayString hostname);
 typedef struct { GraySocket v0; GrayError *v1; } GrayResult_socket;
 
 GrayResult_socket gray_net_dial_result(GrayArena *arena, GrayString host, int64_t port);
-GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port);
-GrayResult_socket gray_net_listen_host_result(GrayArena *arena, GrayString host, int64_t port);
+GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port, GrayString host);
 GrayResult_socket gray_net_accept_result(GrayArena *arena, GraySocket listener);
 GrayResult_i64 gray_net_send_result(GrayArena *arena, GraySocket sock, GrayString data);
 GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_t maximum_bytes);

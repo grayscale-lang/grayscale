@@ -392,7 +392,7 @@ static void *handle_connection(void *argument) {
 
 void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *router) {
     GrayArena *arena = get_server_arena();
-    GraySocket listener = gray_net_listen_host(arena, host, port);
+    GraySocket listener = gray_net_listen(arena, port, host);
     if (listener.file_descriptor < 0) {
         fprintf(stderr, "server: failed to listen on %.*s:%d\n", host.len, host.data, (int)port);
         return;

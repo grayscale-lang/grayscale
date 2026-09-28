@@ -327,11 +327,9 @@
     GRAY_ERROR("E5040", "usage", "constant requires a compile-time value; function calls are evaluated at runtime") \
     GRAY_ERROR("E5042", "usage", "'#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard'") \
     GRAY_ERROR("E5043", "usage", "'fields()' requires a struct instance, got '%s'") \
-    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'") \
     GRAY_ERROR("E5045", "arguments", "constant argument is outside the valid domain for this function") \
     GRAY_ERROR("E5046", "usage", "'#test' function '%s' must take no parameters and have no return type") \
     GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'") \
-    GRAY_ERROR("E5048", "usage", "'error()' takes an ErrorCode, a message string, or a code and a message; got %s") \
     GRAY_ERROR("E5049", "arguments", "return type mismatch; the returned value's type does not match the function's declared return type") \
     GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d") \
     GRAY_ERROR("E5051", "usage", "cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change") \

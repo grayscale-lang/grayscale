@@ -1,0 +1,8 @@
+// expect-error: E5026
+// net.listen takes the port first and the optional host second.
+
+import @net
+
+do main() {
+    mut listener, err = net.listen("h", 1)
+}

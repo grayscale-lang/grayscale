@@ -1,0 +1,9 @@
+// expect-error: E5008
+// random.rand_i64 takes both min and max.
+
+import @random
+
+do main() {
+    mut n i64 = random.rand_i64(5)
+    println(n)
+}
