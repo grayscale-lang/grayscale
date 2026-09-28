@@ -1,6 +1,6 @@
 /*
- * Error Test: E3088 - %f format directive rejects a bigint argument
- * Expected: "format directive '%f' expects f64 but argument 1 has type 'u256'"
+ * Error Test: E3088 - %f format directive rejects a bigint element
+ * Expected: "format directive '%f' expects f64 but element 0 has type 'u256'"
  */
 
 // expect-error: E3088
@@ -9,5 +9,5 @@ import @fmt
 
 do main() {
     mut d u256 = 10
-    fmt.printfln("%f", d)
+    fmt.printfln("%f", {d})
 }

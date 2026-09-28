@@ -13,7 +13,7 @@ do main() {
     mut failed i64 = 0
 
     // Test 1: sprintf with string and i64
-    mut s1 string = fmt.sprintf("Hello %s, you are %d", "Alice", 30)
+    mut s1 string = fmt.sprintf("Hello %s, you are %d", {"Alice", 30})
     if s1 == "Hello Alice, you are 30" {
         println("  [PASS] sprintf with string and i64")
         passed += 1
@@ -23,7 +23,7 @@ do main() {
     }
 
     // Test 2: sprintf with no extra args
-    mut s2 string = fmt.sprintf("plain text")
+    mut s2 string = fmt.sprintf("plain text", {})
     if s2 == "plain text" {
         println("  [PASS] sprintf with no args")
         passed += 1
@@ -213,7 +213,7 @@ do main() {
     }
 
     // Test 21: %b directive formats bool as true/false
-    mut b1 string = fmt.sprintf("%b", true)
+    mut b1 string = fmt.sprintf("%b", {true})
     if b1 == "true" {
         println("  [PASS] %b true")
         passed += 1
@@ -223,7 +223,7 @@ do main() {
     }
 
     // Test 22: %b directive with false
-    mut b2 string = fmt.sprintf("%b", false)
+    mut b2 string = fmt.sprintf("%b", {false})
     if b2 == "false" {
         println("  [PASS] %b false")
         passed += 1
@@ -233,7 +233,7 @@ do main() {
     }
 
     // Test 23: multiple %b directives don't desync later directives
-    mut b3 string = fmt.sprintf("t=%b f=%b n=%d", true, false, 42)
+    mut b3 string = fmt.sprintf("t=%b f=%b n=%d", {true, false, 42})
     if b3 == "t=true f=false n=42" {
         println("  [PASS] %b does not desync following directives")
         passed += 1

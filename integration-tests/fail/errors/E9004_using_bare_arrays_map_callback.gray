@@ -1,0 +1,15 @@
+// expect-error: E9004
+// A bare map reached through 'using arrays' checks its callback like arrays.map.
+
+import @arrays
+using arrays
+
+do shout(s string) -> string {
+    return s
+}
+
+do main() {
+    mut xs [i64] = {1, 2}
+    mut ys = map(xs, ()shout)
+    println(ys)
+}

@@ -1,6 +1,6 @@
-/* Error Test: E3108 - no directives but arguments passed */
+/* Error Test: E3108 - no directives but elements passed */
 import @fmt
 
 do main() {
-    fmt.printf("hello\n", 42)
+    fmt.printf("hello\n", {42})
 }

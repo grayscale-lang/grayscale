@@ -469,6 +469,12 @@ const char *ast_member_qualifier(const AstNode *node);
  * written against `p`. */
 const char *ast_member_base_qualifier(const AstNode *node);
 
+/* The bytes a string literal (NODE_STRING_VALUE) stands for: its source text
+ * with escapes decoded (a raw string is copied as written). `out` needs
+ * strlen(value) + 1 bytes and is NUL-terminated. Returns the decoded length,
+ * which counts any NUL byte a \0 or \x00 decodes to. */
+int ast_string_decode(const AstNode *node, char *out);
+
 /* The halves of a nested qualified spelling — mod.Type.member. Returns false,
  * leaving the outputs untouched, when the object is not itself written
  * against a bare name. Either output may be NULL. */

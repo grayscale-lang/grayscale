@@ -1,0 +1,9 @@
+// expect-error: E3087
+// expect-error-count: 1
+// A directive written with an escape is still a directive: "\x25n" is %n.
+
+import @fmt
+
+do main() {
+    fmt.printfln("a\x25n|", {})
+}

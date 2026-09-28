@@ -1,0 +1,9 @@
+// expect-error: E3107
+// "\x25s" is a %s directive, so it needs an element.
+
+import @fmt
+
+do main() {
+    mut s string = fmt.sprintf("\x25s|", {})
+    println(s)
+}

@@ -2,10 +2,12 @@
  * Error Test: E3017 - fmt.printf cannot format array
  * Expected: "cannot format value of type"
  */
+// expect-error: E3017
+// expect-error-count: 1
 
 import @fmt
 
 do main() {
     mut nums [i64] = {1, 2, 3}
-    fmt.printf("%s", nums)
+    fmt.printf("%s", {nums})
 }

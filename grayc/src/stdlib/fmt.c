@@ -58,6 +58,18 @@ GrayString gray_fmt_pad_right(GrayArena *arena, GrayString string, int64_t width
     return (GrayString){buffer, (int32_t)(string.len + pad_bytes)};
 }
 
+GrayString gray_fmt_char_field(GrayArena *arena, int32_t codepoint, int32_t width, bool left_align) {
+    GrayString encoded = gray_builtin_char_to_utf8(arena, codepoint);
+    /* One character, so width - 1 spaces whatever its UTF-8 length. */
+    int32_t padding = width > 1 ? width - 1 : 0;
+    int32_t length = padding + encoded.len;
+    char *buffer = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
+    memset(left_align ? buffer + encoded.len : buffer, ' ', (size_t)padding);
+    memcpy(left_align ? buffer : buffer + padding, encoded.data, (size_t)encoded.len);
+    buffer[length] = '\0';
+    return (GrayString){buffer, length};
+}
+
 GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character) {
     if (string.len >= width) return string;
     int64_t total_pad = width - string.len;

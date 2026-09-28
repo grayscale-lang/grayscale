@@ -1,0 +1,46 @@
+/*
+ * fmt_printf_escapes.gray - a printf format string is formatted from the
+ * bytes its escapes stand for: an escaped % is a directive, and a hex escape
+ * followed by hex letters reads exactly two digits.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut hex_letters string = fmt.sprintf("\x41BC %d", {1})
+    if hex_letters == "ABC 1" {
+        println("  [PASS] \\x41 followed by hex letters reads two digits")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] \\x41 followed by hex letters reads two digits: got '${hex_letters}'")
+        failed += 1
+    }
+
+    mut escaped_directives string = fmt.sprintf("\x25d|\x25s", {7, "ok"})
+    if escaped_directives == "7|ok" {
+        println("  [PASS] escaped % directives format their elements")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] escaped % directives format their elements: got '${escaped_directives}'")
+        failed += 1
+    }
+
+    mut text string = fmt.sprintf("\"q\" \\ 100%% caf\xc3\xa9", {})
+    if text == "\"q\" \\ 100% café" {
+        println("  [PASS] quotes, backslashes, %% and UTF-8 bytes pass through")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quotes, backslashes, %% and UTF-8 bytes pass through: got '${text}'")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -2,10 +2,12 @@
  * Error Test: E3017 - fmt.printf cannot format map
  * Expected: "cannot format value of type"
  */
+// expect-error: E3017
+// expect-error-count: 1
 
 import @fmt
 
 do main() {
     mut m map[string:i64] = {"a": 1, "b": 2}
-    fmt.printf("%s", m)
+    fmt.printf("%s", {m})
 }

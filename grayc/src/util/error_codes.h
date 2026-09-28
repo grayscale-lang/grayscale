@@ -174,7 +174,7 @@
     GRAY_ERROR("E3085", "types", "'in' operator type mismatch: cannot check if '%s' is in '%s'") \
     GRAY_ERROR("E3086", "types", "'fmt.%s' format string must be a string literal; use string interpolation for dynamic values") \
     GRAY_ERROR("E3087", "types", "'%%n' is not permitted in fmt format strings") \
-    GRAY_ERROR("E3088", "types", "'fmt.%s' format directive '%%%s' expects %s but argument %d has type '%s'") \
+    GRAY_ERROR("E3088", "types", "'fmt.%s' format directive '%%%s' expects %s but element %d has type '%s'") \
     GRAY_ERROR("E3089", "usage", "'%s()' can fail; use 'mut val, err = %s()' to handle the error, or 'mut val, _ = %s()' to discard it") \
     GRAY_ERROR("E3090", "types", "'!' only works on bool; got '%s'") \
     GRAY_ERROR("E3091", "types", "'%s' cannot be used as a condition") \
@@ -192,8 +192,8 @@
     GRAY_ERROR("E3104", "types", "#json struct '%s' cannot declare functions; #json structs are data-only — move '%s' to a standalone function") \
     GRAY_ERROR("E3105", "types", "'fmt.%s': unknown format directive '%%%c'") \
     GRAY_ERROR("E3106", "types", "'fmt.%s': dangling '%%' at end of format string") \
-    GRAY_ERROR("E3107", "types", "'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too few)") \
-    GRAY_ERROR("E3108", "types", "'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too many)") \
+    GRAY_ERROR("E3107", "types", "'fmt.%s': format string has %d directive(s) but %d element(s) were passed (too few)") \
+    GRAY_ERROR("E3108", "types", "'fmt.%s': format string has %d directive(s) but %d element(s) were passed (too many)") \
     GRAY_ERROR("E3109", "types", "#json struct '%s' cannot have default field values; field '%s' has a default") \
     GRAY_ERROR("E3110", "types", "implicit enum selector '.%s' requires type context; use the full form 'EnumName.%s' or add a type annotation") \
     GRAY_ERROR("E3111", "types", "payload types are not allowed on string enum variants") \
@@ -261,7 +261,10 @@
     GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation") \
     GRAY_ERROR("E3174", "types", "'%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute") \
     GRAY_ERROR("E3175", "types", "struct field default value has wrong type; expected %s, got %s") \
-    GRAY_ERROR("E3176", "types", "#flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two)")
+    GRAY_ERROR("E3176", "types", "#flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two)") \
+    GRAY_ERROR("E3177", "types", "'fmt.%s': length modifier '%s' in a format directive is not supported; each value is formatted at the width of its type") \
+    GRAY_ERROR("E3178", "types", "'fmt.%s': %s has no meaning for the '%%%c' conversion") \
+    GRAY_ERROR("E3179", "types", "'fmt.%s': format directive %s %s is larger than 2147483647, the most C's printf can represent")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

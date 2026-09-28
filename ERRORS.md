@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 481 codes** (332 errors, 17 warnings, 132 panics)
+**Total: 484 codes** (335 errors, 17 warnings, 132 panics)
 
 ---
 
@@ -158,7 +158,7 @@
 | `E3085` | types | 'in' operator type mismatch: cannot check if '%s' is in '%s' |
 | `E3086` | types | 'fmt.%s' format string must be a string literal; use string interpolation for dynamic values |
 | `E3087` | types | '%%n' is not permitted in fmt format strings |
-| `E3088` | types | 'fmt.%s' format directive '%%%s' expects %s but argument %d has type '%s' |
+| `E3088` | types | 'fmt.%s' format directive '%%%s' expects %s but element %d has type '%s' |
 | `E3089` | usage | '%s()' can fail; use 'mut val, err = %s()' to handle the error, or 'mut val, _ = %s()' to discard it |
 | `E3090` | types | '!' only works on bool; got '%s' |
 | `E3091` | types | '%s' cannot be used as a condition |
@@ -176,8 +176,8 @@
 | `E3104` | types | #json struct '%s' cannot declare functions; #json structs are data-only — move '%s' to a standalone function |
 | `E3105` | types | 'fmt.%s': unknown format directive '%%%c' |
 | `E3106` | types | 'fmt.%s': dangling '%%' at end of format string |
-| `E3107` | types | 'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too few) |
-| `E3108` | types | 'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too many) |
+| `E3107` | types | 'fmt.%s': format string has %d directive(s) but %d element(s) were passed (too few) |
+| `E3108` | types | 'fmt.%s': format string has %d directive(s) but %d element(s) were passed (too many) |
 | `E3109` | types | #json struct '%s' cannot have default field values; field '%s' has a default |
 | `E3110` | types | implicit enum selector '.%s' requires type context; use the full form 'EnumName.%s' or add a type annotation |
 | `E3111` | types | payload types are not allowed on string enum variants |
@@ -246,6 +246,9 @@
 | `E3174` | types | '%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute |
 | `E3175` | types | struct field default value has wrong type; expected %s, got %s |
 | `E3176` | types | #flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two) |
+| `E3177` | types | 'fmt.%s': length modifier '%s' in a format directive is not supported; each value is formatted at the width of its type |
+| `E3178` | types | 'fmt.%s': %s has no meaning for the '%%%c' conversion |
+| `E3179` | types | 'fmt.%s': format directive %s %s is larger than 2147483647, the most C's printf can represent |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -532,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-28 16:13:25 UTC*
+*Generated on 2026-09-28 17:25:47 UTC*

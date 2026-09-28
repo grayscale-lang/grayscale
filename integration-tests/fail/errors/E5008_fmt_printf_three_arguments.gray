@@ -1,0 +1,9 @@
+// expect-error: E5008
+// The printf family takes a format string and one array of values.
+
+import @fmt
+
+do main() {
+    mut n i64 = 1
+    fmt.printfln("%d %d", n, n)
+}

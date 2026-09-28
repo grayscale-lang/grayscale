@@ -47,7 +47,7 @@ do main() {
     mut junk string = ""
     mut j i64 = 0
     for j < 50 {
-        junk = fmt.sprintf("filler %d (in stock) [Lots of text here]", j)
+        junk = fmt.sprintf("filler %d (in stock) [Lots of text here]", {j})
         j++
     }
 
@@ -74,7 +74,7 @@ do main() {
 
     mut k i64 = 0
     for k < 50 {
-        junk = fmt.sprintf("more filler %d [padding padding]", k)
+        junk = fmt.sprintf("more filler %d [padding padding]", {k})
         k++
     }
 

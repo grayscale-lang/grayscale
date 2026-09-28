@@ -1,6 +1,6 @@
-/* Error Test: E3107 - no arguments for format directives */
+/* Error Test: E3107 - no elements for format directives */
 import @fmt
 
 do main() {
-    fmt.printf("%d %s %f\n")
+    fmt.printf("%d %s %f\n", {})
 }

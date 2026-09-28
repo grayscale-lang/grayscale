@@ -482,8 +482,9 @@ int64_t gray_builtin_char_count(GrayString string) {
 GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t codepoint) {
     char buffer[4];
     int length;
-    if (codepoint >= 0x110000) {
-        /* Invalid codepoint — replacement character U+FFFD */
+    if (codepoint < 0 || codepoint >= 0x110000 || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
+        /* Not a Unicode scalar value (a surrogate has no UTF-8 encoding) —
+         * replacement character U+FFFD */
         length = codepoint_to_utf8(0xFFFD, buffer);
     } else {
         length = codepoint_to_utf8(codepoint, buffer);

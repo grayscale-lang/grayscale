@@ -26,10 +26,10 @@
  *@module fmt
  *@group Output
  *@sig printf(format string, args [T])
- *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char). Pass one argument per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. Composite types are rejected.
+ *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char). Pass one array element per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. The elements of an array literal may differ in type, e.g. {name, 30}; an array variable's element type must suit every directive, and the program panics if it has fewer elements than directives. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.printf("hello %s, you are %d years old\n", "alice", 30)
+ *   fmt.printf("hello %s, you are %d years old\n", {"alice", 30})
  *@end
  */
 /* fmt.printf — handled directly by codegen */
@@ -38,10 +38,10 @@
  *@module fmt
  *@group Output
  *@sig sprintf(format string, args [T]) -> string
- *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
+ *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   mut s string = fmt.sprintf("x = %d", 42)
+ *   mut s string = fmt.sprintf("x = %d", {42})
  *   println(s)
  *@end
  */
@@ -51,10 +51,10 @@
  *@module fmt
  *@group Output
  *@sig printfln(format string, args [T])
- *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
+ *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.printfln("hello %s, you are %d years old", "alice", 30)
+ *   fmt.printfln("hello %s, you are %d years old", {"alice", 30})
  *@end
  */
 /* fmt.printfln — handled directly by codegen */
@@ -63,10 +63,10 @@
  *@module fmt
  *@group Output
  *@sig eprintf(format string, args [T])
- *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
+ *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.eprintf("error: %s\n", "something went wrong")
+ *   fmt.eprintf("error: %s\n", {"something went wrong"})
  *@end
  */
 /* fmt.eprintf — handled directly by codegen */
@@ -75,10 +75,10 @@
  *@module fmt
  *@group Output
  *@sig eprintfln(format string, args [T])
- *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
+ *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.eprintfln("error: %s", "something went wrong")
+ *   fmt.eprintfln("error: %s", {"something went wrong"})
  *@end
  */
 /* fmt.eprintfln — handled directly by codegen */
@@ -87,10 +87,10 @@
  *@module fmt
  *@group Output
  *@sig sprintfln(format string, args [T]) -> string
- *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one argument per format directive, of a type that directive accepts. Composite types are rejected.
+ *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   mut s string = fmt.sprintfln("x = %d", 42)
+ *   mut s string = fmt.sprintfln("x = %d", {42})
  *   println(s)
  *@end
  */
@@ -107,6 +107,10 @@
  *@end
  */
 GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
+
+/* fmt.printf %c: `codepoint` as UTF-8, padded with spaces to `width`
+ * characters (on the right when left_align). NUL-terminated, for %s. */
+GrayString gray_fmt_char_field(GrayArena *arena, int32_t codepoint, int32_t width, bool left_align);
 
 /*@man pad_right
  *@module fmt

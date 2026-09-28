@@ -6,5 +6,5 @@
 import @fmt
 
 do main() {
-    fmt.printfln("%d", "hello")
+    fmt.printfln("%d", {"hello"})
 }

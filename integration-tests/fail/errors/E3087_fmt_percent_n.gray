@@ -2,9 +2,11 @@
  * Error Test: E3087 - %n forbidden in fmt format strings
  * Expected: "%n is not permitted in fmt format strings"
  */
+// expect-error: E3087
+// expect-error-count: 1
 
 import @fmt
 
 do main() {
-    fmt.printfln("%n", 42)
+    fmt.printfln("%n", {})
 }

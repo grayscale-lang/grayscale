@@ -1,0 +1,42 @@
+/*
+ * fmt_printf_array_variable.gray - the printf family formats from an array
+ * variable, reading one element per directive.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut date [i64] = {2026, 9, 28}
+    mut line string = fmt.sprintf("%d-%02d-%02d", date)
+    if line == "2026-09-28" {
+        println("  [PASS] sprintf reads one element per directive")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sprintf reads one element per directive: got '${line}'")
+        failed += 1
+    }
+
+    mut longer [i64] = {255, 8, 99}
+    mut hex string = fmt.sprintfln("%x %o", longer)
+    if hex == "ff 10\n" {
+        println("  [PASS] extra elements past the directive count are not read")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] extra elements past the directive count are not read: got '${hex}'")
+        failed += 1
+    }
+
+    mut words [string] = {"left", "right"}
+    fmt.printfln("  [PASS] printfln with [string]: %s|%s", words)
+    passed += 1
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

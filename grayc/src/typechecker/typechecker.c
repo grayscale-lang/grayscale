@@ -3133,7 +3133,7 @@ typedef enum {
 
 #define STDLIB_MAX_ARGUMENT_CHECKS 5
 
-/* maximum_arguments sentinel for a variadic stdlib function (fmt.printf, sqlite.exec):
+/* maximum_arguments sentinel for a variadic stdlib function (sqlite.exec):
  * any argument count at or above minimum_arguments is accepted. */
 #define STDLIB_ARGUMENTS_VARIADIC 99
 
@@ -3334,8 +3334,8 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"encoding", "url_encode",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* fmt */
     {"fmt", "center",        3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
-    {"fmt", "eprintf",       1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
-    {"fmt", "eprintfln",     1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"fmt", "eprintf",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"fmt", "eprintfln",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"fmt", "f64_to_fixed",  2, 2,  false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"fmt", "f64_to_scientific", 1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "string"},
     {"fmt", "format_bytes",  1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
@@ -3345,10 +3345,10 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"fmt", "i64_to_octal",  1, 1,  false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "string"},
     {"fmt", "pad_left",      3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"fmt", "pad_right",     3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
-    {"fmt", "printf",        1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
-    {"fmt", "printfln",      1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
-    {"fmt", "sprintf",       1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"fmt", "sprintfln",     1, STDLIB_ARGUMENTS_VARIADIC, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"fmt", "printf",        2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"fmt", "printfln",      2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"fmt", "sprintf",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"fmt", "sprintfln",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* http */
     {"http", "delete", 2, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
     {"http", "get",    2, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
@@ -7056,169 +7056,279 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+static bool is_printf_function_name(const char *name) {
+    return strcmp(name, "printf") == 0 || strcmp(name, "printfln") == 0 ||
+           strcmp(name, "eprintf") == 0 || strcmp(name, "eprintfln") == 0 ||
+           strcmp(name, "sprintf") == 0 || strcmp(name, "sprintfln") == 0;
+}
+
+/* Returns what a printf directive expects when `value_type` does not satisfy
+ * it, or NULL when it does (or the directive places no constraint). */
+static const char *format_directive_mismatch(char specifier, GrayType *value_type) {
+    switch (specifier) {
+    case 'd': case 'i':
+        return value_type->kind == TYPE_KIND_SIGNED_INTEGER || value_type->kind == TYPE_KIND_CHAR
+            ? NULL : "signed integer or char";
+    case 'u':
+        return value_type->kind == TYPE_KIND_UNSIGNED_INTEGER ? NULL : "unsigned integer";
+    case 'x': case 'X': case 'o':
+        return value_type->kind == TYPE_KIND_SIGNED_INTEGER || value_type->kind == TYPE_KIND_UNSIGNED_INTEGER
+            ? NULL : "integer";
+    case 'f': case 'g': case 'e': case 'G': case 'E':
+        return value_type->kind == TYPE_KIND_FLOATING_POINT ? NULL : "f32 or f64";
+    case 's':
+        return value_type->kind == TYPE_KIND_STRING ? NULL : "string";
+    case 'c':
+        return value_type->kind == TYPE_KIND_CHAR ||
+            (value_type->kind == TYPE_KIND_SIGNED_INTEGER && !(value_type->name && is_wide_integer_type_name(value_type->name)))
+            ? NULL : "char";
+    case 'b':
+        return value_type->kind == TYPE_KIND_BOOL ? NULL : "bool";
+    default:
+        return NULL;
+    }
+}
+
+/* A struct, array, map or pointer, which no format directive can print. */
+static bool is_composite_format_value(GrayType *value_type) {
+    return value_type && (value_type->kind == TYPE_KIND_STRUCT || value_type->kind == TYPE_KIND_ARRAY ||
+                          value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_POINTER);
+}
+
+/* E3017: a formatted value must be a primitive. */
+static void check_format_value_is_primitive(TypeChecker *checker, const char *member_function_name,
+    AstNode *value, GrayType *value_type)
+{
+    if (!is_composite_format_value(value_type)) return;
+    char type_name_buffer[TYPE_NAME_MAX];
+    if (value_type->kind == TYPE_KIND_ARRAY && value_type->element_type)
+        snprintf(type_name_buffer, sizeof(type_name_buffer), "[%s]", value_type->element_type);
+    else if (value_type->kind == TYPE_KIND_MAP)
+        snprintf(type_name_buffer, sizeof(type_name_buffer), "map[%s:%s]",
+            value_type->key_type ? value_type->key_type : "?",
+            value_type->value_type ? value_type->value_type : "?");
+    else if (value_type->kind == TYPE_KIND_POINTER && value_type->element_type)
+        snprintf(type_name_buffer, sizeof(type_name_buffer), "^%s", value_type->element_type);
+    else {
+        strncpy(type_name_buffer, type_name(value_type), sizeof(type_name_buffer) - 1);
+        type_name_buffer[sizeof(type_name_buffer) - 1] = '\0';
+    }
+    diagnostic_error_code_formatted(checker->diagnostics, "E3017", NODE_FILE(checker, value), value->token.line,
+        value->token.column, 0, member_function_name, type_name_buffer);
+}
+
+/* printf family: fmt.printf(format string, args [T]). The format string must
+ * be a literal; each directive takes one element of `args`. An array literal
+ * is checked element by element, so its elements may differ in type and are
+ * never unified. An array variable's element type must satisfy every
+ * directive; codegen reads one element per directive, bounds-checked. */
+static void check_printf_call(TypeChecker *checker, AstNode *node, const char *member_function_name) {
+    if (node->data.call.argument_count != 2) return; /* E5008 already reported */
+    AstNode *format_argument = node->data.call.arguments[0];
+    AstNode *values_argument = node->data.call.arguments[1];
+    bool is_literal = values_argument->kind == NODE_ARRAY_VALUE;
+    int element_count = is_literal ? values_argument->data.array_value.count : 0;
+
+    /* Walk the format string first, so each literal element can take its
+     * type from its directive. specifiers[i] is directive i's conversion,
+     * or 0 when it is unknown (E3105). */
+    /* Scan the bytes the literal stands for, not its source text: "\x25d"
+     * is a %d directive once C decodes it. A NUL byte is plain text (codegen
+     * writes it out), so the scan runs the full decoded length. */
+    bool is_format_literal = format_argument->kind == NODE_STRING_VALUE;
+    char *format_text = "";
+    int format_length = 0;
+    if (is_format_literal) {
+        format_text = arena_allocate(checker->arena, strlen(format_argument->data.string_value.value) + 1);
+        format_length = ast_string_decode(format_argument, format_text);
+    }
+    const char *format_end = format_text + format_length;
+    char *specifiers = arena_allocate(checker->arena, (size_t)format_length + 1);
+    int directive_count = 0;
+    if (!is_format_literal) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3086",
+            NODE_FILE(checker, format_argument), format_argument->token.line,
+            format_argument->token.column, 0, member_function_name);
+    }
+    const char *cursor = format_text;
+    while (cursor < format_end) {
+        if (*cursor != '%') { cursor++; continue; }
+        cursor++;
+        if (!*cursor) {
+            /* Dangling % at the end of the format string or before a NUL */
+            diagnostic_error_code_formatted(checker->diagnostics, "E3106",
+                NODE_FILE(checker, format_argument), format_argument->token.line,
+                format_argument->token.column, 0, member_function_name);
+            continue;
+        }
+        if (*cursor == '%') { cursor++; continue; }
+        if (*cursor == 'n') {
+            /* Rejected, and not counted as a directive: the scan goes on so
+             * the elements after it still line up with their directives. */
+            diagnostic_error_code_formatted(checker->diagnostics, "E3087",
+                NODE_FILE(checker, format_argument), format_argument->token.line,
+                format_argument->token.column, 0);
+            cursor++;
+            continue;
+        }
+        /* Flags, width, precision, length modifier */
+        const char *flags = cursor;
+        while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') cursor++;
+        int flag_count = (int)(cursor - flags);
+        /* Width, then precision. C's printf takes each as an int; a larger
+         * one makes it fail with EOVERFLOW and print nothing at all. */
+        bool has_precision = false;
+        for (int part = 0; part < 2; part++) {
+            if (part == 1) {
+                if (*cursor != '.') break;
+                has_precision = true;
+                cursor++;
+            }
+            const char *digits = cursor;
+            int64_t amount = 0;
+            while (*cursor >= '0' && *cursor <= '9') {
+                if (amount <= INT32_MAX) amount = amount * 10 + (*cursor - '0');
+                cursor++;
+            }
+            if (amount > INT32_MAX) {
+                diagnostic_error_code_formatted(checker->diagnostics, "E3179",
+                    NODE_FILE(checker, format_argument), format_argument->token.line,
+                    format_argument->token.column, 0, member_function_name,
+                    part == 0 ? "width" : "precision",
+                    typechecker_format(checker, "%.*s", (int)(cursor - digits), digits));
+            }
+        }
+        const char *length_modifier = cursor;
+        if (*cursor == 'h') { cursor++; if (*cursor == 'h') cursor++; }
+        else if (*cursor == 'l') { cursor++; if (*cursor == 'l') cursor++; }
+        else if (*cursor == 'L') cursor++;
+        int length_modifier_length = (int)(cursor - length_modifier);
+        char specifier = *cursor ? *cursor++ : 0;
+        if (!specifier) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3106",
+                NODE_FILE(checker, format_argument), format_argument->token.line,
+                format_argument->token.column, 0, member_function_name);
+            continue;
+        }
+        if (!strchr("diuxXofgeGEscb", specifier)) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3105",
+                NODE_FILE(checker, format_argument), format_argument->token.line,
+                format_argument->token.column, 0, member_function_name, specifier);
+            specifier = 0;
+        } else if (length_modifier_length > 0) {
+            /* Codegen sizes every value from its type; a C length modifier
+             * would make C read the value at a different width. */
+            diagnostic_error_code_formatted(checker->diagnostics, "E3177",
+                NODE_FILE(checker, format_argument), format_argument->token.line,
+                format_argument->token.column, 0, member_function_name,
+                typechecker_format(checker, "%.*s", length_modifier_length, length_modifier));
+        } else {
+            /* Flags and precision a conversion gives no meaning to (C leaves
+             * most of them undefined) are rejected rather than passed on. */
+            const char *allowed_flags = strchr("di", specifier) ? "-+ 0"
+                : specifier == 'u' ? "-0"
+                : strchr("xXo", specifier) ? "-0#"
+                : strchr("fgeGE", specifier) ? "-+ 0#"
+                : "-";
+            bool allows_precision = !strchr("cb", specifier);
+            for (int flag_index = 0; flag_index < flag_count; flag_index++) {
+                if (strchr(allowed_flags, flags[flag_index])) continue;
+                diagnostic_error_code_formatted(checker->diagnostics, "E3178",
+                    NODE_FILE(checker, format_argument), format_argument->token.line,
+                    format_argument->token.column, 0, member_function_name,
+                    typechecker_format(checker, "the '%c' flag", flags[flag_index]), specifier);
+                break;
+            }
+            if (has_precision && !allows_precision) {
+                diagnostic_error_code_formatted(checker->diagnostics, "E3178",
+                    NODE_FILE(checker, format_argument), format_argument->token.line,
+                    format_argument->token.column, 0, member_function_name, "a precision", specifier);
+            }
+        }
+        specifiers[directive_count++] = specifier;
+    }
+
+    /* Resolve the values. A bare number literal takes the type its directive
+     * reads, as it would from any other typed context: {255} for %u is u64,
+     * {3} for %f is f64. */
+    GrayType **element_types = NULL;
+    GrayType *variable_element_type = NULL;
+    if (is_literal) {
+        element_types = arena_allocate(checker->arena, sizeof(GrayType *) * (element_count ? element_count : 1));
+        for (int i = 0; i < element_count; i++) {
+            AstNode *element = values_argument->data.array_value.elements[i];
+            char specifier = i < directive_count ? specifiers[i] : 0;
+            GrayType *literal_target = specifier == 'u' ? &TYPE_U64
+                : (specifier && strchr("fgeGE", specifier)) ? &TYPE_F64 : NULL;
+            element_types[i] = literal_target && is_literal_expression(element)
+                ? check_expression_as(checker, element, literal_target)
+                : resolve_expression(checker, element);
+            reject_multi_return_in_single_position(checker, element);
+            check_format_value_is_primitive(checker, member_function_name, element, element_types[i]);
+        }
+    } else {
+        GrayType *values_type = resolve_expression(checker, values_argument);
+        if (values_type && values_type->kind == TYPE_KIND_ARRAY && values_type->element_type) {
+            variable_element_type = type_from_name(resolve_type_alias(checker,
+                checker_resolve_type_name(checker, values_type->element_type)));
+            check_format_value_is_primitive(checker, member_function_name, values_argument, variable_element_type);
+        } else if (values_type && values_type->kind != TYPE_KIND_UNKNOWN) {
+            diagnostic_error_message(checker->diagnostics, "E5026",
+                typechecker_format(checker, "'fmt.%s()' expects an array of values as argument 2, got '%s'",
+                    member_function_name, type_display_name(checker, values_type)),
+                NODE_FILE(checker, values_argument), values_argument->token.line, values_argument->token.column, 0);
+        }
+    }
+    if (!is_format_literal) return;
+
+    /* Check each directive against its element. */
+    for (int element_index = 0; element_index < directive_count; element_index++) {
+        char specifier = specifiers[element_index];
+        if (!specifier) continue;
+        AstNode *value = values_argument;
+        GrayType *value_type = variable_element_type;
+        if (is_literal) {
+            if (element_index >= element_count) break;
+            value = values_argument->data.array_value.elements[element_index];
+            value_type = element_types[element_index];
+        }
+        /* An unknown type was reported where it arose, or is a generic
+         * parameter checked once the function is instantiated. A composite
+         * value was reported as E3017. */
+        if (!value_type || value_type->kind == TYPE_KIND_UNKNOWN || is_composite_format_value(value_type)) continue;
+        const char *expected = format_directive_mismatch(specifier, value_type);
+        if (expected) {
+            char specifier_text[2] = { specifier, '\0' };
+            diagnostic_error_code_formatted(checker->diagnostics, "E3088",
+                NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+                member_function_name, specifier_text, expected, element_index, type_name(value_type));
+        }
+    }
+    /* A literal's element count must match the directive count. */
+    if (is_literal && element_count < directive_count) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3107",
+            NODE_FILE(checker, format_argument), format_argument->token.line,
+            format_argument->token.column, 0,
+            member_function_name, directive_count, element_count);
+    } else if (is_literal && element_count > directive_count) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3108",
+            NODE_FILE(checker, format_argument), format_argument->token.line,
+            format_argument->token.column, 0,
+            member_function_name, directive_count, element_count);
+    }
+}
+
 /* fmt module calls whose return type depends on the arguments. Returns
  * `result` (the table-driven type) unless the arguments refine it. */
 static GrayType *resolve_fmt_call(TypeChecker *checker, AstNode *node, const char *member_function_name, GrayType *result) {
-    /* Validate printf/sprintf/format: literal format string + directive types */
-    {
-        bool is_fmt_function = strcmp(member_function_name, "printf") == 0 ||
-                         strcmp(member_function_name, "printfln") == 0 ||
-                         strcmp(member_function_name, "eprintf") == 0 ||
-                         strcmp(member_function_name, "eprintfln") == 0 ||
-                         strcmp(member_function_name, "sprintf") == 0 ||
-                         strcmp(member_function_name, "sprintfln") == 0;
-        if (is_fmt_function && node->data.call.argument_count >= 1) {
-            AstNode *format_argument = node->data.call.arguments[0];
-            if (format_argument->kind != NODE_STRING_VALUE) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3086",
-                    NODE_FILE(checker, format_argument), format_argument->token.line,
-                    format_argument->token.column, 0, member_function_name);
-            } else {
-                /* Walk format string, validate each directive against arg type */
-                const char *format_text = format_argument->data.string_value.value;
-                const char *cursor = format_text;
-                int format_argument_index = 1;
-                int directive_count = 0;
-                while (*cursor) {
-                    if (*cursor != '%') { cursor++; continue; }
-                    cursor++;
-                    if (!*cursor) {
-                        /* Dangling % at end of format string */
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3106",
-                            NODE_FILE(checker, format_argument), format_argument->token.line,
-                            format_argument->token.column, 0, member_function_name);
-                        break;
-                    }
-                    if (*cursor == '%') { cursor++; continue; }
-                    if (*cursor == 'n') {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3087",
-                            NODE_FILE(checker, format_argument), format_argument->token.line,
-                            format_argument->token.column, 0);
-                        break;
-                    }
-                    /* Skip flags, width, precision, length modifier */
-                    while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') cursor++;
-                    while (*cursor >= '0' && *cursor <= '9') cursor++;
-                    if (*cursor == '.') { cursor++; while (*cursor >= '0' && *cursor <= '9') cursor++; }
-                    if (*cursor == 'h') { cursor++; if (*cursor == 'h') cursor++; }
-                    else if (*cursor == 'l') { cursor++; if (*cursor == 'l') cursor++; }
-                    else if (*cursor == 'L') cursor++;
-                    char specifier = *cursor ? *cursor++ : 0;
-                    if (!specifier) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3106",
-                            NODE_FILE(checker, format_argument), format_argument->token.line,
-                            format_argument->token.column, 0, member_function_name);
-                        break;
-                    }
-                    directive_count++;
-                    /* Reject unknown format directives */
-                    bool known = false;
-                    switch (specifier) {
-                    case 'd': case 'i': case 'u':
-                    case 'x': case 'X': case 'o':
-                    case 'f': case 'g': case 'e': case 'G': case 'E':
-                    case 's': case 'c': case 'b':
-                        known = true;
-                        break;
-                    default:
-                        known = false;
-                        break;
-                    }
-                    if (!known) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3105",
-                            NODE_FILE(checker, format_argument), format_argument->token.line,
-                            format_argument->token.column, 0, member_function_name, specifier);
-                        format_argument_index++;
-                        continue;
-                    }
-                    if (format_argument_index >= node->data.call.argument_count) { format_argument_index++; continue; }
-                    AstNode *directive_argument = node->data.call.arguments[format_argument_index];
-                    GrayType *directive_argument_type = resolve_expression(checker, directive_argument);
-                    format_argument_index++;
-                    if (!directive_argument_type) continue;
-                    const char *expected = NULL;
-                    bool is_valid = false;
-                    switch (specifier) {
-                    case 'd': case 'i':
-                        expected = "signed integer or char";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_SIGNED_INTEGER || directive_argument_type->kind == TYPE_KIND_CHAR;
-                        break;
-                    case 'u':
-                        expected = "unsigned integer";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER;
-                        break;
-                    case 'x': case 'X': case 'o':
-                        expected = "integer";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_SIGNED_INTEGER || directive_argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER;
-                        break;
-                    case 'f': case 'g': case 'e': case 'G': case 'E':
-                        expected = "f32 or f64";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_FLOATING_POINT;
-                        break;
-                    case 's':
-                        expected = "string";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_STRING;
-                        break;
-                    case 'c':
-                        expected = "char";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_CHAR ||
-                             (directive_argument_type->kind == TYPE_KIND_SIGNED_INTEGER && !(directive_argument_type->name && is_wide_integer_type_name(directive_argument_type->name)));
-                        break;
-                    case 'b':
-                        expected = "bool";
-                        is_valid = directive_argument_type->kind == TYPE_KIND_BOOL;
-                        break;
-                    default:
-                        is_valid = true;
-                        break;
-                    }
-                    if (!is_valid && expected) {
-                        char specifier_text[2] = { specifier, '\0' };
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3088",
-                            NODE_FILE(checker, directive_argument), directive_argument->token.line,
-                            directive_argument->token.column, 0,
-                            member_function_name, specifier_text, expected, format_argument_index - 1,
-                            type_name(directive_argument_type));
-                    }
-                }
-                /* Check argument count vs directive count */
-                int argument_count = node->data.call.argument_count - 1;
-                if (argument_count < directive_count) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3107",
-                        NODE_FILE(checker, format_argument), format_argument->token.line,
-                        format_argument->token.column, 0,
-                        member_function_name, directive_count, argument_count);
-                } else if (argument_count > directive_count) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3108",
-                        NODE_FILE(checker, format_argument), format_argument->token.line,
-                        format_argument->token.column, 0,
-                        member_function_name, directive_count, argument_count);
-                }
-            }
-        }
+    if (is_printf_function_name(member_function_name)) {
+        check_printf_call(checker, node, member_function_name);
+        return result;
     }
     /* Validate that non-format args are primitive types */
     for (int argument_index = 1; argument_index < node->data.call.argument_count; argument_index++) {
-        GrayType *argument_type = resolve_expression(checker, node->data.call.arguments[argument_index]);
-        if (argument_type && (argument_type->kind == TYPE_KIND_STRUCT || argument_type->kind == TYPE_KIND_ARRAY ||
-                      argument_type->kind == TYPE_KIND_MAP || argument_type->kind == TYPE_KIND_POINTER)) {
-            /* Build a readable type name */
-            char type_name_buffer[TYPE_NAME_MAX];
-            if (argument_type->kind == TYPE_KIND_ARRAY && argument_type->element_type)
-                snprintf(type_name_buffer, sizeof(type_name_buffer), "[%s]", argument_type->element_type);
-            else if (argument_type->kind == TYPE_KIND_MAP)
-                snprintf(type_name_buffer, sizeof(type_name_buffer), "map[%s:%s]",
-                    argument_type->key_type ? argument_type->key_type : "?",
-                    argument_type->value_type ? argument_type->value_type : "?");
-            else if (argument_type->kind == TYPE_KIND_POINTER && argument_type->element_type)
-                snprintf(type_name_buffer, sizeof(type_name_buffer), "^%s", argument_type->element_type);
-            else {
-                strncpy(type_name_buffer, type_name(argument_type), sizeof(type_name_buffer) - 1);
-                type_name_buffer[sizeof(type_name_buffer) - 1] = '\0';
-            }
-            diagnostic_error_code_formatted(checker->diagnostics, "E3017", NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line,
-                node->data.call.arguments[argument_index]->token.column, 0, member_function_name, type_name_buffer);
-        }
+        AstNode *argument = node->data.call.arguments[argument_index];
+        check_format_value_is_primitive(checker, member_function_name, argument, resolve_expression(checker, argument));
     }
     return result;
 }
@@ -9653,27 +9763,6 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     }
                 }
             }
-            /* Maps functions whose return type depends on map key/value types */
-            if (!found_in_using && (strcmp(function_name, "get_keys") == 0 || strcmp(function_name, "get_values") == 0)) {
-                for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
-                    if (!using_module_accessible(checker, using_index)) continue;
-                    const char *real_module = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
-                    if (strcmp(real_module, "maps") == 0) {
-                        found_in_using = true;
-                        using_stdlib_module = real_module;
-                        if (node->data.call.argument_count > 0) {
-                            GrayType *map_type = resolve_expression(checker, node->data.call.arguments[0]);
-                            if (strcmp(function_name, "get_keys") == 0)
-                                result = type_array(map_type && map_type->key_type ? map_type->key_type : "string");
-                            else
-                                result = type_array(map_type && map_type->value_type ? map_type->value_type : "string");
-                        } else {
-                            result = type_array("string");
-                        }
-                        break;
-                    }
-                }
-            }
             for (int using_index = 0; using_index < checker->using_module_count && !found_in_using; using_index++) {
                 if (!using_module_accessible(checker, using_index)) continue;
                 const char *using_module = checker->using_modules[using_index];
@@ -9684,7 +9773,6 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 if (using_metadata) {
                     found_in_using = true;
                     using_stdlib_module = real_module;
-                    result = using_metadata->return_type ? resolve_return_type(checker, using_metadata, node) : &TYPE_UNKNOWN;
                 }
                 /* 2) Try user-defined module */
                 if (!found_in_using) {
@@ -9711,16 +9799,12 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             if (found_in_using) {
-                /* Type already set above. A bare name reaching a stdlib
-                 * function is the same call as the qualified form, so it
-                 * gets the same signature checks — otherwise a wrong
-                 * argument count or type here reaches the C compiler. */
+                /* A bare name reaching a stdlib function is the same call as
+                 * the qualified form, so it goes through the same resolution:
+                 * every signature and module-specific check, and the return
+                 * type. Running only some of them let bad calls reach C. */
                 if (using_stdlib_module) {
-                    typechecker_check_stdlib_argument_count(checker, using_stdlib_module, function_name, node);
-                    typechecker_check_stdlib_argument_types(checker, using_stdlib_module, function_name, node);
-                    typechecker_check_strconv_base(checker, using_stdlib_module, function_name, node);
-                    typechecker_check_io_read_lines_limit(checker, using_stdlib_module, function_name, node);
-                    typechecker_check_const_domain(checker, using_stdlib_module, function_name, node);
+                    result = resolve_stdlib_call(checker, node, using_stdlib_module, function_name);
                 }
             } else {
                 /* Check if it's a variable holding a function reference */
@@ -9941,6 +10025,26 @@ static void normalize_instance_call_on_expression(TypeChecker *checker, AstNode 
     node->data.call.argument_count = original_count + 1;
 }
 
+/* The array literal holding a printf call's values. Its elements are
+ * checked one by one against their directives (check_printf_call), so the
+ * literal is never resolved as an array: its elements may differ in type. */
+static bool is_printf_values_literal(TypeChecker *checker, AstNode *call, int argument_index) {
+    if (argument_index != 1 || call->data.call.arguments[1]->kind != NODE_ARRAY_VALUE) return false;
+    AstNode *function_node = call->data.call.function;
+    const char *module_name = NULL;
+    const char *function_name = NULL;
+    if (function_node->kind == NODE_MEMBER_EXPRESSION && ast_member_qualifier(function_node)) {
+        const char *raw_module_name = ast_member_qualifier(function_node);
+        if (!typechecker_is_stdlib_import(checker, raw_module_name)) return false;
+        module_name = typechecker_resolve_alias(checker, raw_module_name);
+        function_name = function_node->data.member.member;
+    } else if (function_node->kind == NODE_LABEL && !find_function(checker, function_node->data.label.value)) {
+        function_name = function_node->data.label.value;
+        module_name = find_using_stdlib_module(checker, function_name);
+    }
+    return module_name && function_name && strcmp(module_name, "fmt") == 0 && is_printf_function_name(function_name);
+}
+
 static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
@@ -9975,6 +10079,8 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
         if (callee_declaration && i < callee_declaration->data.function_declaration.parameter_count &&
             (node->data.call.arguments[i]->kind == NODE_ARRAY_VALUE ||
              node->data.call.arguments[i]->kind == NODE_MAP_VALUE))
+            continue;
+        if (is_printf_values_literal(checker, node, i))
             continue;
         resolve_expression(checker, node->data.call.arguments[i]);
 

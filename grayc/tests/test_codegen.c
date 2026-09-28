@@ -2165,10 +2165,10 @@ static void test_e2e_fmt_bigint_directives(void) {
         "import @fmt\n"
         "do main() {\n"
         "  mut a i128 = 255\n"
-        "  println(fmt.sprintf(\"%d\", a))\n"
-        "  println(fmt.sprintf(\"%x\", a))\n"
+        "  println(fmt.sprintf(\"%d\", {a}))\n"
+        "  println(fmt.sprintf(\"%x\", {a}))\n"
         "  mut b u256 = 4096\n"
-        "  println(fmt.sprintf(\"%o\", b))\n"
+        "  println(fmt.sprintf(\"%o\", {b}))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "255\nff\n10000");

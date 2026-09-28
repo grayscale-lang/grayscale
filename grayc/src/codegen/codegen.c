@@ -1872,7 +1872,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
 
 /* Emit the escaped body of a C string literal for `node` (a NODE_STRING_VALUE),
  * without the surrounding quotes or any gray_string_lit wrapper. Hex escapes are
- * split with string concatenation ("A\x42" "C") to stop C's greedy \x parsing. */
+ * split with string concatenation ("A\x42" "C") to stop C's greedy \x parsing,
+ * and every '?' is written \? so C never reads "??=" and the like as trigraphs. */
 static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
     const char *cursor = node->data.string_value.value;
     if (node->data.string_value.is_raw) {
@@ -1888,6 +1889,8 @@ static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, "\\r");
             } else if (*cursor == '\t') {
                 emit(codegen, "\\t");
+            } else if (*cursor == '?') {
+                emit(codegen, "\\?");
             } else {
                 append_char_to_buffer(&codegen->output, *cursor);
             }
@@ -1917,6 +1920,9 @@ static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
                 cursor++;
             } else if (*cursor == '\r') {
                 emit(codegen, "\\r");
+                cursor++;
+            } else if (*cursor == '?') {
+                emit(codegen, "\\?");
                 cursor++;
             } else {
                 append_char_to_buffer(&codegen->output, *cursor);
@@ -3682,44 +3688,49 @@ static bool index_expression_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
     return false;
 }
 
+/* The C type a GrayArray stores an element of `element_type_text` (a
+ * Grayscale type name) as. */
+static const char *array_element_c_type(CodeGen *codegen, const char *element_type_text) {
+    const char *c_element_type = "int64_t";
+    const char *element_type_name = codegen_effective_type_string(codegen, element_type_text);
+    if (element_type_name && (strcmp(element_type_name, "func") == 0 || strncmp(element_type_name, "func(", 5) == 0)) {
+        c_element_type = "void *";
+    } else if (element_type_name) {
+        GrayType *element_type = type_from_name(element_type_name);
+        if (element_type->kind == TYPE_KIND_FLOATING_POINT) c_element_type = (strcmp(element_type_name, "f32") == 0) ? "float" : "double";
+        else if (element_type->kind == TYPE_KIND_BOOL) c_element_type = "bool";
+        else if (element_type->kind == TYPE_KIND_STRING) c_element_type = "GrayString";
+        else if (element_type->kind == TYPE_KIND_CHAR) c_element_type = "int32_t";
+        /* Sized integer element types (u8/u16/i32/…) are stored packed by
+         * cast(arr, [T]); reading them with the int64_t fall-through
+         * strides past the buffer. Match the storage width. */
+        else if ((element_type->kind == TYPE_KIND_SIGNED_INTEGER || element_type->kind == TYPE_KIND_UNSIGNED_INTEGER) && !is_wide_integer_type_name(element_type_name))
+            c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        else if (element_type->kind == TYPE_KIND_ARRAY) c_element_type = "GrayArray";
+        else if (element_type->kind == TYPE_KIND_MAP) c_element_type = "GrayMap";
+        else if (element_type->kind == TYPE_KIND_STRUCT) c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        else if (element_type->kind == TYPE_KIND_ENUM) {
+            c_element_type = codegen_enum_is_string(codegen, element_type_name)
+                ? "GrayString" : gray_type_to_c_codegen(codegen, element_type_name);
+        }
+        else if (element_type->kind == TYPE_KIND_POINTER) {
+            static char index_pointer_buffer[MESSAGE_BUFFER_SIZE];
+            const char *pointee = element_type->element_type ? element_type->element_type : "void";
+            snprintf(index_pointer_buffer, sizeof(index_pointer_buffer), "%s *", gray_type_to_c_codegen(codegen, pointee));
+            c_element_type = index_pointer_buffer;
+        }
+    }
+    if (element_type_text && is_wide_integer_type_name(element_type_text)) {
+        c_element_type = wide_integer_prefix(element_type_text);
+    }
+    return c_element_type;
+}
+
 static void emit_index_expression(CodeGen *codegen, AstNode *node) {
     /* Check if left side is an array (GrayArray) or string */
     GrayType *left_type = type_table_get(codegen->type_table, node->data.index_expression.left);
     if (left_type && left_type->kind == TYPE_KIND_ARRAY) {
-        /* Determine element C type */
-        const char *c_element_type = "int64_t";
-        const char *element_type_name = codegen_effective_type_string(codegen, left_type->element_type);
-        if (element_type_name && (strcmp(element_type_name, "func") == 0 || strncmp(element_type_name, "func(", 5) == 0)) {
-            c_element_type = "void *";
-        } else if (element_type_name) {
-            GrayType *element_type = type_from_name(element_type_name);
-            if (element_type->kind == TYPE_KIND_FLOATING_POINT) c_element_type = (strcmp(element_type_name, "f32") == 0) ? "float" : "double";
-            else if (element_type->kind == TYPE_KIND_BOOL) c_element_type = "bool";
-            else if (element_type->kind == TYPE_KIND_STRING) c_element_type = "GrayString";
-            else if (element_type->kind == TYPE_KIND_CHAR) c_element_type = "int32_t";
-            /* Sized integer element types (u8/u16/i32/…) are stored packed by
-             * cast(arr, [T]); reading them with the int64_t fall-through
-             * strides past the buffer. Match the storage width. */
-            else if ((element_type->kind == TYPE_KIND_SIGNED_INTEGER || element_type->kind == TYPE_KIND_UNSIGNED_INTEGER) && !is_wide_integer_type_name(element_type_name))
-                c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
-            else if (element_type->kind == TYPE_KIND_ARRAY) c_element_type = "GrayArray";
-            else if (element_type->kind == TYPE_KIND_MAP) c_element_type = "GrayMap";
-            else if (element_type->kind == TYPE_KIND_STRUCT) c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
-            else if (element_type->kind == TYPE_KIND_ENUM) {
-                c_element_type = codegen_enum_is_string(codegen, element_type_name)
-                    ? "GrayString" : gray_type_to_c_codegen(codegen, element_type_name);
-            }
-            else if (element_type->kind == TYPE_KIND_POINTER) {
-                static char index_pointer_buffer[MESSAGE_BUFFER_SIZE];
-                const char *pointee = element_type->element_type ? element_type->element_type : "void";
-                snprintf(index_pointer_buffer, sizeof(index_pointer_buffer), "%s *", gray_type_to_c_codegen(codegen, pointee));
-                c_element_type = index_pointer_buffer;
-            }
-        }
-        /* Check for wide integer element types */
-        if (left_type->element_type && is_wide_integer_type_name(left_type->element_type)) {
-            c_element_type = wide_integer_prefix(left_type->element_type);
-        }
+        const char *c_element_type = array_element_c_type(codegen, left_type->element_type);
         /* If left is an rvalue, GRAY_ARRAY_GET's &(arr) would be invalid.
          * Handles three rvalue sources:
          *  1. function call result (NODE_CALL_EXPRESSION)
@@ -4743,15 +4754,54 @@ static void emit_to_string(CodeGen *codegen, AstNode *argument) {
     }
 }
 
+/* The type of the printf value at `index`: that element of an array literal,
+ * or the element type of an array variable. */
+static GrayType *format_value_type(CodeGen *codegen, AstNode *call_node, int index) {
+    if (!codegen->type_table || call_node->data.call.argument_count < 2) return NULL;
+    AstNode *values = call_node->data.call.arguments[1];
+    if (values->kind == NODE_ARRAY_VALUE) {
+        return index < values->data.array_value.count
+            ? type_table_get(codegen->type_table, values->data.array_value.elements[index]) : NULL;
+    }
+    GrayType *values_type = type_table_get(codegen->type_table, values);
+    if (!values_type || values_type->kind != TYPE_KIND_ARRAY || !values_type->element_type) return NULL;
+    return type_from_name(codegen_effective_type_string(codegen, values_type->element_type));
+}
+
+/* Append one byte to a C string literal, escaped so C reads back exactly that
+ * byte. Octal escapes take at most three digits, so unlike \x they cannot
+ * swallow the characters that follow. */
+static void append_c_literal_byte(CodeGen *codegen, unsigned char byte) {
+    if (byte == '"' || byte == '\\' || byte == '?') {
+        /* \? keeps "??x" from reading as a trigraph */
+        append_char_to_buffer(&codegen->output, '\\');
+        append_char_to_buffer(&codegen->output, (char)byte);
+    } else if (byte >= 0x20 && byte < 0x7F) {
+        append_char_to_buffer(&codegen->output, (char)byte);
+    } else {
+        emit_formatted(codegen, "\\%03o", byte);
+    }
+}
+
 /* Emit a fmt format string literal with %d/%i/%u upgraded to %lld/%llu for
  * Grayscale i64/u64 arguments (which are int64_t/uint64_t) to avoid -Wformat.
  * If append_newline is true, a \n is appended before the closing quote. */
-static void emit_format_string_normalized_extended(CodeGen *codegen, const char *format_text, AstNode *call_node, bool append_newline) {
+static void emit_format_string_normalized_extended(CodeGen *codegen, const char *format_text, int format_length,
+    AstNode *call_node, bool append_newline)
+{
     const char *cursor = format_text;
-    int directive_index = 1; /* which call arg corresponds to the next directive */
+    const char *format_end = format_text + format_length;
+    int directive_index = 0; /* which element of args corresponds to the next directive */
     append_char_to_buffer(&codegen->output, '"');
-    while (*cursor) {
-        if (*cursor != '%') { append_char_to_buffer(&codegen->output, *cursor++); continue; }
+    while (cursor < format_end) {
+        if (*cursor == '\0') {
+            /* C would end the format string here; %c with a 0 argument
+             * (emit_format_arguments) writes the NUL byte instead. */
+            emit(codegen, "%c");
+            cursor++;
+            continue;
+        }
+        if (*cursor != '%') { append_c_literal_byte(codegen, (unsigned char)*cursor++); continue; }
         /* Emit '%' and start scanning the directive */
         append_char_to_buffer(&codegen->output, '%');
         cursor++;
@@ -4794,8 +4844,7 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
         bool has_length = length_modifier_length > 0;
         char specifier = *cursor ? *cursor++ : 0;
         if (!specifier) break;
-        GrayType *directive_type = (directive_index < call_node->data.call.argument_count && codegen->type_table)
-            ? type_table_get(codegen->type_table, call_node->data.call.arguments[directive_index]) : NULL;
+        GrayType *directive_type = format_value_type(codegen, call_node, directive_index);
         bool is_argument_wide_integer = directive_type && directive_type->name &&
             is_wide_integer_type_name(directive_type->name);
         char emitted_specifier = specifier;
@@ -4808,6 +4857,11 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
              * after it. */
             emitted_specifier = 's';
             was_downgraded_to_string = true;
+        } else if (specifier == 'c') {
+            /* char is a Unicode codepoint and C's %c prints only its low
+             * byte; emit_format_value() passes its UTF-8 encoding for %s. */
+            emitted_specifier = 's';
+            was_downgraded_to_string = true;
         } else if (is_argument_wide_integer && (specifier == 'd' || specifier == 'i' || specifier == 'u' ||
                    specifier == 'x' || specifier == 'X' || specifier == 'o')) {
             /* i128/u128/i256/u256 are struct-backed; emit_format_arguments()
@@ -4815,12 +4869,14 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
             emitted_specifier = 's';
             was_downgraded_to_string = true;
         }
-        /* Emit flags/width/precision, filtered when the directive became %s. */
-        for (int field_index = 0; field_index < flags_length; field_index++) {
+        /* Emit flags/width/precision, filtered when the directive became %s.
+         * A %c field is padded by gray_fmt_char_field (C would count bytes),
+         * so its width and '-' are not emitted either. */
+        for (int field_index = 0; field_index < flags_length && specifier != 'c'; field_index++) {
             if (was_downgraded_to_string && flags[field_index] != '-') continue;
             append_char_to_buffer(&codegen->output, flags[field_index]);
         }
-        for (int width_index = 0; width_index < width_length; width_index++)
+        for (int width_index = 0; width_index < width_length && specifier != 'c'; width_index++)
             append_char_to_buffer(&codegen->output, width[width_index]);
         if (!was_downgraded_to_string) {
             for (int parameter_index = 0; parameter_index < precision_length; parameter_index++)
@@ -4851,85 +4907,170 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
     append_char_to_buffer(&codegen->output, '"');
 }
 
-static void emit_format_string_normalized(CodeGen *codegen, const char *format_text, AstNode *call_node) {
-    emit_format_string_normalized_extended(codegen, format_text, call_node, false);
+/* The bytes a printf format string literal stands for (escapes decoded), which
+ * the directive walk and the emitted C literal both work from. Their count,
+ * which includes any NUL bytes, goes to *length. */
+static char *decoded_format_text(AstNode *format_argument, int *length) {
+    char *text = xmalloc(strlen(format_argument->data.string_value.value) + 1);
+    *length = ast_string_decode(format_argument, text);
+    return text;
 }
 
-/* Record the conversion spec char of each directive in fmt_str, 1:1 with the
- * arguments that follow (matching emit_format_string_normalized's directive
- * walk). Returns the count recorded, capped at max. */
-static int scan_format_specs(const char *format_text, char *specs, int maximum_count) {
+/* One printf directive as the values are emitted against it. */
+typedef struct {
+    char specifier;  /* '\0' for a NUL byte of the format text, written by %c */
+    int32_t width;   /* 0 when none */
+    bool left_align; /* the '-' flag */
+} FormatDirective;
+
+/* Record each directive in format_text, and each NUL byte, in the order the
+ * emitted C format string reads their arguments (matching
+ * emit_format_string_normalized_extended's walk). Each takes at least one
+ * byte, so `directives` needs no more than format_length slots. Returns the
+ * count recorded. */
+static int scan_format_directives(const char *format_text, int format_length, FormatDirective *directives) {
     const char *cursor = format_text;
+    const char *format_end = format_text + format_length;
     int count = 0;
-    while (*cursor) {
+    while (cursor < format_end) {
+        if (*cursor == '\0') {
+            directives[count++] = (FormatDirective){'\0', 0, false};
+            cursor++;
+            continue;
+        }
         if (*cursor != '%') { cursor++; continue; }
         cursor++;
         if (!*cursor) break;
         if (*cursor == '%') { cursor++; continue; }
-        while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') cursor++;
-        while (*cursor >= '0' && *cursor <= '9') cursor++;
+        FormatDirective directive = {0, 0, false};
+        while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') {
+            if (*cursor == '-') directive.left_align = true;
+            cursor++;
+        }
+        /* The typechecker rejects a width above INT32_MAX (E3179). */
+        while (*cursor >= '0' && *cursor <= '9') directive.width = directive.width * 10 + (*cursor++ - '0');
         if (*cursor == '.') { cursor++; while (*cursor >= '0' && *cursor <= '9') cursor++; }
         if (*cursor == 'h') { cursor++; if (*cursor == 'h') cursor++; }
         else if (*cursor == 'l') { cursor++; if (*cursor == 'l') cursor++; }
         else if (*cursor == 'L') cursor++;
         if (!*cursor) break;
-        if (count < maximum_count) specs[count] = *cursor;
-        count++;
-        cursor++;
+        directive.specifier = *cursor++;
+        directives[count++] = directive;
     }
     return count;
 }
 
-static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_index) {
-    char specs[64];
-    int specifier_count = 0;
-    AstNode *format_argument = node->data.call.arguments[0];
-    if (format_argument->kind == NODE_STRING_VALUE)
-        specifier_count = scan_format_specs(format_argument->data.string_value.value, specs, 64);
-    for (int i = start_index; i < node->data.call.argument_count; i++) {
-        emit(codegen, ", ");
-        AstNode *argument = node->data.call.arguments[i];
-        GrayType *argument_type = type_table_get(codegen->type_table, argument);
-        if (argument_type && argument_type->name && is_wide_integer_type_name(argument_type->name)) {
-            /* Struct-backed big integers cannot ride in a printf vararg slot;
-             * the directive was rewritten to %s, so pass a converted string. */
-            const char *prefix = wide_integer_prefix(argument_type->name);
-            char specifier = (i - 1 >= 0 && i - 1 < specifier_count) ? specs[i - 1] : 'd';
-            if (specifier == 'x' || specifier == 'X') {
-                emit_formatted(codegen, "%s_to_hex_string(gray_default_arena, ", prefix);
-                emit_expression(codegen, argument);
-                emit_formatted(codegen, ", %s).data", specifier == 'X' ? "true" : "false");
-            } else if (specifier == 'o') {
-                emit_formatted(codegen, "%s_to_octal_string(gray_default_arena, ", prefix);
-                emit_expression(codegen, argument);
-                emit(codegen, ").data");
-            } else {
-                emit_formatted(codegen, "%s_to_string(gray_default_arena, ", prefix);
-                emit_expression(codegen, argument);
-                emit(codegen, ").data");
-            }
-        } else if (argument_type && argument_type->kind == TYPE_KIND_STRING) {
-            emit_expression(codegen, argument);
-            emit(codegen, ".data");
-        } else if (argument_type && argument_type->kind == TYPE_KIND_BOOL) {
-            emit_expression(codegen, argument);
-            emit(codegen, " ? \"true\" : \"false\"");
-        } else if (argument_type && argument_type->kind == TYPE_KIND_SIGNED_INTEGER && !is_wide_integer_type_name(argument_type->name)) {
-            /* The directive may have been upgraded to %lld (a 64-bit read),
-             * but an integer literal emits as C `int`. Cast so the vararg
-             * slot always carries the full width — the Win64 ABI leaves the
-             * upper half of a 32-bit store as garbage. */
-            emit(codegen, "(long long)(");
-            emit_expression(codegen, argument);
-            emit(codegen, ")");
-        } else if (argument_type && argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER && !is_wide_integer_type_name(argument_type->name)) {
-            emit(codegen, "(unsigned long long)(");
-            emit_expression(codegen, argument);
-            emit(codegen, ")");
+/* Emit one printf value: `value` when it is an expression node, else the C
+ * element read `element_read`. */
+static void emit_format_operand(CodeGen *codegen, AstNode *value, const char *element_read) {
+    if (value) emit_expression(codegen, value);
+    else emit(codegen, element_read);
+}
+
+/* Emit one printf value converted to what its (normalized) directive reads. */
+static void emit_format_value(CodeGen *codegen, GrayType *value_type, FormatDirective directive,
+    AstNode *value, const char *element_read)
+{
+    char specifier = directive.specifier;
+    if (specifier == 'c') {
+        /* %c was rewritten to a bare %s: pass the codepoint's UTF-8 encoding,
+         * padded to the directive's width in characters. An integer that is
+         * not a Unicode scalar value prints U+FFFD (the range check here keeps
+         * a wide one from wrapping into int32_t; gray_builtin_char_to_utf8
+         * rejects negatives and surrogates). */
+        emit(codegen, "gray_fmt_char_field(gray_default_arena, ");
+        if (value_type && value_type->kind == TYPE_KIND_CHAR) {
+            emit_format_operand(codegen, value, element_read);
         } else {
-            emit_expression(codegen, argument);
+            int codepoint_id = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ int64_t _gray_format_codepoint%d = (int64_t)(", codepoint_id);
+            emit_format_operand(codegen, value, element_read);
+            emit_formatted(codegen, "); _gray_format_codepoint%d < 0 || _gray_format_codepoint%d > 0x10FFFF ? 0xFFFD : "
+                "(int32_t)_gray_format_codepoint%d; })", codepoint_id, codepoint_id, codepoint_id);
         }
+        emit_formatted(codegen, ", %d, %s).data", directive.width, directive.left_align ? "true" : "false");
+        return;
     }
+    if (value_type && value_type->name && is_wide_integer_type_name(value_type->name)) {
+        /* Struct-backed big integers cannot ride in a printf vararg slot;
+         * the directive was rewritten to %s, so pass a converted string. */
+        const char *prefix = wide_integer_prefix(value_type->name);
+        if (specifier == 'x' || specifier == 'X') {
+            emit_formatted(codegen, "%s_to_hex_string(gray_default_arena, ", prefix);
+            emit_format_operand(codegen, value, element_read);
+            emit_formatted(codegen, ", %s).data", specifier == 'X' ? "true" : "false");
+        } else if (specifier == 'o') {
+            emit_formatted(codegen, "%s_to_octal_string(gray_default_arena, ", prefix);
+            emit_format_operand(codegen, value, element_read);
+            emit(codegen, ").data");
+        } else {
+            emit_formatted(codegen, "%s_to_string(gray_default_arena, ", prefix);
+            emit_format_operand(codegen, value, element_read);
+            emit(codegen, ").data");
+        }
+    } else if (value_type && value_type->kind == TYPE_KIND_STRING) {
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, ".data");
+    } else if (value_type && value_type->kind == TYPE_KIND_BOOL) {
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, " ? \"true\" : \"false\"");
+    } else if (value_type && value_type->kind == TYPE_KIND_SIGNED_INTEGER) {
+        /* The directive may have been upgraded to %lld (a 64-bit read),
+         * but an integer literal emits as C `int`. Cast so the vararg
+         * slot always carries the full width — the Win64 ABI leaves the
+         * upper half of a 32-bit store as garbage. */
+        emit(codegen, "(long long)(");
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, ")");
+    } else if (value_type && value_type->kind == TYPE_KIND_UNSIGNED_INTEGER) {
+        emit(codegen, "(unsigned long long)(");
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, ")");
+    } else {
+        emit_format_operand(codegen, value, element_read);
+    }
+}
+
+/* Emit the printf values after the format string: an array literal's
+ * elements, or one bounds-checked read of the array held in
+ * _gray_format_values<values_id> per directive. */
+static void emit_format_arguments(CodeGen *codegen, AstNode *node, int values_id) {
+    FormatDirective *directives = NULL;
+    int directive_count = 0;
+    AstNode *format_argument = node->data.call.arguments[0];
+    if (format_argument->kind == NODE_STRING_VALUE) {
+        int format_length = 0;
+        char *format_text = decoded_format_text(format_argument, &format_length);
+        directives = xmalloc(sizeof(FormatDirective) * ((size_t)format_length + 1));
+        directive_count = scan_format_directives(format_text, format_length, directives);
+        free(format_text);
+    }
+    AstNode *values = node->data.call.arguments[1];
+    bool is_literal = values->kind == NODE_ARRAY_VALUE;
+    GrayType *values_type = is_literal ? NULL : type_table_get(codegen->type_table, values);
+    const char *c_element_type = is_literal ? NULL
+        : array_element_c_type(codegen, values_type ? values_type->element_type : NULL);
+    int value_index = 0;
+    for (int i = 0; i < directive_count; i++) {
+        if (!directives[i].specifier) {
+            emit(codegen, ", 0"); /* the %c that writes a NUL byte */
+            continue;
+        }
+        if (is_literal) {
+            if (value_index >= values->data.array_value.count) break; /* E3107 */
+            AstNode *element = values->data.array_value.elements[value_index];
+            emit(codegen, ", ");
+            emit_format_value(codegen, type_table_get(codegen->type_table, element), directives[i], element, NULL);
+        } else {
+            char element_read[MESSAGE_BUFFER_SIZE];
+            snprintf(element_read, sizeof(element_read), "(*(%s *)gray_array_get_ptr(&_gray_format_values%d, %d, \"%s\", %d))",
+                c_element_type, values_id, value_index, codegen->file, node->token.line);
+            emit(codegen, ", ");
+            emit_format_value(codegen, format_value_type(codegen, node, value_index), directives[i], NULL, element_read);
+        }
+        value_index++;
+    }
+    free(directives);
 }
 
 /* --- Composite type printing --- */
@@ -5687,10 +5828,12 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
          * still needs the separator normalization codegen->file already had. */
         char *normalized = location_token.file ? normalize_path_separators(location_token.file) : NULL;
         const char *file = normalized ? normalized : codegen->file;
-        emit_formatted(codegen,
-            "(GrayStruct_SourceLocation){.file = gray_string_lit(\"%s\"), "
-            ".line = %d, .column = %d}",
-            file ? file : "", location_token.line, location_token.column);
+        /* The path is escaped like any string literal: a quote, backslash
+         * or "??" in it would otherwise break or rewrite the C literal. */
+        emit(codegen, "(GrayStruct_SourceLocation){.file = gray_string_lit(\"");
+        for (const char *cursor = file ? file : ""; *cursor; cursor++)
+            append_c_literal_byte(codegen, (unsigned char)*cursor);
+        emit_formatted(codegen, "\"), .line = %d, .column = %d}", location_token.line, location_token.column);
         free(normalized);
         return true;
     }
@@ -7986,19 +8129,30 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *funct
 /* --- @fmt module --- */
 
 static void emit_format_body(CodeGen *codegen, AstNode *node, const char *prefix, bool newline) {
+    /* An array variable is evaluated once; each directive then reads one
+     * element of it. A literal's elements are passed directly. */
+    AstNode *values = node->data.call.arguments[1];
+    int values_id = 0;
+    if (values->kind != NODE_ARRAY_VALUE) {
+        values_id = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _gray_format_values%d = ", values_id);
+        emit_expression(codegen, values);
+        emit(codegen, "; ");
+    }
     emit(codegen, prefix);
     AstNode *format_argument = node->data.call.arguments[0];
     if (format_argument->kind == NODE_STRING_VALUE) {
-        if (newline)
-            emit_format_string_normalized_extended(codegen, format_argument->data.string_value.value, node, true);
-        else
-            emit_format_string_normalized(codegen, format_argument->data.string_value.value, node);
+        int format_length = 0;
+        char *format_text = decoded_format_text(format_argument, &format_length);
+        emit_format_string_normalized_extended(codegen, format_text, format_length, node, newline);
+        free(format_text);
     } else {
         emit_expression(codegen, format_argument);
         emit(codegen, ".data");
     }
-    emit_format_arguments(codegen, node, 1);
+    emit_format_arguments(codegen, node, values_id);
     emit(codegen, ")");
+    if (values->kind != NODE_ARRAY_VALUE) emit(codegen, "; })");
 }
 
 static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *function_name) {
@@ -8011,7 +8165,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *functi
         {"sprintfln",  "gray_string_format(gray_default_arena, ", true},
     };
     for (int i = 0; i < (int)(sizeof(format_variants) / sizeof(format_variants[0])); i++) {
-        if (strcmp(function_name, format_variants[i].name) == 0 && node->data.call.argument_count >= 1) {
+        if (strcmp(function_name, format_variants[i].name) == 0) {
             emit_format_body(codegen, node, format_variants[i].prefix, format_variants[i].newline);
             return true;
         }
@@ -13446,13 +13600,20 @@ static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatem
                 emit_formatted(codegen, "typedef GrayString GrayEnum_%s;\n", statement->data.enum_declaration.name);
                 for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
                     EnumValue *enum_value = &statement->data.enum_declaration.values[j];
-                    const char *string_value = enum_value->name;
+                    emit_formatted(codegen, "#define GrayEnum_%s_%s ((GrayString){ \"",
+                        statement->data.enum_declaration.name, enum_value->name);
                     if (enum_value->value && enum_value->value->kind == NODE_STRING_VALUE) {
-                        string_value = enum_value->value->data.string_value.value;
+                        /* The length is the bytes the literal decodes to, which
+                         * is what C builds from the escaped body. */
+                        AstNode *string_node = enum_value->value;
+                        char *decoded = xmalloc(strlen(string_node->data.string_value.value) + 1);
+                        int decoded_length = ast_string_decode(string_node, decoded);
+                        free(decoded);
+                        emit_c_string_body(codegen, string_node);
+                        emit_formatted(codegen, "\", %d })\n", decoded_length);
+                    } else {
+                        emit_formatted(codegen, "%s\", %d })\n", enum_value->name, (int)strlen(enum_value->name));
                     }
-                    emit_formatted(codegen, "#define GrayEnum_%s_%s ((GrayString){ \"%s\", %d })\n",
-                        statement->data.enum_declaration.name, enum_value->name,
-                        string_value, (int)strlen(string_value));
                 }
                 emit(codegen, "\n");
             } else if (is_tagged) {
@@ -13665,6 +13826,24 @@ static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatem
     }
 }
 
+/* Emit a #json key into a C string literal. The typechecker keeps quotes,
+ * backslashes and control characters out of keys (E3170); '?' is written \?
+ * so C never reads "??=" and the like as trigraphs. */
+static void emit_json_key_text(CodeGen *codegen, const char *json_key) {
+    for (const char *cursor = json_key; *cursor; cursor++) {
+        if (*cursor == '?') emit(codegen, "\\?");
+        else append_char_to_buffer(&codegen->output, *cursor);
+    }
+}
+
+/* Emit the lookup of `json_key` in the parsed object map _m, opening the
+ * block that reads its value _v. */
+static void emit_json_key_lookup(CodeGen *codegen, const char *json_key) {
+    emit(codegen, "    { GrayString _k = gray_string_lit(\"");
+    emit_json_key_text(codegen, json_key);
+    emit(codegen, "\"); void *_v = gray_map_get(&_m, &_k);\n");
+}
+
 static void codegen_emit_json_helpers(CodeGen *codegen) {
     /* emit JSON parse/stringify helpers for #json structs. Each
      * #json struct gets two static functions:
@@ -13689,16 +13868,16 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
              * accessed below stays keyed by the field name either way. */
             const char *json_key = field->json_tag ? field->json_tag : field->name;
             if (strcmp(field->type_name, "string") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", json_key);
+                emit_json_key_lookup(codegen, json_key);
                 emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
             } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
                 /* A number field of any sized type decodes at that type. */
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", json_key);
+                emit_json_key_lookup(codegen, json_key);
                 emit_formatted(codegen, "      if (_v) gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(%s), &_r.%s, \"%s\", %d); }\n",
                     gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name),
                     codegen->file, statement->token.line);
             } else if (strcmp(field->type_name, "bool") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", json_key);
+                emit_json_key_lookup(codegen, json_key);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
             } else {
                 /* Enum field: serialized by backing type. Tagged enums are
@@ -13710,7 +13889,7 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
                     AstNode *field_enum_declaration = codegen->enum_declarations[enum_index];
                     const char *enum_display_name = field_enum_declaration->data.enum_declaration.original_name
                         ? field_enum_declaration->data.enum_declaration.original_name : resolved_field_type;
-                    emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", json_key);
+                    emit_json_key_lookup(codegen, json_key);
                     emit(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v;\n");
                     if (codegen_enum_is_string(codegen, resolved_field_type)) {
                         emit_formatted(codegen, "        _r.%s = gray_json_enum_from_str(_sv, (const GrayString[]){",
@@ -13794,8 +13973,9 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             /* Key */
             emit_formatted(codegen, "    _buf[_pos++] = '\"';\n");
             int field_name_length = (int)strlen(json_key);
-            emit_formatted(codegen, "    memcpy(_buf + _pos, \"%s\", %d); _pos += %d;\n",
-                json_key, field_name_length, field_name_length);
+            emit(codegen, "    memcpy(_buf + _pos, \"");
+            emit_json_key_text(codegen, json_key);
+            emit_formatted(codegen, "\", %d); _pos += %d;\n", field_name_length, field_name_length);
             emit_formatted(codegen, "    _buf[_pos++] = '\"'; _buf[_pos++] = ':'; _buf[_pos++] = ' ';\n");
             /* Value */
             const char *resolved_field_type = codegen_resolve_type(codegen, field->type_name);

@@ -1,0 +1,12 @@
+// expect-error: E3040
+// A multi-return call cannot be a printf value element.
+
+import @fmt
+
+do pair() -> (i64, i64) {
+    return 1, 2
+}
+
+do main() {
+    fmt.printfln("%d", {pair()})
+}

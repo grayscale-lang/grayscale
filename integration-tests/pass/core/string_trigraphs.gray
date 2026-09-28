@@ -1,0 +1,77 @@
+/*
+ * string_trigraphs.gray - '?' sequences in string literals reach the program
+ * as written; C never decodes "??=" and the other trigraphs in them. A string
+ * enum's length is the bytes its literal decodes to.
+ */
+
+import @json
+import @maps
+
+const Tag enum {
+    Q = "a??=b"
+    N = "x\ny"
+}
+
+const Box struct {
+    s string = "d??=e"
+}
+
+#json
+const Doc struct {
+    name string `json:"k??=y"`
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut all_trigraphs string = "??= ??/ ??( ??) ??< ??> ??' ??! ??-"
+    if len(all_trigraphs) == 35 && len("x??=y") == 5 && "??=" != "#" {
+        println("  [PASS] trigraph sequences in literals keep every byte")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] trigraph sequences in literals keep every byte: '${all_trigraphs}'")
+        failed += 1
+    }
+
+    mut s string = "x"
+    mut interpolated string = "${s}??="
+    mut m map[string:i64] = {"k??=": 1}
+    mut b Box = Box{}
+    mut words [string] = {"x??!"}
+    if interpolated == "x??=" && maps.has_key(m, "k??=") && b.s == "d??=e" && words[0] == "x??!" && `raw??=` == "raw??=" {
+        println("  [PASS] interpolation, map keys, field defaults, array elements and raw strings")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] interpolation, map keys, field defaults, array elements and raw strings")
+        failed += 1
+    }
+
+    mut q string = Tag.Q
+    mut newline string = Tag.N
+    if q == "a??=b" && len(q) == 5 && len(newline) == 3 {
+        println("  [PASS] string enum values keep their text and decoded length")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string enum values keep their text and decoded length: '${q}' ${len(q)} ${len(newline)}")
+        failed += 1
+    }
+
+    mut d Doc = Doc{name: "v"}
+    mut text string = json.stringify(d)
+    mut back Doc = json.parse(text)
+    if text == "{\"k??=y\": \"v\"}" && back.name == "v" {
+        println("  [PASS] a #json key with ?? round-trips")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] a #json key with ?? round-trips: ${text}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

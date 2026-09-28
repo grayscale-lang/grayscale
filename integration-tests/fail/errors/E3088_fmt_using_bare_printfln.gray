@@ -1,0 +1,9 @@
+// expect-error: E3088
+// A bare printfln reached through 'using fmt' checks its directives like fmt.printfln.
+
+import @fmt
+using fmt
+
+do main() {
+    printfln("%d", {"x"})
+}

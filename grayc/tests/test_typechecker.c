@@ -843,7 +843,7 @@ static void test_error_E3017_fmt_struct(void) {
         "const Point struct { x i64\n y i64 }\n"
         "do main() {\n"
         "    mut p Point = Point{x: 1, y: 2}\n"
-        "    fmt.printf(\"%s\", p)\n"
+        "    fmt.printf(\"%s\", {p})\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3017"));
     diagnostic_destroy(diagnostics);
@@ -1762,7 +1762,7 @@ static void test_error_E3095_in_invalid_rhs(void) {
 static void test_error_E3086_fmt_non_string_format(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { mut x i64 = 42\n fmt.printf(x) }");
+        "do main() { mut x i64 = 42\n fmt.printf(x, {}) }");
     ASSERT(has_error_code(diagnostics, "E3086"));
     diagnostic_destroy(diagnostics);
 }
@@ -1770,7 +1770,7 @@ static void test_error_E3086_fmt_non_string_format(void) {
 static void test_error_E3087_fmt_specifier_n(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%n\") }");
+        "do main() { fmt.printf(\"%n\", {}) }");
     ASSERT(has_error_code(diagnostics, "E3087"));
     diagnostic_destroy(diagnostics);
 }
@@ -1778,7 +1778,7 @@ static void test_error_E3087_fmt_specifier_n(void) {
 static void test_error_E3088_fmt_arg_type_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%d\", \"hello\") }");
+        "do main() { fmt.printf(\"%d\", {\"hello\"}) }");
     ASSERT(has_error_code(diagnostics, "E3088"));
     diagnostic_destroy(diagnostics);
 }
@@ -1786,7 +1786,7 @@ static void test_error_E3088_fmt_arg_type_mismatch(void) {
 static void test_error_E3105_fmt_unknown_specifier(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%q\", 42) }");
+        "do main() { fmt.printf(\"%q\", {42}) }");
     ASSERT(has_error_code(diagnostics, "E3105"));
     diagnostic_destroy(diagnostics);
 }
@@ -1794,7 +1794,7 @@ static void test_error_E3105_fmt_unknown_specifier(void) {
 static void test_error_E3106_fmt_dangling_percent(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%\") }");
+        "do main() { fmt.printf(\"%\", {}) }");
     ASSERT(has_error_code(diagnostics, "E3106"));
     diagnostic_destroy(diagnostics);
 }
@@ -1802,7 +1802,7 @@ static void test_error_E3106_fmt_dangling_percent(void) {
 static void test_error_E3107_fmt_too_few_args(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%d %d\", 1) }");
+        "do main() { fmt.printf(\"%d %d\", {1}) }");
     ASSERT(has_error_code(diagnostics, "E3107"));
     diagnostic_destroy(diagnostics);
 }
@@ -1810,7 +1810,7 @@ static void test_error_E3107_fmt_too_few_args(void) {
 static void test_error_E3108_fmt_too_many_args(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { fmt.printf(\"%d\", 1, 2) }");
+        "do main() { fmt.printf(\"%d\", {1, 2}) }");
     ASSERT(has_error_code(diagnostics, "E3108"));
     diagnostic_destroy(diagnostics);
 }

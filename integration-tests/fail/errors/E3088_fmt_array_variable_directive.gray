@@ -1,0 +1,9 @@
+// expect-error: E3088
+// An array variable's element type must suit every directive; %s needs a string.
+
+import @fmt
+
+do main() {
+    mut values [i64] = {1, 2}
+    fmt.printfln("%d %s", values)
+}

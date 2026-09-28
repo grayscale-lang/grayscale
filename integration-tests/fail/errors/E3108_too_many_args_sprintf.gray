@@ -1,7 +1,7 @@
-/* Error Test: E3108 - too many arguments for sprintf */
+/* Error Test: E3108 - too many elements for sprintf */
 import @fmt
 
 do main() {
-    mut s string = fmt.sprintf("%d", 1, 2, 3)
+    mut s string = fmt.sprintf("%d", {1, 2, 3})
     println(s)
 }

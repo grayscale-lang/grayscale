@@ -1,6 +1,6 @@
-/* Error Test: E3108 - too many arguments for format string */
+/* Error Test: E3108 - too many elements for format string */
 import @fmt
 
 do main() {
-    fmt.printf("%s\n", "hello", "extra", 999)
+    fmt.printf("%s\n", {"hello", "extra", 999})
 }

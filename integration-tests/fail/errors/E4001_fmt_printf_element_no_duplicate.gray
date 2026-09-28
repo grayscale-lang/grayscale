@@ -1,0 +1,9 @@
+// expect-error: E4001
+// expect-error-count: 1
+// An undefined name as an element reports only E4001, with no follow-on E3088.
+
+import @fmt
+
+do main() {
+    fmt.printfln("%d", {nope})
+}

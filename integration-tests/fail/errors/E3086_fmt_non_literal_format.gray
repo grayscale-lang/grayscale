@@ -7,5 +7,5 @@ import @fmt
 
 do main() {
     mut pattern string = "value: %d"
-    fmt.printfln(pattern, 42)
+    fmt.printfln(pattern, {42})
 }

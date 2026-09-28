@@ -10,6 +10,7 @@
 
 #include "ast.h"
 #include "../util/arena.h"
+#include <ctype.h>
 #include <string.h>
 
 AstNode *ast_allocate(Arena *arena, NodeKind kind, Token token) {
@@ -25,6 +26,41 @@ const char *ast_member_qualifier(const AstNode *node) {
     const AstNode *object = node->data.member.object;
     if (!object || object->kind != NODE_LABEL) return NULL;
     return object->data.label.value;
+}
+
+int ast_string_decode(const AstNode *node, char *out) {
+    const char *cursor = node->data.string_value.value;
+    if (node->data.string_value.is_raw) {
+        strcpy(out, cursor);
+        return (int)strlen(out);
+    }
+    char *start = out;
+    while (*cursor) {
+        if (*cursor != '\\' || !cursor[1]) { *out++ = *cursor++; continue; }
+        cursor++;
+        char escape = *cursor++;
+        switch (escape) {
+        case 'n': *out++ = '\n'; break;
+        case 't': *out++ = '\t'; break;
+        case 'r': *out++ = '\r'; break;
+        case '0': *out++ = '\0'; break;
+        case 'a': *out++ = '\a'; break;
+        case 'b': *out++ = '\b'; break;
+        case 'f': *out++ = '\f'; break;
+        case 'v': *out++ = '\v'; break;
+        case 'x': {
+            /* The lexer admits exactly two hex digits. */
+            int value = 0;
+            for (int digit = 0; digit < 2 && isxdigit((unsigned char)*cursor); digit++, cursor++)
+                value = value * 16 + (isdigit((unsigned char)*cursor) ? *cursor - '0' : (tolower((unsigned char)*cursor) - 'a' + 10));
+            *out++ = (char)value;
+            break;
+        }
+        default: *out++ = escape; break; /* \\ \" \' \$ */
+        }
+    }
+    *out = '\0';
+    return (int)(out - start);
 }
 
 const char *ast_member_base_qualifier(const AstNode *node) {

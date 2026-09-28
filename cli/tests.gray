@@ -1320,9 +1320,9 @@ do main() {
     println("=== 20. @fmt ===")
     // =========================================================================
 
-    mut fmt1 string = fmt.sprintf("%d + %d = %d", 1, 2, 3)
+    mut fmt1 string = fmt.sprintf("%d + %d = %d", {1, 2, 3})
     if fmt1 == "1 + 2 = 3" {
-        println("  [PASS] fmt.sprintf(\"%d + %d = %d\", 1, 2, 3) = \"1 + 2 = 3\"")
+        println("  [PASS] fmt.sprintf(\"%d + %d = %d\", {1, 2, 3}) = \"1 + 2 = 3\"")
         passed++
     } otherwise {
         println("  [FAIL] fmt.sprintf: expected \"1 + 2 = 3\", got \"${fmt1}\"")

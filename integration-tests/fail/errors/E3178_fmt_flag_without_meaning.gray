@@ -1,0 +1,8 @@
+// expect-error: E3178
+// The '0' flag has no meaning for %s.
+
+import @fmt
+
+do main() {
+    fmt.printfln("[%05s]", {"ab"})
+}

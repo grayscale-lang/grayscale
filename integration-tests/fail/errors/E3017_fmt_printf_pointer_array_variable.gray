@@ -1,0 +1,12 @@
+// expect-error: E3017
+// expect-error-count: 1
+// An array variable of pointers cannot be formatted; it is reported once,
+// as E3017, not also as a directive mismatch.
+
+import @fmt
+
+do main() {
+    mut n i64 = 1
+    mut pointers [^i64] = {addr(n)}
+    fmt.printfln("%d", pointers)
+}

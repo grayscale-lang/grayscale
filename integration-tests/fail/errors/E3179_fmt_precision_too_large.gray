@@ -1,0 +1,9 @@
+// expect-error: E3179
+// expect-error-count: 1
+// C's printf takes a precision as an int; a larger one prints nothing at all.
+
+import @fmt
+
+do main() {
+    fmt.printfln("[%.2147483648f]", {1.0})
+}

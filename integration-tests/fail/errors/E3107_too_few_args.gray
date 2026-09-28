@@ -1,6 +1,6 @@
-/* Error Test: E3107 - too few arguments for format string */
+/* Error Test: E3107 - too few elements for format string */
 import @fmt
 
 do main() {
-    fmt.printf("%s and %d\n", "hello")
+    fmt.printf("%s and %d\n", {"hello"})
 }

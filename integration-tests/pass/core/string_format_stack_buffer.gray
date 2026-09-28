@@ -47,7 +47,7 @@ do main() {
     }
 
     // -- sprintf result longer than 32 bytes: fallback path --
-    mut long string = fmt.sprintf("path=%s id=%d", "/very/long/directory/name/that/exceeds/the/buffer", 42)
+    mut long string = fmt.sprintf("path=%s id=%d", {"/very/long/directory/name/that/exceeds/the/buffer", 42})
     if long == "path=/very/long/directory/name/that/exceeds/the/buffer id=42" {
         println("  [PASS] over-32-u8 format takes fallback path")
         passed += 1
@@ -58,11 +58,11 @@ do main() {
 
     // -- a result right at the 31/32/33-byte boundary --
     // "abcdefghijklmnopqrstuvwxyz" (26) + "%d" of a 5-digit number = 31
-    mut b31 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz%d", 12345)
+    mut b31 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz%d", {12345})
     // ...one more char pushes it to 32
-    mut b32 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz.%d", 12345)
+    mut b32 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz.%d", {12345})
     // ...and to 33
-    mut b33 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz..%d", 12345)
+    mut b33 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz..%d", {12345})
     if len(b31) == 31 && len(b32) == 32 && len(b33) == 33
         && b31 == "abcdefghijklmnopqrstuvwxyz12345"
         && b33 == "abcdefghijklmnopqrstuvwxyz..12345" {
