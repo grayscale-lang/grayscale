@@ -1,0 +1,63 @@
+/*
+ * new_struct_fixed_array_field_length.gray - new(Type) gives a [T,N] field
+ * N zero-valued slots, the same as Type{}, including inside a nested struct
+ * field and when the field has a partial array literal default.
+ */
+
+const Code enum {
+    A = 10
+    B
+}
+
+const Buffer struct {
+    data [i64, 3]
+    names [string, 2]
+    codes [Code, 2]
+}
+
+const Outer struct {
+    inner Buffer
+}
+
+const WithDefault struct {
+    data [i64, 3] = {7}
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== new() fixed-size array field length ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    buffer = new(Buffer)
+    check("[i64, 3] field has length 3", len(buffer.data) == 3 && buffer.data[2] == 0, addr(passed), addr(failed))
+    buffer.data[2] = 5
+    check("[i64, 3] field slot is writable", buffer.data[2] == 5, addr(passed), addr(failed))
+    check("[string, 2] field is zero-valued", len(buffer.names) == 2 && buffer.names[1] == "", addr(passed), addr(failed))
+    check("[Code, 2] field holds the first variant", len(buffer.codes) == 2 && buffer.codes[1] == Code.A, addr(passed), addr(failed))
+
+    outer = new(Outer)
+    outer.inner.data[0] = 1
+    check("nested struct field", len(outer.inner.data) == 3 && outer.inner.data[0] == 1, addr(passed), addr(failed))
+
+    with_default = new(WithDefault)
+    check("partial array literal default", len(with_default.data) == 3 && with_default.data[0] == 7 && with_default.data[2] == 0, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

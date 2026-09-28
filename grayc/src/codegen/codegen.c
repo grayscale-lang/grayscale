@@ -2395,10 +2395,19 @@ static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_na
 
 /* Emits a struct field's own default value, wrapping it in the wide integer
  * constructor when the field is a wide integer, exactly as an explicit field
- * value in a struct literal is. */
+ * value in a struct literal is. An array literal default for a [T,N] field
+ * is padded to N slots. */
 static void emit_struct_field_default_value(CodeGen *codegen, StructField *struct_field) {
-    if (!emit_wide_integer_coerced(codegen, struct_field->type_name, struct_field->default_value))
+    int default_fixed_size = extract_array_size(struct_field->type_name);
+    if (default_fixed_size > 0 && struct_field->default_value->kind == NODE_ARRAY_VALUE) {
+        const char *saved_default_variable_type = codegen->current_variable_type;
+        codegen->current_variable_type = struct_field->type_name;
+        const char *default_element_type = extract_array_element_type(struct_field->type_name);
+        emit_fixed_size_array_initializer(codegen, struct_field->default_value, default_element_type ? default_element_type : "i64", default_fixed_size);
+        codegen->current_variable_type = saved_default_variable_type;
+    } else if (!emit_wide_integer_coerced(codegen, struct_field->type_name, struct_field->default_value)) {
         emit_expression(codegen, struct_field->default_value);
+    }
 }
 
 /* Emits the zero-value default for one struct field that has no literal
@@ -2416,16 +2425,7 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *struct
         if (*emitted) emit(codegen, ", ");
         *emitted = true;
         emit_formatted(codegen, ".%s = ", sanitize_name(struct_field->name));
-        int default_fixed_size = extract_array_size(field_type_name);
-        if (default_fixed_size > 0 && struct_field->default_value->kind == NODE_ARRAY_VALUE) {
-            const char *saved_default_variable_type = codegen->current_variable_type;
-            codegen->current_variable_type = field_type_name;
-            const char *default_element_type = extract_array_element_type(field_type_name);
-            emit_fixed_size_array_initializer(codegen, struct_field->default_value, default_element_type ? default_element_type : "i64", default_fixed_size);
-            codegen->current_variable_type = saved_default_variable_type;
-        } else {
-            emit_struct_field_default_value(codegen, struct_field);
-        }
+        emit_struct_field_default_value(codegen, struct_field);
         return;
     }
     if (!field_type_name) return;
@@ -2590,16 +2590,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
             emit_formatted(codegen, ".%s = ", sanitize_name(struct_field->name));
-            int default_fixed_size = extract_array_size(struct_field->type_name);
-            if (default_fixed_size > 0 && struct_field->default_value->kind == NODE_ARRAY_VALUE) {
-                const char *saved_default_variable_type = codegen->current_variable_type;
-                codegen->current_variable_type = struct_field->type_name;
-                const char *default_element_type = extract_array_element_type(struct_field->type_name);
-                emit_fixed_size_array_initializer(codegen, struct_field->default_value, default_element_type ? default_element_type : "i64", default_fixed_size);
-                codegen->current_variable_type = saved_default_variable_type;
-            } else {
-                emit_struct_field_default_value(codegen, struct_field);
-            }
+            emit_struct_field_default_value(codegen, struct_field);
         }
         /* Map and array fields the literal leaves out still need a real
          * table. C zero-fills them, and a zero-filled GrayMap/GrayArray has
@@ -4112,8 +4103,18 @@ static void emit_new_struct_initializer(CodeGen *codegen, AstNode *struct_declar
             const char *c_element_type = "int64_t";
             if (argument_type && argument_type->element_type)
                 c_element_type = gray_map_element_c_type(codegen, argument_type->element_type);
-            emit_formatted(codegen, "%s%s = GRAY_ARRAY_NEW_OF(gray_heap_arena, %s, 4); ",
-                access, sanitize_name(field_name), c_element_type);
+            /* A [T,N] field holds N zero-valued slots, as it does in Type{}. */
+            int fixed_size = extract_array_size(field_type);
+            if (fixed_size > 0) {
+                emit_formatted(codegen, "%s%s = gray_array_from(gray_heap_arena, (%s[%d]){",
+                    access, sanitize_name(field_name), c_element_type, fixed_size);
+                emit_enum_default_slots(codegen, argument_type ? argument_type->element_type : NULL, fixed_size, false);
+                emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s)); ",
+                    c_element_type, fixed_size, c_element_type);
+            } else {
+                emit_formatted(codegen, "%s%s = GRAY_ARRAY_NEW_OF(gray_heap_arena, %s, 4); ",
+                    access, sanitize_name(field_name), c_element_type);
+            }
         } else if (enum_variant) {
             /* An enum field whose zero matches no variant: seed with the
              * first variant, matching new(EnumType). */
