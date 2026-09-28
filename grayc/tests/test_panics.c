@@ -276,16 +276,6 @@ static void trigger_P0059(void) {
 }
 static void test_panic_P0059(void) { ASSERT_PANICS("P0059", trigger_P0059); }
 
-static void trigger_P0060(void) {
-    gray_strconv_to_bool(gray_string_lit("xyz"));
-}
-static void test_panic_P0060(void) { ASSERT_PANICS("P0060", trigger_P0060); }
-
-static void trigger_P0112(void) {
-    gray_strconv_unquote(arena, gray_string_lit("not quoted"));
-}
-static void test_panic_P0112(void) { ASSERT_PANICS("P0112", trigger_P0112); }
-
 /* ===========================================================================
  * Random
  * ===========================================================================*/
@@ -343,16 +333,6 @@ static void test_panic_P0085(void) { ASSERT_PANICS("P0085", trigger_P0085); }
  * IO
  * ===========================================================================*/
 
-static void trigger_P0086(void) {
-    gray_io_read_file(arena, gray_string_lit("."));
-}
-static void test_panic_P0086(void) { ASSERT_PANICS("P0086", trigger_P0086); }
-
-static void trigger_P0087(void) {
-    gray_io_write_file(gray_string_lit("."), gray_string_lit("x"));
-}
-static void test_panic_P0087(void) { ASSERT_PANICS("P0087", trigger_P0087); }
-
 static void trigger_P0088(void) {
     gray_io_append_file(gray_string_lit("."), gray_string_lit("x"));
 }
@@ -368,7 +348,7 @@ static void trigger_P0103(void) {
      * claiming len=5 makes strlen(data) (2) disagree with path.len (5),
      * which is exactly the embedded-null-byte case validate_path rejects. */
     GrayString bad_path = { "ab\0cd", 5 };
-    gray_io_write_file(bad_path, gray_string_lit("x"));
+    gray_io_append_file(bad_path, gray_string_lit("x"));
 }
 static void test_panic_P0103(void) { ASSERT_PANICS("P0103", trigger_P0103); }
 
@@ -390,15 +370,6 @@ static void trigger_P0117(void) {
     gray_mem_check_live(a, &x, __FILE__, __LINE__);
 }
 static void test_panic_P0117(void) { ASSERT_PANICS("P0117", trigger_P0117); }
-
-/* ===========================================================================
- * Time
- * ===========================================================================*/
-
-static void trigger_P0105(void) {
-    gray_time_parse(gray_string_lit("not-a-date"), gray_string_lit("2006-01-02"));
-}
-static void test_panic_P0105(void) { ASSERT_PANICS("P0105", trigger_P0105); }
 
 /* ===========================================================================
  * Bigint casts
@@ -531,8 +502,6 @@ int main(void) {
     RUN_TEST(test_panic_P0057);
     RUN_TEST(test_panic_P0058);
     RUN_TEST(test_panic_P0059);
-    RUN_TEST(test_panic_P0060);
-    RUN_TEST(test_panic_P0112);
 
     printf("--- Random ---\n");
     RUN_TEST(test_panic_P0063);
@@ -547,8 +516,6 @@ int main(void) {
     RUN_TEST(test_panic_P0085);
 
     printf("--- IO ---\n");
-    RUN_TEST(test_panic_P0086);
-    RUN_TEST(test_panic_P0087);
     RUN_TEST(test_panic_P0088);
     RUN_TEST(test_panic_P0089);
     RUN_TEST(test_panic_P0103);
@@ -557,8 +524,6 @@ int main(void) {
     RUN_TEST(test_panic_P0104);
     RUN_TEST(test_panic_P0117);
 
-    printf("--- Time ---\n");
-    RUN_TEST(test_panic_P0105);
 
     printf("--- Bigint Casts ---\n");
     RUN_TEST(test_panic_P0093);

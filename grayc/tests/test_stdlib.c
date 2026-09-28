@@ -966,10 +966,10 @@ static void test_strconv_to_f64(void) {
 }
 
 static void test_strconv_to_bool(void) {
-    ASSERT_EQ(gray_strconv_to_bool(gray_string_lit("true")), true);
-    ASSERT_EQ(gray_strconv_to_bool(gray_string_lit("false")), false);
-    ASSERT_EQ(gray_strconv_to_bool(gray_string_lit("TRUE")), true);
-    ASSERT_EQ(gray_strconv_to_bool(gray_string_lit("False")), false);
+    ASSERT_EQ(gray_strconv_to_bool_result(gray_string_lit("true")).v0, true);
+    ASSERT_EQ(gray_strconv_to_bool_result(gray_string_lit("false")).v0, false);
+    ASSERT_EQ(gray_strconv_to_bool_result(gray_string_lit("TRUE")).v0, true);
+    ASSERT_EQ(gray_strconv_to_bool_result(gray_string_lit("False")).v0, false);
 }
 
 static void test_strconv_to_i64_result_ok(void) {
@@ -1238,7 +1238,7 @@ static void test_json_split_array(void) {
  * (no assumption that /tmp exists). */
 static GrayString io_tmp_path(const char *name) {
     GrayString parts_data[2];
-    parts_data[0] = gray_io_temp_dir(arena);
+    parts_data[0] = gray_io_temp_dir_result(arena).v0;
     parts_data[1] = gray_string_lit(name);
     GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2, GRAY_ELEM_STRING);
     return gray_io_path_join(arena, parts);
@@ -1246,51 +1246,51 @@ static GrayString io_tmp_path(const char *name) {
 
 static void test_io_write_read_roundtrip(void) {
     GrayString path = io_tmp_path("grayc_ut_rw.txt");
-    ASSERT(gray_io_write_file(path, gray_string_lit("hello world")));
+    ASSERT(gray_io_write_file_result(arena, path, gray_string_lit("hello world")).v0);
     ASSERT(gray_io_file_exists(path));
     ASSERT(gray_io_is_file(path));
-    GrayString content = gray_io_read_file(arena, path);
+    GrayString content = gray_io_read_file_result(arena, path).v0;
     ASSERT_GRAY_STR(content, "hello world");
-    ASSERT_EQ(gray_io_file_size(path), 11);
-    ASSERT(gray_io_delete_file(path));
+    ASSERT_EQ(gray_io_file_size_result(arena, path).v0, 11);
+    ASSERT(gray_io_delete_file_result(arena, path).v0);
     ASSERT(!gray_io_file_exists(path));
 }
 
 static void test_io_append_file(void) {
     GrayString path = io_tmp_path("grayc_ut_append.txt");
-    ASSERT(gray_io_write_file(path, gray_string_lit("a")));
+    ASSERT(gray_io_write_file_result(arena, path, gray_string_lit("a")).v0);
     ASSERT(gray_io_append_file(path, gray_string_lit("b")));
-    GrayString content = gray_io_read_file(arena, path);
+    GrayString content = gray_io_read_file_result(arena, path).v0;
     ASSERT_GRAY_STR(content, "ab");
-    gray_io_delete_file(path);
+    gray_io_delete_file_result(arena, path);
 }
 
 static void test_io_read_lines(void) {
     GrayString path = io_tmp_path("grayc_ut_lines.txt");
-    ASSERT(gray_io_write_file(path, gray_string_lit("one\ntwo\nthree")));
-    GrayArray lines = gray_io_read_lines(arena, path, 0);
+    ASSERT(gray_io_write_file_result(arena, path, gray_string_lit("one\ntwo\nthree")).v0);
+    GrayArray lines = gray_io_read_lines_result(arena, path, 0).v0;
     ASSERT_EQ(lines.len, 3);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 0), gray_string_lit("one")));
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 2), gray_string_lit("three")));
     /* limit caps the count; asking for more than the file has yields all */
-    GrayArray head = gray_io_read_lines(arena, path, 2);
+    GrayArray head = gray_io_read_lines_result(arena, path, 2).v0;
     ASSERT_EQ(head.len, 2);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(head, GrayString, 1), gray_string_lit("two")));
-    GrayArray over = gray_io_read_lines(arena, path, 99);
+    GrayArray over = gray_io_read_lines_result(arena, path, 99).v0;
     ASSERT_EQ(over.len, 3);
-    gray_io_delete_file(path);
+    gray_io_delete_file_result(arena, path);
 }
 
 static void test_io_bytes_roundtrip(void) {
     GrayString path = io_tmp_path("grayc_ut_bytes.bin");
     uint8_t bytes[3] = {72, 105, 33};
     GrayArray data = gray_array_from(arena, bytes, sizeof(uint8_t), 3, GRAY_ELEM_U8);
-    ASSERT(gray_io_write_bytes(path, data));
-    GrayArray back = gray_io_read_bytes(arena, path);
+    ASSERT(gray_io_write_bytes_result(arena, path, data).v0);
+    GrayArray back = gray_io_read_bytes_result(arena, path).v0;
     ASSERT_EQ(back.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(back, uint8_t, 0), 72);
     ASSERT_EQ(GRAY_ARRAY_GET(back, uint8_t, 2), 33);
-    gray_io_delete_file(path);
+    gray_io_delete_file_result(arena, path);
 }
 
 static void test_io_read_file_result_err(void) {
@@ -1354,30 +1354,30 @@ static void test_regex_match(void) {
 }
 
 static void test_regex_find(void) {
-    GrayString r = gray_regex_find(arena, gray_string_lit("[0-9]+"), gray_string_lit("ab12cd345"));
+    GrayString r = gray_regex_find_result(arena, gray_string_lit("[0-9]+"), gray_string_lit("ab12cd345")).v0;
     ASSERT_GRAY_STR(r, "12");
 }
 
 static void test_regex_find_no_match(void) {
-    GrayString r = gray_regex_find(arena, gray_string_lit("[0-9]+"), gray_string_lit("no digits"));
+    GrayString r = gray_regex_find_result(arena, gray_string_lit("[0-9]+"), gray_string_lit("no digits")).v0;
     ASSERT_EQ(r.len, 0);
 }
 
 static void test_regex_find_all(void) {
-    GrayArray all = gray_regex_find_all(arena, gray_string_lit("[0-9]+"), gray_string_lit("a1b22c333"));
+    GrayArray all = gray_regex_find_all_result(arena, gray_string_lit("[0-9]+"), gray_string_lit("a1b22c333")).v0;
     ASSERT_EQ(all.len, 3);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(all, GrayString, 1), gray_string_lit("22")));
 }
 
 static void test_regex_replace(void) {
-    GrayString r = gray_regex_replace(arena, gray_string_lit("[0-9]+"),
-        gray_string_lit("a1b2c3"), gray_string_lit("#"));
+    GrayString r = gray_regex_replace_result(arena, gray_string_lit("[0-9]+"),
+        gray_string_lit("a1b2c3"), gray_string_lit("#")).v0;
     ASSERT_GRAY_STR(r, "a#b#c#");
 }
 
 static void test_regex_split(void) {
-    GrayArray parts = gray_regex_split(arena, gray_string_lit("[,;]"),
-        gray_string_lit("a,b;c,d"));
+    GrayArray parts = gray_regex_split_result(arena, gray_string_lit("[,;]"),
+        gray_string_lit("a,b;c,d")).v0;
     ASSERT_EQ(parts.len, 4);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(parts, GrayString, 3), gray_string_lit("d")));
 }

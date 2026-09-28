@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 484 codes** (335 errors, 17 warnings, 132 panics)
+**Total: 476 codes** (335 errors, 17 warnings, 124 panics)
 
 ---
 
@@ -431,14 +431,12 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0050` | bounds | to_char() index out of bounds; index %lld but string has %lld characters |
 | `P0051` | crypto | crypto.random_hex: length must be non-negative (got %lld) |
 | `P0052` | crypto | crypto.random_hex: failed to read from /dev/urandom |
-| `P0053` | io | io.read_file: input exceeds maximum string length |
 | `P0054` | strconv | strconv.to_i64: invalid base %lld; must be between 2 and 36 |
 | `P0055` | strconv | strconv.to_i64: cannot convert '%s' to i64 (base %lld) |
 | `P0056` | strconv | strconv.to_u64: invalid base %lld; must be between 2 and 36 |
 | `P0057` | strconv | strconv.to_u64: cannot convert '%s' to u64 (base %lld) |
 | `P0058` | strconv | strconv.to_u64: cannot convert '%s' to u64; value is negative |
 | `P0059` | strconv | strconv.to_f64: cannot convert '%s' to f64 |
-| `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
 | `P0061` | memory | mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB |
 | `P0062` | random | random.sample() count %lld exceeds array length %d |
 | `P0063` | random | random.sample() count cannot be negative (%lld) |
@@ -455,7 +453,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0074` | uuid | uuid.parse: invalid UUID string |
 | `P0075` | runtime | assertion failed |
 | `P0076` | runtime | panic |
-| `P0077` | io | io.delete_file() cannot delete a directory; use io.remove_dir() for directories |
 | `P0078` | arithmetic | division by zero |
 | `P0079` | arithmetic | %s result is too large; value exceeds the range of this type |
 | `P0080` | runtime | nil pointer dereference |
@@ -464,8 +461,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0083` | runtime | sleep duration cannot be negative (%lld) |
 | `P0084` | runtime | cannot convert '%s' to i64 |
 | `P0085` | runtime | cannot convert '%s' to f64 |
-| `P0086` | io | io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents |
-| `P0087` | io | io.write_file() cannot write to a directory |
 | `P0088` | io | io.append_file() cannot append to a directory |
 | `P0089` | io | io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually |
 | `P0090` | runtime | range step cannot be zero |
@@ -483,14 +478,12 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0102` | arithmetic | invalid digit in integer literal |
 | `P0103` | io | file path contains an embedded null byte |
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
-| `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 | `P0106` | math | math.next_power_of_two() result is too large for i64, got %lld |
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 | `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
 | `P0110` | strconv | strconv.format_i64: invalid base %lld; must be between 2 and 36 |
 | `P0111` | strconv | strconv.format_u64: invalid base %lld; must be between 2 and 36 |
-| `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
 | `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
 | `P0114` | io | csv.read_file: input exceeds maximum string length |
 | `P0115` | runtime | read of '%s' on a nil Error; check the error is non-nil before reading its fields |
@@ -505,7 +498,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0124` | io | io.read_stdin_all: input exceeds maximum string length |
 | `P0125` | csv | csv: referenced a column that is not in the header |
 | `P0126` | crypto | crypto.totp: digits must be between 1 and 9 |
-| `P0127` | time | time.parse_duration: cannot parse the duration string |
 | `P0128` | time | time.days_in_month: month must be between 1 and 12 |
 | `P0129` | runtime | cannot convert '%s' to enum %s |
 | `P0130` | runtime | array capacity overflow |
@@ -535,4 +527,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-28 20:24:01 UTC*
+*Generated on 2026-09-28 20:47:10 UTC*

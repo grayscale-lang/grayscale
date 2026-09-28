@@ -70,7 +70,6 @@ bool gray_regex_match(GrayString pattern, GrayString text);
  *@end
  */
 /* regex.find(pattern, text) -> string (first match, or empty) */
-GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man find_all
  *@module regex
@@ -83,7 +82,6 @@ GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text
  *@end
  */
 /* regex.find_all(pattern, text) -> [string] */
-GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man replace
  *@module regex
@@ -97,7 +95,6 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
  *@end
  */
 /* regex.replace(pattern, text, replacement) -> string */
-GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement);
 
 /*@man split
  *@module regex
@@ -110,7 +107,6 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
  *@end
  */
 /* regex.split(pattern, text) -> [string] */
-GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man find_groups
  *@module regex

@@ -229,7 +229,6 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t timestamp);
  *   mut val, err = time.parse("not a date", "%Y-%m-%d")
  *@end
  */
-int64_t gray_time_parse(GrayString text, GrayString layout);
 GrayResult_i64 gray_time_parse_result(GrayString text, GrayString layout);
 
 /* Arithmetic */
@@ -316,7 +315,6 @@ GrayString gray_time_humanize(GrayArena *arena, int64_t seconds);
  *   mut secs, err = time.parse_duration("1h30m")
  *@end
  */
-int64_t gray_time_parse_duration(GrayString text);
 GrayResult_i64 gray_time_parse_duration_result(GrayString text);
 
 /*@man format_duration

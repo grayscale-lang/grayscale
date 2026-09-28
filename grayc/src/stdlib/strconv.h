@@ -72,7 +72,6 @@ double gray_strconv_to_f64(GrayString string);
  *   mut val, val_err = strconv.to_bool("yes")
  *@end
  */
-bool gray_strconv_to_bool(GrayString string);
 
 /* Result forms — every Grayscale call compiles to one of these. The bare
  * forms above are no longer reachable (single-var assignment of a fallible
@@ -183,7 +182,6 @@ GrayString gray_strconv_quote(GrayArena *arena, GrayString string);
  *   mut s, err = strconv.unquote(quoted)
  *@end
  */
-GrayString gray_strconv_unquote(GrayArena *arena, GrayString string);
 GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString string);
 
 /*@man is_numeric

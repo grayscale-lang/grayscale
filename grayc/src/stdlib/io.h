@@ -47,7 +47,6 @@
  *   mut unchecked_content, _ = io.read_file("data.txt")
  *@end
  */
-GrayString gray_io_read_file(GrayArena *arena, GrayString path);
 
 /*@man read_bytes
  *@module io
@@ -59,7 +58,6 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path);
  *   mut data, err = io.read_bytes("image.png")
  *@end
  */
-GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
 
 /*@man read_lines
  *@module io
@@ -75,7 +73,6 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
  *   }
  *@end
  */
-GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
 
 /*@man read_stdin_all
  *@module io
@@ -152,7 +149,6 @@ bool gray_io_is_directory(GrayString path);
  *   println(size)
  *@end
  */
-int64_t gray_io_file_size(GrayString path);
 
 /* Not a builtin: reads an already-opened file into a GrayString, sizing
  * safely (guards fseek/ftell, caps at INT32_MAX, streams non-seekable
@@ -172,7 +168,6 @@ GrayString gray_io_read_file_impl(GrayArena *arena, FILE *file);
  *   mut ok, _ = io.write_file("out.txt", "hello\n")
  *@end
  */
-bool gray_io_write_file(GrayString path, GrayString content);
 
 /*@man append_file
  *@module io
@@ -197,7 +192,6 @@ bool gray_io_append_file(GrayString path, GrayString content);
  *   mut ok, _ = io.write_bytes("out.bin", data)
  *@end
  */
-bool gray_io_write_bytes(GrayString path, GrayArray data);
 
 /*@man append_bytes
  *@module io
@@ -224,7 +218,6 @@ bool gray_io_append_bytes(GrayString path, GrayArray data);
  *   mut ok, _ = io.delete_file("tmp.txt")
  *@end
  */
-bool gray_io_delete_file(GrayString path);
 
 /*@man rename_file
  *@module io
@@ -277,7 +270,6 @@ bool gray_io_move_file(GrayString source, GrayString destination);
  *   }
  *@end
  */
-GrayArray gray_io_list_dir(GrayArena *arena, GrayString path);
 
 /*@man make_dir
  *@module io
@@ -352,7 +344,6 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *   mut files, _ = io.glob("src/test_*.gray")
  *@end
  */
-GrayArray gray_io_glob(GrayArena *arena, GrayString pattern);
 
 /* Temporary files */
 
@@ -367,7 +358,6 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern);
  *   mut _, _ = io.write_file(path, "scratch data")
  *@end
  */
-GrayString gray_io_temp_file(GrayArena *arena);
 
 /*@man temp_dir
  *@module io
@@ -380,7 +370,6 @@ GrayString gray_io_temp_file(GrayArena *arena);
  *   mut _, _ = io.write_file(io.path_join({path, "data.txt"}), "hello")
  *@end
  */
-GrayString gray_io_temp_dir(GrayArena *arena);
 
 /* Path manipulation */
 

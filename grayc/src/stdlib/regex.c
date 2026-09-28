@@ -326,47 +326,6 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
     return outer;
 }
 
-/* Public API — compile, delegate to _compiled helper, free. */
-
-GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0)
-        return (GrayString){"", 0};
-    GrayString result = regex_find_compiled(arena, &regex, text);
-    regex_session_end(&regex);
-    return result;
-}
-
-GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0)
-        return gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
-    GrayArray result = regex_find_all_compiled(arena, &regex, text);
-    regex_session_end(&regex);
-    return result;
-}
-
-GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0)
-        return text;
-    GrayString result = regex_replace_compiled(arena, &regex, text, replacement);
-    regex_session_end(&regex);
-    return result;
-}
-
-GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
-        GrayArray array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
-        GRAY_ARRAY_PUSH(arena, &array, &text);
-        return array;
-    }
-    GrayArray result = regex_split_compiled(arena, &regex, text);
-    regex_session_end(&regex);
-    return result;
-}
-
 /* _result variants — compile once, reuse for the actual work. */
 
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text) {

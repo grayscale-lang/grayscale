@@ -106,14 +106,6 @@ double gray_strconv_to_f64(GrayString string) {
     return result;
 }
 
-bool gray_strconv_to_bool(GrayString string) {
-    if (string.len == 4 && strncasecmp(string.data, "true", 4) == 0) return true;
-    if (string.len == 5 && strncasecmp(string.data, "false", 5) == 0) return false;
-    char buffer[STRCONV_BUFFER_SIZE];
-    strconv_prepare(string, buffer, sizeof(buffer));
-    gray_panic_code("P0060", "strconv.to_bool: cannot convert '%s' to bool", buffer);
-}
-
 /* --- Fallible conversions (result versions) --- */
 
 GrayResult_i64 gray_strconv_to_i64_result(GrayString string, int64_t base) {
@@ -363,16 +355,6 @@ static bool strconv_unquote_into(GrayArena *arena, GrayString string, GrayString
     buffer[j] = '\0';
     *output = (GrayString){buffer, j};
     return true;
-}
-
-GrayString gray_strconv_unquote(GrayArena *arena, GrayString string) {
-    GrayString output;
-    if (!strconv_unquote_into(arena, string, &output)) {
-        char buffer[STRCONV_BUFFER_SIZE];
-        strconv_prepare(string, buffer, sizeof(buffer));
-        gray_panic_code("P0112", "strconv.unquote: cannot unquote '%s'", buffer);
-    }
-    return output;
 }
 
 GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString string) {

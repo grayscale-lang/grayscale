@@ -432,14 +432,12 @@
     GRAY_PANIC("P0050", "bounds",     "to_char() index out of bounds; index %lld but string has %lld characters") \
     GRAY_PANIC("P0051", "crypto",     "crypto.random_hex: length must be non-negative (got %lld)") \
     GRAY_PANIC("P0052", "crypto",     "crypto.random_hex: failed to read from /dev/urandom") \
-    GRAY_PANIC("P0053", "io",         "io.read_file: input exceeds maximum string length") \
     GRAY_PANIC("P0054", "strconv",    "strconv.to_i64: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0055", "strconv",    "strconv.to_i64: cannot convert '%s' to i64 (base %lld)") \
     GRAY_PANIC("P0056", "strconv",    "strconv.to_u64: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0057", "strconv",    "strconv.to_u64: cannot convert '%s' to u64 (base %lld)") \
     GRAY_PANIC("P0058", "strconv",    "strconv.to_u64: cannot convert '%s' to u64; value is negative") \
     GRAY_PANIC("P0059", "strconv",    "strconv.to_f64: cannot convert '%s' to f64") \
-    GRAY_PANIC("P0060", "strconv",    "strconv.to_bool: cannot convert '%s' to bool") \
     GRAY_PANIC("P0061", "memory",     "mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB") \
     GRAY_PANIC("P0062", "random",     "random.sample() count %lld exceeds array length %d") \
     GRAY_PANIC("P0063", "random",     "random.sample() count cannot be negative (%lld)") \
@@ -456,7 +454,6 @@
     GRAY_PANIC("P0074", "uuid",       "uuid.parse: invalid UUID string") \
     GRAY_PANIC("P0075", "runtime",    "assertion failed") \
     GRAY_PANIC("P0076", "runtime",    "panic") \
-    GRAY_PANIC("P0077", "io",         "io.delete_file() cannot delete a directory; use io.remove_dir() for directories") \
     GRAY_PANIC("P0078", "arithmetic", "division by zero") \
     GRAY_PANIC("P0079", "arithmetic", "%s result is too large; value exceeds the range of this type") \
     GRAY_PANIC("P0080", "runtime",    "nil pointer dereference") \
@@ -465,8 +462,6 @@
     GRAY_PANIC("P0083", "runtime",    "sleep duration cannot be negative (%lld)") \
     GRAY_PANIC("P0084", "runtime",    "cannot convert '%s' to i64") \
     GRAY_PANIC("P0085", "runtime",    "cannot convert '%s' to f64") \
-    GRAY_PANIC("P0086", "io",         "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents") \
-    GRAY_PANIC("P0087", "io",         "io.write_file() cannot write to a directory") \
     GRAY_PANIC("P0088", "io",         "io.append_file() cannot append to a directory") \
     GRAY_PANIC("P0089", "io",         "io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually") \
     GRAY_PANIC("P0090", "runtime",    "range step cannot be zero") \
@@ -484,14 +479,12 @@
     GRAY_PANIC("P0102", "arithmetic", "invalid digit in integer literal") \
     GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
     GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
-    GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
     GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for i64, got %lld") \
     GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s") \
     GRAY_PANIC("P0108", "threads",    "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached") \
     GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \
     GRAY_PANIC("P0110", "strconv",    "strconv.format_i64: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0111", "strconv",    "strconv.format_u64: invalid base %lld; must be between 2 and 36") \
-    GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'") \
     GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d") \
     GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length") \
     GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
@@ -506,7 +499,6 @@
     GRAY_PANIC("P0124", "io",         "io.read_stdin_all: input exceeds maximum string length") \
     GRAY_PANIC("P0125", "csv",        "csv: referenced a column that is not in the header") \
     GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
-    GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
     GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
     GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s") \
     GRAY_PANIC("P0130", "runtime",    "array capacity overflow") \

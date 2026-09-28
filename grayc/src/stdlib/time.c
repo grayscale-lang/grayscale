@@ -124,13 +124,6 @@ static bool time_parse_to_timestamp(GrayString text, GrayString layout, int64_t 
     return true;
 }
 
-int64_t gray_time_parse(GrayString text, GrayString layout) {
-    int64_t timestamp;
-    if (!time_parse_to_timestamp(text, layout, &timestamp))
-        gray_panic_code("P0105", "time.parse: cannot parse '%s' with layout '%s'", text.data, layout.data);
-    return timestamp;
-}
-
 GrayResult_i64 gray_time_parse_result(GrayString text, GrayString layout) {
     int64_t timestamp;
     if (!time_parse_to_timestamp(text, layout, &timestamp)) {
@@ -209,13 +202,6 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
     if (!matched_any) return false;
     *output = total;
     return true;
-}
-
-int64_t gray_time_parse_duration(GrayString text) {
-    int64_t seconds;
-    if (!time_parse_duration_implementation(text, &seconds))
-        gray_panic_code("P0127", "time.parse_duration: cannot parse '%s'", text.data);
-    return seconds;
 }
 
 GrayResult_i64 gray_time_parse_duration_result(GrayString text) {

@@ -6600,8 +6600,7 @@ static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *function
     bool is_fallible = (strcmp(function_name, "parse") == 0 || strcmp(function_name, "parse_duration") == 0);
 
     if (is_fallible) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, is_multi_variable ? "gray_time_%s_result(" : "gray_time_%s(", function_name);
+        emit_formatted(codegen, "gray_time_%s_result(", function_name);
         for (int i = 0; i < node->data.call.argument_count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.call.arguments[i]);
@@ -6712,8 +6711,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "find") == 0 && node->data.call.argument_count == 2) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_find%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_find_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -6721,8 +6719,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "find_all") == 0 && node->data.call.argument_count == 2) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_find_all%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_find_all_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -6730,8 +6727,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "find_groups") == 0 && node->data.call.argument_count == 2) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_find_groups%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_find_groups_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -6739,8 +6735,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "find_all_groups") == 0 && node->data.call.argument_count == 2) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_find_all_groups%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_find_all_groups_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -6748,8 +6743,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "replace") == 0 && node->data.call.argument_count == 3) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_replace%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_replace_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -6759,8 +6753,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *functio
         return true;
     }
     if (strcmp(function_name, "split") == 0 && node->data.call.argument_count == 2) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        emit_formatted(codegen, "gray_regex_split%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_regex_split_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -7352,7 +7345,7 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "query") == 0) {
-        emit_formatted(codegen, "gray_sqlite_query%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_sqlite_query_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -7360,7 +7353,7 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "query_params") == 0) {
-        emit_formatted(codegen, "gray_sqlite_query_params%s(gray_default_arena, ", is_multi_variable ? "_result" : "");
+        emit(codegen, "gray_sqlite_query_params_result(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
@@ -8033,39 +8026,16 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "extension") == 0 ||
         strcmp(function_name, "normalize") == 0);
     if (is_fallible) {
-        /* Use non-result version when assigned to a single variable (typed or
-         * inferred).  Use _result version only for multi-var destructuring
-         * (temp vars prefixed with _gray_tmp). */
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        bool use_non_result = !is_multi_variable;
-        if (use_non_result) {
-            if (needs_arena) {
-                emit_formatted(codegen, "gray_io_%s(gray_default_arena", function_name);
-                if (node->data.call.argument_count > 0) emit(codegen, ", ");
-            } else {
-                emit_formatted(codegen, "gray_io_%s(", function_name);
-            }
-            for (int i = 0; i < node->data.call.argument_count; i++) {
-                if (i > 0) emit(codegen, ", ");
-                emit_expression(codegen, node->data.call.arguments[i]);
-            }
-            /* read_lines' optional line limit defaults to 0 (read to EOF) */
-            if (strcmp(function_name, "read_lines") == 0 && node->data.call.argument_count == 1) {
-                emit(codegen, ", 0");
-            }
-            emit(codegen, ")");
-        } else {
-            emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", function_name);
-            if (node->data.call.argument_count > 0) emit(codegen, ", ");
-            for (int i = 0; i < node->data.call.argument_count; i++) {
-                if (i > 0) emit(codegen, ", ");
-                emit_expression(codegen, node->data.call.arguments[i]);
-            }
-            if (strcmp(function_name, "read_lines") == 0 && node->data.call.argument_count == 1) {
-                emit(codegen, ", 0");
-            }
-            emit(codegen, ")");
+        emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", function_name);
+        if (node->data.call.argument_count > 0) emit(codegen, ", ");
+        for (int i = 0; i < node->data.call.argument_count; i++) {
+            if (i > 0) emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.arguments[i]);
         }
+        if (strcmp(function_name, "read_lines") == 0 && node->data.call.argument_count == 1) {
+            emit(codegen, ", 0");
+        }
+        emit(codegen, ")");
         return true;
     }
     /* Non-fallible functions */
@@ -8331,12 +8301,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *funct
         strcmp(function_name, "unquote") == 0);
 
     if (is_fallible) {
-        bool is_multi_variable = current_variable_is_result_temporary(codegen);
-        if (is_multi_variable) {
-            emit_formatted(codegen, "gray_strconv_%s_result(", function_name);
-        } else {
-            emit_formatted(codegen, "gray_strconv_%s(", function_name);
-        }
+        emit_formatted(codegen, "gray_strconv_%s_result(", function_name);
         if (needs_arena) emit(codegen, "gray_default_arena, ");
         for (int i = 0; i < node->data.call.argument_count; i++) {
             if (i > 0) emit(codegen, ", ");

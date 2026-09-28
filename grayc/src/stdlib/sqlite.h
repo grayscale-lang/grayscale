@@ -116,10 +116,8 @@ bool gray_sqlite_exec(GraySqlite *database, GrayString sql_text);
 bool gray_sqlite_exec_params(GraySqlite *database, GrayString sql_text, GrayArray parameters);
 
 /* sqlite.query(db, sql) — execute query, return array of maps */
-GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *database, GrayString sql_text);
 
 /* sqlite.query_params(db, sql, params) — execute parameterized query */
-GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters);
 
 /* _result variants */
 typedef struct { GraySqlite *v0; GrayError *v1; } GrayResult_sqlite;
