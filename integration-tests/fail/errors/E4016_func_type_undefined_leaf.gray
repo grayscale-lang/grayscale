@@ -1,0 +1,26 @@
+/*
+ * Error Test: E4016 - an undefined parameter or return type inside a
+ * func(...) type is reported at the declaration, with no follow-on
+ * mismatch at the call site.
+ */
+// expect-error: E4016
+// expect-error-count: 3
+do double(x i64) -> i64 { return x * 2 }
+
+do apply(f func(int) -> i64, x i64) -> i64 {
+    return f(x)
+}
+
+do apply_bogus(f func(Bogus) -> i64, x i64) -> i64 {
+    return f(x)
+}
+
+do returns_undefined(f func(i64) -> int) -> i64 {
+    return 0
+}
+
+do main() {
+    println(apply(()double, 3))
+    println(apply_bogus(()double, 3))
+    println(returns_undefined(()double))
+}

@@ -4791,14 +4791,21 @@ static bool type_name_is_undefined(const char *written, const GrayType *resolved
     return !type_name_has_wildcard(written);
 }
 
+static const char *undefined_type_leaf(TypeChecker *checker, const char *written,
+                                       char *buffer, size_t buffer_length);
+
 /* Do two function types disagree? A typed reference carries its signature in
  * its canonical encoded name — "func(i64)->i64" — so any difference between
  * two of those is a mismatch. The bare `func` names no signature: it is
- * every function type at once, and matches all of them. */
-static bool function_types_mismatch(const GrayType *left_type, const GrayType *right_type) {
+ * every function type at once, and matches all of them. A signature that
+ * names an undefined type was already reported with E4016 and matches too. */
+static bool function_types_mismatch(TypeChecker *checker, const GrayType *left_type, const GrayType *right_type) {
     if (!left_type || !right_type || left_type->kind != TYPE_KIND_FUNCTION || right_type->kind != TYPE_KIND_FUNCTION) return false;
     if (!left_type->name || !right_type->name) return false;
     if (strcmp(left_type->name, "func") == 0 || strcmp(right_type->name, "func") == 0) return false;
+    char leaf[MESSAGE_BUFFER_SIZE];
+    if (undefined_type_leaf(checker, left_type->name, leaf, sizeof(leaf)) ||
+        undefined_type_leaf(checker, right_type->name, leaf, sizeof(leaf))) return false;
     return strcmp(left_type->name, right_type->name) != 0;
 }
 
@@ -4893,6 +4900,22 @@ static const char *undefined_type_leaf(TypeChecker *checker, const char *written
     if (type_name_components(written, parts, &part_count)) {
         for (int i = 0; i < part_count; i++) {
             const char *bad_name = undefined_type_leaf(checker, parts[i], buffer, buffer_length);
+            if (bad_name) return bad_name;
+        }
+        return NULL;
+    }
+
+    /* A func(...) type is TYPE_KIND_FUNCTION whatever its parameter and
+     * return types name, so each of those is a leaf too. */
+    if (strncmp(written, "func(", 5) == 0) {
+        GrayFunctionSignature *signature = type_from_name(written)->function_signature;
+        if (!signature) return NULL;
+        for (int i = 0; i < signature->parameter_count; i++) {
+            const char *bad_name = undefined_type_leaf(checker, signature->parameter_types[i], buffer, buffer_length);
+            if (bad_name) return bad_name;
+        }
+        for (int i = 0; i < signature->return_count; i++) {
+            const char *bad_name = undefined_type_leaf(checker, signature->return_types[i], buffer, buffer_length);
             if (bad_name) return bad_name;
         }
         return NULL;
@@ -9386,7 +9409,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 report_argument_mismatch(checker, argument_node, argument_index, function_name, parameter_type, argument_type, "");
             }
             /* E3066: typed-func signatures must match exactly */
-            if (function_types_mismatch(argument_type, parameter_type)) {
+            if (function_types_mismatch(checker, argument_type, parameter_type)) {
                 char *message = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
                     argument_index + 1, function_name, type_display_name(checker, parameter_type), type_display_name(checker, argument_type));
@@ -9536,7 +9559,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 } else {
                     for (int argument_index = 0; argument_index < signature->parameter_count; argument_index++) {
                         AstNode *argument = node->data.call.arguments[argument_index];
-                        GrayType *callee_parameter_type = signature->parameter_types[argument_index] ? type_from_name(signature->parameter_types[argument_index]) : NULL;
+                        GrayType *callee_parameter_type = signature->parameter_types[argument_index] ? typechecker_type_from_name(checker, signature->parameter_types[argument_index]) : NULL;
                         GrayType *checked_argument_type = check_expression_as(checker, argument, callee_parameter_type);
                         if (checked_argument_type && callee_parameter_type && checked_argument_type->kind != TYPE_KIND_UNKNOWN && callee_parameter_type->kind != TYPE_KIND_UNKNOWN &&
                             !types_assignable(checker, callee_parameter_type, checked_argument_type) &&
@@ -11639,7 +11662,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
              * a reference with the wrong signature only got caught when it was
              * assigned to the field afterward — never when the literal that
              * built the struct supplied it. */
-            if (found && function_types_mismatch(expected_type, value_type)) {
+            if (found && function_types_mismatch(checker, expected_type, value_type)) {
                 AstNode *value = node->data.struct_value.field_values[i];
                 char *message = typechecker_format(checker,
                     "cannot assign %s to field '%s' of type %s",
@@ -13817,7 +13840,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
         /* E3066: typed-func variable assigned a function reference with a
          * different signature. Both sides are TYPE_KIND_FUNCTION; the canonical
          * encoded names (e.g. "func(i64)->i64") must match exactly. */
-        if (function_types_mismatch(declared, value_type)) {
+        if (function_types_mismatch(checker, declared, value_type)) {
             char *message = typechecker_format(checker,
                 "cannot assign %s to variable of type %s",
                 type_display_name(checker, value_type), type_display_name(checker, declared));
@@ -14936,7 +14959,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         typechecker_error_assign_type(checker, node, message);
     }
     /* Function-to-function signature mismatch on direct variable assignment */
-    if (target->kind == NODE_LABEL && function_types_mismatch(target_type, assigned_value_type)) {
+    if (target->kind == NODE_LABEL && function_types_mismatch(checker, target_type, assigned_value_type)) {
         char *message = typechecker_format(checker,
             "type mismatch: cannot assign '%s' to '%s' variable '%s'",
             type_display_name(checker, assigned_value_type), type_display_name(checker, target_type),
@@ -15036,7 +15059,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                 typechecker_error_assign_type(checker, node, message);
             }
             /* E3066: func signature mismatch on struct field assignment */
-            if (function_types_mismatch(field_type, assigned_value_type)) {
+            if (function_types_mismatch(checker, field_type, assigned_value_type)) {
                 char *message = typechecker_format(checker,
                     "cannot assign %s to field '%s' of type %s",
                     type_display_name(checker, assigned_value_type), target->data.member.member,
@@ -15421,7 +15444,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             }
         }
         /* E3066: func signature mismatch in return */
-        if (function_types_mismatch(return_type, expected)) {
+        if (function_types_mismatch(checker, return_type, expected)) {
             char *message = typechecker_format(checker,
                 "cannot return %s from function declared to return %s",
                 type_display_name(checker, return_type), type_display_name(checker, expected));
