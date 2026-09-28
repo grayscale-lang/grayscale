@@ -87,6 +87,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *argument);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *value, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
+static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth);
 static int extract_array_size(const char *type_name);
 static const char *extract_array_element_type(const char *type_name);
 static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
@@ -1410,45 +1411,64 @@ static const char *codegen_enum_default_variant(CodeGen *codegen, const char *en
     return declaration->data.enum_declaration.values[0].name;
 }
 
-/* The default variant of an integer-backed enum array element, as
- * codegen_enum_default_variant gives it, or NULL. */
-static const char *codegen_enum_slot_default_variant(CodeGen *codegen, const char *enum_name) {
-    return codegen_enum_is_string(codegen, enum_name) ? NULL : codegen_enum_default_variant(codegen, enum_name);
-}
-
 static int extract_array_size(const char *type_name);
 static const char *extract_array_element_type(const char *type_name);
 static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_type_name);
 
+/* The C type of one slot of a fixed-size array whose element type is
+ * `element_type_name`: a string-backed enum is stored as its GrayString
+ * value, everything else as a map value of that type is. */
+static const char *array_slot_c_type(CodeGen *codegen, const char *element_type_name) {
+    if (element_type_name && codegen_enum_is_string(codegen, codegen_resolve_type(codegen, element_type_name)))
+        return "GrayString";
+    return gray_map_element_c_type(codegen, element_type_name);
+}
+
 /* Is C's zero something other than the zero value of an array element of
  * type `element_type_name`? True for a fixed-size array, whose zero value
- * has N slots, and for an enum with a default variant. */
+ * has N slots, for a map, which needs allocated storage, for a struct, whose
+ * fields may have defaults or need zero values of their own, and for an enum
+ * with a default variant. */
 static bool element_needs_zero_value(CodeGen *codegen, const char *element_type_name) {
     if (!element_type_name) return false;
     if (extract_array_size(element_type_name) > 0) return true;
-    return codegen_enum_slot_default_variant(codegen, codegen_resolve_type(codegen, element_type_name)) != NULL;
+    if (strncmp(element_type_name, "map[", 4) == 0) return true;
+    if (find_struct_declaration(codegen, element_type_name)) return true;
+    return codegen_enum_default_variant(codegen, codegen_resolve_type(codegen, element_type_name)) != NULL;
 }
 
 static void emit_zero_value_slots(CodeGen *codegen, const char *element_type_name, int count,
                                   bool after_element, const char *arena);
 
 /* Emits the zero value of an array element of type `element_type_name`, for
- * an element that element_needs_zero_value: an enum's default variant, or a
- * fixed-size array [T,N] allocated on `arena` holding N zero values. */
+ * an element that element_needs_zero_value: an enum's default variant, an
+ * empty map, a struct's zero value, or a fixed-size array [T,N] allocated on
+ * `arena` holding N zero values. */
 static void emit_element_zero_value(CodeGen *codegen, const char *element_type_name, const char *arena) {
     int fixed_size = extract_array_size(element_type_name);
     if (fixed_size > 0) {
         char inner_element_type[TYPE_NAME_MAX], c_element_type[TYPE_NAME_MAX];
         const char *inner = extract_array_element_type(element_type_name);
         snprintf(inner_element_type, sizeof(inner_element_type), "%s", inner ? inner : "i64");
-        snprintf(c_element_type, sizeof(c_element_type), "%s", gray_map_element_c_type(codegen, inner_element_type));
+        snprintf(c_element_type, sizeof(c_element_type), "%s", array_slot_c_type(codegen, inner_element_type));
         emit_formatted(codegen, "gray_array_from(%s, (%s[%d]){", arena, c_element_type, fixed_size);
         emit_zero_value_slots(codegen, inner_element_type, fixed_size, false, arena);
         emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
         return;
     }
+    if (strncmp(element_type_name, "map[", 4) == 0) {
+        GrayType *map_type = type_from_name(element_type_name);
+        const char *c_key_type = map_type && map_type->key_type ? gray_map_element_c_type(codegen, map_type->key_type) : "GrayString";
+        const char *c_value_type = map_type && map_type->value_type ? gray_map_element_c_type(codegen, map_type->value_type) : "int64_t";
+        emit_formatted(codegen, "GRAY_MAP_NEW_OF(%s, %s, %s, 8)", arena, c_key_type, c_value_type);
+        return;
+    }
+    if (find_struct_declaration(codegen, element_type_name)) {
+        emit_struct_zero_value_literal(codegen, element_type_name, 1);
+        return;
+    }
     const char *enum_name = codegen_resolve_type(codegen, element_type_name);
-    emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, codegen_enum_slot_default_variant(codegen, enum_name));
+    emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, codegen_enum_default_variant(codegen, enum_name));
 }
 
 /* Emits `count` array initializer slots holding the zero value of the
@@ -2519,7 +2539,7 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *struct
             c_key_type, c_value_type_default);
     } else {
         const char *c_element_type = "int64_t";
-        if (field_type && field_type->element_type) c_element_type = gray_map_element_c_type(codegen, field_type->element_type);
+        if (field_type && field_type->element_type) c_element_type = array_slot_c_type(codegen, field_type->element_type);
         int fixed_size = extract_array_size(field_type_name);
         if (fixed_size > 0) {
             emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
@@ -2705,7 +2725,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                     c_key_type, c_value_type_default);
             } else {
                 const char *c_element_type = "int64_t";
-                if (field_type && field_type->element_type) c_element_type = gray_map_element_c_type(codegen, field_type->element_type);
+                if (field_type && field_type->element_type) c_element_type = array_slot_c_type(codegen, field_type->element_type);
                 /* A [T,N] field omitted entirely is still a zero-valued
                  * array of length N, not an empty dynamic array —
                  * gray_array_new's capacity argument doesn't set length,
@@ -4173,7 +4193,7 @@ static void emit_new_struct_initializer(CodeGen *codegen, AstNode *struct_declar
             GrayType *argument_type = type_from_name(field_type);
             const char *c_element_type = "int64_t";
             if (argument_type && argument_type->element_type)
-                c_element_type = gray_map_element_c_type(codegen, argument_type->element_type);
+                c_element_type = array_slot_c_type(codegen, argument_type->element_type);
             /* A [T,N] field holds N zero-valued slots, as it does in Type{}. */
             int fixed_size = extract_array_size(field_type);
             if (fixed_size > 0) {
@@ -4303,7 +4323,7 @@ static void emit_zero_filled_fixed_array(CodeGen *codegen, AstNode *node) {
     const char *element_type_name = array_type ? array_type->element_type : NULL;
     if (element_needs_zero_value(codegen, element_type_name)) {
         emit_formatted(codegen, "for (int64_t _slot = _short_arr.len; _slot < %d; _slot++) "
-            "((%s *)_padded_arr.data)[_slot] = ", fixed_length, gray_map_element_c_type(codegen, element_type_name));
+            "((%s *)_padded_arr.data)[_slot] = ", fixed_length, array_slot_c_type(codegen, element_type_name));
         emit_element_zero_value(codegen, element_type_name, "gray_default_arena");
         emit(codegen, "; ");
     } else {
