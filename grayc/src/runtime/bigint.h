@@ -25,7 +25,6 @@ typedef struct { uint64_t w[4]; } gray_u256;
 #define LOW32_MASK 0xFFFFFFFFu
 
 /* --- Max decimal digits for string rendering --- */
-#define I128_MAX_DIGITS     21
 #define U128_MAX_DIGITS     21
 #define I256_MAX_DIGITS     40
 #define U256_MAX_DIGITS     80

@@ -381,14 +381,6 @@ static inline int64_t gray_neg_check(int64_t value, const char *file, int line) 
     return result;
 }
 
-static inline int64_t gray_inc_check(int64_t value, const char *file, int line) {
-    return gray_add_check(value, 1, file, line);
-}
-
-static inline int64_t gray_dec_check(int64_t value, const char *file, int line) {
-    return gray_sub_check(value, 1, file, line);
-}
-
 /* Overflow-checked unsigned integer arithmetic */
 static inline uint64_t gray_uadd_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;

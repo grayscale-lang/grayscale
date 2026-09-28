@@ -32,7 +32,6 @@
 #include <sys/stat.h>
 
 #define gray_sys_access  _access
-#define gray_sys_getcwd  _getcwd
 #define gray_sys_unlink  _unlink
 #define gray_sys_isatty  _isatty
 #define gray_sys_fileno  _fileno
@@ -65,7 +64,6 @@ extern char **environ;
 #endif
 
 #define gray_sys_access  access
-#define gray_sys_getcwd  getcwd
 #define gray_sys_unlink  unlink
 #define gray_sys_isatty  isatty
 #define gray_sys_fileno  fileno

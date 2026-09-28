@@ -207,7 +207,8 @@ static void test_gray_array_set(void) {
     GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t val = 100;
     GRAY_ARRAY_PUSH(arena, &arr, &val);
-    GRAY_ARRAY_SET(arr, int64_t, 0, 200);
+    val = 200;
+    gray_array_set(&arr, 0, &val, __FILE__, __LINE__);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 200);
 }
 
@@ -259,7 +260,8 @@ static void test_gray_array_copy(void) {
     GrayArray dst = gray_array_copy(arena, &src);
     ASSERT_EQ(dst.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(dst, int64_t, 1), 20);
-    GRAY_ARRAY_SET(src, int64_t, 1, 999);
+    int64_t updated = 999;
+    gray_array_set(&src, 1, &updated, __FILE__, __LINE__);
     ASSERT_EQ(GRAY_ARRAY_GET(dst, int64_t, 1), 20);
 }
 
@@ -317,7 +319,7 @@ static void test_gray_map_remove(void) {
     int64_t key = 7, val = 70;
     GRAY_MAP_SET(arena, &m, &key, &val);
     ASSERT_EQ(m.count, 1);
-    GRAY_MAP_REMOVE(&m, &key);
+    gray_map_remove(&m, &key, __FILE__, __LINE__);
     ASSERT_EQ(m.count, 0);
     ASSERT(gray_map_get(&m, &key) == NULL);
 }
@@ -366,8 +368,8 @@ static void test_gray_map_order_after_remove(void) {
     }
     /* Drop the first and middle entries — the worst case for the old
      * linear-scan-and-memmove removal. */
-    GRAY_MAP_REMOVE(&m, &keys[0]);
-    GRAY_MAP_REMOVE(&m, &keys[2]);
+    gray_map_remove(&m, &keys[0], __FILE__, __LINE__);
+    gray_map_remove(&m, &keys[2], __FILE__, __LINE__);
     ASSERT_EQ(m.count, 3);
 
     int64_t expected[] = {40, 20, 10};
@@ -396,9 +398,9 @@ static void test_gray_map_copy_sees_no_duplicates(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_ELEM_I64, GRAY_ELEM_I64);
     for (int64_t i = 0; i < 6; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
     int64_t drop = 0;
-    GRAY_MAP_REMOVE(&m, &drop);
+    gray_map_remove(&m, &drop, __FILE__, __LINE__);
     drop = 3;
-    GRAY_MAP_REMOVE(&m, &drop);
+    gray_map_remove(&m, &drop, __FILE__, __LINE__);
 
     /* Iterate through a struct copy, the way generated code passes maps to
      * gray_builtin_map_to_string, then iterate the original again. */
@@ -420,7 +422,7 @@ static void test_gray_map_order_churn_bounded(void) {
     for (int64_t i = 0; i < 32; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
     for (int round = 0; round < 500; round++) {
         int64_t key = round % 32;
-        GRAY_MAP_REMOVE(&m, &key);
+        gray_map_remove(&m, &key, __FILE__, __LINE__);
         int64_t v = key * 2;
         GRAY_MAP_SET(arena, &m, &key, &v);
         ASSERT(m.order_len <= m.capacity);

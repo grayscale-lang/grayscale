@@ -61,7 +61,6 @@ bool gray_map_remove(GrayMap *map, const void *key, const char *file, int line);
 
 /* Convenience macros for stdlib callers (uses C file/line) */
 #define GRAY_MAP_SET(arena, map, key, value) gray_map_set((arena), (map), (key), (value), __FILE__, __LINE__)
-#define GRAY_MAP_REMOVE(map, key) gray_map_remove((map), (key), __FILE__, __LINE__)
 
 /* Clear all entries */
 void gray_map_clear(GrayMap *map, const char *file, int line);

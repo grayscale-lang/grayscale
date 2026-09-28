@@ -30,7 +30,6 @@
 
 #define REG_EXTENDED 1
 #define REG_NOSUB    2
-#define REG_ICASE    4
 #define REG_NOTBOL   8  /* regexec eflag: cursor[0] is not beginning-of-line */
 #define REG_NOMATCH  1
 #define REG_BADPAT   2

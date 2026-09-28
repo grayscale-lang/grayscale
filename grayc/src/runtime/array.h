@@ -131,7 +131,6 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
 
 /* Typed access macros — stdlib callers (use C file/line) */
 #define GRAY_ARRAY_GET(array, type, index) (*(type *)gray_array_get_ptr(&(array), (index), __FILE__, __LINE__))
-#define GRAY_ARRAY_SET(array, type, index, value) do { type gray_macro_value_ = (value); gray_array_set(&(array), (index), &gray_macro_value_, __FILE__, __LINE__); } while(0)
 
 /* Typed access macros — codegen callers (pass Grayscale source location).
  * The bounds check is inline; SET stores sizeof(type) bytes when the array's
