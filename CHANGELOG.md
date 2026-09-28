@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.11.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.10.0...grayscale-v0.11.0) (2026-09-28)
+
+
+### Features
+
+* **grayc:** support TinyCC as a C backend ([#2826](https://github.com/grayscale-lang/grayscale/issues/2826)) ([54b6498](https://github.com/grayscale-lang/grayscale/commit/54b6498ace968dec68828988c193c15c2befd554))
+* **parser:** allow ';' as an optional statement and member separator ([#2590](https://github.com/grayscale-lang/grayscale/issues/2590)) ([a882151](https://github.com/grayscale-lang/grayscale/commit/a882151b910e10fd747b102d327d7246b0591328))
+
+
+### Bug Fixes
+
+* **arrays:** order u64 arrays as unsigned and return the element type from get_sum, get_min and get_max ([#2783](https://github.com/grayscale-lang/grayscale/issues/2783)) ([869bc73](https://github.com/grayscale-lang/grayscale/commit/869bc73de372749363fc2bd1cacb70211f76991f))
+* **arrays:** sort and is_sorted arrays of i8, i16, i32, u16, u32 and f32 at their real width ([#2781](https://github.com/grayscale-lang/grayscale/issues/2781)) ([a74484e](https://github.com/grayscale-lang/grayscale/commit/a74484e9dc2140e009b6877c37ae203ae74c8d63))
+* **binary:** take and return the named type in the 8- to 64-bit encode and decode functions ([#2867](https://github.com/grayscale-lang/grayscale/issues/2867)) ([fafac6b](https://github.com/grayscale-lang/grayscale/commit/fafac6b278e9aef895302809195f741df2a91bb2))
+* **codegen:** check that char(n) and casts to char receive a valid codepoint ([#2857](https://github.com/grayscale-lang/grayscale/issues/2857)) ([7d99777](https://github.com/grayscale-lang/grayscale/commit/7d997771cc9cfcd9aa070b4bf0afcfef0621ae77))
+* **codegen:** compare unsigned and signed integers by value ([#2858](https://github.com/grayscale-lang/grayscale/issues/2858)) ([d267dfc](https://github.com/grayscale-lang/grayscale/commit/d267dfc6d32e9adb417d23ff8b8c5e20bafae9a0))
+* **codegen:** default an enum with an explicit first value to its first variant ([#2844](https://github.com/grayscale-lang/grayscale/issues/2844)) ([06e9fed](https://github.com/grayscale-lang/grayscale/commit/06e9fed1b1b0de5c734688ad5491d8c7541bdcd7))
+* **codegen:** emit a module-level mut's constant initializer without a runtime range check ([#2872](https://github.com/grayscale-lang/grayscale/issues/2872)) ([f08a941](https://github.com/grayscale-lang/grayscale/commit/f08a9416cdfa03605c4f3dcdffb6ea48982aa213))
+* **codegen:** give a fixed-size array field N slots in new() ([#2893](https://github.com/grayscale-lang/grayscale/issues/2893)) ([bc5a770](https://github.com/grayscale-lang/grayscale/commit/bc5a770f3222c8d20ae18244af4d6c7dcc06ffde))
+* **codegen:** overflow- and zero-check compound assignment to integer map values ([#2871](https://github.com/grayscale-lang/grayscale/issues/2871)) ([282b5ec](https://github.com/grayscale-lang/grayscale/commit/282b5ecd37fdd41ecbe55b6dabe7b30ce27a0dbe))
+* **codegen:** overflow-check unary negation of i128 and i256 values ([311fc26](https://github.com/grayscale-lang/grayscale/commit/311fc26addba4dcdd669cf3a0120eaec4ce15fc2))
+* **codegen:** print float, f32, and f64 through one width-aware formatter ([890d3f5](https://github.com/grayscale-lang/grayscale/commit/890d3f5b7056fd036dd04976b539d0e85f4f9c54))
+* **codegen:** range-check narrowing casts from u64 and float sources before converting through int64 ([#2856](https://github.com/grayscale-lang/grayscale/issues/2856)) ([dade0c5](https://github.com/grayscale-lang/grayscale/commit/dade0c524d66d8407d4ca25da7ba35a2321a7937))
+* **codegen:** read and write [f32] elements as float in random.choice and arrays.fill ([#2849](https://github.com/grayscale-lang/grayscale/issues/2849)) ([5c08674](https://github.com/grayscale-lang/grayscale/commit/5c08674a2aa52ff84b525514a9963d06f3c0f7ac))
+* **codegen:** resolve the sqlite Database type to GraySqlite * ([#2885](https://github.com/grayscale-lang/grayscale/issues/2885)) ([56580dc](https://github.com/grayscale-lang/grayscale/commit/56580dc58b5c95cef05ebe2d8d61e11a3d37c0f5))
+* **codegen:** shift sized integers at the operand's width and bound the shift amount by it ([#2855](https://github.com/grayscale-lang/grayscale/issues/2855)) ([957a572](https://github.com/grayscale-lang/grayscale/commit/957a572f77bda78126b4810dcdb2e55e1760fd1a))
+* **codegen:** sort arrays of bool at their 1-byte width in sort_asc and sort_desc ([#2873](https://github.com/grayscale-lang/grayscale/issues/2873)) ([985e7f4](https://github.com/grayscale-lang/grayscale/commit/985e7f4cc3530aa55618c2d391dd5846592beec3))
+* **codegen:** stage [f32] values as float in arrays.insert_at and arrays.prepend ([#2834](https://github.com/grayscale-lang/grayscale/issues/2834)) ([1af5d92](https://github.com/grayscale-lang/grayscale/commit/1af5d92171fe98dc0e8811eaf5f8e87cdc8e5fc9))
+* **codegen:** store fixed-size [f32, N] arrays as packed float ([f7249ce](https://github.com/grayscale-lang/grayscale/commit/f7249ce25d97b9314b946ee79e8380f01fcaa7c5))
+* **codegen:** support bitwise operators on i128, u128, i256 and u256 values ([#2875](https://github.com/grayscale-lang/grayscale/issues/2875)) ([ec9aa87](https://github.com/grayscale-lang/grayscale/commit/ec9aa87a6ce0f5f16ec688d51a0320d16f755e18))
+* **codegen:** zero-fill a fixed-size struct field given fewer elements than its length ([1293138](https://github.com/grayscale-lang/grayscale/commit/1293138d81700b0235109bdee3a0eb364adfc458))
+* **codegen:** zero-filled [T, N] slots hold the element type's zero value ([#2842](https://github.com/grayscale-lang/grayscale/issues/2842)) ([4da468e](https://github.com/grayscale-lang/grayscale/commit/4da468e7861caec78186bc41b205b3bb2dacea7f))
+* **math:** panic on overflow in factorial, lcm, gcd, abs and neg ([#2785](https://github.com/grayscale-lang/grayscale/issues/2785)) ([3532e4c](https://github.com/grayscale-lang/grayscale/commit/3532e4cc2ef2c2e4985f0ee3f186d2c68031923c))
+* **math:** return the argument type from min, max and clamp ([#2866](https://github.com/grayscale-lang/grayscale/issues/2866)) ([a106897](https://github.com/grayscale-lang/grayscale/commit/a106897ea88d9fa79912ae545f82d57247db978c))
+* **math:** support i128, i256 and u128 arguments in abs and neg ([#2874](https://github.com/grayscale-lang/grayscale/issues/2874)) ([e279e66](https://github.com/grayscale-lang/grayscale/commit/e279e661e8d48959ef6b830c5032cb05267b6a34))
+* **parser:** accept a lowercase type alias as the first type in a multi-value return ([#2850](https://github.com/grayscale-lang/grayscale/issues/2850)) ([6821456](https://github.com/grayscale-lang/grayscale/commit/6821456b45fa9a53d9549580342bf540d24edcc0))
+* **parser:** parse a fixed-size array of any element type ([#2841](https://github.com/grayscale-lang/grayscale/issues/2841)) ([cc44edc](https://github.com/grayscale-lang/grayscale/commit/cc44edc8a3bdb3e1f3843a3d8cf5102ffe241ea9))
+* **parser:** stop an E3134 alias error from skipping the next declaration ([#2897](https://github.com/grayscale-lang/grayscale/issues/2897)) ([8d1aba8](https://github.com/grayscale-lang/grayscale/commit/8d1aba8ba6a42106be6c53ecbe68518d6f50fc0c))
+* **stdlib:** make http and server share one HttpResponse type ([#2886](https://github.com/grayscale-lang/grayscale/issues/2886)) ([3c0331e](https://github.com/grayscale-lang/grayscale/commit/3c0331ea11affd03dddc621804b0abdad0ee176d))
+* **tests:** update codegen e2e tests to the one-signature error and threads.spawn ([bc52de3](https://github.com/grayscale-lang/grayscale/commit/bc52de36763828413289febf5e171deae5dfc092))
+* **typechecker:** accept an array or map literal reassigned to a variable with sized elements ([47bae94](https://github.com/grayscale-lang/grayscale/commit/47bae94fc5361ab53112157d9af96715b58e3143))
+* **typechecker:** check the length of a non-literal value stored into a fixed-size struct field at runtime ([#2830](https://github.com/grayscale-lang/grayscale/issues/2830)) ([64db2d2](https://github.com/grayscale-lang/grayscale/commit/64db2d21b191a27fe4c03ef2565e0301a5ce9a11))
+* **typechecker:** enforce signedness for 128- and 256-bit integers in fmt %d and %u directives ([6d582ff](https://github.com/grayscale-lang/grayscale/commit/6d582fffeee7c2ca691fdad10a65a5f3281c2d08))
+* **typechecker:** give a narrow operand combined with a wide integer the wide type ([73c6160](https://github.com/grayscale-lang/grayscale/commit/73c6160a7287ed1a084958190a9d1cb4d42abb4e))
+* **typechecker:** print the whole fixed-size array type in E3054 ([#2894](https://github.com/grayscale-lang/grayscale/issues/2894)) ([0ebcb1a](https://github.com/grayscale-lang/grayscale/commit/0ebcb1a15ebfddcb95042353340d2fe10515e6c6))
+* **typechecker:** reject a one-argument random.rand_f64 or random.rand_char call with E5008 ([#2882](https://github.com/grayscale-lang/grayscale/issues/2882)) ([0285832](https://github.com/grayscale-lang/grayscale/commit/028583254d749ccad4c360c7839c6827de26da07))
+* **typechecker:** reject an alias whose target is not a type ([#2891](https://github.com/grayscale-lang/grayscale/issues/2891)) ([3255738](https://github.com/grayscale-lang/grayscale/commit/3255738323d209eae294482abac6922dec7fc348))
+* **typechecker:** reject returning a wide integer as a narrower or differently signed integer ([ea44ea3](https://github.com/grayscale-lang/grayscale/commit/ea44ea3926d4455459a098b3ff1bb01b506a7243))
+* **typechecker:** report an f64 strings.repeat count or strings.slice bound once ([#2878](https://github.com/grayscale-lang/grayscale/issues/2878)) ([2dec0a7](https://github.com/grayscale-lang/grayscale/commit/2dec0a76f3214d7e02594c85957b438282951b6e))
+* **typechecker:** report an undefined parameter or return type inside a func(...) type with E4016 ([#2854](https://github.com/grayscale-lang/grayscale/issues/2854)) ([68f5f66](https://github.com/grayscale-lang/grayscale/commit/68f5f6621e8bce23432bd79cafef491642ea60e5))
+* **typechecker:** require a ^i64 pointer argument for the 64-bit atomic functions ([#2868](https://github.com/grayscale-lang/grayscale/issues/2868)) ([82d6311](https://github.com/grayscale-lang/grayscale/commit/82d6311467e5c1cc7bdec31f891f8c31c081e1f9))
+
+
+### Performance Improvements
+
+* **typechecker:** index file-scope const integers in a hash table instead of scanning them linearly ([5836cd1](https://github.com/grayscale-lang/grayscale/commit/5836cd1ca5bf35d5c6dbcba5546858892c2a6440))
+
 ## [0.10.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.9.1...grayscale-v0.10.0) (2026-09-22)
 
 
