@@ -864,10 +864,11 @@ static void test_e2e_nested_array(void) {
 static void test_e2e_threads_spawn_join(void) {
     char *output = compile_and_run(
         "import @threads\n"
-        "do worker(id i64) { println(\"w${id}\") }\n"
+        "do worker1() { println(\"w1\") }\n"
+        "do worker2() { println(\"w2\") }\n"
         "do main() {\n"
-        "  mut t1 = threads.spawn(()worker, 1)\n"
-        "  mut t2 = threads.spawn(()worker, 2)\n"
+        "  mut t1 = threads.spawn(()worker1)\n"
+        "  mut t2 = threads.spawn(()worker2)\n"
         "  threads.join(t1)\n"
         "  threads.join(t2)\n"
         "  println(\"done\")\n"
@@ -960,7 +961,7 @@ static void test_e2e_or_return(void) {
         ""
         "do fallible(ok bool) -> (string, Error) {\n"
         "  if ok { return \"success\", nil }\n"
-        "  return \"\", error(\"failed\")\n"
+        "  return \"\", error(.Unknown, \"failed\")\n"
         "}\n"
         "do wrapper() -> (string, Error) {\n"
         "  mut val = fallible(true) or_return\n"
@@ -1914,7 +1915,7 @@ static void test_e2e_or_return_error_path(void) {
     char *output = compile_and_run(
         ""
         "do risky() -> (string, Error) {\n"
-        "  return \"\", error(\"oops\")\n"
+        "  return \"\", error(.Unknown, \"oops\")\n"
         "}\n"
         "do caller() -> (string, Error) {\n"
         "  mut val = risky() or_return\n"
@@ -1936,7 +1937,7 @@ static void test_e2e_or_return_fallback(void) {
     char *output = compile_and_run(
         ""
         "do risky() -> (string, Error) {\n"
-        "  return \"\", error(\"bad\")\n"
+        "  return \"\", error(.Unknown, \"bad\")\n"
         "}\n"
         "do safe() -> (string, Error) {\n"
         "  mut val = risky() or_return \"fallback\"\n"
