@@ -865,6 +865,21 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
     return name;
 }
 
+/* A type spelling as written in source, with the space after each comma that
+ * the parser drops when it builds the spelling: "[[i64,3],2]" → "[[i64, 3], 2]". */
+static const char *spaced_type_spelling(TypeChecker *checker, const char *spelling) {
+    size_t comma_count = 0;
+    for (const char *cursor = spelling; *cursor; cursor++) if (*cursor == ',') comma_count++;
+    char *spaced = arena_allocate(checker->arena, strlen(spelling) + comma_count + 1);
+    char *out = spaced;
+    for (const char *cursor = spelling; *cursor; cursor++) {
+        *out++ = *cursor;
+        if (*cursor == ',' && cursor[1] != ' ') *out++ = ' ';
+    }
+    *out = '\0';
+    return spaced;
+}
+
 /* Format a diagnostic message string into the arena (only called in error paths). */
 static char *typechecker_format(TypeChecker *checker, const char *format, ...) {
     char buffer[MESSAGE_BUFFER_SIZE];
@@ -13701,6 +13716,7 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
             else if (*cursor == ',' && depth == 1) { size_comma = cursor; break; }
         }
         bool has_size = size_comma != NULL;
+        const char *written_type_name = type_name_text;
         /* Resolve const identifier sizes (e.g. "[i64,SIZE]" → "[i64,5]")
          * before the mut/const checks so downstream code always sees
          * numeric type strings. */
@@ -13710,8 +13726,8 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
             type_name_text = node->data.variable_declaration.type_name;
         }
         if (node->data.variable_declaration.is_mutable && has_size) {
-            char *message = typechecker_format(checker, "mutable array '%s' cannot have a fixed size '%.*s'",
-                VARIABLE_DISPLAY_NAME(node), (int)(size_comma - type_name_text), type_name_text);
+            char *message = typechecker_format(checker, "mutable array '%s' cannot have a fixed size '%s'",
+                VARIABLE_DISPLAY_NAME(node), spaced_type_spelling(checker, written_type_name));
             diagnostic_error_help(checker->diagnostics, "E3054", message,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "use 'const' for fixed-size arrays, or remove the size for a dynamic 'mut' array");

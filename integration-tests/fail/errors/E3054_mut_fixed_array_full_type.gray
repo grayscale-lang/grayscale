@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3054 - the message quotes the whole fixed-size array type
+ * Expected: "mutable array 'grid' cannot have a fixed size '[[[i64, 3]], 2]'"
+ */
+
+// expect-error: E3054
+// expect-error-count: 1
+// expect-contains: cannot have a fixed size '[[[i64, 3]], 2]'
+
+do main() {
+    mut grid [[[i64, 3]], 2] = {}
+}
