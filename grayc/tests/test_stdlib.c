@@ -1,6 +1,7 @@
 /*
  * test_stdlib.c — Unit tests for the Grayscale stdlib modules:
- * strings, arrays, maps, math, fmt, encoding, strconv, json, io, regex.
+ * strings, arrays, maps, math, fmt, encoding, strconv, json, io, regex,
+ * csv, crypto, uuid, binary.
  *
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -24,6 +25,10 @@
 #include "../src/stdlib/regex.h"
 #include "../src/stdlib/builtins.h"
 #include "../src/stdlib/net.h"
+#include "../src/stdlib/csv.h"
+#include "../src/stdlib/crypto.h"
+#include "../src/stdlib/uuid.h"
+#include "../src/stdlib/binary.h"
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1454,6 +1459,497 @@ static void test_builtin_input(void) {
     ASSERT_GRAY_STR(r, "hello world");
 }
 
+/* ===== csv module ===== */
+
+static GrayString csv_cell_at(GrayArray data, int32_t row, int32_t column) {
+    GrayArray row_array = GRAY_ARRAY_GET(data, GrayArray, row);
+    return GRAY_ARRAY_GET(row_array, GrayString, column);
+}
+
+#define ASSERT_CSV_CELL(data, row, column, expected) do { \
+    GrayString _cell = csv_cell_at((data), (row), (column)); \
+    ASSERT_GRAY_STR(_cell, expected); \
+} while(0)
+
+static void test_csv_parse(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b\n1,2"));
+    ASSERT_EQ(data.len, 2);
+    ASSERT_CSV_CELL(data, 0, 0, "a");
+    ASSERT_CSV_CELL(data, 0, 1, "b");
+    ASSERT_CSV_CELL(data, 1, 0, "1");
+    ASSERT_CSV_CELL(data, 1, 1, "2");
+}
+
+static void test_csv_parse_quoted_fields(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("\"x,y\",\"say \"\"hi\"\"\",\"l1\nl2\""));
+    ASSERT_EQ(data.len, 1);
+    ASSERT_CSV_CELL(data, 0, 0, "x,y");
+    ASSERT_CSV_CELL(data, 0, 1, "say \"hi\"");
+    ASSERT_CSV_CELL(data, 0, 2, "l1\nl2");
+}
+
+static void test_csv_parse_delimited_semicolon(void) {
+    GrayArray data = gray_csv_parse_delimited(arena, gray_string_lit("a;b\n1;2"), ';');
+    ASSERT_EQ(data.len, 2);
+    ASSERT_CSV_CELL(data, 0, 1, "b");
+    ASSERT_CSV_CELL(data, 1, 0, "1");
+}
+
+static void test_csv_parse_delimited_tab_keeps_commas(void) {
+    GrayArray data = gray_csv_parse_delimited(arena, gray_string_lit("a,b\tc"), '\t');
+    ASSERT_CSV_CELL(data, 0, 0, "a,b");
+    ASSERT_CSV_CELL(data, 0, 1, "c");
+}
+
+static void test_csv_parse_delimited_quoting_still_applies(void) {
+    GrayArray data = gray_csv_parse_delimited(arena, gray_string_lit("\"a;b\";c"), ';');
+    ASSERT_CSV_CELL(data, 0, 0, "a;b");
+    ASSERT_CSV_CELL(data, 0, 1, "c");
+}
+
+static void test_csv_detect_delimiter(void) {
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("a;b;c")), ';');
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("a\tb\tc")), '\t');
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("a|b|c,d")), '|');
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("a,b,c")), ',');
+}
+
+static void test_csv_detect_delimiter_default_comma(void) {
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("abc")), ',');
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("")), ',');
+}
+
+static void test_csv_detect_delimiter_first_line_only(void) {
+    ASSERT_EQ(gray_csv_detect_delimiter(gray_string_lit("a,b\n;;;;;")), ',');
+}
+
+static void test_csv_headers(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("name,age\nann,30"));
+    GrayArray headers = gray_csv_headers(arena, &data);
+    ASSERT_EQ(headers.len, 2);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(headers, GrayString, 0), gray_string_lit("name")));
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(headers, GrayString, 1), gray_string_lit("age")));
+}
+
+static void test_csv_to_maps(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("name,age\nann,30\nbob,41"));
+    GrayArray rows = gray_csv_to_maps(arena, &data);
+    ASSERT_EQ(rows.len, 2);
+    GrayMap first = GRAY_ARRAY_GET(rows, GrayMap, 0);
+    GrayMap second = GRAY_ARRAY_GET(rows, GrayMap, 1);
+    GrayString *name = gray_map_get_str(&first, gray_string_lit("name"));
+    GrayString *age = gray_map_get_str(&second, gray_string_lit("age"));
+    ASSERT_NOT_NULL(name);
+    ASSERT_NOT_NULL(age);
+    ASSERT(gray_string_eq(*name, gray_string_lit("ann")));
+    ASSERT(gray_string_eq(*age, gray_string_lit("41")));
+}
+
+static void test_csv_to_maps_short_row_omits_keys(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b,c\n1,2"));
+    GrayArray rows = gray_csv_to_maps(arena, &data);
+    GrayMap row = GRAY_ARRAY_GET(rows, GrayMap, 0);
+    ASSERT_NOT_NULL(gray_map_get_str(&row, gray_string_lit("b")));
+    ASSERT(gray_map_get_str(&row, gray_string_lit("c")) == NULL);
+}
+
+static void test_csv_to_maps_long_row_drops_extras(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b\n1,2,3"));
+    GrayArray rows = gray_csv_to_maps(arena, &data);
+    GrayMap row = GRAY_ARRAY_GET(rows, GrayMap, 0);
+    ASSERT_EQ(row.count, 2);
+}
+
+static void test_csv_to_maps_header_only_is_empty(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b"));
+    GrayArray rows = gray_csv_to_maps(arena, &data);
+    ASSERT_EQ(rows.len, 0);
+}
+
+static void test_csv_from_maps_round_trip(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("name,age\nann,30\nbob,41"));
+    GrayArray rows = gray_csv_to_maps(arena, &data);
+    GrayArray rebuilt = gray_csv_from_maps(arena, &rows);
+    ASSERT_EQ(rebuilt.len, 3);
+    ASSERT_CSV_CELL(rebuilt, 0, 0, "name");
+    ASSERT_CSV_CELL(rebuilt, 0, 1, "age");
+    ASSERT_CSV_CELL(rebuilt, 2, 0, "bob");
+    ASSERT_CSV_CELL(rebuilt, 2, 1, "41");
+}
+
+static void test_csv_from_maps_header_is_key_union_in_first_seen_order(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b\n1,2"));
+    GrayArray first_rows = gray_csv_to_maps(arena, &data);
+    GrayArray other = gray_csv_parse(arena, gray_string_lit("b,c\n3,4"));
+    GrayArray other_rows = gray_csv_to_maps(arena, &other);
+    GrayMap first = GRAY_ARRAY_GET(first_rows, GrayMap, 0);
+    GrayMap second = GRAY_ARRAY_GET(other_rows, GrayMap, 0);
+    GrayArray rows = gray_array_new(arena, sizeof(GrayMap), 2, GRAY_ELEM_MAP);
+    GRAY_ARRAY_PUSH(arena, &rows, &first);
+    GRAY_ARRAY_PUSH(arena, &rows, &second);
+    GrayArray rebuilt = gray_csv_from_maps(arena, &rows);
+    ASSERT_EQ(rebuilt.len, 3);
+    ASSERT_CSV_CELL(rebuilt, 0, 0, "a");
+    ASSERT_CSV_CELL(rebuilt, 0, 1, "b");
+    ASSERT_CSV_CELL(rebuilt, 0, 2, "c");
+    ASSERT_CSV_CELL(rebuilt, 1, 2, "");
+    ASSERT_CSV_CELL(rebuilt, 2, 0, "");
+    ASSERT_CSV_CELL(rebuilt, 2, 2, "4");
+}
+
+static void test_csv_column(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("name,age\nann,30\nbob,41"));
+    GrayArray column = gray_csv_column(arena, &data, gray_string_lit("age"));
+    ASSERT_EQ(column.len, 2);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(column, GrayString, 0), gray_string_lit("30")));
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(column, GrayString, 1), gray_string_lit("41")));
+}
+
+static void test_csv_select_reorders_and_keeps_header(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b,c\n1,2,3"));
+    GrayString names_data[] = { gray_string_lit("c"), gray_string_lit("a") };
+    GrayArray names = gray_array_from(arena, names_data, sizeof(GrayString), 2, GRAY_ELEM_STRING);
+    GrayArray projected = gray_csv_select(arena, &data, &names);
+    ASSERT_EQ(projected.len, 2);
+    ASSERT_CSV_CELL(projected, 0, 0, "c");
+    ASSERT_CSV_CELL(projected, 0, 1, "a");
+    ASSERT_CSV_CELL(projected, 1, 0, "3");
+    ASSERT_CSV_CELL(projected, 1, 1, "1");
+}
+
+static void test_csv_sort_by_column_is_stable_and_keeps_header_first(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("n,v\nb,2\na,1\nc,3\na,0"));
+    GrayArray sorted = gray_csv_sort_by_column(arena, &data, gray_string_lit("n"));
+    ASSERT_EQ(sorted.len, 5);
+    ASSERT_CSV_CELL(sorted, 0, 0, "n");
+    ASSERT_CSV_CELL(sorted, 1, 1, "1");
+    ASSERT_CSV_CELL(sorted, 2, 1, "0");
+    ASSERT_CSV_CELL(sorted, 3, 0, "b");
+    ASSERT_CSV_CELL(sorted, 4, 0, "c");
+}
+
+static void test_csv_sort_by_column_is_lexicographic(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("n\n10\n9\n2"));
+    GrayArray sorted = gray_csv_sort_by_column(arena, &data, gray_string_lit("n"));
+    ASSERT_CSV_CELL(sorted, 1, 0, "10");
+    ASSERT_CSV_CELL(sorted, 2, 0, "2");
+    ASSERT_CSV_CELL(sorted, 3, 0, "9");
+}
+
+static void test_csv_to_json(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b\n1,2\n3,4"));
+    GrayString json = gray_csv_to_json(arena, &data);
+    ASSERT_GRAY_STR(json, "[{\"a\":\"1\",\"b\":\"2\"},{\"a\":\"3\",\"b\":\"4\"}]");
+}
+
+static void test_csv_to_json_header_only_is_empty_array(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b"));
+    GrayString json = gray_csv_to_json(arena, &data);
+    ASSERT_GRAY_STR(json, "[]");
+}
+
+static void test_csv_to_markdown(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("a,b\n1,x|y"));
+    GrayString table = gray_csv_to_markdown(arena, &data);
+    ASSERT(gray_strings_contains(table, gray_string_lit("---")));
+    ASSERT(gray_strings_contains(table, gray_string_lit("x\\|y")));
+    ASSERT_EQ(table.data[table.len - 1], '\n');
+}
+
+static void test_csv_stringify_quotes_special_fields(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("\"a,b\",\"say \"\"hi\"\"\",\"l1\nl2\",plain"));
+    GrayString text = gray_csv_stringify(arena, &data);
+    ASSERT(gray_strings_contains(text, gray_string_lit("\"a,b\"")));
+    ASSERT(gray_strings_contains(text, gray_string_lit("\"say \"\"hi\"\"\"")));
+    ASSERT(gray_strings_contains(text, gray_string_lit("\"l1\nl2\"")));
+    ASSERT(gray_strings_contains(text, gray_string_lit(",plain")));
+}
+
+static void test_csv_stringify_parse_round_trip(void) {
+    GrayArray data = gray_csv_parse(arena, gray_string_lit("\"a,b\",\"q\"\"q\"\nx,y"));
+    GrayString text = gray_csv_stringify(arena, &data);
+    GrayArray again = gray_csv_parse(arena, text);
+    ASSERT_EQ(again.len, 2);
+    ASSERT_CSV_CELL(again, 0, 0, "a,b");
+    ASSERT_CSV_CELL(again, 0, 1, "q\"q");
+    ASSERT_CSV_CELL(again, 1, 1, "y");
+}
+
+/* ===== crypto module ===== */
+
+static void test_crypto_sha256(void) {
+    ASSERT_GRAY_STR(gray_crypto_sha256(arena, gray_string_lit("abc")),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    ASSERT_GRAY_STR(gray_crypto_sha256(arena, gray_string_lit("")),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+}
+
+static void test_crypto_sha1(void) {
+    ASSERT_GRAY_STR(gray_crypto_sha1(arena, gray_string_lit("abc")),
+        "a9993e364706816aba3e25717850c26c9cd0d89d");
+}
+
+static void test_crypto_sha512(void) {
+    ASSERT_GRAY_STR(gray_crypto_sha512(arena, gray_string_lit("abc")),
+        "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
+        "2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
+}
+
+static void test_crypto_md5(void) {
+    ASSERT_GRAY_STR(gray_crypto_md5(arena, gray_string_lit("abc")),
+        "900150983cd24fb0d6963f7d28e17f72");
+}
+
+static void test_crypto_hmac_sha256(void) {
+    ASSERT_GRAY_STR(gray_crypto_hmac_sha256(arena, gray_string_lit("key"),
+        gray_string_lit("The quick brown fox jumps over the lazy dog")),
+        "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8");
+}
+
+static void test_crypto_hmac_sha1(void) {
+    ASSERT_GRAY_STR(gray_crypto_hmac_sha1(arena, gray_string_lit("key"),
+        gray_string_lit("The quick brown fox jumps over the lazy dog")),
+        "de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9");
+}
+
+static void test_crypto_constant_time_equal(void) {
+    ASSERT(gray_crypto_constant_time_equal(gray_string_lit("secret"), gray_string_lit("secret")));
+    ASSERT(!gray_crypto_constant_time_equal(gray_string_lit("secret"), gray_string_lit("secreT")));
+    ASSERT(gray_crypto_constant_time_equal(gray_string_lit(""), gray_string_lit("")));
+}
+
+static void test_crypto_constant_time_equal_length_difference(void) {
+    ASSERT(!gray_crypto_constant_time_equal(gray_string_lit("abc"), gray_string_lit("abcd")));
+    ASSERT(!gray_crypto_constant_time_equal(gray_string_lit("abcd"), gray_string_lit("abc")));
+    ASSERT(!gray_crypto_constant_time_equal(gray_string_lit(""), gray_string_lit("a")));
+}
+
+static void test_crypto_crc32(void) {
+    ASSERT_EQ(gray_crypto_crc32(gray_string_lit("123456789")), 0xCBF43926u);
+    ASSERT_EQ(gray_crypto_crc32(gray_string_lit("")), 0u);
+}
+
+static void test_crypto_entropy(void) {
+    ASSERT_FLOAT_EQ(gray_crypto_entropy(gray_string_lit("")), 0.0);
+    ASSERT_FLOAT_EQ(gray_crypto_entropy(gray_string_lit("aaaa")), 0.0);
+    ASSERT_FLOAT_EQ(gray_crypto_entropy(gray_string_lit("ab")), 1.0);
+    ASSERT_FLOAT_EQ(gray_crypto_entropy(gray_string_lit("abcd")), 2.0);
+}
+
+static void test_crypto_totp_rfc6238_vectors(void) {
+    GrayString secret = gray_string_lit("12345678901234567890");
+    ASSERT_GRAY_STR(gray_crypto_totp(arena, secret, 59, 8), "94287082");
+    ASSERT_GRAY_STR(gray_crypto_totp(arena, secret, 1111111109, 8), "07081804");
+    ASSERT_GRAY_STR(gray_crypto_totp(arena, secret, 20000000000, 8), "65353130");
+}
+
+static void test_crypto_totp_digits_zero_padded_to_width(void) {
+    GrayString secret = gray_string_lit("12345678901234567890");
+    ASSERT_GRAY_STR(gray_crypto_totp(arena, secret, 59, 6), "287082");
+    ASSERT_GRAY_STR(gray_crypto_totp(arena, secret, 1111111109, 8), "07081804");
+}
+
+/* ===== uuid module ===== */
+
+static void test_uuid_parse_to_string_round_trip(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    ASSERT_GRAY_STR(gray_uuid_to_string(id), "6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+}
+
+static void test_uuid_parse_normalizes_to_lowercase(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("6BA7B810-9DAD-11D1-80B4-00C04FD430C8"));
+    ASSERT_GRAY_STR(gray_uuid_to_string(id), "6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+}
+
+static void test_uuid_is_valid(void) {
+    ASSERT(gray_uuid_is_valid(gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8")));
+    ASSERT(!gray_uuid_is_valid(gray_string_lit("")));
+    ASSERT(!gray_uuid_is_valid(gray_string_lit("not-a-uuid")));
+    ASSERT(!gray_uuid_is_valid(gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c")));
+    ASSERT(!gray_uuid_is_valid(gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430cz")));
+    ASSERT(!gray_uuid_is_valid(gray_string_lit("6ba7b8109dad11d180b400c04fd430c8")));
+}
+
+static void test_uuid_nil(void) {
+    GrayUUID nil = gray_uuid_nil();
+    ASSERT_GRAY_STR(gray_uuid_to_string(nil), "00000000-0000-0000-0000-000000000000");
+    ASSERT_EQ(gray_uuid_version(nil), 0);
+}
+
+static void test_uuid_generate_v5_known_vector(void) {
+    GrayUUID dns_namespace = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    GrayUUID id = gray_uuid_generate_v5(arena, dns_namespace, gray_string_lit("python.org"));
+    ASSERT_GRAY_STR(gray_uuid_to_string(id), "886313e1-3b8a-5372-9b90-0c9aee199e5d");
+    ASSERT_EQ(gray_uuid_version(id), 5);
+}
+
+static void test_uuid_generate_v5_is_deterministic(void) {
+    GrayUUID dns_namespace = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    GrayUUID first = gray_uuid_generate_v5(arena, dns_namespace, gray_string_lit("a"));
+    GrayUUID again = gray_uuid_generate_v5(arena, dns_namespace, gray_string_lit("a"));
+    GrayUUID other = gray_uuid_generate_v5(arena, dns_namespace, gray_string_lit("b"));
+    ASSERT(gray_string_eq(gray_uuid_to_string(first), gray_uuid_to_string(again)));
+    ASSERT(!gray_string_eq(gray_uuid_to_string(first), gray_uuid_to_string(other)));
+}
+
+static void test_uuid_generate_is_v4(void) {
+    GrayUUID id = gray_uuid_generate(arena);
+    GrayString text = gray_uuid_to_string(id);
+    ASSERT_EQ(text.len, 36);
+    ASSERT(gray_uuid_is_valid(text));
+    ASSERT_EQ(gray_uuid_version(id), 4);
+    ASSERT_EQ(gray_uuid_version(gray_uuid_generate_random(arena)), 4);
+}
+
+static void test_uuid_generate_time_ordered_is_v7(void) {
+    GrayUUID id = gray_uuid_generate_time_ordered(arena);
+    ASSERT_EQ(gray_uuid_version(id), 7);
+    ASSERT(gray_uuid_timestamp(id).v1);
+}
+
+static void test_uuid_generate_time_ordered_sorts_by_creation(void) {
+    GrayUUID first = gray_uuid_generate_time_ordered(arena);
+    struct timespec pause = { 0, 2000000 };
+    nanosleep(&pause, NULL);
+    GrayUUID second = gray_uuid_generate_time_ordered(arena);
+    GrayString first_text = gray_uuid_to_string(first);
+    GrayString second_text = gray_uuid_to_string(second);
+    ASSERT(memcmp(first_text.data, second_text.data, 36) < 0);
+}
+
+static void test_uuid_timestamp_v7_vector(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("017F22E2-79B0-7CC3-98C4-DC0C0C07398F"));
+    GrayUuidTimestamp stamp = gray_uuid_timestamp(id);
+    ASSERT(stamp.v1);
+    ASSERT_EQ(stamp.v0, 1645557742000);
+}
+
+static void test_uuid_timestamp_false_for_non_time_versions(void) {
+    GrayUUID dns_namespace = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    GrayUUID v5 = gray_uuid_generate_v5(arena, dns_namespace, gray_string_lit("python.org"));
+    ASSERT(!gray_uuid_timestamp(v5).v1);
+    ASSERT(!gray_uuid_timestamp(gray_uuid_generate(arena)).v1);
+}
+
+static void test_uuid_generate_compact(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    ASSERT_GRAY_STR(gray_uuid_generate_compact(arena, id), "6ba7b8109dad11d180b400c04fd430c8");
+}
+
+static void test_uuid_to_bytes_big_endian(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("00010203-0405-0607-0809-0a0b0c0d0e0f"));
+    GrayArray bytes = gray_uuid_to_bytes(arena, id);
+    ASSERT_EQ(bytes.len, 16);
+    for (int32_t i = 0; i < 16; i++) {
+        ASSERT_EQ(GRAY_ARRAY_GET(bytes, uint8_t, i), i);
+    }
+}
+
+static void test_uuid_from_bytes_round_trip(void) {
+    GrayUUID id = gray_uuid_parse(arena, gray_string_lit("6ba7b810-9dad-11d1-80b4-00c04fd430c8"));
+    GrayArray bytes = gray_uuid_to_bytes(arena, id);
+    GrayUUID rebuilt = gray_uuid_from_bytes(arena, &bytes);
+    ASSERT_GRAY_STR(gray_uuid_to_string(rebuilt), "6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+}
+
+/* ===== binary module ===== */
+
+#define ASSERT_BYTES(bytes_expression, ...) do { \
+    GrayArray _bytes = (bytes_expression); \
+    const uint8_t _expected[] = { __VA_ARGS__ }; \
+    ASSERT_EQ(_bytes.len, (int32_t)sizeof(_expected)); \
+    for (int32_t _i = 0; _i < (int32_t)sizeof(_expected); _i++) { \
+        ASSERT_EQ(GRAY_ARRAY_GET(_bytes, uint8_t, _i), _expected[_i]); \
+    } \
+} while(0)
+
+static void test_binary_8bit(void) {
+    GrayArray signed_byte = gray_binary_encode_i8(arena, -1);
+    ASSERT_BYTES(signed_byte, 0xFF);
+    ASSERT_EQ(gray_binary_decode_i8(&signed_byte, __FILE__, __LINE__), -1);
+    GrayArray unsigned_byte = gray_binary_encode_u8(arena, 200);
+    ASSERT_BYTES(unsigned_byte, 0xC8);
+    ASSERT_EQ(gray_binary_decode_u8(&unsigned_byte, __FILE__, __LINE__), 200);
+}
+
+static void test_binary_16bit_byte_order(void) {
+    ASSERT_BYTES(gray_binary_encode_u16_le(arena, 0x0102), 0x02, 0x01);
+    ASSERT_BYTES(gray_binary_encode_u16_be(arena, 0x0102), 0x01, 0x02);
+    ASSERT_BYTES(gray_binary_encode_i16_le(arena, -2), 0xFE, 0xFF);
+    ASSERT_BYTES(gray_binary_encode_i16_be(arena, -2), 0xFF, 0xFE);
+}
+
+static void test_binary_32bit_byte_order(void) {
+    ASSERT_BYTES(gray_binary_encode_u32_le(arena, 0x01020304u), 0x04, 0x03, 0x02, 0x01);
+    ASSERT_BYTES(gray_binary_encode_u32_be(arena, 0x01020304u), 0x01, 0x02, 0x03, 0x04);
+    ASSERT_BYTES(gray_binary_encode_i32_le(arena, -1), 0xFF, 0xFF, 0xFF, 0xFF);
+}
+
+static void test_binary_64bit_byte_order(void) {
+    ASSERT_BYTES(gray_binary_encode_u64_le(arena, 0x0102030405060708ull),
+        0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01);
+    ASSERT_BYTES(gray_binary_encode_u64_be(arena, 0x0102030405060708ull),
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08);
+}
+
+static void test_binary_integer_round_trip_extremes(void) {
+    GrayArray bytes = gray_binary_encode_i16_le(arena, INT16_MIN);
+    ASSERT_EQ(gray_binary_decode_i16_le(&bytes, __FILE__, __LINE__), INT16_MIN);
+    bytes = gray_binary_encode_i16_be(arena, INT16_MAX);
+    ASSERT_EQ(gray_binary_decode_i16_be(&bytes, __FILE__, __LINE__), INT16_MAX);
+    bytes = gray_binary_encode_u16_be(arena, UINT16_MAX);
+    ASSERT_EQ(gray_binary_decode_u16_be(&bytes, __FILE__, __LINE__), UINT16_MAX);
+    bytes = gray_binary_encode_i32_be(arena, INT32_MIN);
+    ASSERT_EQ(gray_binary_decode_i32_be(&bytes, __FILE__, __LINE__), INT32_MIN);
+    bytes = gray_binary_encode_i32_le(arena, INT32_MAX);
+    ASSERT_EQ(gray_binary_decode_i32_le(&bytes, __FILE__, __LINE__), INT32_MAX);
+    bytes = gray_binary_encode_u32_le(arena, UINT32_MAX);
+    ASSERT_EQ(gray_binary_decode_u32_le(&bytes, __FILE__, __LINE__), UINT32_MAX);
+    bytes = gray_binary_encode_i64_le(arena, INT64_MIN);
+    ASSERT_EQ(gray_binary_decode_i64_le(&bytes, __FILE__, __LINE__), INT64_MIN);
+    bytes = gray_binary_encode_i64_be(arena, INT64_MAX);
+    ASSERT_EQ(gray_binary_decode_i64_be(&bytes, __FILE__, __LINE__), INT64_MAX);
+    bytes = gray_binary_encode_u64_be(arena, UINT64_MAX);
+    ASSERT(gray_binary_decode_u64_be(&bytes, __FILE__, __LINE__) == UINT64_MAX);
+    bytes = gray_binary_encode_u64_le(arena, UINT64_MAX);
+    ASSERT(gray_binary_decode_u64_le(&bytes, __FILE__, __LINE__) == UINT64_MAX);
+}
+
+#define GRAY_U128_ONE ((gray_u128){1, 0})
+
+static void test_binary_128bit_byte_order(void) {
+    GrayArray little = gray_binary_encode_u128_le(arena, GRAY_U128_ONE);
+    GrayArray big = gray_binary_encode_u128_be(arena, GRAY_U128_ONE);
+    ASSERT_EQ(little.len, 16);
+    ASSERT_EQ(big.len, 16);
+    ASSERT_EQ(GRAY_ARRAY_GET(little, uint8_t, 0), 1);
+    ASSERT_EQ(GRAY_ARRAY_GET(little, uint8_t, 15), 0);
+    ASSERT_EQ(GRAY_ARRAY_GET(big, uint8_t, 0), 0);
+    ASSERT_EQ(GRAY_ARRAY_GET(big, uint8_t, 15), 1);
+    ASSERT(gray_u128_eq(gray_binary_decode_u128_le(&little, __FILE__, __LINE__), GRAY_U128_ONE));
+    ASSERT(gray_u128_eq(gray_binary_decode_u128_be(&big, __FILE__, __LINE__), GRAY_U128_ONE));
+}
+
+static void test_binary_float_byte_order(void) {
+    ASSERT_BYTES(gray_binary_encode_f32_le(arena, 1.0f), 0x00, 0x00, 0x80, 0x3F);
+    ASSERT_BYTES(gray_binary_encode_f32_be(arena, 1.0f), 0x3F, 0x80, 0x00, 0x00);
+    ASSERT_BYTES(gray_binary_encode_f64_be(arena, 1.0),
+        0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00);
+    ASSERT_BYTES(gray_binary_encode_f64_le(arena, 1.0),
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F);
+}
+
+static void test_binary_float_round_trip(void) {
+    GrayArray bytes = gray_binary_encode_f64_le(arena, -3.5);
+    ASSERT_FLOAT_EQ(gray_binary_decode_f64_le(&bytes, __FILE__, __LINE__), -3.5);
+    bytes = gray_binary_encode_f64_be(arena, 1234.5678);
+    ASSERT_FLOAT_EQ(gray_binary_decode_f64_be(&bytes, __FILE__, __LINE__), 1234.5678);
+    bytes = gray_binary_encode_f32_le(arena, 0.25f);
+    ASSERT_FLOAT_EQ(gray_binary_decode_f32_le(&bytes, __FILE__, __LINE__), 0.25);
+    bytes = gray_binary_encode_f32_be(arena, -8.5f);
+    ASSERT_FLOAT_EQ(gray_binary_decode_f32_be(&bytes, __FILE__, __LINE__), -8.5);
+}
+
 /* ===== main ===== */
 
 int main(void) {
@@ -1674,6 +2170,72 @@ int main(void) {
     RUN_TEST(test_builtin_sleep_ms_zero);
     RUN_TEST(test_builtin_sleep_ns_zero);
     RUN_TEST(test_builtin_input);
+
+    printf("--- csv ---\n");
+    RUN_TEST(test_csv_parse);
+    RUN_TEST(test_csv_parse_quoted_fields);
+    RUN_TEST(test_csv_parse_delimited_semicolon);
+    RUN_TEST(test_csv_parse_delimited_tab_keeps_commas);
+    RUN_TEST(test_csv_parse_delimited_quoting_still_applies);
+    RUN_TEST(test_csv_detect_delimiter);
+    RUN_TEST(test_csv_detect_delimiter_default_comma);
+    RUN_TEST(test_csv_detect_delimiter_first_line_only);
+    RUN_TEST(test_csv_headers);
+    RUN_TEST(test_csv_to_maps);
+    RUN_TEST(test_csv_to_maps_short_row_omits_keys);
+    RUN_TEST(test_csv_to_maps_long_row_drops_extras);
+    RUN_TEST(test_csv_to_maps_header_only_is_empty);
+    RUN_TEST(test_csv_from_maps_round_trip);
+    RUN_TEST(test_csv_from_maps_header_is_key_union_in_first_seen_order);
+    RUN_TEST(test_csv_column);
+    RUN_TEST(test_csv_select_reorders_and_keeps_header);
+    RUN_TEST(test_csv_sort_by_column_is_stable_and_keeps_header_first);
+    RUN_TEST(test_csv_sort_by_column_is_lexicographic);
+    RUN_TEST(test_csv_to_json);
+    RUN_TEST(test_csv_to_json_header_only_is_empty_array);
+    RUN_TEST(test_csv_to_markdown);
+    RUN_TEST(test_csv_stringify_quotes_special_fields);
+    RUN_TEST(test_csv_stringify_parse_round_trip);
+
+    printf("--- crypto ---\n");
+    RUN_TEST(test_crypto_sha256);
+    RUN_TEST(test_crypto_sha1);
+    RUN_TEST(test_crypto_sha512);
+    RUN_TEST(test_crypto_md5);
+    RUN_TEST(test_crypto_hmac_sha256);
+    RUN_TEST(test_crypto_hmac_sha1);
+    RUN_TEST(test_crypto_constant_time_equal);
+    RUN_TEST(test_crypto_constant_time_equal_length_difference);
+    RUN_TEST(test_crypto_crc32);
+    RUN_TEST(test_crypto_entropy);
+    RUN_TEST(test_crypto_totp_rfc6238_vectors);
+    RUN_TEST(test_crypto_totp_digits_zero_padded_to_width);
+
+    printf("--- uuid ---\n");
+    RUN_TEST(test_uuid_parse_to_string_round_trip);
+    RUN_TEST(test_uuid_parse_normalizes_to_lowercase);
+    RUN_TEST(test_uuid_is_valid);
+    RUN_TEST(test_uuid_nil);
+    RUN_TEST(test_uuid_generate_v5_known_vector);
+    RUN_TEST(test_uuid_generate_v5_is_deterministic);
+    RUN_TEST(test_uuid_generate_is_v4);
+    RUN_TEST(test_uuid_generate_time_ordered_is_v7);
+    RUN_TEST(test_uuid_generate_time_ordered_sorts_by_creation);
+    RUN_TEST(test_uuid_timestamp_v7_vector);
+    RUN_TEST(test_uuid_timestamp_false_for_non_time_versions);
+    RUN_TEST(test_uuid_generate_compact);
+    RUN_TEST(test_uuid_to_bytes_big_endian);
+    RUN_TEST(test_uuid_from_bytes_round_trip);
+
+    printf("--- binary ---\n");
+    RUN_TEST(test_binary_8bit);
+    RUN_TEST(test_binary_16bit_byte_order);
+    RUN_TEST(test_binary_32bit_byte_order);
+    RUN_TEST(test_binary_64bit_byte_order);
+    RUN_TEST(test_binary_integer_round_trip_extremes);
+    RUN_TEST(test_binary_128bit_byte_order);
+    RUN_TEST(test_binary_float_byte_order);
+    RUN_TEST(test_binary_float_round_trip);
 
     PRINT_RESULTS();
     gray_arena_destroy(arena, __FILE__, __LINE__);
