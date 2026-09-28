@@ -1,0 +1,75 @@
+/*
+ * enum_explicit_value_default_first_variant.gray - An enum whose first
+ * variant has an explicit value defaults to that first variant wherever a
+ * value is zero-filled: an omitted field, a fixed-size array slot, new(),
+ * and a declaration with no initializer.
+ */
+
+const Code enum {
+    A = 10
+    B
+}
+
+const Holder struct {
+    code Code
+    codes [Code, 3]
+    count i64
+}
+
+const WithDefault struct {
+    codes [Code, 3] = {Code.B}
+}
+
+const Outer struct {
+    inner Holder
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== enum with explicit values: default is the first variant ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const empty Holder = Holder{}
+    check("omitted field", empty.code == Code.A, addr(passed), addr(failed))
+    check("omitted fixed-array field", empty.codes[0] == Code.A && empty.codes[2] == Code.A, addr(passed), addr(failed))
+
+    const partial Holder = Holder{count: 1, codes: {Code.B}}
+    check("partial fixed-array field", partial.codes[0] == Code.B && partial.codes[2] == Code.A, addr(passed), addr(failed))
+
+    const inline_default WithDefault = WithDefault{}
+    check("partial inline field default", inline_default.codes[0] == Code.B && inline_default.codes[1] == Code.A, addr(passed), addr(failed))
+
+    const local [Code, 3] = {Code.B}
+    check("partial local fixed array", local[0] == Code.B && local[2] == Code.A, addr(passed), addr(failed))
+
+    const outer Outer = Outer{}
+    check("nested struct field", outer.inner.code == Code.A && outer.inner.codes[1] == Code.A, addr(passed), addr(failed))
+
+    heap_holder = new(Holder)
+    check("new(struct) field", heap_holder.code == Code.A, addr(passed), addr(failed))
+
+    heap_code = new(Code)
+    check("new(enum)", heap_code^ == Code.A, addr(passed), addr(failed))
+
+    mut declared Code
+    check("declaration with no initializer", declared == Code.A, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

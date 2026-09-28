@@ -1372,6 +1372,42 @@ static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
     return false;
 }
 
+/* The variant a default value of the resolved enum `enum_name` takes when a
+ * zero-filled one would match no variant: the first variant of a
+ * string-backed enum, or of an integer-backed one whose first variant has an
+ * explicit value. NULL when C's zero is already the default, or `enum_name`
+ * is not such an enum. The C constant is GrayEnum_<enum_name>_<variant>. */
+static const char *codegen_enum_default_variant(CodeGen *codegen, const char *enum_name) {
+    int enum_index = enum_name ? codegen_enum_index(codegen, enum_name) : -1;
+    if (enum_index < 0 || codegen->is_enum_tagged[enum_index]) return NULL;
+    AstNode *declaration = codegen->enum_declarations[enum_index];
+    if (declaration->data.enum_declaration.value_count == 0) return NULL;
+    if (!codegen->is_enum_string[enum_index] &&
+        (declaration->data.enum_declaration.is_flags || !declaration->data.enum_declaration.values[0].value))
+        return NULL;
+    return declaration->data.enum_declaration.values[0].name;
+}
+
+/* The default variant of an integer-backed enum array element, as
+ * codegen_enum_default_variant gives it, or NULL. */
+static const char *codegen_enum_slot_default_variant(CodeGen *codegen, const char *enum_name) {
+    return codegen_enum_is_string(codegen, enum_name) ? NULL : codegen_enum_default_variant(codegen, enum_name);
+}
+
+/* Emits `count` array initializer slots holding the default variant of the
+ * enum element type `element_type_name`, each preceded by ", " unless it is
+ * the first slot of the initializer. Emits nothing when C's zero is already
+ * that type's default, since C zero-fills the slots an initializer omits. */
+static void emit_enum_default_slots(CodeGen *codegen, const char *element_type_name, int count, bool after_element) {
+    const char *enum_name = codegen_resolve_type(codegen, element_type_name);
+    const char *variant = codegen_enum_slot_default_variant(codegen, enum_name);
+    if (!variant) return;
+    for (int i = 0; i < count; i++) {
+        if (after_element || i > 0) emit(codegen, ", ");
+        emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, variant);
+    }
+}
+
 /* Register a wide integer variable's declared type name */
 static void register_wide_integer_variable(CodeGen *codegen, const char *name, const char *type_name) {
     if (codegen->wide_integer_variable_count >= codegen->wide_integer_variable_capacity) {
@@ -2395,19 +2431,17 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *struct
     if (!field_type_name) return;
     bool field_is_map = strncmp(field_type_name, "map[", 4) == 0;
     bool field_is_array = field_type_name[0] == '[';
-    const char *string_enum = codegen_resolve_type(codegen, field_type_name);
-    bool is_field_string_enum = codegen_enum_is_string(codegen, string_enum);
+    const char *enum_name = codegen_resolve_type(codegen, field_type_name);
+    const char *enum_variant = codegen_enum_default_variant(codegen, enum_name);
     GrayType *field_type = type_from_name(field_type_name);
-    bool field_is_struct = !field_is_map && !field_is_array && !is_field_string_enum &&
+    bool field_is_struct = !field_is_map && !field_is_array && !enum_variant &&
                             field_type && field_type->kind == TYPE_KIND_STRUCT;
-    if (!field_is_map && !field_is_array && !is_field_string_enum && !field_is_struct) return;
+    if (!field_is_map && !field_is_array && !enum_variant && !field_is_struct) return;
     if (*emitted) emit(codegen, ", ");
     *emitted = true;
     emit_formatted(codegen, ".%s = ", sanitize_name(struct_field->name));
-    if (is_field_string_enum) {
-        int enum_index = codegen_enum_index(codegen, string_enum);
-        const char *field_value_text = codegen->enum_declarations[enum_index]->data.enum_declaration.values[0].name;
-        emit_formatted(codegen, "GrayEnum_%s_%s", string_enum, field_value_text);
+    if (enum_variant) {
+        emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, enum_variant);
     } else if (field_is_struct) {
         emit_struct_zero_value_literal(codegen, field_type_name, depth + 1);
     } else if (field_is_map) {
@@ -2422,8 +2456,9 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *struct
         if (field_type && field_type->element_type) c_element_type = gray_map_element_c_type(codegen, field_type->element_type);
         int fixed_size = extract_array_size(field_type_name);
         if (fixed_size > 0) {
-            emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))",
-                c_element_type, fixed_size, c_element_type, fixed_size, c_element_type);
+            emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
+            emit_enum_default_slots(codegen, field_type->element_type, fixed_size, false);
+            emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
         } else {
             emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
         }
@@ -2577,11 +2612,10 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             if (!field_type_name || struct_field->default_value) continue;
             bool field_is_map = strncmp(field_type_name, "map[", 4) == 0;
             bool field_is_array = (field_type_name[0] == '[');
-            /* A string-backed enum is a GrayString at the C level, so a
-             * zero-filled field is an empty string, not a valid variant.
-             * Seed it with the first variant, matching new(EnumType). */
-            const char *string_enum = codegen_resolve_type(codegen, field_type_name);
-            bool is_field_string_enum = codegen_enum_is_string(codegen, string_enum);
+            /* An enum whose zero-filled value matches no variant is seeded
+             * with its first variant, matching new(EnumType). */
+            const char *enum_name = codegen_resolve_type(codegen, field_type_name);
+            const char *enum_variant = codegen_enum_default_variant(codegen, enum_name);
             GrayType *field_type = type_from_name(field_type_name);
             /* A struct-typed field left out entirely still needs its own
              * fixed-array/map/string-enum fields defaulted the same way — an
@@ -2590,17 +2624,15 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
              * 0 instead of its declared N (e.g. Outer{} omitting an `inner
              * Inner` field whose own `data [i64,3]` field then reads back
              * as a 0-length array). */
-            bool field_is_struct = !field_is_map && !field_is_array && !is_field_string_enum &&
+            bool field_is_struct = !field_is_map && !field_is_array && !enum_variant &&
                                     field_type && field_type->kind == TYPE_KIND_STRUCT;
-            if (!field_is_map && !field_is_array && !is_field_string_enum && !field_is_struct) continue;
+            if (!field_is_map && !field_is_array && !enum_variant && !field_is_struct) continue;
             if (struct_literal_specifies_field(node, struct_field->name)) continue;
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
             emit_formatted(codegen, ".%s = ", sanitize_name(struct_field->name));
-            if (is_field_string_enum) {
-                int enum_index = codegen_enum_index(codegen, string_enum);
-                const char *first_variant_name = codegen->enum_declarations[enum_index]->data.enum_declaration.values[0].name;
-                emit_formatted(codegen, "GrayEnum_%s_%s", string_enum, first_variant_name);
+            if (enum_variant) {
+                emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, enum_variant);
                 continue;
             }
             if (field_is_struct) {
@@ -2624,8 +2656,9 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                  * compound literal an empty `= {}` initializer would. */
                 int fixed_size = extract_array_size(field_type_name);
                 if (fixed_size > 0) {
-                    emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))",
-                        c_element_type, fixed_size, c_element_type, fixed_size, c_element_type);
+                    emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
+                    emit_enum_default_slots(codegen, field_type->element_type, fixed_size, false);
+                    emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
                 } else {
                     emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
                 }
@@ -4042,7 +4075,7 @@ static bool struct_needs_new_initializer(CodeGen *codegen, AstNode *struct_decla
         const char *field_type_name = struct_declaration->data.struct_declaration.fields[i].type_name;
         if (struct_declaration->data.struct_declaration.fields[i].default_value) return true;
         if (field_type_name && (strncmp(field_type_name, "map[", 4) == 0 || field_type_name[0] == '[')) return true;
-        if (field_type_name && codegen_enum_is_string(codegen, codegen_resolve_type(codegen, field_type_name)))
+        if (field_type_name && codegen_enum_default_variant(codegen, codegen_resolve_type(codegen, field_type_name)))
             return true;
         if (field_type_name && field_type_name[0] != '^') {
             GrayType *field_gray_type = type_from_name(field_type_name);
@@ -4064,6 +4097,8 @@ static void emit_new_struct_initializer(CodeGen *codegen, AstNode *struct_declar
     for (int i = 0; i < struct_declaration->data.struct_declaration.field_count; i++) {
         const char *field_name = struct_declaration->data.struct_declaration.fields[i].name;
         const char *field_type = struct_declaration->data.struct_declaration.fields[i].type_name;
+        const char *enum_name = codegen_resolve_type(codegen, field_type);
+        const char *enum_variant = codegen_enum_default_variant(codegen, enum_name);
         if (field_type && strncmp(field_type, "map[", 4) == 0) {
             GrayType *map_type = type_from_name(field_type);
             const char *c_key_type = "GrayString";
@@ -4079,15 +4114,11 @@ static void emit_new_struct_initializer(CodeGen *codegen, AstNode *struct_declar
                 c_element_type = gray_map_element_c_type(codegen, argument_type->element_type);
             emit_formatted(codegen, "%s%s = GRAY_ARRAY_NEW_OF(gray_heap_arena, %s, 4); ",
                 access, sanitize_name(field_name), c_element_type);
-        } else if (field_type &&
-                   codegen_enum_is_string(codegen, codegen_resolve_type(codegen, field_type))) {
-            /* String-backed enum field: zero is an empty string, not a
-             * variant. Seed with the first variant, matching new(EnumType). */
-            const char *string_enum = codegen_resolve_type(codegen, field_type);
-            int enum_index = codegen_enum_index(codegen, string_enum);
-            const char *field_value_text = codegen->enum_declarations[enum_index]->data.enum_declaration.values[0].name;
-            emit_formatted(codegen, "%s%s = GrayEnum_%s_%s; ",
-                access, sanitize_name(field_name), string_enum, field_value_text);
+        } else if (enum_variant) {
+            /* An enum field whose zero matches no variant: seed with the
+             * first variant, matching new(EnumType). */
+            emit_formatted(codegen, "%s%s = GrayEnum_%s_%s; ", access, sanitize_name(field_name),
+                enum_name, enum_variant);
         } else if (field_type && field_type[0] != '^') {
             GrayType *field_gray_type = type_from_name(field_type);
             if (field_gray_type && field_gray_type->kind == TYPE_KIND_STRUCT) {
@@ -4155,14 +4186,13 @@ static void emit_new_expression(CodeGen *codegen, AstNode *node) {
             c_type, c_type, c_type);
         emit_formatted(codegen, "*_np = GRAY_MAP_NEW_OF(gray_heap_arena, %s, %s, 8); _np; })",
             c_key_type, c_value_type_default);
-    } else if (codegen_enum_is_string(codegen, type_name_text)) {
-        /* String enum — assign first variant so the value is valid */
-        int enum_index = codegen_enum_index(codegen, type_name_text);
-        AstNode *declaration = codegen->enum_declarations[enum_index];
-        const char *first_variant = declaration->data.enum_declaration.values[0].name;
+    } else if (codegen_enum_default_variant(codegen, type_name_text)) {
+        /* An enum whose zero matches no variant: assign the first variant
+         * so the value is valid */
         emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
             c_type, c_type, c_type);
-        emit_formatted(codegen, "*_np = GrayEnum_%s_%s; _np; })", type_name_text, first_variant);
+        emit_formatted(codegen, "*_np = GrayEnum_%s_%s; _np; })", type_name_text,
+            codegen_enum_default_variant(codegen, type_name_text));
     } else {
         emit_formatted(codegen, "((%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)))", c_type, c_type);
     }
@@ -4184,7 +4214,8 @@ static void emit_runtime_fixed_length_check(CodeGen *codegen, AstNode *node) {
 }
 
 /* A value with fewer than N elements stored into a [T,N] struct field: copy
- * it into a fresh N-element array whose remaining slots are zeroed. */
+ * it into a fresh N-element array whose remaining slots are zeroed, or hold
+ * the element enum's default variant when zero matches none. */
 static void emit_zero_filled_fixed_array(CodeGen *codegen, AstNode *node) {
     int fixed_length = node->zero_fill_length;
     node->zero_fill_length = 0;
@@ -4194,11 +4225,21 @@ static void emit_zero_filled_fixed_array(CodeGen *codegen, AstNode *node) {
     emit_formatted(codegen, "; GrayArray _padded_arr = gray_array_new(gray_default_arena, "
         "_short_arr.elem_size, %d, _short_arr.elem_kind); "
         "size_t _short_bytes = (size_t)_short_arr.len * (size_t)_short_arr.elem_size; "
-        "if (_short_bytes) memcpy(_padded_arr.data, _short_arr.data, _short_bytes); "
-        "memset((char *)_padded_arr.data + _short_bytes, 0, "
-        "(size_t)%d * (size_t)_short_arr.elem_size - _short_bytes); "
-        "_padded_arr.len = %d; _padded_arr; })",
-        fixed_length, fixed_length, fixed_length);
+        "if (_short_bytes) memcpy(_padded_arr.data, _short_arr.data, _short_bytes); ",
+        fixed_length);
+    GrayType *array_type = type_table_get(codegen->type_table, node);
+    const char *element_type_name = array_type ? array_type->element_type : NULL;
+    const char *enum_name = codegen_resolve_type(codegen, element_type_name);
+    const char *enum_variant = codegen_enum_slot_default_variant(codegen, enum_name);
+    if (enum_variant) {
+        emit_formatted(codegen, "for (int64_t _slot = _short_arr.len; _slot < %d; _slot++) "
+            "((%s *)_padded_arr.data)[_slot] = GrayEnum_%s_%s; ",
+            fixed_length, gray_map_element_c_type(codegen, element_type_name), enum_name, enum_variant);
+    } else {
+        emit_formatted(codegen, "memset((char *)_padded_arr.data + _short_bytes, 0, "
+            "(size_t)%d * (size_t)_short_arr.elem_size - _short_bytes); ", fixed_length);
+    }
+    emit_formatted(codegen, "_padded_arr.len = %d; _padded_arr; })", fixed_length);
 }
 
 /* The 256-bit two's complement of the decimal text `text` (an optional '-'
@@ -9445,6 +9486,7 @@ static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, value->data.array_value.elements[i]);
         }
+        emit_enum_default_slots(codegen, element_type_name, fixed_size - count, count > 0);
         emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
     } else {
         emit_expression(codegen, value);
@@ -9679,7 +9721,10 @@ static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *
     else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
     else {
         GrayType *zero_value_type = gray_type_name ? type_from_name(gray_type_name) : NULL;
-        if (zero_value_type && zero_value_type->kind == TYPE_KIND_STRUCT && !force_constant) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
+        const char *enum_name = codegen_resolve_type(codegen, gray_type_name);
+        const char *enum_variant = codegen_enum_default_variant(codegen, enum_name);
+        if (enum_variant) emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, enum_variant);
+        else if (zero_value_type && zero_value_type->kind == TYPE_KIND_STRUCT && !force_constant) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
         else emit(codegen, "{0}");
     }
 }
