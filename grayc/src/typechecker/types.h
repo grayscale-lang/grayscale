@@ -124,6 +124,10 @@ static inline bool type_kind_is_number(TypeKind kind) {
 
 /* Resolve a type name string to an GrayType */
 GrayType *type_from_name(const char *name);
+/* The first ',' in `text` outside any brackets or parentheses, or NULL. Given
+ * the text after the '[' of an array spelling, it is the comma before N in
+ * [T,N] even when T is itself a fixed-size array. */
+const char *type_top_level_comma(const char *text);
 
 /* Return true if name matches a builtin type keyword (i64, string, etc.) */
 bool is_builtin_type_name(const char *name);

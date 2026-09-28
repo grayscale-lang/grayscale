@@ -26,6 +26,7 @@ typedef struct {
     const char *file;
     DiagnosticList *diagnostics;
     int depth;
+    int type_nesting; /* bracketed types open in parse_complex_type */
     bool should_suppress_struct_literal; /* suppress struct literal parsing (right side of in/not_in) */
     bool is_in_interpolation; /* true when parsing a ${...} sub-expression */
     AstNode *current_function; /* enclosing function node (for or_return) */

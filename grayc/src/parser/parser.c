@@ -364,129 +364,74 @@ static bool current_starts_complex_type(Parser *parser) {
  * Precondition: parser is ON the first token of the type ([, ^, map, or IDENT).
  * Postcondition: returns the type string, parser on the last token of the type.
  * Returns NULL on parse error (diagnostic already emitted). */
+static const char *parse_complex_type(Parser *parser);
+
+/* The body of a bracketed type, from its element (or key) type through its
+ * closing ']': "[T]", "[T,N]", or "map[K:V]" for the shorthand. */
+static const char *parse_bracketed_type(Parser *parser) {
+    if (current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
+        peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
+        /* Arrays of typed func signatures are not supported. */
+        diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
+        return NULL;
+    }
+    const char *element_type = parse_complex_type(parser);
+    if (!element_type) return NULL;
+    if (peek_token_is(parser, TOKEN_COLON)) {
+        /* Map shorthand: [K:V] → normalized to "map[K:V]" */
+        next_token(parser); /* skip : */
+        next_token(parser); /* value type */
+        const char *value_type = parse_complex_type(parser);
+        if (!value_type) return NULL;
+        if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
+        size_t key_length = strlen(element_type), value_length = strlen(value_type);
+        size_t type_name_length = key_length + value_length + 7;
+        char *built_type_name = arena_allocate(parser->arena, type_name_length);
+        snprintf(built_type_name, type_name_length, "map[%s:%s]", element_type, value_type);
+        return built_type_name;
+    }
+    if (peek_token_is(parser, TOKEN_COMMA)) {
+        /* Fixed-size array: [i64, 3] or [i64, SIZE] */
+        next_token(parser); /* skip , */
+        next_token(parser); /* size */
+        if (!current_token_is(parser, TOKEN_INTEGER_LITERAL) && !current_token_is(parser, TOKEN_IDENTIFIER)) {
+            diagnostic_error_code(parser->diagnostics, "E2025", parser->file, parser->current_token.line, parser->current_token.column, 0);
+        }
+        const char *size_text = parser->current_token.literal;
+        if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
+        size_t element_length = strlen(element_type), size_length = strlen(size_text);
+        size_t type_name_length = element_length + size_length + 4;
+        char *built_type_name = arena_allocate(parser->arena, type_name_length);
+        snprintf(built_type_name, type_name_length, "[%s,%s]", element_type, size_text);
+        return built_type_name;
+    }
+    /* Dynamic array: [i64] */
+    if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
+    size_t type_name_length = strlen(element_type) + 3;
+    char *built_type_name = arena_allocate(parser->arena, type_name_length);
+    snprintf(built_type_name, type_name_length, "[%s]", element_type);
+    return built_type_name;
+}
+
 static const char *parse_complex_type(Parser *parser) {
     if (current_token_is(parser, TOKEN_QUESTION)) {
         /* Bare wildcard type: ? */
         return "?";
     }
     if (current_token_is(parser, TOKEN_LEFT_BRACKET)) {
-        /* Array type: [i64], [i64,3], [[i64]], [[[i64]]], etc. */
-        next_token(parser); /* element type or nested [ */
-        if (current_token_is(parser, TOKEN_LEFT_BRACKET)) {
-            /* Nested array type: count depth of brackets */
-            int depth = 1;
-            while (current_token_is(parser, TOKEN_LEFT_BRACKET)) {
-                depth++;
-                if (depth > 64) {
-                    diagnostic_error_message(parser->diagnostics, "E2001",
-                        arena_copy_string(parser->arena,"type nesting is too deep; maximum depth is 64"),
-                        parser->file, parser->current_token.line, parser->current_token.column, 0);
-                    return NULL;
-                }
-                next_token(parser);
-            }
-            const char *inner = read_type_name(parser);
-            if (peek_token_is(parser, TOKEN_COLON)) {
-                /* Last bracket was map shorthand: [[K:V]] = [map[K:V]] */
-                depth--;
-                next_token(parser); /* skip : */
-                next_token(parser); /* value type */
-                const char *value_type = parse_complex_type(parser);
-                if (!value_type) return NULL;
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-                size_t key_length = strlen(inner), value_length = strlen(value_type);
-                size_t map_type_length = key_length + value_length + 7;
-                char *map_type_name = arena_allocate(parser->arena, map_type_length);
-                snprintf(map_type_name, map_type_length, "map[%s:%s]", inner, value_type);
-                inner = map_type_name;
-            }
-            for (int level = 0; level < depth; level++) {
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-            }
-            size_t type_name_length = strlen(inner) + (size_t)depth * 2 + 1;
-            char *built_type_name = arena_allocate(parser->arena, type_name_length);
-            int position = 0;
-            for (int level = 0; level < depth; level++) built_type_name[position++] = '[';
-            memcpy(built_type_name + position, inner, strlen(inner));
-            position += (int)strlen(inner);
-            for (int level = 0; level < depth; level++) built_type_name[position++] = ']';
-            built_type_name[position] = '\0';
-            return built_type_name;
-        } else if (current_token_is(parser, TOKEN_CARET)) {
-            /* Array of pointers: [^Type] */
-            next_token(parser); /* skip ^ to type name */
-            const char *pointee = read_type_name(parser);
-            if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-            size_t type_name_length = strlen(pointee) + 4;
-            char *built_type_name = arena_allocate(parser->arena, type_name_length);
-            snprintf(built_type_name, type_name_length, "[^%s]", pointee);
-            return built_type_name;
-        } else if (current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "map") == 0 &&
-                   peek_token_is(parser, TOKEN_LEFT_BRACKET)) {
-            /* Array of maps: [map[K:V]] or fixed-size [map[K:V], N] */
-            const char *element_type = parse_complex_type(parser);
-            if (!element_type) return NULL;
-            if (peek_token_is(parser, TOKEN_COMMA)) {
-                next_token(parser); /* skip , */
-                next_token(parser); /* size */
-                if (!current_token_is(parser, TOKEN_INTEGER_LITERAL) && !current_token_is(parser, TOKEN_IDENTIFIER)) {
-                    diagnostic_error_code(parser->diagnostics, "E2025", parser->file, parser->current_token.line, parser->current_token.column, 0);
-                }
-                const char *size_text = parser->current_token.literal;
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-                size_t element_length = strlen(element_type), size_length = strlen(size_text);
-                size_t type_name_length = element_length + size_length + 4;
-                char *built_type_name = arena_allocate(parser->arena, type_name_length);
-                snprintf(built_type_name, type_name_length, "[%s,%s]", element_type, size_text);
-                return built_type_name;
-            }
-            if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-            size_t type_name_length = strlen(element_type) + 3;
-            char *built_type_name = arena_allocate(parser->arena, type_name_length);
-            snprintf(built_type_name, type_name_length, "[%s]", element_type);
-            return built_type_name;
-        } else if (current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
-                   peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-            /* Arrays of typed func signatures are not supported. */
-            diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
+        /* Array type [T] or fixed-size [T, N] for any element type T, or the
+         * map shorthand [K:V] */
+        if (++parser->type_nesting > 64) {
+            diagnostic_error_message(parser->diagnostics, "E2001",
+                arena_copy_string(parser->arena,"type nesting is too deep; maximum depth is 64"),
+                parser->file, parser->current_token.line, parser->current_token.column, 0);
+            parser->type_nesting--;
             return NULL;
-        } else {
-            const char *element_type = read_type_name(parser);
-            if (peek_token_is(parser, TOKEN_COLON)) {
-                /* Map shorthand: [K:V] → normalized to "map[K:V]" */
-                next_token(parser); /* skip : */
-                next_token(parser); /* value type */
-                const char *value_type = parse_complex_type(parser);
-                if (!value_type) return NULL;
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-                size_t key_length = strlen(element_type), value_length = strlen(value_type);
-                size_t type_name_length = key_length + value_length + 7;
-                char *built_type_name = arena_allocate(parser->arena, type_name_length);
-                snprintf(built_type_name, type_name_length, "map[%s:%s]", element_type, value_type);
-                return built_type_name;
-            } else if (peek_token_is(parser, TOKEN_COMMA)) {
-                /* Fixed-size array: [i64, 3] or [i64, SIZE] */
-                next_token(parser); /* skip , */
-                next_token(parser); /* size */
-                if (!current_token_is(parser, TOKEN_INTEGER_LITERAL) && !current_token_is(parser, TOKEN_IDENTIFIER)) {
-                    diagnostic_error_code(parser->diagnostics, "E2025", parser->file, parser->current_token.line, parser->current_token.column, 0);
-                }
-                const char *size_text = parser->current_token.literal;
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-                size_t element_length = strlen(element_type), size_length = strlen(size_text);
-                size_t type_name_length = element_length + size_length + 4;
-                char *built_type_name = arena_allocate(parser->arena, type_name_length);
-                snprintf(built_type_name, type_name_length, "[%s,%s]", element_type, size_text);
-                return built_type_name;
-            } else {
-                /* Dynamic array: [i64] */
-                if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
-                size_t type_name_length = strlen(element_type) + 3;
-                char *built_type_name = arena_allocate(parser->arena, type_name_length);
-                snprintf(built_type_name, type_name_length, "[%s]", element_type);
-                return built_type_name;
-            }
         }
+        next_token(parser); /* element or key type */
+        const char *built_type_name = parse_bracketed_type(parser);
+        parser->type_nesting--;
+        return built_type_name;
     } else if (current_token_is(parser, TOKEN_CARET)) {
         /* Pointer type: ^T; recurse to support ^^T, ^^^T, etc. */
         next_token(parser);
@@ -3855,6 +3800,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->file = file;
     parser->diagnostics = diagnostics;
     parser->depth = 0;
+    parser->type_nesting = 0;
     parser->should_suppress_struct_literal = false;
     parser->is_in_interpolation = false;
     parser->current_function = NULL;

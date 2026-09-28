@@ -5931,6 +5931,33 @@ static void check_map_literal_duplicate_keys(TypeChecker *checker, AstNode *node
     }
 }
 
+static bool try_get_static_array_length(TypeChecker *checker, AstNode *expression, int *out_length);
+
+/* W3003/E3052 length check for an element of an array literal whose element
+ * type is a fixed-size array ([T,N]); a runtime check when the element's
+ * length isn't statically known. */
+static void check_fixed_array_element_size(TypeChecker *checker, const char *element_spelling, AstNode *element) {
+    if (!array_spelling_is_fixed(element_spelling)) return;
+    const char *comma = type_top_level_comma(element_spelling + 1);
+    int fixed_size = comma ? atoi(comma + 1) : 0;
+    if (fixed_size <= 0) return;
+    int actual_length;
+    if (!try_get_static_array_length(checker, element, &actual_length)) {
+        element->runtime_fixed_length = fixed_size;
+    } else if (actual_length > fixed_size) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3052",
+            NODE_FILE(checker, element), element->token.line, element->token.column, 0,
+            fixed_size, actual_length);
+    } else if (actual_length < fixed_size) {
+        element->zero_fill_length = fixed_size;
+        char *message = typechecker_format(checker,
+            "fixed-size array %s initialized with only %d of %d elements; remaining will be zero-valued",
+            element_spelling, actual_length, fixed_size);
+        diagnostic_warning_message(checker->diagnostics, "W3003", message,
+            NODE_FILE(checker, element), element->token.line, element->token.column, 0);
+    }
+}
+
 /* An array literal stored into a slot of array type `target`: each element is
  * checked as the element type. E3053 for an element of another type. */
 static GrayType *check_array_literal_as(TypeChecker *checker, AstNode *node, GrayType *target) {
@@ -5938,6 +5965,7 @@ static GrayType *check_array_literal_as(TypeChecker *checker, AstNode *node, Gra
     for (int i = 0; i < node->data.array_value.count; i++) {
         AstNode *element = node->data.array_value.elements[i];
         GrayType *entry_type = check_expression_as(checker, element, element_type);
+        check_fixed_array_element_size(checker, target->element_type, element);
         reject_multi_return_in_single_position(checker, element);
         if (literal_entry_mismatches(checker, element_type, entry_type)) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3053", NODE_FILE(checker, element),
@@ -8281,7 +8309,7 @@ static int member_expression_fixed_array_field_size(TypeChecker *checker, AstNod
         if (strcmp(struct_declaration->data.struct_declaration.fields[i].name, expression->data.member.member) == 0) {
             const char *field_type_name = struct_declaration->data.struct_declaration.fields[i].type_name;
             if (!array_spelling_is_fixed(field_type_name)) return 0;
-            const char *comma = strchr(field_type_name, ',');
+            const char *comma = type_top_level_comma(field_type_name + 1);
             return comma ? atoi(comma + 1) : 0;
         }
     }
@@ -8308,7 +8336,7 @@ static bool try_get_static_array_length(TypeChecker *checker, AstNode *expressio
     if (expression->kind == NODE_LABEL) {
         Symbol *symbol = scope_lookup(checker->current_scope, expression->data.label.value);
         if (symbol && symbol->declared_type && array_spelling_is_fixed(symbol->declared_type)) {
-            const char *comma = strchr(symbol->declared_type, ',');
+            const char *comma = type_top_level_comma(symbol->declared_type + 1);
             int length = comma ? atoi(comma + 1) : 0;
             if (length > 0) { *out_length = length; return true; }
         }
@@ -8341,7 +8369,7 @@ static bool map_types_match(GrayType *declared, GrayType *value_type) {
 static void check_fixed_array_field_size(TypeChecker *checker, const char *field_name,
                                           const char *field_type_name, AstNode *value) {
     if (!array_spelling_is_fixed(field_type_name)) return;
-    const char *comma = strchr(field_type_name, ',');
+    const char *comma = type_top_level_comma(field_type_name + 1);
     int fixed_size = comma ? atoi(comma + 1) : 0;
     if (fixed_size <= 0) return;
     int actual_length;
@@ -18556,7 +18584,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 AstNode *default_value = statement->data.struct_declaration.fields[j].default_value;
                 if (default_value && default_value->kind == NODE_ARRAY_VALUE) {
                     const char *field_type_name = statement->data.struct_declaration.fields[j].type_name;
-                    const char *comma = strchr(field_type_name, ',');
+                    const char *comma = field_type_name[0] == '[' ? type_top_level_comma(field_type_name + 1) : NULL;
                     int fixed_size = comma ? atoi(comma + 1) : 0;
                     if (fixed_size > 0 && default_value->data.array_value.count > fixed_size) {
                         diagnostic_error_code_formatted(checker->diagnostics, "E3052",

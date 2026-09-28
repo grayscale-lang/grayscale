@@ -529,6 +529,17 @@ bool is_builtin_type_name(const char *name) {
                    sizeof(BuiltinTypeEntry), builtin_type_compare) != NULL;
 }
 
+const char *type_top_level_comma(const char *text) {
+    int depth = 0;
+    for (const char *cursor = text; cursor && *cursor; cursor++) {
+        if (*cursor == '[' || *cursor == '(') depth++;
+        else if (*cursor == ']' || *cursor == ')') depth--;
+        else if (*cursor == ',' && depth == 0) return cursor;
+        if (depth < 0) return NULL;
+    }
+    return NULL;
+}
+
 GrayType *type_from_name(const char *name) {
     if (!name) return &TYPE_UNKNOWN;
 
@@ -576,7 +587,7 @@ GrayType *type_from_name(const char *name) {
             memcpy(element_type, name + 1, length - 2);
             element_type[length - 2] = '\0';
             /* Strip ",N" suffix for fixed-size arrays like [string,3] */
-            char *comma = strchr(element_type, ',');
+            char *comma = (char *)type_top_level_comma(element_type);
             if (comma) *comma = '\0';
             GrayType *array_type = type_array(element_type);
             free(element_type);

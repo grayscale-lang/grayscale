@@ -957,7 +957,7 @@ static void emit_array_deep_copy(CodeGen *codegen, const char *gray_type_name, c
     if (element_length >= sizeof(element_type_name)) element_length = sizeof(element_type_name) - 1;
     memcpy(element_type_name, gray_type_name + 1, element_length);
     element_type_name[element_length] = '\0';
-    char *comma = strchr(element_type_name, ',');
+    char *comma = (char *)type_top_level_comma(element_type_name);
     if (comma) *comma = '\0';
 
     if (!type_needs_deep_copy(codegen, element_type_name)) {
@@ -1394,17 +1394,55 @@ static const char *codegen_enum_slot_default_variant(CodeGen *codegen, const cha
     return codegen_enum_is_string(codegen, enum_name) ? NULL : codegen_enum_default_variant(codegen, enum_name);
 }
 
-/* Emits `count` array initializer slots holding the default variant of the
- * enum element type `element_type_name`, each preceded by ", " unless it is
- * the first slot of the initializer. Emits nothing when C's zero is already
- * that type's default, since C zero-fills the slots an initializer omits. */
-static void emit_enum_default_slots(CodeGen *codegen, const char *element_type_name, int count, bool after_element) {
+static int extract_array_size(const char *type_name);
+static const char *extract_array_element_type(const char *type_name);
+static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_type_name);
+
+/* Is C's zero something other than the zero value of an array element of
+ * type `element_type_name`? True for a fixed-size array, whose zero value
+ * has N slots, and for an enum with a default variant. */
+static bool element_needs_zero_value(CodeGen *codegen, const char *element_type_name) {
+    if (!element_type_name) return false;
+    if (extract_array_size(element_type_name) > 0) return true;
+    return codegen_enum_slot_default_variant(codegen, codegen_resolve_type(codegen, element_type_name)) != NULL;
+}
+
+static void emit_zero_value_slots(CodeGen *codegen, const char *element_type_name, int count,
+                                  bool after_element, const char *arena);
+
+/* Emits the zero value of an array element of type `element_type_name`, for
+ * an element that element_needs_zero_value: an enum's default variant, or a
+ * fixed-size array [T,N] allocated on `arena` holding N zero values. */
+static void emit_element_zero_value(CodeGen *codegen, const char *element_type_name, const char *arena) {
+    int fixed_size = extract_array_size(element_type_name);
+    if (fixed_size > 0) {
+        char inner_element_type[TYPE_NAME_MAX], c_element_type[TYPE_NAME_MAX];
+        const char *inner = extract_array_element_type(element_type_name);
+        snprintf(inner_element_type, sizeof(inner_element_type), "%s", inner ? inner : "i64");
+        snprintf(c_element_type, sizeof(c_element_type), "%s", gray_map_element_c_type(codegen, inner_element_type));
+        emit_formatted(codegen, "gray_array_from(%s, (%s[%d]){", arena, c_element_type, fixed_size);
+        emit_zero_value_slots(codegen, inner_element_type, fixed_size, false, arena);
+        emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
+        return;
+    }
     const char *enum_name = codegen_resolve_type(codegen, element_type_name);
-    const char *variant = codegen_enum_slot_default_variant(codegen, enum_name);
-    if (!variant) return;
+    emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, codegen_enum_slot_default_variant(codegen, enum_name));
+}
+
+/* Emits `count` array initializer slots holding the zero value of the
+ * element type `element_type_name`, each preceded by ", " unless it is the
+ * first slot of the initializer. Emits nothing when C's zero is already that
+ * zero value, since C zero-fills the slots an initializer omits. */
+static void emit_zero_value_slots(CodeGen *codegen, const char *element_type_name, int count,
+                                  bool after_element, const char *arena) {
+    if (!element_needs_zero_value(codegen, element_type_name)) return;
+    /* Copied because the name may be extract_array_element_type's static
+     * buffer, which emitting a fixed-size array element reuses. */
+    char element_type[TYPE_NAME_MAX];
+    snprintf(element_type, sizeof(element_type), "%s", element_type_name);
     for (int i = 0; i < count; i++) {
         if (after_element || i > 0) emit(codegen, ", ");
-        emit_formatted(codegen, "GrayEnum_%s_%s", enum_name, variant);
+        emit_element_zero_value(codegen, element_type, arena);
     }
 }
 
@@ -2157,7 +2195,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
             if (inner_length < sizeof(inner)) {
                 memcpy(inner, current_type_spelling + 1, inner_length);
                 inner[inner_length] = '\0';
-                char *comma = strchr(inner, ',');
+                char *comma = (char *)type_top_level_comma(inner);
                 if (comma) *comma = '\0';
                 if (is_wide_integer_type_name(inner)) wide_integer_element = type_from_name(inner)->name;
             }
@@ -2180,7 +2218,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
             memcpy(inferred, codegen->current_variable_type + 1, copy_length);
             inferred[copy_length] = '\0';
             /* Strip fixed-size ",N" suffix if present */
-            char *comma = strchr(inferred, ',');
+            char *comma = (char *)type_top_level_comma(inferred);
             if (comma) *comma = '\0';
             GrayType *inferred_type = type_from_name(inferred);
             if (inferred_type && inferred_type->kind != TYPE_KIND_UNKNOWN) element_type_for_copy = inferred_type;
@@ -2273,7 +2311,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
             if (inner_length < sizeof(inner)) {
                 memcpy(inner, current_type_spelling + 1, inner_length);
                 inner[inner_length] = '\0';
-                char *comma = strchr(inner, ',');
+                char *comma = (char *)type_top_level_comma(inner);
                 if (comma) *comma = '\0';
                 GrayType *inferred_element_type = type_from_name(inner);
                 if (inferred_element_type && !is_wide_integer_type_name(inner) &&
@@ -2457,7 +2495,7 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *struct
         int fixed_size = extract_array_size(field_type_name);
         if (fixed_size > 0) {
             emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
-            emit_enum_default_slots(codegen, field_type->element_type, fixed_size, false);
+            emit_zero_value_slots(codegen, field_type->element_type, fixed_size, false, "gray_default_arena");
             emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
         } else {
             emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
@@ -2648,7 +2686,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                 int fixed_size = extract_array_size(field_type_name);
                 if (fixed_size > 0) {
                     emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
-                    emit_enum_default_slots(codegen, field_type->element_type, fixed_size, false);
+                    emit_zero_value_slots(codegen, field_type->element_type, fixed_size, false, "gray_default_arena");
                     emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
                 } else {
                     emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
@@ -4108,7 +4146,7 @@ static void emit_new_struct_initializer(CodeGen *codegen, AstNode *struct_declar
             if (fixed_size > 0) {
                 emit_formatted(codegen, "%s%s = gray_array_from(gray_heap_arena, (%s[%d]){",
                     access, sanitize_name(field_name), c_element_type, fixed_size);
-                emit_enum_default_slots(codegen, argument_type ? argument_type->element_type : NULL, fixed_size, false);
+                emit_zero_value_slots(codegen, argument_type ? argument_type->element_type : NULL, fixed_size, false, "gray_heap_arena");
                 emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s)); ",
                     c_element_type, fixed_size, c_element_type);
             } else {
@@ -4230,12 +4268,11 @@ static void emit_zero_filled_fixed_array(CodeGen *codegen, AstNode *node) {
         fixed_length);
     GrayType *array_type = type_table_get(codegen->type_table, node);
     const char *element_type_name = array_type ? array_type->element_type : NULL;
-    const char *enum_name = codegen_resolve_type(codegen, element_type_name);
-    const char *enum_variant = codegen_enum_slot_default_variant(codegen, enum_name);
-    if (enum_variant) {
+    if (element_needs_zero_value(codegen, element_type_name)) {
         emit_formatted(codegen, "for (int64_t _slot = _short_arr.len; _slot < %d; _slot++) "
-            "((%s *)_padded_arr.data)[_slot] = GrayEnum_%s_%s; ",
-            fixed_length, gray_map_element_c_type(codegen, element_type_name), enum_name, enum_variant);
+            "((%s *)_padded_arr.data)[_slot] = ", fixed_length, gray_map_element_c_type(codegen, element_type_name));
+        emit_element_zero_value(codegen, element_type_name, "gray_default_arena");
+        emit(codegen, "; ");
     } else {
         emit_formatted(codegen, "memset((char *)_padded_arr.data + _short_bytes, 0, "
             "(size_t)%d * (size_t)_short_arr.elem_size - _short_bytes); ", fixed_length);
@@ -9393,14 +9430,8 @@ static const char *extract_array_element_type(const char *type_name) {
     const char *start = type_name + 1;
     const char *end_cursor = type_name + length - 1;
     /* Find the comma for fixed-size, or just strip brackets */
-    for (size_t i = 1; i < length - 1; i++) {
-        if (type_name[i] == ',') {
-            size_t element_length = i - 1;
-            memcpy(buffer, start, element_length);
-            buffer[element_length] = '\0';
-            return buffer;
-        }
-    }
+    const char *comma = type_top_level_comma(start);
+    if (comma) end_cursor = comma;
     size_t element_length = (size_t)(end_cursor - start);
     memcpy(buffer, start, element_length);
     buffer[element_length] = '\0';
@@ -9410,7 +9441,7 @@ static const char *extract_array_element_type(const char *type_name) {
 /* Extract size from fixed-size array type "[i64,3]" -> 3, returns 0 if dynamic */
 static int extract_array_size(const char *type_name) {
     if (!type_name || type_name[0] != '[') return 0;
-    const char *comma = strchr(type_name, ',');
+    const char *comma = type_top_level_comma(type_name + 1);
     if (!comma) return 0;
     return atoi(comma + 1);
 }
@@ -9480,14 +9511,18 @@ static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
                                        const char *element_type_name, int fixed_size) {
     if (value && value->kind == NODE_ARRAY_VALUE &&
         value->data.array_value.count < fixed_size) {
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        /* Both names are copied: emitting the elements reuses the static
+         * buffers they may point into. */
+        char element_type[TYPE_NAME_MAX], c_element_type[TYPE_NAME_MAX];
+        snprintf(element_type, sizeof(element_type), "%s", element_type_name);
+        snprintf(c_element_type, sizeof(c_element_type), "%s", gray_type_to_c_codegen(codegen, element_type));
         int count = value->data.array_value.count;
         emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_element_type, fixed_size);
         for (int i = 0; i < count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, value->data.array_value.elements[i]);
         }
-        emit_enum_default_slots(codegen, element_type_name, fixed_size - count, count > 0);
+        emit_zero_value_slots(codegen, element_type, fixed_size - count, count > 0, "gray_default_arena");
         emit_formatted(codegen, "}, sizeof(%s), %d, GRAY_ELEM_KIND_OF(%s))", c_element_type, fixed_size, c_element_type);
     } else {
         emit_expression(codegen, value);

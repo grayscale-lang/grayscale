@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3052 - an inner fixed-size array element has too many elements
+ * Expected: "too many elements in array initializer; declared size is 2, got 3"
+ */
+
+// expect-error: E3052
+// expect-error-count: 1
+
+do main() {
+    const a [[i64, 2], 2] = {{1, 2, 3}, {4, 5}}
+}

@@ -1,0 +1,109 @@
+/*
+ * fixed_array_any_element_type.gray - a fixed-size array [T, N] takes any
+ * element type: a dynamic array, another fixed-size array, a map, or a
+ * pointer, at any depth, in fields, locals, Type{} and new().
+ */
+
+const Grid struct {
+    rows [[i64], 2]
+    cells [[i64, 2], 3]
+    tables [[string:i64], 2]
+    pointers [^i64, 2]
+    deep [[[[[i64, 10]]], 2], 2]
+    part [[i64, 2], 3] = {{1, 2}}
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const grid Grid = Grid{}
+    if len(grid.cells) == 3 && len(grid.cells[2]) == 2 && len(grid.rows) == 2 && len(grid.deep[1]) == 2 {
+        println("  [PASS] Type{} zero-fills fixed-size elements")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Type{} zero-fills fixed-size elements")
+        failed += 1
+    }
+
+    if len(grid.part[2]) == 2 && grid.part[0][1] == 2 && grid.part[2][0] == 0 {
+        println("  [PASS] partial field default")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] partial field default")
+        failed += 1
+    }
+
+    mut heap ^Grid = new(Grid)
+    heap^.cells[1][1] = 7
+    if len(heap^.cells[1]) == 2 && heap^.cells[1][1] == 7 {
+        println("  [PASS] new() and write")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new() and write")
+        failed += 1
+    }
+
+    const rows [[i64], 2] = {{1, 2, 3}, {4}}
+    heap^.rows[1] = {5}
+    if len(rows[0]) == 3 && rows[1][0] == 4 && heap^.rows[1][0] == 5 {
+        println("  [PASS] [[i64], 2] local")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [[i64], 2] local")
+        failed += 1
+    }
+
+    const partial [[i64, 2], 3] = {{9, 9}}
+    if len(partial) == 3 && partial[0][1] == 9 && len(partial[2]) == 2 && partial[2][1] == 0 {
+        println("  [PASS] partial outer literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] partial outer literal")
+        failed += 1
+    }
+
+    const inner [[i64, 3], 2] = {{1}, {1, 2, 3}}
+    if len(inner[0]) == 3 && inner[0][0] == 1 && inner[0][2] == 0 && inner[1][2] == 3 {
+        println("  [PASS] partial inner literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] partial inner literal")
+        failed += 1
+    }
+
+    const tables [[string:i64], 2] = {{"a": 1}, {"b": 2}}
+    if tables[1]["b"] == 2 {
+        println("  [PASS] [[string:i64], 2] local")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [[string:i64], 2] local")
+        failed += 1
+    }
+
+    mut value i64 = 4
+    const pointers [^i64, 2] = {addr(value), addr(value)}
+    if pointers[1]^ == 4 {
+        println("  [PASS] [^i64, 2] local")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [^i64, 2] local")
+        failed += 1
+    }
+
+    const deep [[[[[i64, 10]]], 2], 2] = grid.deep
+    if len(deep) == 2 && len(deep[1]) == 2 {
+        println("  [PASS] deep nesting")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] deep nesting")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
