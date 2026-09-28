@@ -2228,6 +2228,8 @@ A field of any sized number type (`i8` through `i256`, `u8` through `u256`, `f32
 An enum field is serialized by the enum's backing type. An integer-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
 
 ```gray
+import @json
+
 const Priority enum {
     LOW      // 0
     HIGH     // 1
@@ -2308,6 +2310,10 @@ const List struct {
 The `#deprecated` attribute marks a function, struct, or enum as deprecated. The compiler emits a `W3007` warning at every reference to the marked item — every call, every struct-literal construction, every `EnumName.VARIANT` access, and every place its name appears as a declared type (variable, parameter, return type, or struct field). A replacement message is optional:
 
 ```gray
+do new_format(s string) -> string {
+    return "[${s}]"
+}
+
 #deprecated("use new_format() instead")
 do old_format(s string) -> string {
     return new_format(s)
@@ -2319,7 +2325,7 @@ do untouched() {
 }
 
 do main() {
-    old_format("hello") // warning: old_format is deprecated: use new_format() instead
+    println(old_format("hello")) // warning: old_format is deprecated: use new_format() instead
     untouched()          // warning: untouched is deprecated
 }
 ```
@@ -2552,12 +2558,12 @@ do double(n i64) -> i64 { return n * 2 }
 do main() {
     // Struct literal
     const w = Wrapper{f: ()double}
-    w.f(5)   // 10
+    println(w.f(5))   // 10
 
     // Pointer instance (new())
     mut w2 = new(Wrapper)
     w2.f = ()double
-    w2.f(5)  // 10
+    println(w2.f(5))  // 10
 }
 ```
 
@@ -3115,7 +3121,7 @@ same rule applies — assign it to a type-annotated variable before using it
 (see **Return types** below):
 
 ```gray
-extern import "stdio.h"
+extern import "stdio.h", "stdlib.h"
 
 do main() {
     mut eof i64 = extern.EOF        // -1
@@ -4220,7 +4226,7 @@ An HTTP server module with dynamic handlers and path parameters.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `text` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `text/plain` |
-| `json` | `(status i64, data) -> HttpResponse` | Response with `headers["Content-Type"]` set to `application/json` |
+| `json` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `application/json` |
 | `html` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `text/html` |
 | `redirect` | `(status i64, url string) -> HttpResponse` | Response with an empty body and `headers["Location"]` set to `url` |
 
@@ -4250,7 +4256,7 @@ do home(req HttpRequest) -> HttpResponse {
 
 do get_user(req HttpRequest) -> HttpResponse {
     mut id = req.params["id"]
-    return server.json(200, {"id": id})
+    return server.json(200, "{\"id\": \"${id}\"}")
 }
 
 do main() {
@@ -4432,7 +4438,9 @@ Formatted output and string formatting functions.
 | `sprintf` | `(format string, args [T]) -> string` | Return formatted string |
 | `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
 
-One argument per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
+One array element per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
+
+When `args` is an array literal, each element is checked against its own directive, so the elements may differ in type (`{name, 30}`); this is the only place a mixed-type array literal is allowed, and its elements are never unified to a common type. The literal must have exactly as many elements as the format string has directives. When `args` is an array variable of type `[T]`, every directive must accept `T`; one element is read per directive, and the program panics if the array has fewer elements than directives. `args` is required even when the format string has no directives; plain text goes through `print` or `println`.
 
 > 💡 **Tip:** `eprintln` and `eprint` are builtins, not fmt module functions. Use them without an import.
 
@@ -4448,22 +4456,35 @@ Format strings use C-style `%` specifiers:
 | `%e` | `f64` | Scientific notation |
 | `%g` | `f64` | Shorter of `%f` or `%e` |
 | `%s` | `string` | String |
-| `%c` | `char` | Single character |
+| `%c` | `char` | Single character, printed as its UTF-8 encoding |
 | `%b` | `bool` | `true` / `false` |
 | `%x`, `%X` | `i64` / `u64` | Hexadecimal (lowercase / uppercase) |
 | `%o` | `i64` / `u64` | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint argument only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf conventions, limited to the ones each conversion gives a meaning to:
+
+| Conversion | Flags | Precision |
+|------------|-------|-----------|
+| `%d`, `%i` | `-` `+` space `0` | yes |
+| `%u` | `-` `0` | yes |
+| `%x`, `%X`, `%o` | `-` `0` `#` | yes |
+| `%f`, `%e`, `%E`, `%g`, `%G` | `-` `+` space `0` `#` | yes |
+| `%s` | `-` | yes (maximum bytes) |
+| `%c`, `%b` | `-` | no |
+
+Any other flag or a precision where the table has none is a compile error (`E3178`). C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted (`E3177`): each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error (`E3179`); C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
 
 mut score i64 = 42
 mut x i64 = 7
-fmt.printf("%-10s %5d\n", "score", score)  // "score         42"
-fmt.printf("%08.2f\n", 3.14159)            // "00003.14"
-mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
+fmt.printf("%-10s %5d\n", {"score", score})  // "score         42"
+fmt.printf("%08.2f\n", {3.14159})            // "00003.14"
+mut s string = fmt.sprintf("x = %d", {x})   // "x = 7"
+mut parts [i64] = {2026, 9, 28}
+fmt.printfln("%d-%02d-%02d", parts)           // "2026-09-28"
 ```
 
 #### Padding
@@ -4486,7 +4507,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 | `format_number` | `(n i64) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
 | `format_bytes` | `(n i64) -> string` | Human-readable byte count in binary units B/KiB/MiB/GiB/TiB/PiB; whole bytes below 1024 (`"1023 B"`), one decimal above (`"1.5 KiB"`) |
 
-Formatted output functions take one argument per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
+Formatted output functions take one array element per format directive; each is independently `i64`, `u64`, `f64`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
 ### 9.27 Strconv Module (`@strconv`)
 
@@ -5104,6 +5125,14 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 | `--no-color` | Disable colored diagnostic output. |
 | `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics with `P0104`. |
 
+### C Compiler
+
+`gray` compiles the generated C with the first of `$GRAY_CC`, `$CC`, `cc`, `gcc` or `clang` found on PATH. GCC, Clang and TinyCC (`tcc`) are supported. TinyCC compiles much faster, which suits the edit-run loop; it builds the runtime from source on every compile instead of linking `libgrayrt.a`.
+
+```bash
+GRAY_CC=tcc gray main.gray
+```
+
 ### 13.1 `gray <file.gray>`
 
 Compile and run a source file in one step.
@@ -5119,14 +5148,6 @@ gray main.gray
 gray main.gray -q all
 gray main.gray -- --port 8080
 ```
-### C Compiler
-
-`gray` compiles the generated C with the first of `$GRAY_CC`, `$CC`, `cc`, `gcc` or `clang` found on PATH. GCC, Clang and TinyCC (`tcc`) are supported. TinyCC compiles much faster, which suits the edit-run loop; it builds the runtime from source on every compile instead of linking `libgrayrt.a`.
-
-```bash
-GRAY_CC=tcc gray main.gray
-```
-
 
 ### 13.2 `gray build`
 
