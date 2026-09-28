@@ -1,7 +1,8 @@
 /*
- * Error Test: E3013 - return-count-mismatch
- * Expected: "wrong number of return" or "count mismatch"
+ * Error Test: E3040 - return-count-mismatch
  */
+// expect-error: E3040
+// expect-error-count: 1
 
 do getValue() -> (i64, i64) {
     return 1  // expected 2 values

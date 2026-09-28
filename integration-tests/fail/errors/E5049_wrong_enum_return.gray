@@ -1,7 +1,8 @@
 /*
- * Error Test: E3001 - returning wrong enum type from function
- * Expected: type mismatch error for cross-enum return
+ * Error Test: E5049 - returning wrong enum type from function
  */
+// expect-error: E5049
+// expect-error-count: 1
 
 const Color enum {
     RED

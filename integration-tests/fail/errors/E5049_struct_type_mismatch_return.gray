@@ -1,7 +1,8 @@
 /*
- * Error Test: E3001 - returning wrong struct type
- * Expected: "return type mismatch: expected struct 'Cat', got struct 'Dog'" error
+ * Error Test: E5049 - returning wrong struct type
  */
+// expect-error: E5049
+// expect-error-count: 1
 
 const Cat struct {
     name string

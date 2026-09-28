@@ -1,7 +1,8 @@
 /*
- * Error Test: E3001 - return-type-mismatch
- * Expected: "return type mismatch"
+ * Error Test: E5049 - return-type-mismatch
  */
+// expect-error: E5049
+// expect-error-count: 1
 
 do get_number() -> i64 {
     return "hello"  // Returning string, declared i64

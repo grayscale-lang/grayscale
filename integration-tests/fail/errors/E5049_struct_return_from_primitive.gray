@@ -1,4 +1,7 @@
-/* Error Test: E3001 - returning a struct from a primitive-typed function */
+/* Error Test: E5049 - returning a struct from a primitive-typed function */
+// expect-error: E5049
+// expect-error-count: 1
+
 const Point struct {
     x i64
     y i64

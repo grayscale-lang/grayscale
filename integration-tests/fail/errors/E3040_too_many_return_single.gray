@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3040 - returning multiple values from single-return function
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do add(a i64, b i64) -> i64 {
+    return a, b
+}
+
+do main() {
+    mut r i64 = add(1, 2)
+    println("${r}")
+}

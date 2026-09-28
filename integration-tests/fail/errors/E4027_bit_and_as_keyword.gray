@@ -1,0 +1,9 @@
+/*
+ * Error Test: E4027 - bit_and used as variable name (reserved keyword)
+ */
+// expect-error: E4027
+// expect-error-count: 1
+
+do main() {
+    mut bit_and i64 = 5
+}

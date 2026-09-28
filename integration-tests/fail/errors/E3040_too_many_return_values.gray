@@ -1,7 +1,8 @@
 /*
- * Error Test: E3013 - return with too many values
- * Expected: E3013 wrong number of return values
+ * Error Test: E3040 - return with too many values
  */
+// expect-error: E3040
+// expect-error-count: 1
 
 do pair() -> (i64, i64) {
     return 1, 2, 3

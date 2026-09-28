@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5049 - returning ^^i64 from a -> ^i64 function
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+do bad(pp ^^i64) -> ^i64 {
+    return pp
+}
+
+do main() {}

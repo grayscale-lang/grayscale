@@ -1,4 +1,7 @@
-/* Error Test: E3001 - returning [i64] from function declared -> [string] */
+/* Error Test: E5049 - returning [i64] from function declared -> [string] */
+// expect-error: E5049
+// expect-error-count: 1
+
 do get_strings() -> [string] {
     mut a [i64] = {1, 2, 3}
     return a

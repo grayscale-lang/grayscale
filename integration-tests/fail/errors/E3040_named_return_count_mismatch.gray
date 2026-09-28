@@ -1,7 +1,8 @@
 /* Test: Named return with wrong number of values
- * Expected: E3013 error - wrong number of return values
+ * Expected: E3040 error - wrong number of return values
  */
-
+// expect-error: E3040
+// expect-error-count: 1
 
 do getValues() -> (age i64, name string) {
     return 42

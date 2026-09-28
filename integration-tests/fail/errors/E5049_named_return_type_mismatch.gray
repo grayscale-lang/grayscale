@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5049 - named return with wrong type
+ */
+// expect-error: E5049
+
+do getName() -> (name string) {
+    return 42
+}
+
+do main() {
+    println(getName())
+}
