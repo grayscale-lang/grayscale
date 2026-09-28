@@ -2124,15 +2124,47 @@ static AstNode *parse_function_declaration(Parser *parser) {
                     const char *names[MAX_SHARED_RETURNS];
                     int shared = 0;
                     names[shared++] = parser->current_token.literal;
+                    /* Set when the list turns out to be plain types, e.g.
+                     * (count, string) with `count` a lowercase alias: no
+                     * shared type follows the last identifier. */
+                    bool is_plain_list = false;
+                    bool has_type_after_names = false;
                     while (peek_token_is(parser, TOKEN_COMMA)) {
                         next_token(parser); /* skip comma */
                         next_token(parser); /* next name */
+                        if (!current_token_is(parser, TOKEN_IDENTIFIER) ||
+                            (strcmp(parser->current_token.literal, "map") == 0 && peek_token_is(parser, TOKEN_LEFT_BRACKET)) ||
+                            (strcmp(parser->current_token.literal, "func") == 0 && peek_token_is(parser, TOKEN_LEFT_PARENTHESIS))) {
+                            is_plain_list = true;
+                            has_type_after_names = true;
+                            break;
+                        }
                         names[shared++] = parser->current_token.literal;
                         if (shared >= MAX_SHARED_RETURNS) break;
                         if (!peek_token_is(parser, TOKEN_COMMA)) break;
                     }
-                    /* the current token is the last name, peek should be the shared type */
-                    if (peek_token_is(parser, TOKEN_IDENTIFIER)) {
+                    if (peek_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) is_plain_list = true;
+                    if (is_plain_list) {
+                        for (int shared_index = 0; shared_index < shared; shared_index++) {
+                            int return_index = node->data.function_declaration.return_type_count;
+                            if (return_index >= return_capacity) {
+                                diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
+                                return NULL;
+                            }
+                            node->data.function_declaration.return_types[return_index] = names[shared_index];
+                            node->data.function_declaration.return_type_count++;
+                        }
+                        if (has_type_after_names) {
+                            int return_index = node->data.function_declaration.return_type_count;
+                            if (return_index >= return_capacity) {
+                                diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
+                                return NULL;
+                            }
+                            node->data.function_declaration.return_types[return_index] = parse_complex_type(parser);
+                            node->data.function_declaration.return_type_count++;
+                        }
+                    } else if (peek_token_is(parser, TOKEN_IDENTIFIER)) {
+                        /* the current token is the last name, peek is the shared type */
                         next_token(parser);
                         for (int shared_index = 0; shared_index < shared; shared_index++) {
                             int return_index = node->data.function_declaration.return_type_count;

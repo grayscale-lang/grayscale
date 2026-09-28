@@ -1,0 +1,54 @@
+/*
+ * alias_first_multi_return_type.gray - a lowercase type alias can be the
+ * first type in a multi-value return type.
+ */
+
+alias count = i64
+alias label = string
+
+do pair() -> (count, label) { return 1, "a" }
+do mixed() -> (count, [i64], label) { return 2, {3, 4}, "b" }
+do shared() -> (x, y count) {
+    x = 5
+    y = 6
+    return x, y
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a, b = pair()
+    if a == 1 && b == "a" {
+        println("  [PASS] (alias, alias)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] (alias, alias)")
+        failed += 1
+    }
+
+    mut c, d, e = mixed()
+    if c == 2 && len(d) == 2 && e == "b" {
+        println("  [PASS] (alias, [i64], alias)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] (alias, [i64], alias)")
+        failed += 1
+    }
+
+    mut f, g = shared()
+    if f == 5 && g == 6 {
+        println("  [PASS] shared named type still works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] shared named type still works")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
