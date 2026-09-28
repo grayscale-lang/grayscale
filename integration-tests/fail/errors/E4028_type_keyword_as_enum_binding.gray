@@ -1,4 +1,4 @@
-/* E2002: type keywords cannot be used as when/is binding names */
+/* E4028: type keywords cannot be used as when/is binding names */
 // expect-error: E4028
 
 const Wrapper enum {

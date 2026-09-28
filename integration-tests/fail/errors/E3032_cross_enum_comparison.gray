@@ -1,7 +1,9 @@
 /*
- * Error Test: E3001 - comparing values from different enum types
+ * Error Test: E3032 - comparing values from different enum types
  * Expected: type mismatch for cross-enum comparison
  */
+// expect-error: E3032
+// expect-error-count: 1
 
 const Color enum {
     RED

@@ -1,9 +1,11 @@
 /*
- * E5017: Cannot modify field of immutable struct created with literal
+ * E3005: Cannot modify field of immutable struct created with literal
  * Expected: "cannot modify field of const struct"
  *
  * This tests that const structs created via struct literal are immutable.
  */
+// expect-error: E3005
+// expect-error-count: 1
 
 const Person struct {
     name string

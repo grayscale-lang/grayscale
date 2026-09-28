@@ -1,5 +1,5 @@
 /*
- * Test that no W4001 warning is shown for files in matching directory
+ * Test that no warning is shown for files in matching directory
  */
 import "./mymod.gray"
 

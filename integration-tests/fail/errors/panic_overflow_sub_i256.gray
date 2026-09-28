@@ -1,5 +1,5 @@
 /*
- * Error Test: E5006 - integer-overflow (i256 subtraction)
+ * Error Test: P0029 - integer-overflow (i256 subtraction)
  * Expected: "integer overflow"
  * Tests that i256 underflows at the correct bound
  */

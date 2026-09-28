@@ -1,5 +1,5 @@
 /*
- * Error Test: E10006 - stack overflow on recursive return
+ * Error Test: P0003 - stack overflow on recursive return
  * Expected: "stack overflow" or "maximum recursion"
  */
 

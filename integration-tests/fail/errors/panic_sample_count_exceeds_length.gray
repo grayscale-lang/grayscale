@@ -1,5 +1,5 @@
 /*
- * Error Test: E9008 - sample-count-exceeds-length
+ * Error Test: P0062 - sample-count-exceeds-length
  * Expected: "sample" or "exceeds" or "length"
  */
 

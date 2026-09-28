@@ -1,10 +1,12 @@
 /*
- * Error Test: E3011 - undefined-return-type
+ * Error Test: E4016 - undefined-return-type
  * Expected: "undefined return type"
  */
+// expect-error: E4016
+// expect-error-count: 1
 
 do getData() -> UnknownType {  // Unknown return type
-    give "data"
+    return "data"
 }
 
 do main() {

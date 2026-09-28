@@ -1,5 +1,5 @@
 /*
- * Error Test: E5003 - index-out-of-bounds
+ * Error Test: P0033 - index-out-of-bounds
  * Expected: "index out of bounds"
  */
 

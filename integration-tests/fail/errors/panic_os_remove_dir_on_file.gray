@@ -1,5 +1,5 @@
 /*
- * Error Test: E7019 - cannot-remove-file
+ * Error Test: P0076 - cannot-remove-file
  * Expected: "remove_dir" or "only remove directories" or "use io.remove"
  */
 

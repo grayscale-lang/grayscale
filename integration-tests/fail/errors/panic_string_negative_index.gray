@@ -1,5 +1,5 @@
 /*
- * Error Test: E10003 - string negative index
+ * Error Test: P0082 - string negative index
  * Expected: "string index" and "out of bounds"
  */
 

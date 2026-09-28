@@ -1,9 +1,9 @@
 /*
  * struct_self_dispatch.gray - Instance dispatch for &self struct methods.
  *
- *   - `c.increment()` fired E4001 "C interop requires header" because
+ *   - `c.increment()` was rejected with "C interop requires header" because
  *     the variable was named "c", colliding with the C-interop check.
- *   - `counter.increment()` fired E3042 "struct functions must be
+ *   - `counter.increment()` was rejected with "struct functions must be
  *     called on the type" for any other variable name.
  *   Both are now auto-dispatched: `instance.method()` where the struct
  *   function's first param is `&self StructType` rewrites to
@@ -40,7 +40,7 @@ do main() {
         failed += 1
     }
 
-    // -- instance dispatch with longer variable name (was E3042) --
+    // -- instance dispatch with longer variable name (was rejected) --
     mut counter Counter = Counter{val: 10}
     counter.increment()
     if counter.get_val() == 11 {

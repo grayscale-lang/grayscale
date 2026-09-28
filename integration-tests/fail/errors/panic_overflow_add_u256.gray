@@ -1,5 +1,5 @@
 /*
- * Error Test: E5005 - integer-overflow (u256 addition)
+ * Error Test: P0032 - integer-overflow (u256 addition)
  * Expected: "integer overflow"
  * Tests that u256 overflows on addition beyond bounds
  */

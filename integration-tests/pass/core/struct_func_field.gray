@@ -2,8 +2,8 @@
  * struct_func_field.gray - Struct fields of type 'func' are visible
  * as data fields and callable through the field access.
  *
- *   - `op.callback(3, 4)` fired E3042 ("must be called on the type")
- *   - `op.callback = ()sub` fired E3010 ("no field 'callback'")
+ *   - `op.callback(3, 4)` was rejected ("must be called on the type")
+ *   - `op.callback = ()sub` was rejected ("no field 'callback'")
  *   Both are now fixed: func-typed data fields are distinguished from
  *   struct functions (declared with `do`) and accessible via normal
  *   field syntax.

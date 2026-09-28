@@ -1,5 +1,5 @@
 /*
- * Error Test: E5005 - integer-overflow (i256 addition)
+ * Error Test: P0027 - integer-overflow (i256 addition)
  * Expected: "integer overflow"
  * Tests that i256 overflows at the correct bound
  */

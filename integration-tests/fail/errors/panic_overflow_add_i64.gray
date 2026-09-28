@@ -1,5 +1,5 @@
 /*
- * Error Test: E5005 - integer-overflow (addition)
+ * Error Test: P0004 - integer-overflow (addition)
  * Expected: "integer overflow"
  */
 

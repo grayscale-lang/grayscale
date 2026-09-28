@@ -1,10 +1,11 @@
 /*
- * Error Test: E8004 - factorial-negative
+ * Error Test: P0070 - factorial-negative
  * Expected: "factorial" or "negative"
  */
 
 import @math
 
 do main() {
-    mut x i64 = math.factorial(-5)  // factorial requires non-negative
+    mut value i64 = -5
+    mut x i64 = math.factorial(value)  // factorial requires non-negative
 }

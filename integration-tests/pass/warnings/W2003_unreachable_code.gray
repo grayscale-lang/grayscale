@@ -1,5 +1,5 @@
 /*
- * Warning Test: W2001 - unreachable-code
+ * Warning Test: W2003 - unreachable-code
  * Expected: warning about code that will never execute
  */
 

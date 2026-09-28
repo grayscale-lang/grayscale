@@ -1,5 +1,5 @@
 /*
- * Error Test: E5004 - index-empty-collection
+ * Error Test: P0033 - index-empty-collection
  * Expected: "array is empty"
  */
 

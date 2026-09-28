@@ -1,5 +1,5 @@
 /*
- * Error Test: E7033 - conversion-overflow
+ * Error Test: P0020 - conversion-overflow
  * Expected: "overflow" or "exceeds"
  */
 

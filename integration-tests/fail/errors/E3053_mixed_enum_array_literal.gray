@@ -1,7 +1,9 @@
 /*
- * Error Test: E3001 - mixed enum types in array literal
+ * Error Test: E3053 - mixed enum types in array literal
  * Expected: type mismatch for different enum in array
  */
+// expect-error: E3053
+// expect-error-count: 1
 
 const Color enum {
     RED

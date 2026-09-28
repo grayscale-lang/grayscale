@@ -2,7 +2,7 @@
  * pointer_origin_tracking.gray - pointer lifetime tracking accepts pointers
  * that do not outlive what they point at
  *
- * The escape checks (E3063, E3097) follow an address through intermediate
+ * The escape checks (E3162, E3163, E3164) follow an address through intermediate
  * pointers. This verifies they stay quiet for legal flows: same-scope
  * copies, inner pointers to outer variables, pass-through parameters, and
  * pointers whose tracked origin is overwritten before they escape.

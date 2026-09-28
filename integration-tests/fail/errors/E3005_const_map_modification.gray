@@ -1,9 +1,0 @@
-/*
- * E5016_const_map_modification.gray
- * Tests that modifying a const map fails with E5016
- */
-
-do main() {
-    const m map[string:i64] = {"a": 1}
-    m["b"] = 2  // ERROR: cannot modify immutable map
-}

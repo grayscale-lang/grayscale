@@ -1,7 +1,9 @@
 /*
- * E5017: Cannot modify field of immutable struct
+ * E3005: Cannot modify field of immutable struct
  * Expected: "cannot modify field of const struct"
  */
+// expect-error: E3005
+// expect-error-count: 1
 
 const Person struct {
     name string

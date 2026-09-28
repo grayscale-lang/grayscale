@@ -1,5 +1,5 @@
 /*
- * Error Test: E5005 - integer-overflow (i128 addition)
+ * Error Test: P0021 - integer-overflow (i128 addition)
  * Expected: "integer overflow"
  * Tests that i128 overflows at the correct bound (2^127 - 1)
  */

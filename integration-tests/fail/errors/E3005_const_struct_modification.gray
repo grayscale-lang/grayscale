@@ -1,7 +1,9 @@
 /*
- * E5016_const_struct_modification.gray
- * Tests that modifying a const struct field fails with E5016
+ * E3005_const_struct_modification.gray
+ * Tests that modifying a const struct field fails with E3005
  */
+// expect-error: E3005
+// expect-error-count: 1
 
 const Point struct {
     x i64
