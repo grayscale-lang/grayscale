@@ -68,7 +68,6 @@ void gray_map_clear(GrayMap *map, const char *file, int line);
 
 /* String-keyed convenience functions */
 void *gray_map_get_str(GrayMap *map, GrayString key);
-void gray_map_set_str(GrayArena *arena, GrayMap *map, GrayString key, const void *value, const char *file, int line);
 
 /* Get key at internal index (for iteration) */
 void *gray_map_key_at(GrayMap *map, int32_t internal_index);

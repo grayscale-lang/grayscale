@@ -331,10 +331,6 @@ void *gray_map_get_str(GrayMap *map, GrayString key) {
     return gray_map_get(map, &key);
 }
 
-void gray_map_set_str(GrayArena *arena, GrayMap *map, GrayString key, const void *value, const char *file, int line) {
-    gray_map_set(arena, map, &key, value, file, line);
-}
-
 void *gray_map_key_at(GrayMap *map, int32_t internal_index) {
     return key_pointer(map, internal_index);
 }

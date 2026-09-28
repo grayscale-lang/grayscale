@@ -298,7 +298,7 @@ static void test_gray_map_set_get_string(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString key = gray_string_lit("name");
     int64_t val = 42;
-    gray_map_set_str(arena, &m, key, &val, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &key, &val, __FILE__, __LINE__);
     void *got = gray_map_get_str(&m, key);
     ASSERT_NOT_NULL(got);
     ASSERT_EQ(*(int64_t *)got, 42);

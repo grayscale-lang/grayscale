@@ -621,8 +621,8 @@ static void test_maps_get_keys(void) {
     GrayString k1 = gray_string_lit("a");
     GrayString k2 = gray_string_lit("b");
     int64_t v1 = 1, v2 = 2;
-    gray_map_set_str(arena, &m, k1, &v1, __FILE__, __LINE__);
-    gray_map_set_str(arena, &m, k2, &v2, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k1, &v1, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k2, &v2, __FILE__, __LINE__);
     GrayArray keys = gray_maps_get_keys(arena, &m);
     ASSERT_EQ(keys.len, 2);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(keys, GrayString, 0), gray_string_lit("a")));
@@ -633,7 +633,7 @@ static void test_maps_get_values(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k1 = gray_string_lit("x");
     int64_t v1 = 42;
-    gray_map_set_str(arena, &m, k1, &v1, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k1, &v1, __FILE__, __LINE__);
     GrayArray vals = gray_maps_get_values(arena, &m);
     ASSERT_EQ(vals.len, 1);
     ASSERT_EQ(GRAY_ARRAY_GET(vals, int64_t, 0), 42);
@@ -681,8 +681,8 @@ static void test_maps_is_equal_str_keys(void) {
     GrayMap b = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k = gray_string_lit("key");
     int64_t v = 42;
-    gray_map_set_str(arena, &a, k, &v, __FILE__, __LINE__);
-    gray_map_set_str(arena, &b, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &a, &k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &b, &k, &v, __FILE__, __LINE__);
     ASSERT(gray_maps_is_equal(&a, &b, true, false));
 }
 
@@ -1122,7 +1122,7 @@ static void test_json_encode_map(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("name");
     GrayString v = gray_string_lit("Alice");
-    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map(arena, &m);
     ASSERT_GRAY_STR(r, "{\"name\":\"Alice\"}");
 }
@@ -1134,7 +1134,7 @@ static void test_json_encode_map_string_escaped_key(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("a\"b");
     GrayString v = gray_string_lit("v\\x");
-    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map(arena, &m);
     ASSERT_GRAY_STR(r, "{\"a\\\"b\":\"v\\\\x\"}");
 }
@@ -1143,7 +1143,7 @@ static void test_json_encode_map_int_escaped_key(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString k = gray_string_lit("a\"b");
     int64_t v = INT64_MIN; /* longest int64 output: -9223372036854775808 */
-    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map_int(arena, &m);
     ASSERT_GRAY_STR(r, "{\"a\\\"b\":-9223372036854775808}");
 }
@@ -1152,7 +1152,7 @@ static void test_json_encode_map_float_escaped_key(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(double), 0, GRAY_ELEM_STRING, GRAY_ELEM_F64);
     GrayString k = gray_string_lit("k\ny");
     double v = 3.5;
-    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map_float(arena, &m);
     ASSERT_GRAY_STR(r, "{\"k\\ny\":3.5}");
 }
@@ -1162,8 +1162,8 @@ static void test_json_encode_map_bool_escaped_key(void) {
     GrayString k1 = gray_string_lit("t\"1");
     GrayString k2 = gray_string_lit("f\"2");
     bool v1 = true, v2 = false;
-    gray_map_set_str(arena, &m, k1, &v1, __FILE__, __LINE__);
-    gray_map_set_str(arena, &m, k2, &v2, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k1, &v1, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k2, &v2, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map_bool(arena, &m);
     ASSERT_GRAY_STR(r, "{\"t\\\"1\":true,\"f\\\"2\":false}");
 }
@@ -1235,7 +1235,7 @@ static void test_json_pretty_map(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 0, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     GrayString k = gray_string_lit("k");
     GrayString v = gray_string_lit("v");
-    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
     GrayString pretty = gray_json_pretty_map(arena, &m, 2);
     GrayString compact = gray_json_encode_map(arena, &m);
     ASSERT_GT(pretty.len, compact.len);
