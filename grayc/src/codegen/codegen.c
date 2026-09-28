@@ -6704,8 +6704,8 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *functi
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(function_name, "use") == 0 && node->data.call.argument_count == 2) {
-        emit(codegen, "gray_server_use(");
+    if (strcmp(function_name, "add_middleware") == 0 && node->data.call.argument_count == 2) {
+        emit(codegen, "gray_server_add_middleware(");
         emit_address_of(codegen, node->data.call.arguments[0]);
         emit(codegen, ", (GrayMiddleware)");
         emit_expression(codegen, node->data.call.arguments[1]);

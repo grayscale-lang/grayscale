@@ -120,7 +120,7 @@ void gray_server_cors(GrayRouter *router, GrayString origin) {
     router->cors_origin = origin_copy;
 }
 
-void gray_server_use(GrayRouter *router, GrayMiddleware middleware) {
+void gray_server_add_middleware(GrayRouter *router, GrayMiddleware middleware) {
     if (router->middleware_count >= router->middleware_capacity) {
         router->middleware_capacity = router->middleware_capacity == 0 ? 8 : router->middleware_capacity * 2;
         router->middlewares = realloc(router->middlewares, sizeof(GrayMiddleware) * router->middleware_capacity);

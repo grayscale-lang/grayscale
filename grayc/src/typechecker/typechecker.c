@@ -3530,6 +3530,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"runtime", "uptime",       0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "f64"},
     {"runtime", "version",      0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "string"},
     /* server */
+    {"server", "add_middleware", 2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"server", "add_route",  4, 4, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"server", "add_router", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Router"},
     {"server", "cors",       2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
@@ -3538,7 +3539,6 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"server", "listen",     2, 3, false, FALLIBLE_TYPE_NONE, 2, {{1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "redirect",   2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     {"server", "text",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
-    {"server", "use",        2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     /* sqlite */
     {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
     {"sqlite", "exec",         2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_BOOL,            0, {{0}},"bool"},

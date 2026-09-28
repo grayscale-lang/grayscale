@@ -4204,7 +4204,7 @@ An HTTP server module with dynamic handlers and path parameters.
 | `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
 | `listen` | `(router Router, port i64, [host string])` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
-| `use` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
+| `add_middleware` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
 #### Response Builders
 

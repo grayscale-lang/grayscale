@@ -153,19 +153,19 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *router);
 /* Enable CORS with the given origin (e.g. "*" or "http://example.com") */
 void gray_server_cors(GrayRouter *router, GrayString origin);
 
-/*@man use
+/*@man add_middleware
  *@module server
  *@group Routing
- *@sig use(router Router, middleware func(^HttpRequest, ^HttpResponse))
+ *@sig add_middleware(router Router, middleware func(^HttpRequest, ^HttpResponse))
  *@desc Registers a middleware function on the router. Middleware runs after the handler, in the order registered, and receives pointers to the request and the handler's response so it can inspect or modify either before the response is sent. It also runs when no route matches, on the 404 response.
  *@example
  *   import @server
  *   mut r = server.add_router()
- *   server.use(r, ()my_logger)
+ *   server.add_middleware(r, ()my_logger)
  *@end
  */
 /* Register a middleware function */
-void gray_server_use(GrayRouter *router, GrayMiddleware middleware);
+void gray_server_add_middleware(GrayRouter *router, GrayMiddleware middleware);
 
 /*@man text
  *@module server

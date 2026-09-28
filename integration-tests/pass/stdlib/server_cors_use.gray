@@ -2,8 +2,6 @@
  * server_cors_use.gray - Test server.cors()
  * Covers: server.cors() wired
  * NOTE: Does not call server.listen() since that blocks.
- *       server.use() requires GrayMiddleware function signature
- *       not expressible in Grayscale user code, so only cors is tested here.
  */
 
 import @server
