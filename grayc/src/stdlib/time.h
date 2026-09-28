@@ -17,7 +17,13 @@
  * this directory shadows libc, so step past it so `extern import "time.h"`
  * reaches the real header. See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../time.h>)
+#      include <sys/../time.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<time.h>)
 #      include_next <time.h>
 #    endif

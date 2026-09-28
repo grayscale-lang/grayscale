@@ -22,8 +22,9 @@
 #include <math.h>
 
 /* ARMv8 SHA2 instructions for SHA-256 compression. Apple Silicon always has
- * them; on Linux they are detected at runtime. Other targets stay scalar. */
-#if defined(__aarch64__) && (defined(__APPLE__) || defined(__linux__))
+ * them; on Linux they are detected at runtime. Other targets, and TinyCC
+ * (no NEON intrinsics), stay scalar. */
+#if defined(__aarch64__) && (defined(__APPLE__) || defined(__linux__)) && !defined(__TINYC__)
 #define SHA256_HW_ARM 1
 #include <arm_neon.h>
 #if defined(__linux__)

@@ -234,6 +234,99 @@ static bool c_compiler_available(const char *c_compiler) {
     return gray_command_on_path(c_compiler);
 }
 
+/* Index one past the C string or character literal starting at `start`. */
+static size_t skip_c_literal(const char *text, size_t start) {
+    char quote = text[start];
+    size_t index = start + 1;
+    while (text[index] && text[index] != quote) index += text[index] == '\\' && text[index + 1] ? 2 : 1;
+    return text[index] ? index + 1 : index;
+}
+
+/* Index one past the comment starting at `start`, or `start` if none does. */
+static size_t skip_c_comment(const char *text, size_t start) {
+    if (text[start] != '/') return start;
+    size_t index = start + 2;
+    if (text[start + 1] == '/') {
+        while (text[index] && text[index] != '\n') index++;
+        return index;
+    }
+    if (text[start + 1] != '*') return start;
+    while (text[index] && !(text[index] == '*' && text[index + 1] == '/')) index++;
+    return text[index] ? index + 2 : index;
+}
+
+/* TinyCC has no __auto_type. `__auto_type name = init;` becomes
+ * `__typeof__(init) name = init;`: typeof does not evaluate its operand, so
+ * the initializer runs once, and both copies are lowered in turn. */
+static void lower_auto_type_range(const char *text, size_t begin, size_t end, StringBuffer *output) {
+    static const char keyword[] = "__auto_type";
+    const size_t keyword_length = sizeof(keyword) - 1;
+    size_t index = begin;
+    while (index < end) {
+        char current = text[index];
+        size_t literal_end = current == '"' || current == '\'' ? skip_c_literal(text, index)
+                                                              : skip_c_comment(text, index);
+        if (literal_end > index) {
+            append_bytes_to_buffer(output, text + index, literal_end - index);
+            index = literal_end;
+            continue;
+        }
+        bool at_keyword = strncmp(text + index, keyword, keyword_length) == 0 &&
+                          (index == 0 || !(isalnum((unsigned char)text[index - 1]) || text[index - 1] == '_')) &&
+                          !(isalnum((unsigned char)text[index + keyword_length]) || text[index + keyword_length] == '_');
+        size_t name_begin = index + keyword_length;
+        while (at_keyword && isspace((unsigned char)text[name_begin])) name_begin++;
+        size_t name_end = name_begin;
+        while (at_keyword && (isalnum((unsigned char)text[name_end]) || text[name_end] == '_')) name_end++;
+        size_t initializer_begin = name_end;
+        while (at_keyword && isspace((unsigned char)text[initializer_begin])) initializer_begin++;
+        if (!at_keyword || name_end == name_begin || text[initializer_begin] != '=') {
+            append_char_to_buffer(output, text[index]);
+            index++;
+            continue;
+        }
+        initializer_begin++;
+        size_t initializer_end = initializer_begin;
+        int depth = 0;
+        while (initializer_end < end && !(depth == 0 && text[initializer_end] == ';')) {
+            char scanned = text[initializer_end];
+            size_t skipped = scanned == '"' || scanned == '\'' ? skip_c_literal(text, initializer_end)
+                                                               : skip_c_comment(text, initializer_end);
+            if (skipped > initializer_end) { initializer_end = skipped; continue; }
+            if (scanned == '(' || scanned == '[' || scanned == '{') depth++;
+            if (scanned == ')' || scanned == ']' || scanned == '}') depth--;
+            initializer_end++;
+        }
+        append_string_to_buffer(output, "__typeof__(");
+        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        append_string_to_buffer(output, ") ");
+        append_bytes_to_buffer(output, text + name_begin, name_end - name_begin);
+        append_string_to_buffer(output, " =");
+        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        index = initializer_end;
+    }
+}
+
+static char *lower_auto_type(const char *text) {
+    StringBuffer output = buffer_create(strlen(text) * 2 + 1);
+    lower_auto_type_range(text, 0, strlen(text), &output);
+    char *result = strdup(buffer_to_string(&output));
+    buffer_destroy(&output);
+    return result;
+}
+
+/* TinyCC takes a subset of the GCC command line: it rejects every -Wl,
+ * option and has no use for section splitting or the -Wno-* warning set.
+ * Recognised by the compiler's file name, like the rest of the driver's
+ * compiler handling. */
+static bool c_compiler_is_tinycc(const char *c_compiler) {
+    const char *name = c_compiler;
+    for (const char *cursor = c_compiler; *cursor; cursor++) {
+        if (*cursor == '/' || *cursor == '\\') name = cursor + 1;
+    }
+    return strcmp(name, "tcc") == 0 || strcmp(name, "tcc.exe") == 0;
+}
+
 static const char *detect_c_compiler(void) {
     /* GRAY_CC / CC are checked, not trusted: a stale CC=cc from a profile must
      * not break a system that only has gcc. Multi-word values ("zig cc")
@@ -1780,6 +1873,20 @@ int main(int argc, char **argv) {
      * processes resolve their DLLs via PATH. No-op for bare command names. */
     gray_ensure_tool_directory_on_path(c_compiler_command);
 
+    if (c_compiler_is_tinycc(c_compiler_command)) {
+        char *lowered_source = lower_auto_type(c_source);
+        bool did_write = lowered_source && write_file(c_file_path, lowered_source);
+        free(lowered_source);
+        if (!did_write) {
+            codegen_destroy(&codegen);
+            typechecker_free(checker);
+            arena_destroy(arena);
+            free(source);
+            free(default_output);
+            return 1;
+        }
+    }
+
     /* Find runtime directory */
     const char *runtime_directory = find_runtime_directory(argv[0]);
     if (!runtime_directory) {
@@ -1858,8 +1965,10 @@ int main(int argc, char **argv) {
      * The archive is built for the host; a --cc compiler (a cross target) needs
      * the runtime compiled from source for its own target instead. */
     gray_path_join(lib_path, sizeof(lib_path), runtime_directory, "../libgrayrt.a");
-    if (options.c_compiler_override) {
-        /* fall through to the from-source build below */
+    if (options.c_compiler_override || c_compiler_is_tinycc(c_compiler_command)) {
+        /* fall through to the from-source build below; TinyCC also cannot
+         * link objects another compiler built, or share its thread-local
+         * layout (see gray_thread_state in runtime.h) */
     } else if (gray_file_readable(lib_path)) {
         has_archive = true;
     } else {
@@ -1902,14 +2011,17 @@ int main(int argc, char **argv) {
      * mac target, includes those headers. Inert on glibc. */
     argument_vector_push(&c_compiler_arguments, "-D_DARWIN_C_SOURCE");
 #endif
+    const bool is_tinycc = c_compiler_is_tinycc(c_compiler_command);
     if (options.should_emit_debug_symbols) argument_vector_push(&c_compiler_arguments, "-g");
     argument_vector_push(&c_compiler_arguments, options.optimization_level);
     /* One section per function/variable so the linker's dead-strip pass (added
      * below) can drop the runtime and stdlib code the program never calls —
      * a trivial program links a fraction of libgrayrt.a instead of all of it.
      * Compile-time cost is negligible; there is no LTO. */
-    argument_vector_push(&c_compiler_arguments, "-ffunction-sections");
-    argument_vector_push(&c_compiler_arguments, "-fdata-sections");
+    if (!is_tinycc) {
+        argument_vector_push(&c_compiler_arguments, "-ffunction-sections");
+        argument_vector_push(&c_compiler_arguments, "-fdata-sections");
+    }
     /* Marks this translation unit as a grayc-generated program. The stdlib
      * headers whose basename collides with a system header (time.h, io.h,
      * ...) only need to forward to the real header in this context — where
@@ -1917,26 +2029,28 @@ int main(int argc, char **argv) {
      * compiled into libgrayrt.a. */
     argument_vector_push(&c_compiler_arguments, "-DGRAY_GENERATED_C=1");
     argument_vector_push(&c_compiler_arguments, "-Wall");
-    argument_vector_push(&c_compiler_arguments, "-Wno-unused-function");
-    argument_vector_push(&c_compiler_arguments, "-Wno-unused-variable");
-    argument_vector_push(&c_compiler_arguments, "-Wno-unused-but-set-variable");
-    argument_vector_push(&c_compiler_arguments, "-Wno-tautological-compare");
-    argument_vector_push(&c_compiler_arguments, "-Wno-infinite-recursion");
-    argument_vector_push(&c_compiler_arguments, "-Wno-incompatible-pointer-types-discards-qualifiers");
+    if (!is_tinycc) {
+        argument_vector_push(&c_compiler_arguments, "-Wno-unused-function");
+        argument_vector_push(&c_compiler_arguments, "-Wno-unused-variable");
+        argument_vector_push(&c_compiler_arguments, "-Wno-unused-but-set-variable");
+        argument_vector_push(&c_compiler_arguments, "-Wno-tautological-compare");
+        argument_vector_push(&c_compiler_arguments, "-Wno-infinite-recursion");
+        argument_vector_push(&c_compiler_arguments, "-Wno-incompatible-pointer-types-discards-qualifiers");
 #if GRAY_OS_WINDOWS
-    /* GCC's spelling of the Clang-only flag above. */
-    argument_vector_push(&c_compiler_arguments, "-Wno-discarded-qualifiers");
+        /* GCC's spelling of the Clang-only flag above. */
+        argument_vector_push(&c_compiler_arguments, "-Wno-discarded-qualifiers");
 #endif
-    /* An `extern.` call is emitted with its arguments passed through verbatim —
-     * grayc cannot see the C signature to insert a cast. An opaque C handle
-     * (FILE*, DIR*, ...) has no Grayscale type to name, so it round-trips as
-     * `^u8` (uint8_t*), and a byte buffer passed to a `char*` parameter
-     * differs only in signedness. Neither mismatch is expressible away in
-     * source. Silence both so C interop compiles clean; on GCC >= 14
-     * -Wincompatible-pointer-types is an error by default, so this also keeps
-     * it from being a hard build failure. */
-    argument_vector_push(&c_compiler_arguments, "-Wno-incompatible-pointer-types");
-    argument_vector_push(&c_compiler_arguments, "-Wno-pointer-sign");
+        /* An `extern.` call is emitted with its arguments passed through verbatim —
+         * grayc cannot see the C signature to insert a cast. An opaque C handle
+         * (FILE*, DIR*, ...) has no Grayscale type to name, so it round-trips as
+         * `^u8` (uint8_t*), and a byte buffer passed to a `char*` parameter
+         * differs only in signedness. Neither mismatch is expressible away in
+         * source. Silence both so C interop compiles clean; on GCC >= 14
+         * -Wincompatible-pointer-types is an error by default, so this also keeps
+         * it from being a hard build failure. */
+        argument_vector_push(&c_compiler_arguments, "-Wno-incompatible-pointer-types");
+        argument_vector_push(&c_compiler_arguments, "-Wno-pointer-sign");
+    }
     argument_vector_push(&c_compiler_arguments, "-isystem");
     argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "runtime", runtime_directory);
     argument_vector_push(&c_compiler_arguments, "-isystem");
@@ -1991,11 +2105,13 @@ int main(int argc, char **argv) {
 
     /* Drop the sections nothing references (see -ffunction-sections above).
      * Apple ld and GNU ld/lld spell it differently. */
+    if (!is_tinycc) {
 #if defined(__APPLE__)
-    argument_vector_push(&c_compiler_arguments, "-Wl,-dead_strip");
+        argument_vector_push(&c_compiler_arguments, "-Wl,-dead_strip");
 #else
-    argument_vector_push(&c_compiler_arguments, "-Wl,--gc-sections");
+        argument_vector_push(&c_compiler_arguments, "-Wl,--gc-sections");
 #endif
+    }
 
     /* Platform link flags. */
     argument_vector_push(&c_compiler_arguments, "-lm");
@@ -2007,7 +2123,7 @@ int main(int argc, char **argv) {
      * (kernel32, msvcrt, ws2_32) stay dynamic — those DLLs ship with the OS. */
     argument_vector_push(&c_compiler_arguments, "-static");
 #endif
-    argument_vector_push(&c_compiler_arguments, "-Wl,-w");
+    if (!is_tinycc) argument_vector_push(&c_compiler_arguments, "-Wl,-w");
     argument_vector_end(&c_compiler_arguments);
 
     if (c_compiler_arguments.has_overflowed) {

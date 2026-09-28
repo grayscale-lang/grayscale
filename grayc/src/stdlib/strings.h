@@ -19,7 +19,13 @@
  * reaches the real header (on macOS those names also live in <string.h>, so
  * this is a no-op there). See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../strings.h>)
+#      include <sys/../strings.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<strings.h>)
 #      include_next <strings.h>
 #    endif

@@ -19,7 +19,13 @@
  * this directory shadows libc, so step past it so `extern import "regex.h"`
  * reaches the real header. See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../regex.h>)
+#      include <sys/../regex.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<regex.h>)
 #      include_next <regex.h>
 #    endif

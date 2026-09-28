@@ -72,6 +72,31 @@ jobs:
           ASAN_OPTIONS: detect_leaks=0
         run: make test-asan
 
+  tinycc:
+    name: Integration tests (TinyCC)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Install TinyCC
+        run: sudo apt-get update && sudo apt-get install -y tcc
+
+      - name: Build
+        run: make build
+
+      - name: Run Grayscale integration tests with TinyCC
+        env:
+          GRAY_CC: tcc
+        run: make test-integration
+
   # Windows is a separate job rather than a matrix entry: the steps above run
   # bash scripts and sanitizers that have no Windows equivalent.
   windows:

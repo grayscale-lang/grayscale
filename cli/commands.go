@@ -360,10 +360,13 @@ func reportCPUModel() string {
 }
 
 // reportCCompiler resolves the C compiler grayc will actually invoke
-// (honouring $CC, else the first of clang/gcc/cc on PATH) and returns
+// (honouring $GRAY_CC, then $CC, else the first of clang/gcc/cc on PATH) and returns
 // its resolved path, first line of --version output, and target triple.
 func reportCCompiler() (path, version, triple string) {
-	cc := os.Getenv("CC")
+	cc := os.Getenv("GRAY_CC")
+	if cc == "" {
+		cc = os.Getenv("CC")
+	}
 	if cc == "" {
 		for _, candidate := range []string{"clang", "gcc", "cc"} {
 			if p, err := exec.LookPath(candidate); err == nil {

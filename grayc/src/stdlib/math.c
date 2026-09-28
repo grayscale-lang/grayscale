@@ -51,7 +51,7 @@ int64_t gray_math_factorial(int64_t number) {
     if (number <= 1) return 1;
     int64_t result = 1;
     for (int64_t i = 2; i <= number; i++)
-        if (__builtin_mul_overflow(result, i, &result))
+        if (gray_mul_overflows_i64(result, i, &result))
             gray_panic_code("P0006", "multiplication result is too large; value exceeds the range of i64");
     return result;
 }
@@ -71,7 +71,7 @@ int64_t gray_math_lcm(int64_t left, int64_t right) {
     if (left == 0 || right == 0) return 0;
     int64_t divisor = gray_math_gcd(left, right);
     int64_t result;
-    if (__builtin_mul_overflow(left / divisor, right, &result))
+    if (gray_mul_overflows_i64(left / divisor, right, &result))
         gray_panic_code("P0006", "multiplication result is too large; value exceeds the range of i64");
     return result;
 }

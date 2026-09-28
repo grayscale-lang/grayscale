@@ -54,12 +54,37 @@ void gray_arena_destroy(GrayArena *arena, const char *file, int line);
 size_t gray_arena_usage(GrayArena *arena);
 size_t gray_arena_block_count(GrayArena *arena);
 
+/* TinyCC emits ELF-style thread-local access, which faults on Mach-O and has
+ * no runtime to back it in a program it links itself. Under it the per-thread
+ * globals below live in one heap block per thread, reached through an
+ * accessor; each name expands to an lvalue, so no use site changes. */
+#if defined(__TINYC__)
+typedef struct {
+    GrayArena *default_arena;
+    GrayArena *heap_arena;
+    size_t total_alloc_count;
+    const char *panic_call_file;
+    int panic_call_line;
+} GrayThreadState;
+
+GrayThreadState *gray_thread_state(void);
+#define gray_default_arena (gray_thread_state()->default_arena)
+#define gray_heap_arena (gray_thread_state()->heap_arena)
+#define gray_total_alloc_count (gray_thread_state()->total_alloc_count)
+#define gray_panic_call_file (gray_thread_state()->panic_call_file)
+#define gray_panic_call_line (gray_thread_state()->panic_call_line)
+#endif
+
 /* Per-thread default arena — each thread (including spawned threads) gets its own. */
+#if !defined(__TINYC__)
 extern _Thread_local GrayArena *gray_default_arena;
+#endif
 
 /* Persistent heap arena — lives for the lifetime of the program.
  * Used by new() so returned pointers are never dangling. */
+#if !defined(__TINYC__)
 extern _Thread_local GrayArena *gray_heap_arena;
+#endif
 
 /* Cumulative count of allocations made against whichever arena is installed
  * as the default or heap arena. Tracked separately from GrayArena::alloc_count
@@ -67,7 +92,9 @@ extern _Thread_local GrayArena *gray_heap_arena;
  * every pass: reading the installed arena's own counter makes the total drop
  * to zero on loop entry and discards everything the body allocated.
  * Thread-local to match the arena globals it follows. */
+#if !defined(__TINYC__)
 extern _Thread_local size_t gray_total_alloc_count;
+#endif
 
 /* --- String --- */
 
@@ -197,8 +224,12 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
  * code via gray_panic_code() — which has no location of its own — still
  * reports the .gray file and line, the same as a language-level panic. NULL
  * before the first statement of a program runs. */
+#if !defined(__TINYC__)
 extern _Thread_local const char *gray_panic_call_file;
+#endif
+#if !defined(__TINYC__)
 extern _Thread_local int gray_panic_call_line;
+#endif
 
 void gray_panic_code(const char *code, const char *format, ...)
     __attribute__((format(printf, 2, 3), noreturn));
@@ -274,30 +305,78 @@ _Noreturn void gray_arith_panic_uadd(const char *file, int line);
 _Noreturn void gray_arith_panic_usub(const char *file, int line);
 _Noreturn void gray_arith_panic_umul(const char *file, int line);
 
+/* Marks a branch the program cannot reach. TinyCC has no __builtin_unreachable. */
+#if !defined(__TINYC__)
+#define GRAY_UNREACHABLE() __builtin_unreachable()
+#else
+#define GRAY_UNREACHABLE() abort()
+#endif
+
+/* Overflow-detecting arithmetic: store the wrapped result in *result and return
+ * whether the mathematical result did not fit. GCC and Clang provide it as a
+ * builtin; TinyCC defines __GNUC__ without implementing it, so it gets a range
+ * check with identical results. */
+#if !defined(__TINYC__)
+#define gray_add_overflows_i64(left, right, result) __builtin_add_overflow((left), (right), (result))
+#define gray_sub_overflows_i64(left, right, result) __builtin_sub_overflow((left), (right), (result))
+#define gray_mul_overflows_i64(left, right, result) __builtin_mul_overflow((left), (right), (result))
+#define gray_add_overflows_u64(left, right, result) __builtin_add_overflow((left), (right), (result))
+#define gray_mul_overflows_u64(left, right, result) __builtin_mul_overflow((left), (right), (result))
+#else
+static inline bool gray_add_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left + (uint64_t)right);
+    return (right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right);
+}
+
+static inline bool gray_sub_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left - (uint64_t)right);
+    return (right < 0 && left > INT64_MAX + right) || (right > 0 && left < INT64_MIN + right);
+}
+
+static inline bool gray_mul_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left * (uint64_t)right);
+    if (left == 0 || right == 0) return false;
+    if (left == -1) return right == INT64_MIN;
+    if (right == -1) return left == INT64_MIN;
+    if (left > 0) return right > 0 ? left > INT64_MAX / right : right < INT64_MIN / left;
+    return right > 0 ? left < INT64_MIN / right : left < INT64_MAX / right;
+}
+
+static inline bool gray_add_overflows_u64(uint64_t left, uint64_t right, uint64_t *result) {
+    *result = left + right;
+    return *result < left;
+}
+
+static inline bool gray_mul_overflows_u64(uint64_t left, uint64_t right, uint64_t *result) {
+    *result = left * right;
+    return left != 0 && *result / left != right;
+}
+#endif
+
 static inline int64_t gray_add_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_add_overflow(left, right, &result))
+    if (gray_add_overflows_i64(left, right, &result))
         gray_arith_panic_add(file, line);
     return result;
 }
 
 static inline int64_t gray_sub_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_sub_overflow(left, right, &result))
+    if (gray_sub_overflows_i64(left, right, &result))
         gray_arith_panic_sub(file, line);
     return result;
 }
 
 static inline int64_t gray_mul_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_mul_overflow(left, right, &result))
+    if (gray_mul_overflows_i64(left, right, &result))
         gray_arith_panic_mul(file, line);
     return result;
 }
 
 static inline int64_t gray_neg_check(int64_t value, const char *file, int line) {
     int64_t result;
-    if (__builtin_sub_overflow((int64_t)0, value, &result))
+    if (gray_sub_overflows_i64((int64_t)0, value, &result))
         gray_arith_panic_neg(file, line);
     return result;
 }
@@ -313,7 +392,7 @@ static inline int64_t gray_dec_check(int64_t value, const char *file, int line) 
 /* Overflow-checked unsigned integer arithmetic */
 static inline uint64_t gray_uadd_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
-    if (__builtin_add_overflow(left, right, &result))
+    if (gray_add_overflows_u64(left, right, &result))
         gray_arith_panic_uadd(file, line);
     return result;
 }
@@ -326,7 +405,7 @@ static inline uint64_t gray_usub_check(uint64_t left, uint64_t right, const char
 
 static inline uint64_t gray_umul_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
-    if (__builtin_mul_overflow(left, right, &result))
+    if (gray_mul_overflows_u64(left, right, &result))
         gray_arith_panic_umul(file, line);
     return result;
 }

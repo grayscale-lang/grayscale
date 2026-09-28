@@ -16,11 +16,35 @@
 #include <stdlib.h>
 #include <time.h>
 #include <errno.h>
+#if defined(__TINYC__)
+#include <pthread.h>
+#endif
 
 static inline int panic_use_color(void) {
     return gray_runtime_isatty(gray_runtime_stderr_fileno()) && !getenv("NO_COLOR");
 }
 
+#if defined(__TINYC__)
+/* One GrayThreadState per thread (see runtime.h), created on first use and
+ * released when the thread exits. */
+static pthread_key_t gray_thread_state_key;
+static pthread_once_t gray_thread_state_once = PTHREAD_ONCE_INIT;
+
+static void gray_thread_state_make_key(void) {
+    pthread_key_create(&gray_thread_state_key, free);
+}
+
+GrayThreadState *gray_thread_state(void) {
+    pthread_once(&gray_thread_state_once, gray_thread_state_make_key);
+    GrayThreadState *state = (GrayThreadState *)pthread_getspecific(gray_thread_state_key);
+    if (!state) {
+        state = (GrayThreadState *)calloc(1, sizeof(GrayThreadState));
+        if (!state) abort();
+        pthread_setspecific(gray_thread_state_key, state);
+    }
+    return state;
+}
+#else
 /* --- Per-thread default arena --- */
 
 _Thread_local GrayArena *gray_default_arena = NULL;
@@ -35,6 +59,7 @@ _Thread_local size_t gray_total_alloc_count = 0;
 
 _Thread_local const char *gray_panic_call_file = NULL;
 _Thread_local int gray_panic_call_line = 0;
+#endif
 
 /* --- Arena Allocator --- */
 

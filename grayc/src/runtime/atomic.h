@@ -14,6 +14,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* TinyCC has no __atomic_* builtins of its own; its stdatomic.h supplies the
+ * __atomic_*_n forms and the __ATOMIC_* orders the runtime is written against. */
+#if defined(__TINYC__)
+#include <stdatomic.h>
+/* ...except the exchange, which stdatomic.h leaves out. */
+#define __atomic_exchange_n(pointer, value, order) \
+    ({ __typeof__(*(pointer)) exchange_new_ = (value), exchange_old_; \
+       __atomic_exchange((pointer), &exchange_new_, &exchange_old_, (order)); \
+       exchange_old_; })
+#endif
+
 // ── 64-bit Atomics ──────────────────────────────────────────────
 
 int64_t gray_atomic_load(int64_t *target);

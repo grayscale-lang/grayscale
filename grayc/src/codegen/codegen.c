@@ -12935,7 +12935,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
              * the fall-through is dead. Say so, or C warns that a value-
              * returning function may fall off the end (-Wreturn-type). */
             emit_indent(codegen);
-            emit(codegen, "} else { __builtin_unreachable(); }\n");
+            emit(codegen, "} else { GRAY_UNREACHABLE(); }\n");
             break;
         }
         emit_indent(codegen);

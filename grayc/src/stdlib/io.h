@@ -20,7 +20,13 @@
  * `extern import "io.h"` reaches the real header where it exists (Windows
  * targets; absent on Linux/macOS). See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../io.h>)
+#      include <sys/../io.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<io.h>)
 #      include_next <io.h>
 #    endif

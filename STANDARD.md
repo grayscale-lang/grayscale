@@ -5107,6 +5107,14 @@ gray main.gray
 gray main.gray -q all
 gray main.gray -- --port 8080
 ```
+### C Compiler
+
+`gray` compiles the generated C with the first of `$GRAY_CC`, `$CC`, `cc`, `gcc` or `clang` found on PATH. GCC, Clang and TinyCC (`tcc`) are supported. TinyCC compiles much faster, which suits the edit-run loop; it builds the runtime from source on every compile instead of linking `libgrayrt.a`.
+
+```bash
+GRAY_CC=tcc gray main.gray
+```
+
 
 ### 13.2 `gray build`
 
