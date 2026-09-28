@@ -1,11 +1,11 @@
 /* Error Test: E2088 - mixed while/as_long_as aliases in same file */
 do main() {
-    mut i int = 0
+    mut i i64 = 0
     while i < 3 {
         i++
     }
 
-    mut j int = 0
+    mut j i64 = 0
     as_long_as j < 2 {
         j++
     }

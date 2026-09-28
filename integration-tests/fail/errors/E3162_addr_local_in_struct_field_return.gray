@@ -8,11 +8,11 @@
  */
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
 do leak() -> Box {
-    mut local int = 7
+    mut local i64 = 7
     mut b Box = Box{p: addr(local)}
     return b
 }

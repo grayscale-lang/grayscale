@@ -4,33 +4,33 @@
  * top-level call still resolves from the same body.
  */
 
-do top_level_double(n int) -> int {
+do top_level_double(n i64) -> i64 {
     return n * 2
 }
 
 const Calculator struct {
-    value int
+    value i64
 
-    private do internal_add(a int, b int) -> int {
+    private do internal_add(a i64, b i64) -> i64 {
         return a + b
     }
 
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return internal_add(a, b)
     }
 
-    do add_thrice(a int, b int, c int) -> int {
+    do add_thrice(a i64, b i64, c i64) -> i64 {
         return add(add(a, b), c)
     }
 
-    do doubled_sum(a int, b int) -> int {
-        mut d int = top_level_double(a)
+    do doubled_sum(a i64, b i64) -> i64 {
+        mut d i64 = top_level_double(a)
         return internal_add(d, b)
     }
 }
 
 const Actor struct {
-    id int
+    id i64
     name string
 
     do rename(a Actor, n string) -> Actor {
@@ -38,18 +38,18 @@ const Actor struct {
     }
 
     do build(a Actor) -> Actor {
-        mut doubled int = top_level_double(a.id)
+        mut doubled i64 = top_level_double(a.id)
         return rename(Actor{id: doubled, name: a.name}, "bob")
     }
 }
 
 do main() {
     println("=== Bare Sibling Struct Function Call Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: bare call to a private sibling
-    mut r1 int = Calculator.add(3, 4)
+    mut r1 i64 = Calculator.add(3, 4)
     if r1 == 7 {
         println("  [PASS] Calculator.add(3, 4) = 7")
         passed += 1
@@ -59,7 +59,7 @@ do main() {
     }
 
     // Test 2: bare call to a public sibling, nested
-    mut r2 int = Calculator.add_thrice(1, 2, 3)
+    mut r2 i64 = Calculator.add_thrice(1, 2, 3)
     if r2 == 6 {
         println("  [PASS] Calculator.add_thrice(1, 2, 3) = 6")
         passed += 1
@@ -69,7 +69,7 @@ do main() {
     }
 
     // Test 3: bare top-level call and bare sibling call in the same body
-    mut r3 int = Calculator.doubled_sum(5, 1)
+    mut r3 i64 = Calculator.doubled_sum(5, 1)
     if r3 == 11 {
         println("  [PASS] Calculator.doubled_sum(5, 1) = 11")
         passed += 1

@@ -3,6 +3,6 @@
  * Expected: "main function cannot have parameters" error
  */
 
-do main(x int) {
+do main(x i64) {
     println("hello")
 }

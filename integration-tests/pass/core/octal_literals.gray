@@ -5,11 +5,11 @@
 
 do main() {
     println("=== Octal Literals Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Basic octal
-    mut a int = 0o10
+    mut a i64 = 0o10
     if a == 8 {
         println("  [PASS] 0o10 = 8")
         passed += 1
@@ -19,7 +19,7 @@ do main() {
     }
 
     // Test 2: Octal 777
-    mut b int = 0o777
+    mut b i64 = 0o777
     if b == 511 {
         println("  [PASS] 0o777 = 511")
         passed += 1
@@ -29,7 +29,7 @@ do main() {
     }
 
     // Test 3: Octal zero
-    mut c int = 0o0
+    mut c i64 = 0o0
     if c == 0 {
         println("  [PASS] 0o0 = 0")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 4: Octal single digit
-    mut d int = 0o7
+    mut d i64 = 0o7
     if d == 7 {
         println("  [PASS] 0o7 = 7")
         passed += 1
@@ -49,7 +49,7 @@ do main() {
     }
 
     // Test 5: Capital O variant
-    mut e int = 0O123
+    mut e i64 = 0O123
     if e == 83 {
         println("  [PASS] 0O123 = 83")
         passed += 1
@@ -59,7 +59,7 @@ do main() {
     }
 
     // Test 6: Octal with underscores
-    mut f int = 0o1_2_3
+    mut f i64 = 0o1_2_3
     if f == 83 {
         println("  [PASS] 0o1_2_3 = 83")
         passed += 1
@@ -69,7 +69,7 @@ do main() {
     }
 
     // Test 7: Octal in arithmetic
-    mut g int = 0o10 + 0o10
+    mut g i64 = 0o10 + 0o10
     if g == 16 {
         println("  [PASS] 0o10 + 0o10 = 16")
         passed += 1

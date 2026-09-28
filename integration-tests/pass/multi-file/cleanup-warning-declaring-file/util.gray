@@ -1,8 +1,8 @@
-do used() -> int {
-    mut unused_local int = 99
+do used() -> i64 {
+    mut unused_local i64 = 99
     return 1
 }
 
-do never_called() -> int {
+do never_called() -> i64 {
     return 2
 }

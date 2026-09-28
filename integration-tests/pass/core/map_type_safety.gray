@@ -1,6 +1,6 @@
 /* Pass Test: valid same-type map assignments and args work correctly */
-do count_items(m map[string:int]) -> int {
-    mut total int = 0
+do count_items(m map[string:i64]) -> i64 {
+    mut total i64 = 0
     for_each k, v in m {
         total += v
     }
@@ -8,11 +8,11 @@ do count_items(m map[string:int]) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut scores map[string:int] = {"alice": 10, "bob": 20}
-    mut scores_copy map[string:int] = scores
+    mut scores map[string:i64] = {"alice": 10, "bob": 20}
+    mut scores_copy map[string:i64] = scores
     if scores_copy["alice"] == 10 && scores_copy["bob"] == 20 {
         println("  [PASS] same-type map assignment")
         passed += 1
@@ -21,9 +21,9 @@ do main() {
         failed += 1
     }
 
-    mut total int = count_items(scores)
+    mut total i64 = count_items(scores)
     if total == 30 {
-        println("  [PASS] map[string:int] passed to matching parameter")
+        println("  [PASS] map[string:i64] passed to matching parameter")
         passed += 1
     } otherwise {
         println("  [FAIL] expected 30, got ${total}")

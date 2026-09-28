@@ -1,7 +1,7 @@
 /*
  * using_new_stdlib.gray - Test new stdlib functions via 'using' directive
  *
- * Verifies that recently added functions (regex.is_valid, math float
+ * Verifies that recently added functions (regex.is_valid, math f64
  * variants) work through 'using' without module prefix.
  */
 
@@ -11,8 +11,8 @@ using math, regex
 
 do main() {
     println("=== Using Directive with New Stdlib Functions ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: regex.is_valid with module prefix (using doesn't dispatch is_valid yet)
     if regex.is_valid("[0-9]+") {
@@ -32,43 +32,43 @@ do main() {
         failed += 1
     }
 
-    // Test 3: abs(float) via using
-    mut a float = abs(-3.14)
+    // Test 3: abs(f64) via using
+    mut a f64 = abs(-3.14)
     if a > 3.13 && a < 3.15 {
-        println("  [PASS] abs(-3.14) returns float via using")
+        println("  [PASS] abs(-3.14) returns f64 via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] abs float via using: got ${a}")
+        println("  [FAIL] abs f64 via using: got ${a}")
         failed += 1
     }
 
-    // Test 4: min(float) via using
-    mut b float = min(1.5, 2.7)
+    // Test 4: min(f64) via using
+    mut b f64 = min(1.5, 2.7)
     if b > 1.49 && b < 1.51 {
-        println("  [PASS] min(1.5, 2.7) returns float via using")
+        println("  [PASS] min(1.5, 2.7) returns f64 via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] min float via using: got ${b}")
+        println("  [FAIL] min f64 via using: got ${b}")
         failed += 1
     }
 
-    // Test 5: max(float) via using
-    mut c float = max(1.5, 2.7)
+    // Test 5: max(f64) via using
+    mut c f64 = max(1.5, 2.7)
     if c > 2.69 && c < 2.71 {
-        println("  [PASS] max(1.5, 2.7) returns float via using")
+        println("  [PASS] max(1.5, 2.7) returns f64 via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] max float via using: got ${c}")
+        println("  [FAIL] max f64 via using: got ${c}")
         failed += 1
     }
 
-    // Test 6: clamp(float) via using
-    mut d float = clamp(5.5, 0.0, 3.0)
+    // Test 6: clamp(f64) via using
+    mut d f64 = clamp(5.5, 0.0, 3.0)
     if d > 2.99 && d < 3.01 {
-        println("  [PASS] clamp(5.5, 0.0, 3.0) returns float via using")
+        println("  [PASS] clamp(5.5, 0.0, 3.0) returns f64 via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] clamp float via using: got ${d}")
+        println("  [FAIL] clamp f64 via using: got ${d}")
         failed += 1
     }
 

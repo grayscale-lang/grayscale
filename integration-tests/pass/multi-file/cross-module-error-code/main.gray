@@ -7,17 +7,17 @@
 
 import and use "./errs"
 
-do boom() -> (int, Error) {
+do boom() -> (i64, Error) {
     return 0, error(.BETA, "beta")
 }
 
-do qualified() -> (int, Error) {
+do qualified() -> (i64, Error) {
     return 0, error(ModErr.GAMMA, "gamma")
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // == against a qualified imported #error_code variant
     mut _, e1 = boom()

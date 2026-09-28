@@ -9,7 +9,7 @@
  * program-lifetime sink.
  *
  *   1. indirect call stashes the pointer into a global
- *   2. indirect call writes the pointer through a ^^int out-parameter
+ *   2. indirect call writes the pointer through a ^^i64 out-parameter
  *      (both the out-pointer and the payload pointer are flagged)
  *
  * The specific global reached through an opaque callee's own summary is
@@ -17,27 +17,27 @@
  * the pointee's own name in both slots (#2755).
  */
 
-mut leaked ^int = nil
+mut leaked ^i64 = nil
 
-do stash(p ^int) { leaked = p }
+do stash(p ^i64) { leaked = p }
 
-do apply1(f func(^int), p ^int) { f(p) }
+do apply1(f func(^i64), p ^i64) { f(p) }
 
-do writeback(p ^int, out ^^int) { out^ = p }
+do writeback(p ^i64, out ^^i64) { out^ = p }
 
-do apply2(f func(^int, ^^int), out ^^int, p ^int) { f(p, out) }
+do apply2(f func(^i64, ^^i64), out ^^i64, p ^i64) { f(p, out) }
 
 do main() {
     if true {
-        mut x int = 42
-        const g func(^int) = ()stash
+        mut x i64 = 42
+        const g func(^i64) = ()stash
         apply1(g, addr(x))
     }
 
-    mut sink ^int = nil
+    mut sink ^i64 = nil
     if true {
-        mut y int = 99
-        const h func(^int, ^^int) = ()writeback
+        mut y i64 = 99
+        const h func(^i64, ^^i64) = ()writeback
         apply2(h, addr(sink), addr(y))
     }
 

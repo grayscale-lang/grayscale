@@ -6,6 +6,6 @@
 import @arrays
 
 do main() {
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut idx = arrays.binary_search(nums, "x")  // val must match element type
 }

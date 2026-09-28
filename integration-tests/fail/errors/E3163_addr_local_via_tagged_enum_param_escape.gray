@@ -7,17 +7,17 @@
  */
 
 const Box enum {
-    Full(^int)
+    Full(^i64)
     Empty
 }
 
 mut GLOBAL Box = Box.Empty
 
-do stash(p ^int) {
+do stash(p ^i64) {
     GLOBAL = Box.Full(p)
 }
 
 do main() {
-    mut x int = 99
+    mut x i64 = 99
     stash(addr(x))
 }

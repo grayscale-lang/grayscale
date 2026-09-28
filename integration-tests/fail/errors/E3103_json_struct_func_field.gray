@@ -5,12 +5,12 @@
 
 import @json
 
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 
 #json
 const Wrapper struct {
-    value int
-    transform func(int) -> int
+    value i64
+    transform func(i64) -> i64
 }
 
 do main() {

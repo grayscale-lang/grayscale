@@ -6,5 +6,5 @@
 import @math
 
 do main() {
-    mut x float = math.sqrt("hello")  // string instead of number
+    mut x f64 = math.sqrt("hello")  // string instead of number
 }

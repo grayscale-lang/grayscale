@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut m map[string:int] = {
+    mut m map[string:i64] = {
         "a": 1,
         "b": 2,
         "a": 3

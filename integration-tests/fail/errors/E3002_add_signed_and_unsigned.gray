@@ -1,0 +1,9 @@
+// Error Test: E3002 - an i8 and a u8 have no common type; one side needs a cast
+// expect-error: E3002
+
+do main() {
+    mut a i8 = -30
+    mut b u8 = 10
+    mut c u8 = a + b
+    println(c)
+}

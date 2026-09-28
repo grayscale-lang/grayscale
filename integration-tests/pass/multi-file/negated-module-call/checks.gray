@@ -3,7 +3,7 @@
  */
 
 
-do is_positive(n int) -> bool {
+do is_positive(n i64) -> bool {
     return n > 0
 }
 
@@ -11,6 +11,6 @@ do is_empty(s string) -> bool {
     return len(s) == 0
 }
 
-do is_in_range(val int, low int, high int) -> bool {
+do is_in_range(val i64, low i64, high i64) -> bool {
     return val >= low && val <= high
 }

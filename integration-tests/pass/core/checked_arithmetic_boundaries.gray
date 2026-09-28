@@ -1,0 +1,107 @@
+/*
+ * checked_arithmetic_boundaries.gray - i64 and u64 arithmetic that lands
+ * exactly on a range boundary without overflowing.
+ *
+ * Runs under every supported C compiler; TinyCC uses hand-written range
+ * checks where GCC and Clang use overflow builtins.
+ */
+
+import @math
+
+do main() {
+    println("=== Checked Arithmetic Boundaries ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const max i64 = 9223372036854775807
+    const min i64 = -9223372036854775807 - 1
+    mut below_max i64 = max - 1
+    mut above_min i64 = min + 1
+    mut half_max i64 = 4611686018427387904
+    mut root i64 = 3037000499
+    mut big u64 = 18446744073709551614
+    mut half u64 = 9223372036854775808
+    mut low u64 = 4294967295
+    mut high u64 = 4294967297
+
+    if below_max + 1 == max {
+        println("  [PASS] i64 add to max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 add to max")
+        failed += 1
+    }
+
+    if above_min - 1 == min {
+        println("  [PASS] i64 sub to min")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 sub to min")
+        failed += 1
+    }
+
+    if -max == min + 1 {
+        println("  [PASS] i64 negate max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 negate max")
+        failed += 1
+    }
+
+    if max * -1 == min + 1 && min * 1 == min && max * 1 == max {
+        println("  [PASS] i64 multiply by unit")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 multiply by unit")
+        failed += 1
+    }
+
+    if half_max * -2 == min && -half_max * 2 == min {
+        println("  [PASS] i64 multiply to min")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 multiply to min")
+        failed += 1
+    }
+
+    if root * root == 9223372030926249001 && -root * root == -9223372030926249001 && -root * -root == 9223372030926249001 {
+        println("  [PASS] i64 multiply by sign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 multiply by sign")
+        failed += 1
+    }
+
+    if big + 1 == 18446744073709551615 && big - big == 0 {
+        println("  [PASS] u64 add and sub")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 add and sub")
+        failed += 1
+    }
+
+    if half * 1 == half && low * high == 18446744073709551615 {
+        println("  [PASS] u64 multiply to max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 multiply to max")
+        failed += 1
+    }
+
+    if math.factorial(20) == 2432902008176640000 && math.lcm(3037000499, 3037000497) == 9223372024852248003 {
+        println("  [PASS] math.factorial and math.lcm")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.factorial and math.lcm")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

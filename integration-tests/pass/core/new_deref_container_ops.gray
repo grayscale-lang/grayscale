@@ -7,11 +7,11 @@
 import @arrays
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: array index read through deref pointer
-    mut pa = new([int])
+    mut pa = new([i64])
     arrays.append(pa^, 10)
     arrays.append(pa^, 20)
     if pa^[0] == 10 {
@@ -33,7 +33,7 @@ do main() {
     }
 
     // Test 3: map key assignment through deref pointer
-    mut pm = new(map[string:int])
+    mut pm = new(map[string:i64])
     pm^["x"] = 42
     if pm^["x"] == 42 {
         println("  [PASS] pm^[\"x\"] = 42 works")

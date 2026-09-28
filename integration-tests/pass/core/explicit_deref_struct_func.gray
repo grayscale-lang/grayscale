@@ -1,18 +1,18 @@
 const Vec2 struct {
-    x int
-    y int
-    do sum(v Vec2) -> int {
+    x i64
+    y i64
+    do sum(v Vec2) -> i64 {
         return v.x + v.y
     }
-    do scale(&self Vec2, factor int) {
+    do scale(&self Vec2, factor i64) {
         self.x = self.x * factor
         self.y = self.y * factor
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut p = new(Vec2)
     p^.x = 3

@@ -5,6 +5,6 @@
 
 
 do main() {
-    const arr [int, 3] = {1, 2, 3, 4}  // ERROR: 4 elements but declared size is 3
+    const arr [i64, 3] = {1, 2, 3, 4}  // ERROR: 4 elements but declared size is 3
     println(arr)
 }

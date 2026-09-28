@@ -1,0 +1,9 @@
+/*
+ * Error Test: integer-overflow (u64 -= underflow)
+ * Expected: "subtraction result is negative"
+ */
+
+do main() {
+    mut x u64 = 0
+    x -= 1
+}

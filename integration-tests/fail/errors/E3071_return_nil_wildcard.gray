@@ -2,7 +2,7 @@
  * Error Test: E3071 - return-nil-from-wildcard-return
  * Expected: "'return nil' from a function whose return type contains '?'"
  * A wildcard return binds to any type — nil is not a value every binding
- * can hold (int, string, etc.), so it must be rejected at type-check.
+ * can hold (i64, string, etc.), so it must be rejected at type-check.
  */
 
 do identity(x ?) -> ? {

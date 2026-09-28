@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3036 - a literal above UINT64_MAX does not fit u64
+ */
+
+// expect-error: E3036
+
+do main() {
+    mut x u64 = 18446744073709551616  // UINT64_MAX + 1
+}

@@ -9,7 +9,7 @@ const Outer struct {
 }
 
 const Inner struct {
-    items [int]
+    items [i64]
 }
 
 const Deep struct {
@@ -17,13 +17,13 @@ const Deep struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut obj Outer = Outer{inner: Inner{items: {10, 20, 30}}}
 
     /* Two-level chained access */
-    mut sum int = 0
+    mut sum i64 = 0
     for_each item in obj.inner.items {
         sum = sum + item
     }
@@ -31,14 +31,14 @@ do main() {
 
     /* Three-level chained access */
     mut d Deep = Deep{outer: Outer{inner: Inner{items: {1, 2, 3}}}}
-    mut total int = 0
+    mut total i64 = 0
     for_each item in d.outer.inner.items {
         total = total + item
     }
     if total == 6 { passed = passed + 1 } otherwise { failed = failed + 1 }
 
     /* Index + value with chained access */
-    mut idx_sum int = 0
+    mut idx_sum i64 = 0
     for_each i, item in obj.inner.items {
         idx_sum = idx_sum + i
     }

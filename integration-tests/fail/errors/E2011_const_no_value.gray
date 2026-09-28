@@ -4,5 +4,5 @@
  */
 
 do main() {
-    const x int  // const without value
+    const x i64  // const without value
 }

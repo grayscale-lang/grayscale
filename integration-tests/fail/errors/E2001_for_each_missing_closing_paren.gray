@@ -4,8 +4,8 @@
  */
 
 do main() {
-    mut items [int] = {1, 2, 3}
+    mut items [i64] = {1, 2, 3}
     for_each (item in items {
-        mut x int = item
+        mut x i64 = item
     }
 }

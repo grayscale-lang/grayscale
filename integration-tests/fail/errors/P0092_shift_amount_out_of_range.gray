@@ -7,7 +7,7 @@
  */
 
 do main() {
-    mut amount int = -1
-    mut result int = 1 bit_shift_left amount
+    mut amount i64 = -1
+    mut result i64 = 1 bit_shift_left amount
     println(result)
 }

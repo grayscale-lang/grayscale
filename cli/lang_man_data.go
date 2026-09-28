@@ -119,7 +119,7 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "keyword",
 		Syntax:  "return [value]",
 		Desc:    "Exits the current function, optionally returning a value.",
-		Example: "do add(a int, b int) -> int {\n    return a + b\n}",
+		Example: "do add(a i64, b i64) -> i64 {\n    return a + b\n}",
 	},
 
 	// ── Keywords: Error Handling ────────────────────────────────────────
@@ -147,31 +147,31 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "keyword",
 		Syntax:  "mut <name> [Type] = <value>",
 		Desc:    "Declares a mutable variable. Must be initialized at declaration. Can be reassigned.",
-		Example: "mut count int = 0\nmut name = \"Alice\"",
+		Example: "mut count i64 = 0\nmut name = \"Alice\"",
 	},
 	"const": {
 		Kind:    "keyword",
 		Syntax:  "const <name> [Type] = <value>",
 		Desc:    "Declares an immutable constant or defines a struct/enum type. Cannot be reassigned.",
-		Example: "const PI float = 3.14159\nconst MAX int = 100",
+		Example: "const PI f64 = 3.14159\nconst MAX i64 = 100",
 	},
 	"do": {
 		Kind:    "keyword",
 		Syntax:  "do <name>(<params>) [-> <ReturnType>] { ... }",
 		Desc:    "Declares a function. Introduces both top-level functions and struct-namespaced functions. Alias: 'fn'.",
-		Example: "do add(a int, b int) -> int {\n    return a + b\n}",
+		Example: "do add(a i64, b i64) -> i64 {\n    return a + b\n}",
 	},
 	"fn": {
 		Kind:    "keyword",
 		Syntax:  "fn <name>(<params>) [-> <ReturnType>] { ... }",
 		Desc:    "Alias for 'do'. Declares a function, at the top level or inside a struct body.",
-		Example: "fn add(a int, b int) -> int {\n    return a + b\n}",
+		Example: "fn add(a i64, b i64) -> i64 {\n    return a + b\n}",
 	},
 	"struct": {
 		Kind:    "keyword",
 		Syntax:  "const <Name> struct { <field> <Type> ... }",
 		Desc:    "Defines a composite type with named fields. Must be declared at the top level using 'const'.",
-		Example: "const Point struct {\n    x int\n    y int\n}",
+		Example: "const Point struct {\n    x i64\n    y i64\n}",
 	},
 	"enum": {
 		Kind:    "keyword",
@@ -202,19 +202,19 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "keyword",
 		Syntax:  "new(<Type>) -> ^<Type>",
 		Desc:    "Allocates a zero-initialized value of any type on the heap and returns a pointer to it. Works with primitives, structs, arrays, maps, and all other types.",
-		Example: "mut p = new(Point)\np.x = 10\nmut n = new(int)\nn^ = 42",
+		Example: "mut p = new(Point)\np.x = 10\nmut n = new(i64)\nn^ = 42",
 	},
 	"private": {
 		Kind:    "keyword",
 		Syntax:  "private do <name>(...) | private const <name>",
 		Desc:    "Restricts a function or constant to the declaring module; not accessible from other modules.",
-		Example: "private do validate(n int) -> bool {\n    return n > 0\n}",
+		Example: "private do validate(n i64) -> bool {\n    return n > 0\n}",
 	},
 	"alias": {
 		Kind:    "keyword",
 		Syntax:  "alias <Name> = <Type>",
 		Desc:    "Creates an interchangeable name for an existing type. Aliases are erased at compile time; type_of() returns the underlying type. Can alias primitives, structs, enums, and collections. File-scope only. Use 'private alias' to restrict to the declaring file.",
-		Example: "alias Meters = float\nalias Vec2 = Point\nalias Names = [string]\n\ndo main() {\n    mut d Meters = 10.5\n    println(type_of(d))  // float\n}",
+		Example: "alias Meters = f64\nalias Vec2 = Point\nalias Names = [string]\n\ndo main() {\n    mut d Meters = 10.5\n    println(type_of(d))  // f64\n}",
 	},
 
 	// ── Keywords: Operators ─────────────────────────────────────────────
@@ -233,37 +233,37 @@ var langManDocs = map[string]LangManEntry{
 	"bit_and": {
 		Kind:    "keyword",
 		Syntax:  "<a> bit_and <b>",
-		Desc:    "Bitwise AND. Infix operator on int, uint, byte, char, and sized integer types. Keyword syntax is used because '&' denotes mutable parameters.",
+		Desc:    "Bitwise AND. Infix operator on integer types and char. Keyword syntax is used because '&' denotes mutable parameters.",
 		Example: "println(12 bit_and 10)  // 8",
 	},
 	"bit_or": {
 		Kind:    "keyword",
 		Syntax:  "<a> bit_or <b>",
-		Desc:    "Bitwise OR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Desc:    "Bitwise OR. Infix operator on integer types and char.",
 		Example: "println(12 bit_or 10)  // 14",
 	},
 	"bit_xor": {
 		Kind:    "keyword",
 		Syntax:  "<a> bit_xor <b>",
-		Desc:    "Bitwise XOR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Desc:    "Bitwise XOR. Infix operator on integer types and char.",
 		Example: "println(12 bit_xor 10)  // 6",
 	},
 	"bit_not": {
 		Kind:    "keyword",
 		Syntax:  "bit_not <a>",
-		Desc:    "Bitwise NOT (complement). Prefix operator on int, uint, byte, char, and sized integer types.",
+		Desc:    "Bitwise NOT (complement). Prefix operator on integer types and char.",
 		Example: "println(bit_not 10)  // -11",
 	},
 	"bit_shift_left": {
 		Kind:    "keyword",
 		Syntax:  "<a> bit_shift_left <n>",
-		Desc:    "Left shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Desc:    "Left shift of 'a' by 'n' bits. Infix operator on integer types and char.",
 		Example: "println(1 bit_shift_left 3)  // 8",
 	},
 	"bit_shift_right": {
 		Kind:    "keyword",
 		Syntax:  "<a> bit_shift_right <n>",
-		Desc:    "Right shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Desc:    "Right shift of 'a' by 'n' bits. Infix operator on integer types and char.",
 		Example: "println(16 bit_shift_right 1)  // 8",
 	},
 
@@ -284,32 +284,14 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "keyword",
 		Syntax:  "nil",
 		Desc:    "Represents the absence of a value. Used with pointers and Error returns.",
-		Example: "mut p ^int = nil\nif err != nil { panic(err) }",
+		Example: "mut p ^i64 = nil\nif err != nil { panic(err) }",
 	},
 
 	// ── Types ───────────────────────────────────────────────────────────
-	"int_type": {
-		Kind:    "type",
-		Syntax:  "int",
-		Desc:    "64-bit signed integer. Arithmetic is overflow-checked; overflow causes a runtime panic.",
-		Example: "mut x int = 42\nmut big int = 9223372036854775807",
-	},
-	"uint_type": {
-		Kind:    "type",
-		Syntax:  "uint",
-		Desc:    "64-bit unsigned integer. Overflow-checked; assigning a negative literal is a compile-time error.",
-		Example: "mut count uint = 100",
-	},
-	"float_type": {
-		Kind:    "type",
-		Syntax:  "float",
-		Desc:    "64-bit IEEE 754 double-precision float. Division by zero panics at runtime.",
-		Example: "mut pi float = 3.14159\nmut x float = 5  // promoted to 5.0",
-	},
 	"string_type": {
 		Kind:    "type",
 		Syntax:  "string",
-		Desc:    "UTF-8 encoded byte sequence. len() returns byte length; use char_count() for codepoints. Supports ${expr} interpolation.",
+		Desc:    "UTF-8 encoded u8 sequence. len() returns u8 length; use char_count() for codepoints. Supports ${expr} interpolation.",
 		Example: "mut s string = \"Hello, ${name}!\"\nmut raw string = `C:\\path\\file`",
 	},
 	"bool_type": {
@@ -321,14 +303,8 @@ var langManDocs = map[string]LangManEntry{
 	"char_type": {
 		Kind:    "type",
 		Syntax:  "char",
-		Desc:    "Single character type. Literals use single quotes. Convertible to/from int (Unicode codepoint).",
-		Example: "mut letter char = 'A'\nmut code int = int(letter)  // 65",
-	},
-	"byte_type": {
-		Kind:    "type",
-		Syntax:  "byte",
-		Desc:    "8-bit unsigned integer, range 0-255. Used for raw binary data.",
-		Example: "mut b byte = 0xFF\nmut c byte = 128",
+		Desc:    "Single character type. Literals use single quotes. Convertible to/from integers (Unicode codepoint).",
+		Example: "mut letter char = 'A'\nmut code i64 = cast(letter, i64)  // 65",
 	},
 	"i8_type": {
 		Kind:    "type",
@@ -351,14 +327,14 @@ var langManDocs = map[string]LangManEntry{
 	"i64_type": {
 		Kind:    "type",
 		Syntax:  "i64",
-		Desc:    "64-bit signed integer, range -2^63 to 2^63-1.",
-		Example: "mut x i64 = cast(n, i64)",
+		Desc:    "64-bit signed integer, range -2^63 to 2^63-1. Integer literals default to i64. Arithmetic is overflow-checked; overflow causes a runtime panic.",
+		Example: "mut x i64 = 42\nmut big i64 = 9223372036854775807",
 	},
 	"u8_type": {
 		Kind:    "type",
 		Syntax:  "u8",
-		Desc:    "8-bit unsigned integer, range 0 to 255.",
-		Example: "mut x u8 = cast(42, u8)",
+		Desc:    "8-bit unsigned integer, range 0 to 255. Used for raw binary data; a [u8] stores one u8 per element.",
+		Example: "mut b u8 = 0xFF\nmut data [u8] = {104, 105}",
 	},
 	"u16_type": {
 		Kind:    "type",
@@ -375,8 +351,8 @@ var langManDocs = map[string]LangManEntry{
 	"u64_type": {
 		Kind:    "type",
 		Syntax:  "u64",
-		Desc:    "64-bit unsigned integer, range 0 to 2^64-1.",
-		Example: "mut x u64 = cast(n, u64)",
+		Desc:    "64-bit unsigned integer, range 0 to 2^64-1. Overflow-checked; assigning a negative literal is a compile-time error.",
+		Example: "mut count u64 = 100",
 	},
 	"i128_type": {
 		Kind:    "type",
@@ -405,34 +381,34 @@ var langManDocs = map[string]LangManEntry{
 	"f32_type": {
 		Kind:    "type",
 		Syntax:  "f32",
-		Desc:    "32-bit IEEE 754 single-precision float. Maps to C float.",
+		Desc:    "32-bit IEEE 754 single-precision f64. Maps to C f64.",
 		Example: "mut x f32 = 1  // 1.0\nmut y f32 = cast(pi, f32)",
 	},
 	"f64_type": {
 		Kind:    "type",
 		Syntax:  "f64",
-		Desc:    "64-bit IEEE 754 double-precision float. Identical to 'float'. Maps to C double.",
-		Example: "mut x f64 = 3.14",
+		Desc:    "64-bit IEEE 754 double-precision f64. Float literals default to f64. Maps to C double.",
+		Example: "mut pi f64 = 3.14159\nmut x f64 = 5  // promoted to 5.0",
 	},
 	"map": {
 		Kind:    "type",
 		Syntax:  "[K:V]  |  map[K:V]",
 		Desc:    "Unordered collection of key-value pairs. The 'map' prefix is optional: '[K:V]' and 'map[K:V]' are identical. Keys may be any comparable primitive. The empty map literal is '{:}' (not '{}', which is an empty array).",
-		Example: "mut ages [string:int] = {\"alice\": 30, \"bob\": 25}\nmut empty [string:int] = {:}\nprintln(ages[\"alice\"])",
+		Example: "mut ages [string:i64] = {\"alice\": 30, \"bob\": 25}\nmut empty [string:i64] = {:}\nprintln(ages[\"alice\"])",
 	},
 	"Error_type": {
 		Kind:    "type",
 		Syntax:  "Error",
 		Desc:    "Error type returned from fallible functions. Created with error(). Compared to nil to check for success.",
-		Example: "do parse(s string) -> (int, Error) {\n    if s == \"\" { return 0, error(\"empty\") }\n    return 42, nil\n}",
+		Example: "do parse(s string) -> (i64, Error) {\n    if s == \"\" { return 0, error(\"empty\") }\n    return 42, nil\n}",
 	},
 
 	// ── Symbols ─────────────────────────────────────────────────────────
 	"^": {
 		Kind:    "symbol",
 		Syntax:  "^<Type>  /  <ptr>^",
-		Desc:    "Pointer sigil. As a type prefix (^int) it denotes a pointer type; as a postfix on a variable (p^) it dereferences the pointer.",
-		Example: "mut x int = 42\nmut p ^int = addr(x)\np^ = 100\nprintln(x)  // 100",
+		Desc:    "Pointer sigil. As a type prefix (^i64) it denotes a pointer type; as a postfix on a variable (p^) it dereferences the pointer.",
+		Example: "mut x i64 = 42\nmut p ^i64 = addr(x)\np^ = 100\nprintln(x)  // 100",
 	},
 	"&": {
 		Kind:    "symbol",
@@ -444,7 +420,7 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "symbol",
 		Syntax:  "do <name>(...) -> <ReturnType>",
 		Desc:    "Return type arrow. Separates the parameter list from the return type in a function declaration.",
-		Example: "do square(x int) -> int {\n    return x * x\n}",
+		Example: "do square(x i64) -> i64 {\n    return x * x\n}",
 	},
 	"@": {
 		Kind:    "symbol",
@@ -456,7 +432,7 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "symbol",
 		Syntax:  "#<attribute>",
 		Desc:    "Attribute prefix. Placed before a declaration to attach metadata or modify compiler behavior.",
-		Example: "#doc(\"A 2D point\")\nconst Point struct {\n    x int\n    y int\n}",
+		Example: "#doc(\"A 2D point\")\nconst Point struct {\n    x i64\n    y i64\n}",
 	},
 	"?": {
 		Kind:    "symbol",
@@ -476,13 +452,13 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "attribute",
 		Syntax:  "#doc(\"<description>\")",
 		Desc:    "Attaches documentation metadata to a function, struct, or enum. Used by 'gray doc' to generate documentation.",
-		Example: "#doc(\"Adds two integers\")\ndo add(a int, b int) -> int {\n    return a + b\n}",
+		Example: "#doc(\"Adds two integers\")\ndo add(a i64, b i64) -> i64 {\n    return a + b\n}",
 	},
 	"#json": {
 		Kind:    "attribute",
 		Syntax:  "#json",
 		Desc:    "Marks a struct for JSON serialization/deserialization. The compiler generates marshal/unmarshal code automatically.",
-		Example: "#json\nconst User struct {\n    name string\n    age int\n}",
+		Example: "#json\nconst User struct {\n    name string\n    age i64\n}",
 	},
 	"#flags": {
 		Kind:    "attribute",
@@ -500,7 +476,7 @@ var langManDocs = map[string]LangManEntry{
 		Kind:    "attribute",
 		Syntax:  "#discard",
 		Desc:    "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).",
-		Example: "#discard\ndo tryInsert(value int) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
+		Example: "#discard\ndo tryInsert(value i64) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
 	},
 	"#test": {
 		Kind:    "attribute",
@@ -526,7 +502,7 @@ var langCategories = map[string][]langGroup{
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},
 	"types": {
-		{Label: "Core   ", Names: []string{"int", "uint", "float", "string", "bool", "char", "byte"}},
+		{Label: "Core   ", Names: []string{"string", "bool", "char"}},
 		{Label: "Signed ", Names: []string{"i8", "i16", "i32", "i64"}},
 		{Label: "Unsigned", Names: []string{"u8", "u16", "u32", "u64"}},
 		{Label: "Wide   ", Names: []string{"i128", "u128", "i256", "u256"}},

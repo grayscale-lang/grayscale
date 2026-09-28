@@ -3,20 +3,20 @@
  * evaluated once, before the loop, not on every iteration
  */
 
-mut calls int = 0
+mut calls i64 = 0
 
-do bound(n int) -> int {
+do bound(n i64) -> i64 {
     calls += 1
     return n
 }
 
 do main() {
     println("=== Range Bounds Evaluated Once Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: a call in the end expression runs once
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, bound(3)) {
         sum += i
     }
@@ -30,7 +30,7 @@ do main() {
 
     // Test 2: range(end) form
     calls = 0
-    mut count int = 0
+    mut count i64 = 0
     for _ in range(bound(4)) {
         count += 1
     }
@@ -44,8 +44,8 @@ do main() {
 
     // Test 3: changing the bound variable inside the body does not change
     // the number of iterations
-    mut n int = 3
-    mut runs int = 0
+    mut n i64 = 3
+    mut runs i64 = 0
     for i in range(0, n) {
         n = 5
         runs += 1
@@ -60,7 +60,7 @@ do main() {
 
     // Test 4: a negated call in the step runs once
     calls = 0
-    mut total int = 0
+    mut total i64 = 0
     for i in range(20, 0, -bound(2)) {
         total += i
     }

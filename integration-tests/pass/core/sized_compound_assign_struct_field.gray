@@ -11,8 +11,8 @@ const Counters struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut ctr = new(Counters)
     ctr.a = cast(10, i32)
@@ -21,42 +21,42 @@ do main() {
 
     // Test 1: i32 field +=
     ctr.a += cast(5, i32)
-    if cast(ctr.a, int) == 15 {
+    if cast(ctr.a, i64) == 15 {
         println("  [PASS] struct field i32 += produces 15")
         passed += 1
     } otherwise {
-        println("  [FAIL] struct field i32 +=: expected 15, got ${cast(ctr.a, int)}")
+        println("  [FAIL] struct field i32 +=: expected 15, got ${cast(ctr.a, i64)}")
         failed += 1
     }
 
     // Test 2: u16 field -=
     ctr.b -= cast(30, u16)
-    if cast(ctr.b, int) == 70 {
+    if cast(ctr.b, i64) == 70 {
         println("  [PASS] struct field u16 -= produces 70")
         passed += 1
     } otherwise {
-        println("  [FAIL] struct field u16 -=: expected 70, got ${cast(ctr.b, int)}")
+        println("  [FAIL] struct field u16 -=: expected 70, got ${cast(ctr.b, i64)}")
         failed += 1
     }
 
     // Test 3: i64 field *=
     ctr.c *= cast(3, i64)
-    if cast(ctr.c, int) == 3000 {
+    if cast(ctr.c, i64) == 3000 {
         println("  [PASS] struct field i64 *= produces 3000")
         passed += 1
     } otherwise {
-        println("  [FAIL] struct field i64 *=: expected 3000, got ${cast(ctr.c, int)}")
+        println("  [FAIL] struct field i64 *=: expected 3000, got ${cast(ctr.c, i64)}")
         failed += 1
     }
 
     // Test 4: multiple compound assigns accumulate
     ctr.a += cast(5, i32)
     ctr.a += cast(5, i32)
-    if cast(ctr.a, int) == 25 {
+    if cast(ctr.a, i64) == 25 {
         println("  [PASS] repeated += accumulates to 25")
         passed += 1
     } otherwise {
-        println("  [FAIL] repeated +=: expected 25, got ${cast(ctr.a, int)}")
+        println("  [FAIL] repeated +=: expected 25, got ${cast(ctr.a, i64)}")
         failed += 1
     }
 

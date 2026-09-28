@@ -6,8 +6,8 @@ import "./shapes.gray"
 
 do main() {
     println("=== Qualified Type Names Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Function returning module.Type
     mut c = shapes.make_circle(5.0)
@@ -30,7 +30,7 @@ do main() {
     }
 
     // Test 3: Pass module type to module function
-    mut a int = shapes.area(r)
+    mut a i64 = shapes.area(r)
     if a == 200 {
         println("  [PASS] shapes.area(rect) == 200")
         passed += 1
@@ -78,7 +78,7 @@ do main() {
 
     // Long-form map[K:V] with a module-qualified key type parses the same as
     // the [K:V] shorthand
-    mut counts map[shapes.Shade:int] = {:}
+    mut counts map[shapes.Shade:i64] = {:}
     counts[shapes.Shade.DARK] = 7
     if counts[shapes.Shade.DARK] == 7 {
         println("  [PASS] long-form map with a qualified key type")
@@ -99,7 +99,7 @@ do main() {
 
     // Test 9: size_of accepts a module-qualified type name, the same way an
     // annotation does
-    if size_of(shapes.Rect) == size_of(int) * 2 {
+    if size_of(shapes.Rect) == size_of(i64) * 2 {
         println("  [PASS] size_of on an imported struct")
         passed += 1
     } otherwise {
@@ -107,7 +107,7 @@ do main() {
         failed += 1
     }
 
-    if size_of(shapes.Extent) == size_of(int) {
+    if size_of(shapes.Extent) == size_of(i64) {
         println("  [PASS] size_of on an imported alias")
         passed += 1
     } otherwise {

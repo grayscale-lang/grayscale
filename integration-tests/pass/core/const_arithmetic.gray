@@ -3,15 +3,15 @@
  * variables in arithmetic expressions, and the folded values are correct.
  */
 
-const BASE int = 10
-const STEP int = 3
-const NEXT int = BASE + STEP
-const PRODUCT int = BASE * STEP
-const NESTED int = (NEXT - STEP) * 2
+const BASE i64 = 10
+const STEP i64 = 3
+const NEXT i64 = BASE + STEP
+const PRODUCT i64 = BASE * STEP
+const NESTED i64 = (NEXT - STEP) * 2
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if NEXT == 13 {
         passed += 1

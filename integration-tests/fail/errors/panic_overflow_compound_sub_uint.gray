@@ -1,9 +1,0 @@
-/*
- * Error Test: integer-overflow (uint -= underflow)
- * Expected: "subtraction result is negative"
- */
-
-do main() {
-    mut x uint = 0
-    x -= 1
-}

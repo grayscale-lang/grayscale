@@ -1,0 +1,9 @@
+// expect-error: E3089
+// A fallible call cannot be a printf value element; its error must be handled.
+
+import @fmt
+import @strconv
+
+do main() {
+    fmt.printfln("%d", {strconv.to_i64("5")})
+}

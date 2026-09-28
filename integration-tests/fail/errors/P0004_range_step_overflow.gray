@@ -1,7 +1,7 @@
 /*
- * Panic Test: P0004 - range loop step increment overflows int
+ * Panic Test: P0004 - range loop step increment overflows i64
  *
- * When the step addition in a range loop overflows int, Grayscale must panic
+ * When the step addition in a range loop overflows i64, Grayscale must panic
  * rather than silently wrapping the iterator to a negative value and
  * looping forever.
  */

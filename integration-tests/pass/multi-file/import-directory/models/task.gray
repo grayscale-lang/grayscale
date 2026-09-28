@@ -7,4 +7,4 @@ do create_task(title string) -> Task {
     return Task{title: title, done: false}
 }
 
-const MAX_TASKS int = 50
+const MAX_TASKS i64 = 50

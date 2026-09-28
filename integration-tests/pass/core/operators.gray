@@ -5,14 +5,14 @@
 
 do main() {
     println("=== Operators Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== ARITHMETIC ====================
     println("  -- Arithmetic --")
 
     // Test 1: Addition
-    mut add_result int = 10 + 3
+    mut add_result i64 = 10 + 3
     if add_result == 13 {
         println("  [PASS] 10 + 3 = 13")
         passed += 1
@@ -22,7 +22,7 @@ do main() {
     }
 
     // Test 2: Subtraction
-    mut sub_result int = 10 - 3
+    mut sub_result i64 = 10 - 3
     if sub_result == 7 {
         println("  [PASS] 10 - 3 = 7")
         passed += 1
@@ -32,7 +32,7 @@ do main() {
     }
 
     // Test 3: Multiplication
-    mut mul_result int = 10 * 3
+    mut mul_result i64 = 10 * 3
     if mul_result == 30 {
         println("  [PASS] 10 * 3 = 30")
         passed += 1
@@ -42,7 +42,7 @@ do main() {
     }
 
     // Test 4: Integer division
-    mut div_result int = 10 / 3
+    mut div_result i64 = 10 / 3
     if div_result == 3 {
         println("  [PASS] 10 / 3 = 3 (integer division)")
         passed += 1
@@ -52,7 +52,7 @@ do main() {
     }
 
     // Test 5: Modulo
-    mut mod_result int = 10 % 3
+    mut mod_result i64 = 10 % 3
     if mod_result == 1 {
         println("  [PASS] 10 % 3 = 1")
         passed += 1
@@ -62,7 +62,7 @@ do main() {
     }
 
     // Test 6: Float division
-    mut float_div float = 10.0 / 3.0
+    mut float_div f64 = 10.0 / 3.0
     if float_div > 3.33 && float_div < 3.34 {
         println("  [PASS] 10.0 / 3.0 = ~3.333")
         passed += 1
@@ -74,8 +74,8 @@ do main() {
     // ==================== COMPARISON ====================
     println("  -- Comparison --")
 
-    mut a int = 10
-    mut b int = 3
+    mut a i64 = 10
+    mut b i64 = 3
 
     // Test 7: Equal
     if (a == 10) == true {
@@ -168,7 +168,7 @@ do main() {
     println("  -- Assignment --")
 
     // Test 16: +=
-    mut num int = 10
+    mut num i64 = 10
     num += 5
     if num == 15 {
         println("  [PASS] += operator")
@@ -209,7 +209,7 @@ do main() {
     }
 
     // Test 20: ++
-    mut counter int = 0
+    mut counter i64 = 0
     counter++
     if counter == 1 {
         println("  [PASS] ++ operator")

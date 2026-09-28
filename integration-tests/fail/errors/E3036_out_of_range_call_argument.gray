@@ -1,12 +1,12 @@
 // Error Test: E3036 - an out-of-range integer literal must be rejected in
 // call-argument position, in every call form: plain top-level call, a
-// non-first argument, a byte parameter, static struct-function dispatch,
+// non-first argument, a u8 parameter, static struct-function dispatch,
 // and instance dispatch.
 // expect-error: E3036
 // expect-error-count: 5
 
 const V struct {
-    n int
+    n i64
 
     do sink(v V, x i8) {
         println("${x}")
@@ -17,11 +17,11 @@ do plain(v i8) {
     println("${v}")
 }
 
-do plain2(a int, v i8) {
+do plain2(a i64, v i8) {
     println("${v}")
 }
 
-do take_byte(b byte) {
+do take_byte(b u8) {
     println("${b}")
 }
 

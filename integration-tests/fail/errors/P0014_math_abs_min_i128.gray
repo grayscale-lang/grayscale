@@ -1,0 +1,7 @@
+/* Panic Test: P0014 - math.abs of the most negative i128 */
+import @math
+
+do main() {
+    mut x i128 = -170141183460469231731687303715884105728
+    println(math.abs(x))
+}

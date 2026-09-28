@@ -3,7 +3,7 @@
  * Expected: "type parameters (<?>) cannot be mixed with value parameters"
  */
 
-do transform(T <?>, x int) -> ^? {
+do transform(T <?>, x i64) -> ^? {
     return new(T)
 }
 

@@ -1,35 +1,35 @@
 /*
  * cast_array.gray - element-wise cast(arr, [target]) between array types
- * of the same element width ([int] <-> [float]).
+ * of the same element width ([i64] <-> [f64]).
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut ints [int] = {1, 2, 3}
+    mut ints [i64] = {1, 2, 3}
 
-    // int -> float (widening in kind, same 8-byte element)
-    mut floats [float] = cast(ints, [float])
+    // i64 -> f64 (widening in kind, same 8-u8 element)
+    mut floats [f64] = cast(ints, [f64])
     if len(floats) == 3 && floats[0] == 1.0 && floats[1] == 2.0 && floats[2] == 3.0 {
         passed += 1
     } otherwise {
-        println("[FAIL] [int] -> [float]")
+        println("[FAIL] [i64] -> [f64]")
         failed += 1
     }
 
-    // float -> int back (truncating), round trip on whole numbers
-    mut back [int] = cast(floats, [int])
+    // f64 -> i64 back (truncating), round trip on whole numbers
+    mut back [i64] = cast(floats, [i64])
     if back[0] == 1 && back[1] == 2 && back[2] == 3 {
         passed += 1
     } otherwise {
-        println("[FAIL] [float] -> [int] round trip")
+        println("[FAIL] [f64] -> [i64] round trip")
         failed += 1
     }
 
     // A single-element array casts too.
-    mut one [int] = {42}
-    mut onef [float] = cast(one, [float])
+    mut one [i64] = {42}
+    mut onef [f64] = cast(one, [f64])
     if len(onef) == 1 && onef[0] == 42.0 {
         passed += 1
     } otherwise {

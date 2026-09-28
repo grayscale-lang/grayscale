@@ -1,5 +1,5 @@
 /* Error Test: E3091 - map used as while-style for condition */
 do main() {
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     for m { println("looping")    break }
 }

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5026 - an f64 passed as the strings.repeat count or a
+ * strings.slice bound is reported once, by the general argument check.
+ */
+// expect-error: E5026
+// expect-error-count: 3
+import @strings
+
+do main() {
+    println(strings.repeat("a", 1.5))
+    println(strings.slice("abc", 0.5, 2.5))
+}

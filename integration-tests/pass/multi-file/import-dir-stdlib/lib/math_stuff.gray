@@ -1,5 +1,5 @@
 import @math
 
-do circle_area(r float) -> float {
+do circle_area(r f64) -> f64 {
     return math.PI * r * r
 }

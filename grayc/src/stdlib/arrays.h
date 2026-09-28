@@ -23,26 +23,26 @@
  *@desc Appends value to the end of arr. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   arrays.append(nums, 4)
  *   println(nums)
  *@end
  */
-void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value);
+void gray_arrays_append(GrayArena *arena, GrayArray *array, const void *value);
 
 /*@man insert_at
  *@module arrays
  *@group Modification
- *@sig insert_at(&arr [T], index int, value T)
+ *@sig insert_at(&arr [T], index i64, value T)
  *@desc Inserts value at the given index, shifting subsequent elements right. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   arrays.insert_at(nums, 1, 99)
  *   println(nums)
  *@end
  */
-void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, const void *value);
+void gray_arrays_insert_at(GrayArena *arena, GrayArray *array, int64_t index, const void *value);
 
 /*@man prepend
  *@module arrays
@@ -51,26 +51,26 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, cons
  *@desc Inserts value at the front of arr, shifting all elements right. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {2, 3, 4}
+ *   mut nums [i64] = {2, 3, 4}
  *   arrays.prepend(nums, 1)
  *   println(nums)
  *@end
  */
-void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value);
+void gray_arrays_prepend(GrayArena *arena, GrayArray *array, const void *value);
 
 /*@man remove_at
  *@module arrays
  *@group Modification
- *@sig remove_at(&arr [T], index int)
+ *@sig remove_at(&arr [T], index i64)
  *@desc Removes the element at the given index, shifting subsequent elements left. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   arrays.remove_at(nums, 1)
  *   println(nums)
  *@end
  */
-void gray_arrays_remove_at(GrayArray *arr, int64_t index);
+void gray_arrays_remove_at(GrayArray *array, int64_t index);
 
 /*@man remove
  *@module arrays
@@ -79,14 +79,12 @@ void gray_arrays_remove_at(GrayArray *arr, int64_t index);
  *@desc Removes the first occurrence of value from arr. Modifies the array in place. Does nothing if value is not found.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3, 2}
+ *   mut nums [i64] = {1, 2, 3, 2}
  *   arrays.remove(nums, 2)
  *   println(nums)
  *@end
  */
-void gray_arrays_remove_int(GrayArray *arr, int64_t value);
-void gray_arrays_remove_float(GrayArray *arr, double value);
-void gray_arrays_remove_str(GrayArray *arr, GrayString value);
+void gray_arrays_remove(GrayArray *array, const void *value);
 
 /*@man clear
  *@module arrays
@@ -95,26 +93,26 @@ void gray_arrays_remove_str(GrayArray *arr, GrayString value);
  *@desc Removes all elements from arr, leaving it empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   arrays.clear(nums)
  *   println(nums)
  *@end
  */
-void gray_arrays_clear(GrayArray *arr);
+void gray_arrays_clear(GrayArray *array);
 
 /*@man fill
  *@module arrays
  *@group Modification
- *@sig fill(&arr [T], value T, count int)
+ *@sig fill(&arr [T], value T, count i64)
  *@desc Appends count copies of value to arr. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {}
+ *   mut nums [i64] = {}
  *   arrays.fill(nums, 0, 5)
  *   println(nums)
  *@end
  */
-void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count);
+void gray_arrays_fill(GrayArena *arena, GrayArray *array, const void *value, int64_t count);
 
 /* Access — typed via codegen cast */
 
@@ -125,11 +123,11 @@ void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64
  *@desc Returns the first element of arr. Panics if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30}
+ *   mut nums [i64] = {10, 20, 30}
  *   println(arrays.get_first(nums))
  *@end
  */
-void *gray_arrays_first_ptr(GrayArray *arr);
+void *gray_arrays_first_ptr(GrayArray *array);
 
 /*@man get_last
  *@module arrays
@@ -138,11 +136,11 @@ void *gray_arrays_first_ptr(GrayArray *arr);
  *@desc Returns the last element of arr. Panics if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30}
+ *   mut nums [i64] = {10, 20, 30}
  *   println(arrays.get_last(nums))
  *@end
  */
-void *gray_arrays_last_ptr(GrayArray *arr);
+void *gray_arrays_last_ptr(GrayArray *array);
 
 /*@man remove_first
  *@module arrays
@@ -151,12 +149,12 @@ void *gray_arrays_last_ptr(GrayArray *arr);
  *@desc Removes and returns the first element of arr. Panics if arr is empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30}
- *   mut val int = arrays.remove_first(nums)
+ *   mut nums [i64] = {10, 20, 30}
+ *   mut val i64 = arrays.remove_first(nums)
  *   println(val)
  *@end
  */
-void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
+void  gray_arrays_remove_first_raw(GrayArray *array, void *output);
 
 /*@man remove_last
  *@module arrays
@@ -165,18 +163,14 @@ void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
  *@desc Removes and returns the last element of arr. Panics if arr is empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30}
- *   mut val int = arrays.remove_last(nums)
+ *   mut nums [i64] = {10, 20, 30}
+ *   mut val i64 = arrays.remove_last(nums)
  *   println(val)
  *@end
  */
-void  gray_arrays_remove_last_raw(GrayArray *arr, void *out);
+void  gray_arrays_remove_last_raw(GrayArray *array, void *output);
 
 /* Access — int64_t variants for internal use */
-int64_t gray_arrays_get_first(GrayArray *arr);
-int64_t gray_arrays_get_last(GrayArray *arr);
-int64_t gray_arrays_remove_last(GrayArray *arr);
-int64_t gray_arrays_remove_first(GrayArray *arr);
 
 /* Query */
 
@@ -187,11 +181,11 @@ int64_t gray_arrays_remove_first(GrayArray *arr);
  *@desc Returns true if arr has no elements.
  *@example
  *   import @arrays
- *   mut nums [int] = {}
+ *   mut nums [i64] = {}
  *   println(arrays.is_empty(nums))
  *@end
  */
-bool gray_arrays_is_empty(GrayArray *arr);
+bool gray_arrays_is_empty(GrayArray *array);
 
 /*@man contains
  *@module arrays
@@ -200,42 +194,37 @@ bool gray_arrays_is_empty(GrayArray *arr);
  *@desc Returns true if arr contains value.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   println(arrays.contains(nums, 2))
  *@end
  */
-bool gray_arrays_contains_int(GrayArray *arr, int64_t value);
-bool gray_arrays_contains_char(GrayArray *arr, int32_t value);
-bool gray_arrays_contains_byte(GrayArray *arr, uint8_t value);
-bool gray_arrays_contains_float(GrayArray *arr, double value);
-bool gray_arrays_contains_str(GrayArray *arr, GrayString value);
+bool gray_arrays_contains(GrayArray *array, const void *value);
 
 /*@man index_of
  *@module arrays
  *@group Query
- *@sig index_of(arr [T], value T) -> int
+ *@sig index_of(arr [T], value T) -> i64
  *@desc Returns the index of the first occurrence of value in arr, or -1 if not found.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30}
+ *   mut nums [i64] = {10, 20, 30}
  *   println(arrays.index_of(nums, 20))
  *@end
  */
-int64_t gray_arrays_index_of_int(GrayArray *arr, int64_t value);
-int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value);
+int64_t gray_arrays_index_of(GrayArray *array, const void *value);
 
 /*@man count
  *@module arrays
  *@group Query
- *@sig count(arr [T], value T) -> int
+ *@sig count(arr [T], value T) -> i64
  *@desc Returns the number of times value appears in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 2, 3}
+ *   mut nums [i64] = {1, 2, 2, 3}
  *   println(arrays.count(nums, 2))
  *@end
  */
-int64_t gray_arrays_count(GrayArray *arr, int64_t value);
+int64_t gray_arrays_count(GrayArray *array, const void *value);
 
 /*@man is_equal
  *@module arrays
@@ -244,13 +233,12 @@ int64_t gray_arrays_count(GrayArray *arr, int64_t value);
  *@desc Returns true if a and b have the same length and identical elements. T must be a primitive or string. Use this instead of == which is not allowed on arrays.
  *@example
  *   import @arrays
- *   mut a [int] = {1, 2, 3}
- *   mut b [int] = {1, 2, 3}
+ *   mut a [i64] = {1, 2, 3}
+ *   mut b [i64] = {1, 2, 3}
  *   println(arrays.is_equal(a, b))
  *@end
  */
-bool gray_arrays_is_equal_prim(GrayArray *left, GrayArray *right);
-bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
+bool gray_arrays_is_equal(GrayArray *left, GrayArray *right);
 
 /*@man is_sorted
  *@module arrays
@@ -259,30 +247,24 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
  *@desc Returns true if the elements of arr are in ascending order (each element is <= the next). Empty and single-element arrays are sorted. T must be comparable, as for sort_asc.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 2, 5}
+ *   mut nums [i64] = {1, 2, 2, 5}
  *   println(arrays.is_sorted(nums))
  *@end
  */
-bool gray_arrays_is_sorted(GrayArray *arr);
-bool gray_arrays_is_sorted_byte(GrayArray *arr);
-bool gray_arrays_is_sorted_char(GrayArray *arr);
-bool gray_arrays_is_sorted_float(GrayArray *arr);
-bool gray_arrays_is_sorted_str(GrayArray *arr);
+bool gray_arrays_is_sorted(GrayArray *array);
 
 /*@man binary_search
  *@module arrays
  *@group Query
- *@sig binary_search(arr [T], val T) -> int
+ *@sig binary_search(arr [T], val T) -> i64
  *@desc Searches a sorted array for val using binary search, returning its index or -1 if absent. arr must already be sorted in ascending order (as by sort_asc); behavior on an unsorted array is undefined. T must be comparable, as for sort_asc.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 3, 5, 7, 9}
+ *   mut nums [i64] = {1, 3, 5, 7, 9}
  *   println(arrays.binary_search(nums, 7))
  *@end
  */
-int64_t gray_arrays_binary_search(GrayArray *arr, int64_t val);
-int64_t gray_arrays_binary_search_float(GrayArray *arr, double val);
-int64_t gray_arrays_binary_search_str(GrayArray *arr, GrayString val);
+int64_t gray_arrays_binary_search(GrayArray *array, const void *value);
 
 /* Transformation */
 
@@ -293,24 +275,24 @@ int64_t gray_arrays_binary_search_str(GrayArray *arr, GrayString val);
  *@desc Returns a new array with elements in reverse order. Does not modify the original.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   println(arrays.reverse(nums))
  *@end
  */
-GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *array);
 
 /*@man slice
  *@module arrays
  *@group Transformation
- *@sig slice(arr [T], start int, end int) -> [T]
+ *@sig slice(arr [T], start i64, end i64) -> [T]
  *@desc Returns a new array containing elements from index start (inclusive) to end (exclusive). Does not modify the original.
  *@example
  *   import @arrays
- *   mut nums [int] = {10, 20, 30, 40}
+ *   mut nums [i64] = {10, 20, 30, 40}
  *   println(arrays.slice(nums, 1, 3))
  *@end
  */
-GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int64_t end);
+GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *array, int64_t start, int64_t end_index);
 
 /*@man concat
  *@module arrays
@@ -319,8 +301,8 @@ GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int
  *@desc Returns a new array containing all elements of a followed by all elements of b.
  *@example
  *   import @arrays
- *   mut a [int] = {1, 2}
- *   mut b [int] = {3, 4}
+ *   mut a [i64] = {1, 2}
+ *   mut b [i64] = {3, 4}
  *   println(arrays.concat(a, b))
  *@end
  */
@@ -333,11 +315,11 @@ GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *left, GrayArray *right
  *@desc Returns a new array with duplicate values removed, preserving the order of first occurrence.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 2, 3, 1}
+ *   mut nums [i64] = {1, 2, 2, 3, 1}
  *   println(arrays.deduplicate(nums))
  *@end
  */
-GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *array);
 
 /*@man flatten
  *@module arrays
@@ -346,24 +328,24 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr);
  *@desc Flattens one level of nesting, returning a single array of all inner elements.
  *@example
  *   import @arrays
- *   mut nested [[int]] = {{1, 2}, {3, 4}}
+ *   mut nested [[i64]] = {{1, 2}, {3, 4}}
  *   println(arrays.flatten(nested))
  *@end
  */
-GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr);
+GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *array);
 
 /*@man split_every
  *@module arrays
  *@group Transformation
- *@sig split_every(arr [T], size int) -> [[T]]
+ *@sig split_every(arr [T], size i64) -> [[T]]
  *@desc Splits arr into sub-arrays of at most size elements each. The last chunk may be smaller.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3, 4, 5}
+ *   mut nums [i64] = {1, 2, 3, 4, 5}
  *   println(arrays.split_every(nums, 2))
  *@end
  */
-GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size);
+GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *array, int64_t size);
 
 /*@man pair
  *@module arrays
@@ -372,8 +354,8 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size
  *@desc Returns an array of two-element arrays, pairing each element of a with the corresponding element of b. Length is determined by the shorter array.
  *@example
  *   import @arrays
- *   mut keys [int] = {1, 2, 3}
- *   mut vals [int] = {10, 20, 30}
+ *   mut keys [i64] = {1, 2, 3}
+ *   mut vals [i64] = {10, 20, 30}
  *   println(arrays.pair(keys, vals))
  *@end
  */
@@ -382,15 +364,15 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right);
 /*@man rotate
  *@module arrays
  *@group Transformation
- *@sig rotate(arr [T], n int) -> [T]
+ *@sig rotate(arr [T], n i64) -> [T]
  *@desc Returns a new array with elements rotated left by n. A negative n rotates right. Does not modify the original.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3, 4, 5}
+ *   mut nums [i64] = {1, 2, 3, 4, 5}
  *   println(arrays.rotate(nums, 2))
  *@end
  */
-GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *array, int64_t shift_count);
 
 /* Computation */
 
@@ -398,14 +380,14 @@ GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
  *@module arrays
  *@group Computation
  *@sig get_sum(arr [T]) -> T
- *@desc Returns the sum of all elements. Accepts int, float, or sized numeric types.
+ *@desc Returns the sum of all elements. Accepts i64, f64, or sized numeric types.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3, 4}
+ *   mut nums [i64] = {1, 2, 3, 4}
  *   println(arrays.get_sum(nums))
  *@end
  */
-int64_t gray_arrays_get_sum(GrayArray *arr);
+void gray_arrays_get_sum(GrayArray *array, void *output, const char *file, int line);
 
 /*@man get_min
  *@module arrays
@@ -414,11 +396,11 @@ int64_t gray_arrays_get_sum(GrayArray *arr);
  *@desc Returns the smallest element in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   println(arrays.get_min(nums))
  *@end
  */
-int64_t gray_arrays_get_min(GrayArray *arr);
+void gray_arrays_get_min(GrayArray *array, void *output);
 
 /*@man get_max
  *@module arrays
@@ -427,39 +409,37 @@ int64_t gray_arrays_get_min(GrayArray *arr);
  *@desc Returns the largest element in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   println(arrays.get_max(nums))
  *@end
  */
-int64_t gray_arrays_get_max(GrayArray *arr);
+void gray_arrays_get_max(GrayArray *array, void *output);
 
 /*@man min_index
  *@module arrays
  *@group Computation
- *@sig min_index(arr [T]) -> int
+ *@sig min_index(arr [T]) -> i64
  *@desc Returns the index of the smallest element in arr, or -1 if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   println(arrays.min_index(nums))
  *@end
  */
-int64_t gray_arrays_min_index(GrayArray *arr);
-int64_t gray_arrays_min_index_float(GrayArray *arr);
+int64_t gray_arrays_min_index(GrayArray *array);
 
 /*@man max_index
  *@module arrays
  *@group Computation
- *@sig max_index(arr [T]) -> int
+ *@sig max_index(arr [T]) -> i64
  *@desc Returns the index of the largest element in arr, or -1 if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   println(arrays.max_index(nums))
  *@end
  */
-int64_t gray_arrays_max_index(GrayArray *arr);
-int64_t gray_arrays_max_index_float(GrayArray *arr);
+int64_t gray_arrays_max_index(GrayArray *array);
 
 /* Sort */
 
@@ -467,70 +447,57 @@ int64_t gray_arrays_max_index_float(GrayArray *arr);
  *@module arrays
  *@group Modification
  *@sig sort_asc(&arr [T])
- *@desc Sorts arr in ascending order in place. Works on int, float, and string arrays.
+ *@desc Sorts arr in ascending order in place. Works on arrays of any number type, char, bool, and string.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   arrays.sort_asc(nums)
  *   println(nums)
  *@end
  */
-void gray_arrays_sort_asc(GrayArray *arr);
-void gray_arrays_sort_asc_float(GrayArray *arr);
-void gray_arrays_sort_asc_str(GrayArray *arr);
-void gray_arrays_sort_asc_byte(GrayArray *arr);
-void gray_arrays_sort_asc_char(GrayArray *arr);
+void gray_arrays_sort(GrayArray *array, bool descending);
 
 /*@man sort_desc
  *@module arrays
  *@group Modification
  *@sig sort_desc(&arr [T])
- *@desc Sorts arr in descending order in place. Works on int, float, and string arrays.
+ *@desc Sorts arr in descending order in place. Works on arrays of any number type, char, bool, and string.
  *@example
  *   import @arrays
- *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   mut nums [i64] = {3, 1, 4, 1, 5}
  *   arrays.sort_desc(nums)
  *   println(nums)
  *@end
  */
-void gray_arrays_sort_desc(GrayArray *arr);
-void gray_arrays_sort_desc_float(GrayArray *arr);
-void gray_arrays_sort_desc_str(GrayArray *arr);
-void gray_arrays_sort_desc_byte(GrayArray *arr);
-void gray_arrays_sort_desc_char(GrayArray *arr);
-
-/* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
- * int64/float/str paths only look at the low 64 bits; this orders by the full
- * value. is_signed / is_256 select the element type, desc reverses the order. */
-void gray_arrays_sort_wide(GrayArray *arr, bool is_signed, bool is_256, bool desc);
 
 /*@man swap
  *@module arrays
  *@group Modification
- *@sig swap(&arr [T], i int, j int)
+ *@sig swap(&arr [T], i i64, j i64)
  *@desc Swaps the elements at indices i and j in place. Panics if either index is out of bounds.
  *@example
  *   import @arrays
- *   mut nums [int] = {1, 2, 3}
+ *   mut nums [i64] = {1, 2, 3}
  *   arrays.swap(nums, 0, 2)
  *   println(nums)
  *@end
  */
-void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
+void gray_arrays_swap(GrayArray *array, int64_t i, int64_t j);
 
 /* Higher-Order */
 
 /*@man average
  *@module arrays
  *@group Computation
- *@sig average(arr [T]) -> float
- *@desc Returns the arithmetic mean of arr as a float. T must be numeric. Panics on an empty array.
+ *@sig average(arr [T]) -> f64
+ *@desc Returns the arithmetic mean of arr as an f64. T must be numeric. Panics on an empty array.
  *@example
  *   import @arrays
- *   mut nums [int] = {2, 4, 6}
+ *   mut nums [i64] = {2, 4, 6}
  *   println(arrays.average(nums))
  *@end
  */
+double gray_arrays_average(GrayArray *array, const char *file, int line);
 
 /*@man find
  *@module arrays
@@ -539,9 +506,9 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Returns the first element for which predicate returns true and the boolean true, or the zero value and false when no element matches. The result must be destructured.
  *@example
  *   import @arrays
- *   do is_even(x int) -> bool { return x % 2 == 0 }
- *   mut nums [int] = {1, 3, 4, 7}
- *   mut hit int, ok bool = arrays.find(nums, ()is_even)
+ *   do is_even(x i64) -> bool { return x % 2 == 0 }
+ *   mut nums [i64] = {1, 3, 4, 7}
+ *   mut hit i64, ok bool = arrays.find(nums, ()is_even)
  *   println("${hit} ${ok}")
  *@end
  */
@@ -549,12 +516,12 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
 /*@man find_index
  *@module arrays
  *@group Higher-Order
- *@sig find_index(arr [T], predicate func(T) -> bool) -> int
+ *@sig find_index(arr [T], predicate func(T) -> bool) -> i64
  *@desc Returns the index of the first element for which predicate returns true, or -1 when no element matches.
  *@example
  *   import @arrays
- *   do is_even(x int) -> bool { return x % 2 == 0 }
- *   mut nums [int] = {1, 3, 4, 7}
+ *   do is_even(x i64) -> bool { return x % 2 == 0 }
+ *   mut nums [i64] = {1, 3, 4, 7}
  *   println(arrays.find_index(nums, ()is_even))
  *@end
  */
@@ -566,9 +533,9 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Returns a new array with transform applied to each element. transform must be a function that takes T and returns T. Does not modify the original.
  *@example
  *   import @arrays
- *   do double_it(x int) -> int { return x * 2 }
- *   mut nums [int] = {1, 2, 3}
- *   mut result [int] = arrays.map(nums, ()double_it)
+ *   do double_it(x i64) -> i64 { return x * 2 }
+ *   mut nums [i64] = {1, 2, 3}
+ *   mut result [i64] = arrays.map(nums, ()double_it)
  *   println(result)
  *@end
  */
@@ -580,9 +547,9 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Returns a new array containing only elements for which predicate returns true. predicate must be a function that takes T and returns bool. Does not modify the original.
  *@example
  *   import @arrays
- *   do is_even(x int) -> bool { return x % 2 == 0 }
- *   mut nums [int] = {1, 2, 3, 4}
- *   mut result [int] = arrays.filter(nums, ()is_even)
+ *   do is_even(x i64) -> bool { return x % 2 == 0 }
+ *   mut nums [i64] = {1, 2, 3, 4}
+ *   mut result [i64] = arrays.filter(nums, ()is_even)
  *   println(result)
  *@end
  */
@@ -594,9 +561,9 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Reduces arr to a single value by applying accumulator(acc, element) for each element, starting with initial. accumulator must take two T parameters and return T. Does not modify the original.
  *@example
  *   import @arrays
- *   do add(a int, b int) -> int { return a + b }
- *   mut nums [int] = {1, 2, 3, 4}
- *   mut total int = arrays.reduce(nums, 0, ()add)
+ *   do add(a i64, b i64) -> i64 { return a + b }
+ *   mut nums [i64] = {1, 2, 3, 4}
+ *   mut total i64 = arrays.reduce(nums, 0, ()add)
  *   println(total)
  *@end
  */
@@ -608,8 +575,8 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Returns true if predicate returns true for at least one element. predicate must be a function that takes T and returns bool.
  *@example
  *   import @arrays
- *   do is_negative(x int) -> bool { return x < 0 }
- *   mut nums [int] = {1, -2, 3}
+ *   do is_negative(x i64) -> bool { return x < 0 }
+ *   mut nums [i64] = {1, -2, 3}
  *   println(arrays.any(nums, ()is_negative))
  *@end
  */
@@ -621,8 +588,8 @@ void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
  *@desc Returns true if predicate returns true for every element. predicate must be a function that takes T and returns bool.
  *@example
  *   import @arrays
- *   do is_positive(x int) -> bool { return x > 0 }
- *   mut nums [int] = {1, 2, 3}
+ *   do is_positive(x i64) -> bool { return x > 0 }
+ *   mut nums [i64] = {1, 2, 3}
  *   println(arrays.all(nums, ()is_positive))
  *@end
  */

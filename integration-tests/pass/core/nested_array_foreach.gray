@@ -2,44 +2,44 @@
  * nested_array_foreach.gray - Test for_each over nested arrays
  *
  * Verifies that for_each correctly types inner elements as arrays
- * when iterating over [[int]], [[string]], and [[[int]]].
+ * when iterating over [[i64]], [[string]], and [[[i64]]].
  */
 
 import @arrays
 
 do main() {
     println("=== Nested Array for_each Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: for_each over [[int]] - sum each row
-    mut matrix [[int]] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
-    mut row_sums [int] = {}
+    // Test 1: for_each over [[i64]] - sum each row
+    mut matrix [[i64]] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
+    mut row_sums [i64] = {}
     for_each row in matrix {
-        mut sum int = 0
+        mut sum i64 = 0
         for_each val in row {
             sum += val
         }
         arrays.append(row_sums, sum)
     }
     if row_sums[0] == 6 && row_sums[1] == 15 && row_sums[2] == 24 {
-        println("  [PASS] for_each [[int]] row sums")
+        println("  [PASS] for_each [[i64]] row sums")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[int]] row sums")
+        println("  [FAIL] for_each [[i64]] row sums")
         failed += 1
     }
 
-    // Test 2: for_each over [[int]] - count total elements
-    mut total int = 0
+    // Test 2: for_each over [[i64]] - count total elements
+    mut total i64 = 0
     for_each row in matrix {
         total += len(row)
     }
     if total == 9 {
-        println("  [PASS] for_each [[int]] total element count")
+        println("  [PASS] for_each [[i64]] total element count")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[int]] total: got ${total}, expected 9")
+        println("  [FAIL] for_each [[i64]] total: got ${total}, expected 9")
         failed += 1
     }
 
@@ -59,37 +59,37 @@ do main() {
         failed += 1
     }
 
-    // Test 4: for_each over [[int]] - collect row lengths via len()
-    mut matrix2 [[int]] = {{10, 20}, {30, 40, 50}}
-    mut row_lens [int] = {}
+    // Test 4: for_each over [[i64]] - collect row lengths via len()
+    mut matrix2 [[i64]] = {{10, 20}, {30, 40, 50}}
+    mut row_lens [i64] = {}
     for_each row in matrix2 {
         arrays.append(row_lens, len(row))
     }
     if row_lens[0] == 2 && row_lens[1] == 3 {
-        println("  [PASS] for_each [[int]] row len()")
+        println("  [PASS] for_each [[i64]] row len()")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[int]] row len()")
+        println("  [FAIL] for_each [[i64]] row len()")
         failed += 1
     }
 
-    // Test 5: for_each over [[int]] - access row length
-    mut ragged [[int]] = {{1}, {2, 3}, {4, 5, 6}}
-    mut lengths [int] = {}
+    // Test 5: for_each over [[i64]] - access row length
+    mut ragged [[i64]] = {{1}, {2, 3}, {4, 5, 6}}
+    mut lengths [i64] = {}
     for_each row in ragged {
         arrays.append(lengths, len(row))
     }
     if lengths[0] == 1 && lengths[1] == 2 && lengths[2] == 3 {
-        println("  [PASS] for_each [[int]] ragged row lengths")
+        println("  [PASS] for_each [[i64]] ragged row lengths")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[int]] ragged row lengths")
+        println("  [FAIL] for_each [[i64]] ragged row lengths")
         failed += 1
     }
 
-    // Test 6: for_each over [[[int]]] (3D array)
-    mut cube [[[int]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
-    mut grand_total int = 0
+    // Test 6: for_each over [[[i64]]] (3D array)
+    mut cube [[[i64]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
+    mut grand_total i64 = 0
     for_each plane in cube {
         for_each row in plane {
             for_each val in row {
@@ -98,25 +98,25 @@ do main() {
         }
     }
     if grand_total == 36 {
-        println("  [PASS] for_each [[[int]]] 3D sum")
+        println("  [PASS] for_each [[[i64]]] 3D sum")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[[int]]] 3D sum: got ${grand_total}, expected 36")
+        println("  [FAIL] for_each [[[i64]]] 3D sum: got ${grand_total}, expected 36")
         failed += 1
     }
 
     // Test 7: for_each modify collected results from nested iteration
-    mut flat [int] = {}
+    mut flat [i64] = {}
     for_each row in matrix {
         for_each val in row {
             arrays.append(flat, val * 2)
         }
     }
     if flat[0] == 2 && flat[4] == 10 && flat[8] == 18 {
-        println("  [PASS] for_each [[int]] flatten and transform")
+        println("  [PASS] for_each [[i64]] flatten and transform")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each [[int]] flatten and transform")
+        println("  [FAIL] for_each [[i64]] flatten and transform")
         failed += 1
     }
 

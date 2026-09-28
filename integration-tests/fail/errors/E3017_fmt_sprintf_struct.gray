@@ -2,17 +2,19 @@
  * Error Test: E3017 - fmt.sprintf cannot format struct
  * Expected: "cannot format value of type"
  */
+// expect-error: E3017
+// expect-error-count: 1
 
 import @fmt
 
 const Color struct {
-    r int
-    g int
-    b int
+    r i64
+    g i64
+    b i64
 }
 
 do main() {
     mut c Color = Color{r: 255, g: 0, b: 0}
-    mut s string = fmt.sprintf("color: %s", c)
+    mut s string = fmt.sprintf("color: %s", {c})
     println(s)
 }

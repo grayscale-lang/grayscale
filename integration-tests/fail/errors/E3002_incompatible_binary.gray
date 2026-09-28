@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut result = "hello" - 5  // Cannot subtract int from string
+    mut result = "hello" - 5  // Cannot subtract i64 from string
 }

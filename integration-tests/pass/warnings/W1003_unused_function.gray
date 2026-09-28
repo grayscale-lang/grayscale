@@ -4,7 +4,7 @@
  */
 
 
-do unused_helper() -> int {
+do unused_helper() -> i64 {
     return 42
 }
 

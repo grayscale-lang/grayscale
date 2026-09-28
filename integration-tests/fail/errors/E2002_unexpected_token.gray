@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = = 5  // Double equals is unexpected
+    mut x i64 = = 5  // Double equals is unexpected
 }

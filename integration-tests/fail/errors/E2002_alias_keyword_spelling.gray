@@ -5,5 +5,5 @@
  */
 
 do main() {
-    mut x int = fn
+    mut x i64 = fn
 }

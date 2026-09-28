@@ -5,7 +5,7 @@
 
 struct Person {
     name string,
-    age int,
+    age i64,
     name string  // duplicate field
 }
 

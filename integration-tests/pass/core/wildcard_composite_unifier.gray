@@ -26,36 +26,36 @@ do d_first(arr [[[?]]]) -> ? {
 }
 
 /* array-of-map with wildcard key */
-do e_has(arr [map[?:int]], k ?) -> bool {
+do e_has(arr [map[?:i64]], k ?) -> bool {
     return k in arr[0]
 }
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
-    /* a_first: [[int]] */
-    mut ai [[int]] = {{1, 2}, {3, 4}}
+    /* a_first: [[i64]] */
+    mut ai [[i64]] = {{1, 2}, {3, 4}}
     if a_first(ai) == 1 { pass += 1 } otherwise { fail += 1 }
 
     /* a_first reused with [[string]] */
     mut as_ [[string]] = {{"hello", "world"}}
     if a_first(as_) == "hello" { pass += 1 } otherwise { fail += 1 }
 
-    /* b_first: [map[string:int]] */
-    mut bm [map[string:int]] = {{"x": 7, "y": 8}}
+    /* b_first: [map[string:i64]] */
+    mut bm [map[string:i64]] = {{"x": 7, "y": 8}}
     if b_first(bm) == 7 { pass += 1 } otherwise { fail += 1 }
 
     /* b_first reused with [map[string:string]] */
     mut bs [map[string:string]] = {{"x": "hi"}}
     if b_first(bs) == "hi" { pass += 1 } otherwise { fail += 1 }
 
-    /* d_first: [[[int]]] */
-    mut dm [[[int]]] = {{{42}}}
+    /* d_first: [[[i64]]] */
+    mut dm [[[i64]]] = {{{42}}}
     if d_first(dm) == 42 { pass += 1 } otherwise { fail += 1 }
 
-    /* e_has: [map[string:int]] — wildcard key */
-    mut em [map[string:int]] = {{"foo": 1}}
+    /* e_has: [map[string:i64]] — wildcard key */
+    mut em [map[string:i64]] = {{"foo": 1}}
     if e_has(em, "foo") && !e_has(em, "bar") { pass += 1 } otherwise { fail += 1 }
 
     println("wildcard_composite_unifier: ${pass} passed, ${fail} failed")

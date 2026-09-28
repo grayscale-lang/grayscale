@@ -3,7 +3,7 @@ import "./state.gray"
 do main() {
     state.increment()
     state.increment()
-    mut count int = state.get_count()
+    mut count i64 = state.get_count()
     if count == 2 {
         println("ALL TESTS PASSED")
     } otherwise {

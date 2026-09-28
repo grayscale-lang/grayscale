@@ -12,24 +12,24 @@ do side_effect() -> bool {
 
 do main() {
     println("=== Stress: Comparison & Logical ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Comparison operators with int
+    // Comparison operators with i64
     if 1 < 2 && 2 > 1 && 1 <= 1 && 2 >= 2 && 1 == 1 && 1 != 2 {
-        println("  [PASS] int comparisons")
+        println("  [PASS] i64 comparisons")
         passed += 1
     } otherwise {
-        println("  [FAIL] int comparisons")
+        println("  [FAIL] i64 comparisons")
         failed += 1
     }
 
-    // Comparison with float
+    // Comparison with f64
     if 1.0 < 2.0 && 3.14 > 3.13 && 1.5 == 1.5 && 1.0 != 2.0 {
-        println("  [PASS] float comparisons")
+        println("  [PASS] f64 comparisons")
         passed += 1
     } otherwise {
-        println("  [FAIL] float comparisons")
+        println("  [FAIL] f64 comparisons")
         failed += 1
     }
 
@@ -86,17 +86,17 @@ do main() {
     }
 
     // Membership: in with arrays
-    mut nums [int] = {1, 2, 3, 4, 5}
+    mut nums [i64] = {1, 2, 3, 4, 5}
     if 3 in nums {
         if 6 !in nums {
-            println("  [PASS] in / !in with int arrays")
+            println("  [PASS] in / !in with i64 arrays")
             passed += 1
         } otherwise {
             println("  [FAIL] !in")
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] in with int arrays")
+        println("  [FAIL] in with i64 arrays")
         failed += 1
     }
 

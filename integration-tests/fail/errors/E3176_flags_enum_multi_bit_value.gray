@@ -14,5 +14,5 @@ const Permissions enum {
 
 do main() {
     mut p = Permissions.WRITE
-    println("${cast(p, int)}")
+    println("${cast(p, i64)}")
 }

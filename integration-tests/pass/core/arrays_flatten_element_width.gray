@@ -2,7 +2,7 @@
 import @arrays
 
 const P struct {
-    a int
+    a i64
     s string
 }
 
@@ -25,12 +25,12 @@ do main() {
         println("  [FAIL] flatten [[struct]]")
     }
 
-    mut deep [[[int]]] = {{{1}}, {{2, 3}}}
-    mut flat_deep [[int]] = arrays.flatten(deep)
+    mut deep [[[i64]]] = {{{1}}, {{2, 3}}}
+    mut flat_deep [[i64]] = arrays.flatten(deep)
     if len(flat_deep) == 2 && len(flat_deep[0]) == 1 && len(flat_deep[1]) == 2 && flat_deep[1][1] == 3 {
-        println("  [PASS] flatten [[[int]]]")
+        println("  [PASS] flatten [[[i64]]]")
     } else {
-        println("  [FAIL] flatten [[[int]]]")
+        println("  [FAIL] flatten [[[i64]]]")
     }
 
     mut none [[string]] = {{}, {}}

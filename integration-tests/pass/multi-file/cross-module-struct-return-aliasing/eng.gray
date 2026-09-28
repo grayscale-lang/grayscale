@@ -1,5 +1,5 @@
 const Engine struct {
-    registry map[string:int]
+    registry map[string:i64]
 
     do create() -> Engine {
         return Engine{}

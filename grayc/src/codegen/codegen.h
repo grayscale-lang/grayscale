@@ -17,35 +17,35 @@
 /* Per-scope scratch arena identifier pair tracked by codegen so that
  * early-exit paths can unwind every live scratch arena innermost-first. */
 typedef struct {
-    char arena_var[32];
-    char saved_var[32];
+    char arena_variable[32];
+    char saved_variable[32];
 } ScopeArena;
 
 typedef struct {
-    Buf output;
-    Buf global_init;    /* Deferred initialization for file-scope arrays */
+    StringBuffer output;
+    StringBuffer global_initializer; /* Deferred initialization for file-scope arrays */
     int indent;
     bool has_mem;       /* Whether @mem was imported */
     bool has_fmt;       /* Whether @fmt was imported */
     /* Whether the generated C needs a stdlib collection header — set when the
      * `in` operator lowers to that module's helper, or the module is imported.
      * Consulted after body emission to splice the #include into the preamble. */
-    bool needs_arrays_h;
-    bool needs_maps_h;
-    bool needs_strings_h;
+    bool needs_arrays_header;
+    bool needs_maps_header;
+    bool needs_strings_header;
     const char *file;
     char *file_owned; /* normalized copy backing `file`; freed by codegen_destroy */
 
     /* Track declared type names for codegen */
     const char **enum_names;
-    bool *enum_is_string;
-    bool *enum_is_tagged;    /* parallel: true if tagged union enum */
-    AstNode **enum_decls;    /* parallel: AST nodes for payload type lookup */
+    bool *is_enum_string;
+    bool *is_enum_tagged;    /* parallel: true if tagged union enum */
+    AstNode **enum_declarations;    /* parallel: AST nodes for payload type lookup */
     int enum_count;
-    int enum_cap;
+    int enum_capacity;
 
     /* Current function context (for multi-return, ensure) */
-    AstNode *current_func;
+    AstNode *current_function;
 
     /* Number of top-level defer/ensure statements whose source position codegen
      * has already passed in the current function. A return only runs the
@@ -58,7 +58,7 @@ typedef struct {
 
     /* True while emitting the body of a loop that opens no iteration arena,
      * so break/continue have no arena pointer to restore. */
-    bool in_no_arena_loop;
+    bool is_in_no_arena_loop;
 
     /* Non-zero while function_uses_watermark scans a body: calls are not
      * treated as allocation-free there, which stops mutually recursive
@@ -66,15 +66,15 @@ typedef struct {
     int watermark_probe;
 
     /* All function declarations (for mutable param lookup at call sites) */
-    AstNode **all_funcs;
-    int func_count;
-    int func_cap;
+    AstNode **all_functions;
+    int function_count;
+    int function_capacity;
 
-    /* Sorted view of all_funcs by func_decl.name, built lazily for
-     * O(log n) find_func lookups. all_funcs itself stays in insertion
+    /* Sorted view of all_functions by function_declaration.name, built lazily for
+     * O(log n) find_function lookups. all_functions itself stays in insertion
      * order because emission and several prefix-match scans depend on it. */
-    AstNode **funcs_by_name;
-    bool funcs_by_name_built;
+    AstNode **functions_by_name;
+    bool is_functions_by_name_built;
 
     /* Type table from type checker (for type-aware codegen) */
     TypeTable *type_table;
@@ -94,52 +94,52 @@ typedef struct {
     const char *current_file;
 
     /* Current var decl context (for context-aware call emission) */
-    const char *current_var_name;
-    const char *current_var_type;
+    const char *current_variable_name;
+    const char *current_variable_type;
 
     /* Ref variables (transparent references from ref()) */
-    const char **ref_vars;
-    int ref_var_count;
-    int ref_var_cap;
+    const char **reference_variables;
+    int reference_variable_count;
+    int reference_variable_capacity;
 
     /* Raw pointer variables (from raw()) — dereference skips nil check.
      * Stored as a stack: most recent entry for a name wins.  Entries
      * with is_raw=false act as overrides (e.g. addr() shadowing raw()). */
-    struct { const char *name; bool is_raw; } *raw_vars;
-    int raw_var_count;
-    int raw_var_cap;
+    struct { const char *name; bool is_raw; } *raw_variables;
+    int raw_variable_count;
+    int raw_variable_capacity;
 
     /* Heap-allocated pointer variables (from new()) — field container
      * (map/array/string/struct) reassignment through these pointers must
      * escape to gray_heap_arena so the value outlives the current
-     * function's own scoped arena. Same shadow-stack shape as raw_vars. */
-    struct { const char *name; bool is_heap; } *heap_vars;
-    int heap_var_count;
-    int heap_var_cap;
+     * function's own scoped arena. Same shadow-stack shape as raw_variables. */
+    struct { const char *name; bool is_heap; } *heap_variables;
+    int heap_variable_count;
+    int heap_variable_capacity;
 
     /* @mem-arena-tracked pointer variables (from mem.init()/mem.alloc()) —
      * dereference emits a live check against the arena expression that
      * produced them, so a use after that arena was destroyed/reset panics
      * (P0105) instead of silently reading freed memory. arena_expr is NULL
      * for an unregister entry (shadowing/reassignment from a non-mem
-     * source). Same shadow-stack shape as raw_vars/heap_vars. Only
+     * source). Same shadow-stack shape as raw_variables/heap_variables. Only
      * registered when the arena argument is a side-effect-free, safely
      * re-evaluable expression (see is_stable_arena_expr in codegen.c) —
      * the same expression is re-emitted at every dereference site. */
-    struct { const char *name; AstNode *arena_expr; } *mem_vars;
-    int mem_var_count;
-    int mem_var_cap;
+    struct { const char *name; AstNode *arena_expression; } *mem_variables;
+    int mem_variable_count;
+    int mem_variable_capacity;
 
-    /* Track declared bigint variable types (name → type_name) */
-    const char **bigint_var_names;
-    const char **bigint_var_types;
-    int bigint_var_count;
-    int bigint_var_cap;
+    /* Track declared wide integer variable types (name → type_name) */
+    const char **wide_integer_variable_names;
+    const char **wide_integer_variable_types;
+    int wide_integer_variable_count;
+    int wide_integer_variable_capacity;
 
     /* Struct declarations for composite printing */
-    AstNode **struct_decls;
-    int struct_decl_count;
-    int struct_decl_cap;
+    AstNode **struct_declarations;
+    int struct_declaration_count;
+    int struct_declaration_capacity;
 
     /* Lazy index of (field_name, struct_name) for func-typed struct fields,
      * built on first lookup. Lets the member-call fallback heuristic skip
@@ -147,36 +147,36 @@ typedef struct {
     struct {
         const char *field_name;
         const char *struct_name;
-    } *func_field_index;
-    int func_field_count;
-    bool func_field_index_built;
+    } *function_field_index;
+    int function_field_count;
+    bool is_function_field_index_built;
 
     /* Modules brought into scope via 'using' or 'import and use' */
     const char **using_modules;
     int using_module_count;
-    int using_module_cap;
+    int using_module_capacity;
 
     /* All imported module names (for module detection in member expressions) */
     const char **imported_modules;
     int imported_module_count;
-    int imported_module_cap;
+    int imported_module_capacity;
 
-    /* C interop headers from extern import "header.h". c_header_is_local[i]
+    /* C interop headers from extern import "header.h". is_c_header_local[i]
      * says whether c_headers[i] is a "./x.h"/"../x.h" header — resolved to
      * its canonical absolute path by the time it lands here, so it no longer
      * carries the "./" spelling that would otherwise mark it — and so must
      * be emitted as a quoted #include rather than an angle-bracket one. */
     const char **c_headers;
-    bool *c_header_is_local;
+    bool *is_c_header_local;
     int c_header_count;
-    int c_header_cap;
+    int c_header_capacity;
     bool has_c_imports;
 
     /* Type alias registry (alias Name = Type) — collected from AST */
     const char **type_alias_names;
     const char **type_alias_targets;
     int type_alias_count;
-    int type_alias_cap;
+    int type_alias_capacity;
 
     /* Active wildcard binding (). Set while emitting a specialised
      * instantiation of a generic function so type-string lookups can
@@ -190,24 +190,24 @@ typedef struct {
      * signature here so the arg-emission loop can pick up &-mutability
      * even when target_func (the AST decl) is unknown. Reset to NULL
      * after each call. */
-    void *pending_call_typed_sig;
+    void *pending_call_typed_signature;
 
     /* True while emitting the initializer of a file-scope const declaration.
      * Prevents runtime overflow-check wrappers (gray_add_check etc.) from being
      * emitted as C file-scope initializers, which C does not allow. */
-    bool in_const_decl;
+    bool is_in_const_declaration;
 
     /* Arena growth limit in bytes (0 = use 1 GB default) */
     size_t arena_limit;
 
     /* --test mode: emit a test runner main() that calls every #test
      * function; in normal builds #test functions are not emitted at all. */
-    bool test_mode;
+    bool is_test_mode;
 
     /* Monotonic counter for generating unique temporary variable names.
      * Every emitter that needs a unique C identifier draws from this
      * single counter via codegen_next_id(). */
-    int temp_counter;
+    int temporary_counter;
 
     /* Stack of open per-scope scratch arenas (if / for_each / while /
      * loop). Each entry holds the exact C identifiers emitted at scope
@@ -217,20 +217,20 @@ typedef struct {
      * on early return. */
     ScopeArena *scope_arenas;
     int scope_arena_count;
-    int scope_arena_cap;
+    int scope_arena_capacity;
 
     /* Stack of active for_each iteration guards. Each entry holds the C
      * expression whose .iterating counter was incremented. On early return,
      * every live guard must be decremented before leaving the function. */
-    char **iter_guards;
-    int iter_guard_count;
-    int iter_guard_cap;
+    char **iteration_guards;
+    int iteration_guard_count;
+    int iteration_guard_capacity;
 
     /* Heap-allocated "StructName_funcName" strings patched into AST nodes.
      * Tracked here so codegen_destroy() can free them. */
-    char **ns_func_names;
-    int ns_func_name_count;
-    int ns_func_name_cap;
+    char **namespaced_function_names;
+    int namespaced_function_name_count;
+    int namespaced_function_name_capacity;
 
     /* #line directive emission (maps generated C back to the .gray source
      * for cc diagnostics, sanitizers, and gcov). On by default; a raw-C
@@ -238,7 +238,7 @@ typedef struct {
      * numbers instead. last_line_directive_file/_line track the .gray
      * location the last directive pointed at, so a run of statements on
      * the same source line emits one directive, not one per statement. */
-    bool emit_line_directives;
+    bool should_emit_line_directives;
     char *last_line_directive_file;
     int last_line_directive_line;
 } CodeGen;

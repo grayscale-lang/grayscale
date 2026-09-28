@@ -8,6 +8,6 @@ import @arrays
 do string_cb(s string) -> string { return s }
 
 do main() {
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut result [string] = arrays.map(nums, ()string_cb)
 }

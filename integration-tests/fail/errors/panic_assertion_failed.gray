@@ -1,5 +1,5 @@
 /*
- * Error Test: E5022 - assertion-failed
+ * Error Test: P0075 - assertion-failed
  * Expected: "assertion" or "failed"
  * Note: assert() is a global builtin, no import needed
  */

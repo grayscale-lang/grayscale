@@ -3,7 +3,7 @@
  * Expected: "maximum recursion depth exceeded"
  */
 
-do recurse(n int) {
+do recurse(n i64) {
     recurse(n + 1)
 }
 

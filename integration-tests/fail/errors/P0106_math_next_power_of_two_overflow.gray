@@ -1,5 +1,5 @@
 /*
- * Runtime Panic Test: P0106 - next_power_of_two above 2^62 would exceed MAX_INT
+ * Runtime Panic Test: P0106 - next_power_of_two above 2^62 would exceed MAX_I64
  */
 
 import @math

@@ -5,11 +5,11 @@
  */
 
 const Inner struct {
-    x int
+    x i64
 }
 
 const Outer struct {
     items  [Inner]
     lookup map[string:Inner]
-    tag    int
+    tag    i64
 }

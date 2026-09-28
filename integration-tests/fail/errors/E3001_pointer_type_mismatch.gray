@@ -1,5 +1,5 @@
 do main() {
     mut x string = "hello"
-    mut p ^int = addr(x)
+    mut p ^i64 = addr(x)
     println(p^)
 }

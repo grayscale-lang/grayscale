@@ -7,7 +7,7 @@
  */
 
 do main() {
-    mut v int = 42
-    mut p ^int = addr(v)
+    mut v i64 = 42
+    mut p ^i64 = addr(v)
     println("ptr: ${p}")
 }

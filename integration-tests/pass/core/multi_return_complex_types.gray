@@ -6,37 +6,37 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do get_arr() -> (int, [int]) {
+do get_arr() -> (i64, [i64]) {
     return 1, {10, 20, 30}
 }
 
-do get_ptr() -> (int, ^Point) {
+do get_ptr() -> (i64, ^Point) {
     mut p = new(Point)
     p^.x = 9
     return 5, p
 }
 
-do get_map() -> (int, map[string:int]) {
-    mut m map[string:int] = {"a": 1}
+do get_map() -> (i64, map[string:i64]) {
+    mut m map[string:i64] = {"a": 1}
     return 7, m
 }
 
-do get_three() -> (int, [int], ^Point) {
+do get_three() -> (i64, [i64], ^Point) {
     mut p = new(Point)
     p^.x = 3
     return 1, {10, 20}, p
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Array type in position 2
-    mut a int, b [int] = get_arr()
+    mut a i64, b [i64] = get_arr()
     if a == 1 && b[0] == 10 {
         passed++
     } otherwise {
@@ -45,7 +45,7 @@ do main() {
     }
 
     // Pointer type in position 2
-    mut c int, d ^Point = get_ptr()
+    mut c i64, d ^Point = get_ptr()
     if c == 5 && d^.x == 9 {
         passed++
     } otherwise {
@@ -54,7 +54,7 @@ do main() {
     }
 
     // Map type in position 2
-    mut e int, f map[string:int] = get_map()
+    mut e i64, f map[string:i64] = get_map()
     if e == 7 && f["a"] == 1 {
         passed++
     } otherwise {
@@ -63,7 +63,7 @@ do main() {
     }
 
     // Complex types in positions 2 and 3
-    mut g int, h [int], i ^Point = get_three()
+    mut g i64, h [i64], i ^Point = get_three()
     if g == 1 && h[0] == 10 && i^.x == 3 {
         passed++
     } otherwise {

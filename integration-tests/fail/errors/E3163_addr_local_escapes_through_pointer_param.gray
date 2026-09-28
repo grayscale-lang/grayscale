@@ -10,27 +10,27 @@
  */
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
-do via_out_param(out ^^int) {
-    mut local int = 42
+do via_out_param(out ^^i64) {
+    mut local i64 = 42
     out^ = addr(local)
 }
 
-do via_ref_param(&out ^int) {
-    mut local int = 42
+do via_ref_param(&out ^i64) {
+    mut local i64 = 42
     out = ref(local)
 }
 
 do via_ref_struct_field(&b Box) {
-    mut local int = 42
+    mut local i64 = 42
     b.p = addr(local)
 }
 
-do via_alias(out ^^int) {
-    mut local int = 42
-    mut tmp ^int = addr(local)
+do via_alias(out ^^i64) {
+    mut local i64 = 42
+    mut tmp ^i64 = addr(local)
     out^ = tmp
 }
 

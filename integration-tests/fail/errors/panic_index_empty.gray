@@ -1,9 +1,9 @@
 /*
- * Error Test: E5004 - index-empty-collection
+ * Error Test: P0033 - index-empty-collection
  * Expected: "array is empty"
  */
 
 do main() {
-    mut arr [int] = {}
-    mut x int = arr[0]  // Index into empty array
+    mut arr [i64] = {}
+    mut x i64 = arr[0]  // Index into empty array
 }

@@ -4,11 +4,11 @@ do greet(name string) -> string {
     return "Hello, ${name}"
 }
 
-mut tally int = 5
+mut tally i64 = 5
 
-private const HIDDEN int = 9
+private const HIDDEN i64 = 9
 
-do bump() -> int {
+do bump() -> i64 {
     tally += 1
     return tally + HIDDEN
 }

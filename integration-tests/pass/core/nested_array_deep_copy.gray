@@ -18,57 +18,57 @@
 
 do main() {
     println("=== Nested Array Deep Copy Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- site 1: copy() builtin, 2-level --
-    mut a2 [[int]] = {{1, 2}, {3, 4}}
-    mut a2_copy [[int]] = copy(a2)
+    mut a2 [[i64]] = {{1, 2}, {3, 4}}
+    mut a2_copy [[i64]] = copy(a2)
     a2_copy[0][0] = 999
     if a2[0][0] == 1 && a2_copy[0][0] == 999 {
-        println("  [PASS] copy([[int]]) 2-level")
+        println("  [PASS] copy([[i64]]) 2-level")
         passed += 1
     } otherwise {
-        println("  [FAIL] copy([[int]]) 2-level")
+        println("  [FAIL] copy([[i64]]) 2-level")
         failed += 1
     }
 
     // -- site 1: copy() builtin, 3-level recursion --
-    mut a3 [[[int]]] = {{{1, 2}, {3}}, {{4, 5, 6}}}
-    mut a3_copy [[[int]]] = copy(a3)
+    mut a3 [[[i64]]] = {{{1, 2}, {3}}, {{4, 5, 6}}}
+    mut a3_copy [[[i64]]] = copy(a3)
     a3_copy[0][0][0] = 888
     a3_copy[1][0][1] = 777
     if a3[0][0][0] == 1 && a3[1][0][1] == 5 &&
        a3_copy[0][0][0] == 888 && a3_copy[1][0][1] == 777 {
-        println("  [PASS] copy([[[int]]]) 3-level")
+        println("  [PASS] copy([[[i64]]]) 3-level")
         passed += 1
     } otherwise {
-        println("  [FAIL] copy([[[int]]]) 3-level")
+        println("  [FAIL] copy([[[i64]]]) 3-level")
         failed += 1
     }
 
-    // -- site 2: var_decl copy-on-assign, mut b [[int]] = a --
-    mut src [[int]] = {{10, 20}, {30, 40}}
-    mut dst [[int]] = src
+    // -- site 2: var_decl copy-on-assign, mut b [[i64]] = a --
+    mut src [[i64]] = {{10, 20}, {30, 40}}
+    mut dst [[i64]] = src
     dst[0][0] = 555
     if src[0][0] == 10 && dst[0][0] == 555 {
-        println("  [PASS] var_decl copy-on-assign [[int]]")
+        println("  [PASS] var_decl copy-on-assign [[i64]]")
         passed += 1
     } otherwise {
-        println("  [FAIL] var_decl copy-on-assign [[int]]")
+        println("  [FAIL] var_decl copy-on-assign [[i64]]")
         failed += 1
     }
 
     // -- site 3: assignment copy-on-assign, b = a --
-    mut lhs [[int]] = {{0}, {0}}
-    mut rhs [[int]] = {{100, 200}, {300, 400}}
+    mut lhs [[i64]] = {{0}, {0}}
+    mut rhs [[i64]] = {{100, 200}, {300, 400}}
     lhs = rhs
     lhs[0][0] = 444
     if rhs[0][0] == 100 && lhs[0][0] == 444 {
-        println("  [PASS] assignment copy-on-assign [[int]]")
+        println("  [PASS] assignment copy-on-assign [[i64]]")
         passed += 1
     } otherwise {
-        println("  [FAIL] assignment copy-on-assign [[int]]")
+        println("  [FAIL] assignment copy-on-assign [[i64]]")
         failed += 1
     }
 

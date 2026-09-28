@@ -25,15 +25,15 @@
 
 #ifdef _WIN32
 #define GRAY_OS_WINDOWS   1
-#define GRAY_PATH_SEP     '\\'
-#define GRAY_PATH_SEP_STR "\\"
-#define GRAY_EXE_SUFFIX   ".exe"
+#define GRAY_PATH_SEPARATOR     '\\'
+#define GRAY_PATH_SEPARATOR_STRING "\\"
+#define GRAY_EXECUTABLE_SUFFIX   ".exe"
 #define GRAY_NULL_DEVICE  "NUL"
 #else
 #define GRAY_OS_WINDOWS   0
-#define GRAY_PATH_SEP     '/'
-#define GRAY_PATH_SEP_STR "/"
-#define GRAY_EXE_SUFFIX   ""
+#define GRAY_PATH_SEPARATOR     '/'
+#define GRAY_PATH_SEPARATOR_STRING "/"
+#define GRAY_EXECUTABLE_SUFFIX   ""
 #define GRAY_NULL_DEVICE  "/dev/null"
 #endif
 
@@ -43,31 +43,31 @@
  * macro that the Windows branch of the Makefile deliberately does not set
  * (see the -std=gnu11 comment there). Without a declaration GCC assumes an
  * int return and truncates the pointer on Win64. Implemented portably rather
- * than #ifdef'd, so both platforms run the same code. Copies at most `n`
+ * than #ifdef'd, so both platforms run the same code. Copies at most `max_length`
  * bytes, stopping early at a NUL, and always NUL-terminates. Returns NULL on
  * allocation failure. Caller owns the result and must free() it. */
-char *gray_strndup(const char *str, size_t max_len);
+char *gray_strndup(const char *string, size_t max_length);
 
 /* --- Console --- */
 
 /* Opt the console into interpreting ANSI escape sequences. No-op off Windows,
  * and on Windows consoles that refuse (output redirected to a file, or a
  * pre-Windows-10 console). Safe to call more than once. */
-void gray_enable_vt_mode(void);
+void gray_enable_virtual_terminal_mode(void);
 
 /* True when the stream is an interactive terminal, i.e. color is worth
  * emitting. Check the stream you are actually writing to — redirecting one
  * without the other is routine. */
-bool gray_stdout_is_tty(void);
-bool gray_stderr_is_tty(void);
+bool gray_stdout_is_terminal(void);
+bool gray_stderr_is_terminal(void);
 
 /* --- Paths ---
  *
  * All path helpers are separator-agnostic: '/' is a separator everywhere, and
  * '\\' is additionally a separator on Windows. Paths the compiler *builds* use
- * GRAY_PATH_SEP, but paths it *reads* may mix both. */
+ * GRAY_PATH_SEPARATOR, but paths it *reads* may mix both. */
 
-bool gray_is_path_sep(char c);
+bool gray_is_path_separator(char character);
 
 /* Final component of a path. Returns a pointer into `path`, never NULL, and
  * never the empty string unless `path` itself is empty. */
@@ -75,17 +75,17 @@ const char *gray_path_basename(const char *path);
 
 /* Last separator in a mutable path, or NULL. Truncating there yields the
  * parent directory. */
-char *gray_path_rsep(char *path);
+char *gray_path_last_separator(char *path);
 
 /* True when `path` has no parent to walk up to: "/" on POSIX, and additionally
  * "C:", "C:\\", "C:/", or a bare UNC share root on Windows. Guards
  * parent-directory walks against looping forever at a drive root. */
 bool gray_path_is_root(const char *path);
 
-/* Join `a` and `b` with exactly one GRAY_PATH_SEP between them, collapsing a
+/* Join `a` and `b` with exactly one GRAY_PATH_SEPARATOR between them, collapsing a
  * trailing separator on `a` and a leading one on `b`. Returns the length that
  * would have been written (snprintf semantics), so >= n means truncation. */
-int gray_path_join(char *dst, size_t dst_size, const char *base, const char *tail);
+int gray_path_join(char *destination, size_t destination_size, const char *base, const char *tail);
 
 /* True for a path that does not depend on the current directory: "/..." on
  * POSIX, plus "C:\...", "C:/...", and "\\server\share" on Windows. */
@@ -98,7 +98,7 @@ char *gray_realpath(const char *path);
 
 /* gray_realpath() into a caller-supplied buffer. Returns false if the path
  * cannot be resolved or does not fit. */
-bool gray_realpath_into(const char *path, char *buf, size_t buf_size);
+bool gray_realpath_into(const char *path, char *resolved_buffer, size_t resolved_buffer_size);
 
 /* Compare two paths for equality, honoring the filesystem's case sensitivity
  * and separator conventions. Use instead of strcmp() on canonicalized paths. */
@@ -108,13 +108,13 @@ bool gray_path_equal(const char *left, const char *right);
 
 bool gray_file_readable(const char *path);
 bool gray_is_file(const char *path);
-bool gray_is_dir(const char *path);
+bool gray_is_directory(const char *path);
 bool gray_remove_file(const char *path);
-bool gray_getcwd(char *buf, size_t buf_size);
+bool gray_getcwd(char *directory_buffer, size_t directory_buffer_size);
 
-/* Write `len` bytes to `path`, truncating it, creating it 0644 if absent.
+/* Write `length` bytes to `path`, truncating it, creating it 0644 if absent.
  * Binary mode: bytes land on disk exactly as given on every platform. */
-bool gray_write_file_mode(const char *path, const void *data, size_t len);
+bool gray_write_file_mode(const char *path, const void *data, size_t length);
 
 /* Read a whole file into a malloc'd NUL-terminated buffer, or NULL on failure.
  * Handles non-seekable inputs (pipes, FIFOs, /dev/stdin) that a stat-then-read
@@ -127,27 +127,27 @@ char *gray_read_file(const char *path, bool report);
 /* Callback invoked for each entry in a directory. `name` is the bare filename
  * (not the full path), excluding "." and "..". Return true to continue
  * iteration, false to stop early. */
-typedef bool (*gray_dir_visitor)(const char *name, void *ctx);
+typedef bool (*gray_directory_visitor)(const char *name, void *context);
 
-/* Iterate over entries in `dir_path`, calling `fn` for each one (excluding
+/* Iterate over entries in `directory_path`, calling `visit` for each one (excluding
  * "." and ".."). Returns true on success, false if the directory cannot be
  * opened. */
-bool gray_scandir(const char *dir_path, gray_dir_visitor visit, void *ctx);
+bool gray_scandir(const char *directory_path, gray_directory_visitor visit, void *context);
 
 /* --- Self and temp locations --- */
 
 /* Directory containing the running executable, without a trailing separator.
  * Returns a pointer to a static buffer, or NULL if it cannot be determined.
  * `argv0` is used only as a last-resort fallback. */
-const char *gray_self_dir(const char *argv0);
+const char *gray_self_directory(const char *argv0);
 
 /* System temp directory, without a trailing separator. Never NULL. */
-const char *gray_temp_dir(void);
+const char *gray_temporary_directory(void);
 
 /* Build a collision-resistant path in the temp directory of the form
  * <tmp>/<prefix><pid>-<n><suffix>. Does not create the file. snprintf
  * semantics: >= n means truncation. */
-int gray_temp_path(char *dst, size_t dst_size, const char *prefix, const char *suffix);
+int gray_temporary_path(char *destination, size_t destination_size, const char *prefix, const char *suffix);
 
 /* Open an anonymous read/write temp file that is removed when closed. */
 FILE *gray_tmpfile(void);
@@ -164,8 +164,8 @@ int gray_spawn_path(const char *const *argv);
 
 /* Use argv[0] verbatim as a filesystem path — no PATH search. When the child
  * dies from a signal, the return value is 128 + the signal number and
- * *term_signal is set to the signal (0 otherwise; always 0 on Windows). */
-int gray_spawn_exact(const char *const *argv, int *term_signal);
+ * *termination_signal is set to the signal (0 otherwise; always 0 on Windows). */
+int gray_spawn_exact(const char *const *argv, int *termination_signal);
 
 /* Like gray_spawn_path, but with the child's stdout and stderr discarded. */
 int gray_spawn_quiet(const char *const *argv);
@@ -196,12 +196,12 @@ bool gray_command_on_path(const char *name);
  * helper processes (cc1.exe) load their DLLs via PATH from beside the driver,
  * so the absolute path alone is not enough. Returns NULL when nothing is
  * found, and always NULL on POSIX. */
-const char *gray_find_cc_fallback(void);
+const char *gray_find_c_compiler_fallback(void);
 
-/* If the first token of `cmd` is a filesystem path to an executable, prepend
+/* If the first token of `command` is a filesystem path to an executable, prepend
  * its directory to PATH so the helper processes it spawns can load DLLs that
  * live beside it (cc1.exe resolves its DLLs via PATH). No-op on POSIX, for
  * bare command names, and when the directory already leads PATH. */
-void gray_ensure_tool_dir_on_path(const char *cmd);
+void gray_ensure_tool_directory_on_path(const char *command);
 
 #endif

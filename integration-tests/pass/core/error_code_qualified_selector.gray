@@ -13,8 +13,8 @@ do classify(c ErrorCode) -> bool {
 
 do main() {
     println("=== ErrorCode qualified selector test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // var-decl init
     mut x ErrorCode = ErrorCode.NotFound
@@ -88,10 +88,10 @@ do main() {
     }
 }
 
-do error_thing() -> (int, Error) {
+do error_thing() -> (i64, Error) {
     return 0, error(.NotFound, "no such thing")
 }
 
-do make_error(c ErrorCode) -> (int, Error) {
+do make_error(c ErrorCode) -> (i64, Error) {
     return 0, error(c, "made")
 }

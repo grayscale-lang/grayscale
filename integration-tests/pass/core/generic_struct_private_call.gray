@@ -5,24 +5,24 @@
  */
 
 const Box struct {
-    value int
+    value i64
 
-    private do secret(self Box) -> int {
+    private do secret(self Box) -> i64 {
         return self.value * 2
     }
 
     do reveal(self Box, extra ?) -> ? {
-        mut s int = self.secret()
+        mut s i64 = self.secret()
         return extra
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut b Box = Box{value: 21}
-    mut r int = b.reveal(100)
+    mut r i64 = b.reveal(100)
 
     if r == 100 { passed = passed + 1 } otherwise { failed = failed + 1 }
 

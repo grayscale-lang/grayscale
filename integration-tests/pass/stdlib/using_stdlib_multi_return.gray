@@ -10,8 +10,8 @@ import and use @math, @strconv, @channels
 
 do main() {
     println("=== Using Multi-Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- non-fallible pair: math.modf --
     mut whole, frac = modf(2.5)
@@ -23,22 +23,22 @@ do main() {
         failed += 1
     }
 
-    // -- fallible pair: strconv.to_int --
-    mut n, err = to_int("42")
+    // -- fallible pair: strconv.to_i64 --
+    mut n, err = to_i64("42")
     if n == 42 && err == nil {
-        println("  [PASS] to_int via using")
+        println("  [PASS] to_i64 via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int via using")
+        println("  [FAIL] to_i64 via using")
         failed += 1
     }
 
-    mut bad, bad_err = to_int("nope")
+    mut bad, bad_err = to_i64("nope")
     if bad_err != nil {
-        println("  [PASS] to_int error slot via using")
+        println("  [PASS] to_i64 error slot via using")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_int error slot via using: got ${bad}")
+        println("  [FAIL] to_i64 error slot via using: got ${bad}")
         failed += 1
     }
 

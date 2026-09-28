@@ -1,6 +1,0 @@
-do main() {
-    mut u u8 = 10
-    mut b byte = 20
-    u = b
-    println(u)
-}

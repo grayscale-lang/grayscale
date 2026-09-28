@@ -6,8 +6,8 @@ import @io
 
 do main() {
     println("=== IO Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut test_file string = "/tmp/gray_io_c_test.txt"
     mut content string = "Hello from Grayscale compiler test!"

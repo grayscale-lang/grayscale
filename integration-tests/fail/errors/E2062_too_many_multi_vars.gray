@@ -3,7 +3,7 @@
  * Expected: "too many variables in multi-variable declaration; maximum is 16"
  */
 
-do foo() -> int {
+do foo() -> i64 {
     return 1
 }
 

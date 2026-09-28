@@ -1,0 +1,9 @@
+/* Error Test: E3019 - returning an i128 from a function that returns u128 */
+
+do to_unsigned(value i128) -> u128 {
+    return value
+}
+
+do main() {
+    println(to_unsigned(2))
+}

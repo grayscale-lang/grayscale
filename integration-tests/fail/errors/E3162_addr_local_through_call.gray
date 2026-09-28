@@ -8,14 +8,14 @@
  * address of 'local', which dies when leak() returns.
  */
 
-do id(p ^int) -> ^int { return p }
+do id(p ^i64) -> ^i64 { return p }
 
-do leak() -> ^int {
-    mut local int = 7
+do leak() -> ^i64 {
+    mut local i64 = 7
     return id(addr(local))
 }
 
 do main() {
-    mut r ^int = leak()
+    mut r ^i64 = leak()
     println(r^)
 }

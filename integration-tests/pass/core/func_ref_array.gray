@@ -15,17 +15,17 @@
 
 import @arrays
 
-do add(a int, b int) -> int { return a + b }
-do sub(a int, b int) -> int { return a - b }
-do mul(a int, b int) -> int { return a * b }
+do add(a i64, b i64) -> i64 { return a + b }
+do sub(a i64, b i64) -> i64 { return a - b }
+do mul(a i64, b i64) -> i64 { return a * b }
 
-do is_pos(n int) -> bool { return n > 0 }
-do is_neg(n int) -> bool { return n < 0 }
+do is_pos(n i64) -> bool { return n > 0 }
+do is_neg(n i64) -> bool { return n < 0 }
 
 do main() {
     println("=== [func] Array Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- literal with inferred func element type, index + call --
     mut ops [func] = {()add, ()sub, ()mul}
@@ -50,7 +50,7 @@ do main() {
     }
 
     // -- for_each over [func] --
-    mut total int = 0
+    mut total i64 = 0
     for_each op in ops {
         total += op(2, 3)
     }

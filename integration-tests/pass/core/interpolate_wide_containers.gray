@@ -1,0 +1,18 @@
+/*
+ * Pass Test: interpolating containers of every integer width
+ * Expected: "${xs}" prints each element at its own width, matching
+ * println(xs), for wide, narrow and unsigned elements and map values.
+ */
+
+do main() {
+    mut wide_signed [i128] = {-170141183460469231731687303715884105728, 2}
+    mut wide_unsigned [u256] = {115792089237316195423570985008687907853269984665640564039457584007913129639935, 4}
+    mut narrow [i8] = {-128, 127}
+    mut unsigned [u64] = {18446744073709551615, 0}
+    mut wide_map map[string:i128] = {"a": -7}
+    mut wide_unsigned_map map[string:u128] = {"b": 340282366920938463463374607431768211455}
+    println("${wide_signed}")
+    println("${wide_unsigned}")
+    println("${narrow} ${unsigned}")
+    println("${wide_map} ${wide_unsigned_map}")
+}

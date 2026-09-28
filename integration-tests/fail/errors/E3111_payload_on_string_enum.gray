@@ -6,7 +6,7 @@
 const Color enum {
     RED = "red"
     GREEN = "green"
-    BLUE(int)
+    BLUE(i64)
 }
 
 do main() {}

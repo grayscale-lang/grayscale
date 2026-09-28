@@ -3,11 +3,11 @@
 // Duplicate #deprecated on a struct function.
 
 const Calc struct {
-    _pad int
+    _pad i64
 
     #deprecated("a")
     #deprecated("b")
-    do sub(a int, b int) -> int {
+    do sub(a i64, b i64) -> i64 {
         return a - b
     }
 }

@@ -3,7 +3,7 @@
  * Verifies name: value syntax for call-site named args
  */
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
@@ -11,25 +11,25 @@ do greet(name string, greeting string = "Hello") -> string {
     return "${greeting}, ${name}!"
 }
 
-do point(x int, y int, z int = 0) -> string {
+do point(x i64, y i64, z i64 = 0) -> string {
     return "(${x}, ${y}, ${z})"
 }
 
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do scale(self Vec, factor int) -> Vec {
+    do scale(self Vec, factor i64) -> Vec {
         return Vec{x: self.x * factor, y: self.y * factor}
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: all named, in signature order
-    mut r1 int = add(a: 3, b: 4)
+    mut r1 i64 = add(a: 3, b: 4)
     if r1 == 7 {
         println("  [PASS] add(a: 3, b: 4) = 7")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 2: all named, reordered
-    mut r2 int = add(b: 10, a: 5)
+    mut r2 i64 = add(b: 10, a: 5)
     if r2 == 15 {
         println("  [PASS] add(b: 10, a: 5) = 15")
         passed += 1
@@ -49,7 +49,7 @@ do main() {
     }
 
     // Test 3: mixed positional + named
-    mut r3 int = add(1, b: 2)
+    mut r3 i64 = add(1, b: 2)
     if r3 == 3 {
         println("  [PASS] add(1, b: 2) = 3")
         passed += 1
@@ -109,7 +109,7 @@ do main() {
     }
 
     // Test 9: all positional still works (no regression)
-    mut r9 int = add(100, 200)
+    mut r9 i64 = add(100, 200)
     if r9 == 300 {
         println("  [PASS] add(100, 200) = 300")
         passed += 1

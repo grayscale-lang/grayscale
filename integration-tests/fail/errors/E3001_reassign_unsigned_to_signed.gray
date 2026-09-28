@@ -1,5 +1,5 @@
 do main() {
-    mut a int = 10
-    mut b uint = cast(42, uint)
+    mut a i64 = 10
+    mut b u64 = cast(42, u64)
     a = b
 }

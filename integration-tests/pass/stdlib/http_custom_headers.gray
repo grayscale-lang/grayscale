@@ -6,8 +6,8 @@
 import @http
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // GET with custom headers
     mut headers map[string:string] = {"X-Custom-Header": "hello-gray", "Accept": "application/json"}

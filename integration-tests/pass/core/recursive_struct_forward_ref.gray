@@ -5,18 +5,18 @@
  */
 
 const A struct {
-    value int
+    value i64
     next ^B
 }
 
 const B struct {
-    value int
+    value i64
     next ^A
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a = new(A)
     a.value = 1

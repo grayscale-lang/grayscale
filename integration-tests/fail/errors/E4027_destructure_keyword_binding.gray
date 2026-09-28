@@ -4,7 +4,7 @@
  */
 // expect-error: E4027
 
-do two() -> (int, int) {
+do two() -> (i64, i64) {
     return 1, 2
 }
 

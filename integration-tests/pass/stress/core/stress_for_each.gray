@@ -5,22 +5,22 @@
 
 do main() {
     println("=== Stress: For-Each Loops ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // for_each item in int array
-    mut sum int = 0
-    mut arr [int] = {10, 20, 30}
+    // for_each item in i64 array
+    mut sum i64 = 0
+    mut arr [i64] = {10, 20, 30}
     for_each item in arr {
         sum += item
     }
     if sum == 60 {
-        println("  [PASS] for_each int array")
+        println("  [PASS] for_each i64 array")
         passed += 1
-    } otherwise { println("  [FAIL] for_each int — got ${sum}") failed += 1 }
+    } otherwise { println("  [FAIL] for_each i64 — got ${sum}") failed += 1 }
 
     // for_each with index
-    mut idx_sum int = 0
+    mut idx_sum i64 = 0
     for_each i, item in arr {
         idx_sum += i
     }
@@ -30,7 +30,7 @@ do main() {
     } otherwise { println("  [FAIL] for_each index — got ${idx_sum}") failed += 1 }
 
     // for_each discard index
-    mut val_sum int = 0
+    mut val_sum i64 = 0
     for_each _, item in arr {
         val_sum += item
     }
@@ -51,7 +51,7 @@ do main() {
     } otherwise { println("  [FAIL] for_each string — got ${concat}") failed += 1 }
 
     // for_each characters in string
-    mut chr_count int = 0
+    mut chr_count i64 = 0
     for_each ch in "hello" {
         chr_count += 1
     }
@@ -61,8 +61,8 @@ do main() {
     } otherwise { println("  [FAIL] for_each chars — got ${chr_count}") failed += 1 }
 
     // for_each with break
-    mut break_count int = 0
-    mut big [int] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    mut break_count i64 = 0
+    mut big [i64] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
     for_each item in big {
         if item == 5 { break }
         break_count += 1
@@ -73,7 +73,7 @@ do main() {
     } otherwise { println("  [FAIL] for_each break — got ${break_count}") failed += 1 }
 
     // for_each with continue
-    mut skip_sum int = 0
+    mut skip_sum i64 = 0
     for_each item in big {
         if item % 2 == 0 { continue }
         skip_sum += item
@@ -84,9 +84,9 @@ do main() {
     } otherwise { println("  [FAIL] for_each continue — got ${skip_sum}") failed += 1 }
 
     // Nested for_each
-    mut nested_count int = 0
-    mut m1 [int] = {1, 2}
-    mut m2 [int] = {3, 4}
+    mut nested_count i64 = 0
+    mut m1 [i64] = {1, 2}
+    mut m2 [i64] = {3, 4}
     for_each a in m1 {
         for_each b_val in m2 {
             nested_count += 1

@@ -10,7 +10,7 @@
 extern import "stdlib.h"
 
 do main() {
-    mut atoi int = 7
+    mut atoi i64 = 7
     mut n i32 = extern.atoi("123")
     println("${n} ${atoi}")
 }

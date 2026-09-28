@@ -3,6 +3,6 @@
 import @arrays
 
 do main() {
-    mut empty [int] = {}
+    mut empty [i64] = {}
     println(arrays.average(empty))
 }

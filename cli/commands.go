@@ -80,14 +80,7 @@ var checkCmd = &cobra.Command{
 		if !isDir && !strings.HasSuffix(args[0], ".gray") {
 			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
 		}
-		var extraArgs []string
-		quiet, _ := cmd.Flags().GetString("quiet")
-		if quiet == "all" {
-			extraArgs = append(extraArgs, "--quiet")
-		} else if quiet != "" {
-			extraArgs = append(extraArgs, "--quiet", quiet)
-		}
-		code, err := driver.Check(args[0], extraArgs)
+		code, err := driver.Check(args[0], quietArgs(cmd))
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
 		}
@@ -98,6 +91,47 @@ var checkCmd = &cobra.Command{
 	},
 }
 
+// quietArgs turns the --quiet flag into compiler arguments: "all" suppresses
+// every warning, anything else is a comma-separated list of codes.
+func quietArgs(cmd *cobra.Command) []string {
+	quiet, _ := cmd.Flags().GetString("quiet")
+	if quiet == "all" {
+		return []string{"--quiet"}
+	} else if quiet != "" {
+		return []string{"--quiet", quiet}
+	}
+	return nil
+}
+
+// commonBuildOpts reads the flags shared by build and cross into BuildOpts.
+func commonBuildOpts(cmd *cobra.Command) (driver.BuildOpts, error) {
+	output, _ := cmd.Flags().GetString("output")
+	emitC, _ := cmd.Flags().GetBool("emit-c")
+	showTime, _ := cmd.Flags().GetBool("time")
+	quiet, _ := cmd.Flags().GetString("quiet")
+	noColor, _ := cmd.Flags().GetBool("no-color")
+	arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
+
+	arenaLimit, err := parseArenaLimit(arenaLimitStr)
+	if err != nil {
+		return driver.BuildOpts{}, err
+	}
+
+	opts := driver.BuildOpts{
+		Output:     output,
+		EmitC:      emitC,
+		Time:       showTime,
+		NoColor:    noColor,
+		ArenaLimit: arenaLimit,
+	}
+	if quiet == "all" {
+		opts.Quiet = true
+	} else if quiet != "" {
+		opts.QuietCodes = quiet
+	}
+	return opts, nil
+}
+
 var buildCmd = &cobra.Command{
 	Use:   "build [file.gray]",
 	Short: "Compile a Grayscale source file to a native binary",
@@ -106,32 +140,11 @@ var buildCmd = &cobra.Command{
 		if !strings.HasSuffix(args[0], ".gray") {
 			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
 		}
-		output, _ := cmd.Flags().GetString("output")
-		verbose, _ := cmd.Flags().GetBool("verbose")
-		emitC, _ := cmd.Flags().GetBool("emit-c")
-		quiet, _ := cmd.Flags().GetString("quiet")
-		showTime, _ := cmd.Flags().GetBool("time")
-		noColor, _ := cmd.Flags().GetBool("no-color")
-		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
-
-		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		opts, err := commonBuildOpts(cmd)
 		if err != nil {
 			return err
 		}
-
-		opts := driver.BuildOpts{
-			Output:     output,
-			Verbose:    verbose,
-			EmitC:      emitC,
-			Time:       showTime,
-			NoColor:    noColor,
-			ArenaLimit: arenaLimit,
-		}
-		if quiet == "all" {
-			opts.Quiet = true
-		} else if quiet != "" {
-			opts.QuietCodes = quiet
-		}
+		opts.Verbose, _ = cmd.Flags().GetBool("verbose")
 		code, err := driver.Build(args[0], opts)
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
@@ -200,9 +213,12 @@ Examples:
 Output is written to DOCS.md by default. Use -o/--output to write
 to a different path (parent directories are created as needed).`,
 	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		output, _ := cmd.Flags().GetString("output")
-		generateDocs(args, output)
+		if !generateDocs(args, output) {
+			return &ExitError{1}
+		}
+		return nil
 	},
 }
 
@@ -344,10 +360,13 @@ func reportCPUModel() string {
 }
 
 // reportCCompiler resolves the C compiler grayc will actually invoke
-// (honouring $CC, else the first of clang/gcc/cc on PATH) and returns
+// (honouring $GRAY_CC, then $CC, else the first of clang/gcc/cc on PATH) and returns
 // its resolved path, first line of --version output, and target triple.
 func reportCCompiler() (path, version, triple string) {
-	cc := os.Getenv("CC")
+	cc := os.Getenv("GRAY_CC")
+	if cc == "" {
+		cc = os.Getenv("CC")
+	}
 	if cc == "" {
 		for _, candidate := range []string{"clang", "gcc", "cc"} {
 			if p, err := exec.LookPath(candidate); err == nil {
@@ -358,7 +377,7 @@ func reportCCompiler() (path, version, triple string) {
 	}
 	if cc == "" && runtime.GOOS == "windows" {
 		// Mirror grayc's own fallback (grayc/src/util/platform.c,
-		// gray_find_cc_fallback): a toolchain in a well-known install
+		// gray_find_c_compiler_fallback): a toolchain in a well-known install
 		// location works for compiles even when it is not on PATH, and the
 		// report should describe what grayc will actually use.
 		wellKnown := []string{
@@ -444,7 +463,7 @@ func printBuiltinsIndex() {
 		{"I/O        ", []string{"println", "print", "eprintln", "eprint", "input", "flush"}},
 		{"Control    ", []string{"exit", "panic", "assert"}},
 		{"Sleep      ", []string{"sleep_s", "sleep_ms", "sleep_ns"}},
-		{"Type casts ", []string{"int", "uint", "float", "string", "char", "byte", "bool", "cast"}},
+		{"Type casts ", []string{"string", "char", "bool", "cast"}},
 		{"Width casts", []string{"i128", "u128", "i256", "u256"}},
 		{"Memory     ", []string{"new", "ref", "addr", "copy"}},
 		{"Introspect ", []string{"len", "type_of", "size_of"}},
@@ -697,12 +716,7 @@ var rootCmd = &cobra.Command{
 
 		// Prepend compiler flags (before program args)
 		var compilerArgs []string
-		quiet, _ := cmd.Flags().GetString("quiet")
-		if quiet == "all" {
-			compilerArgs = append(compilerArgs, "--quiet")
-		} else if quiet != "" {
-			compilerArgs = append(compilerArgs, "--quiet", quiet)
-		}
+		compilerArgs = append(compilerArgs, quietArgs(cmd)...)
 		if noColor, _ := cmd.Flags().GetBool("no-color"); noColor {
 			compilerArgs = append(compilerArgs, "--no-color")
 		}
@@ -808,31 +822,11 @@ var crossBuildCmd = &cobra.Command{
 			return &ExitError{1}
 		}
 
-		output, _ := cmd.Flags().GetString("output")
-		emitC, _ := cmd.Flags().GetBool("emit-c")
-		showTime, _ := cmd.Flags().GetBool("time")
-		quiet, _ := cmd.Flags().GetString("quiet")
-		noColor, _ := cmd.Flags().GetBool("no-color")
-		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
-
-		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		opts, err := commonBuildOpts(cmd)
 		if err != nil {
 			return err
 		}
-
-		opts := driver.BuildOpts{
-			Output:     output,
-			EmitC:      emitC,
-			Time:       showTime,
-			NoColor:    noColor,
-			ArenaLimit: arenaLimit,
-			CC:         fmt.Sprintf("%s cc -target %s", zigPath, zigTriple),
-		}
-		if quiet == "all" {
-			opts.Quiet = true
-		} else if quiet != "" {
-			opts.QuietCodes = quiet
-		}
+		opts.CC = fmt.Sprintf("%s cc -target %s", zigPath, zigTriple)
 
 		code, err := driver.Build(args[0], opts)
 		if err != nil {

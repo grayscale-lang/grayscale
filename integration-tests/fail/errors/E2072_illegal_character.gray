@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = 5 & 3  // Single & is illegal, should be &&
+    mut x i64 = 5 & 3  // Single & is illegal, should be &&
 }

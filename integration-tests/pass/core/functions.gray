@@ -5,26 +5,26 @@
 import @arrays
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const GameState struct {
-    score int
-    lives int
-    level int
+    score i64
+    lives i64
+    level i64
 }
 
 do main() {
     println("=== Functions Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== BASIC FUNCTIONS ====================
     println("  -- Basic Functions --")
 
     // Test 1: function with params and return
-    mut sum int = add(5, 3)
+    mut sum i64 = add(5, 3)
     if sum == 8 {
         println("  [PASS] add(5, 3) = 8")
         passed += 1
@@ -44,8 +44,8 @@ do main() {
     }
 
     // Test 3: function with array param
-    mut numbers [int] = {1, 2, 3, 4, 5}
-    mut total int = sum_array(numbers)
+    mut numbers [i64] = {1, 2, 3, 4, 5}
+    mut total i64 = sum_array(numbers)
     if total == 15 {
         println("  [PASS] sum_array({1,2,3,4,5}) = 15")
         passed += 1
@@ -55,7 +55,7 @@ do main() {
     }
 
     // Test 4: recursive function
-    mut fact int = factorial(5)
+    mut fact i64 = factorial(5)
     if fact == 120 {
         println("  [PASS] factorial(5) = 120")
         passed += 1
@@ -65,7 +65,7 @@ do main() {
     }
 
     // Test 5: function returning array
-    mut doubled [int] = double_array({1, 2, 3})
+    mut doubled [i64] = double_array({1, 2, 3})
     if len(doubled) == 3 && doubled[0] == 2 && doubled[1] == 4 && doubled[2] == 6 {
         println("  [PASS] double_array({1,2,3}) = {2,4,6}")
         passed += 1
@@ -77,11 +77,11 @@ do main() {
     // ==================== MUTABLE PARAMETERS ====================
     println("  -- Mutable Parameters (&) --")
 
-    // Test 6: basic mutable int
-    mut counter int = 0
+    // Test 6: basic mutable i64
+    mut counter i64 = 0
     increment(counter)
     if counter == 1 {
-        println("  [PASS] increment(&n int)")
+        println("  [PASS] increment(&n i64)")
         passed += 1
     } otherwise {
         println("  [FAIL] increment: expected 1, got ${counter}")
@@ -100,22 +100,22 @@ do main() {
     }
 
     // Test 8: swap values
-    mut x int = 10
-    mut y int = 20
+    mut x i64 = 10
+    mut y i64 = 20
     swap_values(x, y)
     if x == 20 && y == 10 {
-        println("  [PASS] swap_values(&a, &b int)")
+        println("  [PASS] swap_values(&a, &b i64)")
         passed += 1
     } otherwise {
         println("  [FAIL] swap: x=${x}, y=${y}")
         failed += 1
     }
 
-    // Test 9: mutable float
-    mut f float = 0.0
+    // Test 9: mutable f64
+    mut f f64 = 0.0
     set_to_pi(f)
     if f > 3.14 && f < 3.15 {
-        println("  [PASS] set_to_pi(&f float)")
+        println("  [PASS] set_to_pi(&f f64)")
         passed += 1
     } otherwise {
         println("  [FAIL] set_to_pi: got ${f}")
@@ -156,10 +156,10 @@ do main() {
     }
 
     // Test 13: mutable array
-    mut nums [int] = {1, 2, 3, 4, 5}
+    mut nums [i64] = {1, 2, 3, 4, 5}
     double_array_in_place(nums)
     if nums[0] == 2 && nums[2] == 6 && nums[4] == 10 {
-        println("  [PASS] double_array_in_place(&arr [int])")
+        println("  [PASS] double_array_in_place(&arr [i64])")
         passed += 1
     } otherwise {
         println("  [FAIL] double_array_in_place: ${nums}")
@@ -167,7 +167,7 @@ do main() {
     }
 
     // Test 14: mixed mutable and immutable params
-    mut result int = 0
+    mut result i64 = 0
     add_to_result(result, 15)
     add_to_result(result, 25)
     if result == 40 {
@@ -179,8 +179,8 @@ do main() {
     }
 
     // Test 15: multiple output pattern (quotient and remainder)
-    mut q int = 0
-    mut r int = 0
+    mut q i64 = 0
+    mut r i64 = 0
     divide_with_remainder(q, r, 17, 5)
     if q == 3 && r == 2 {
         println("  [PASS] divide_with_remainder: 17/5 = 3 r 2")
@@ -224,49 +224,49 @@ do main() {
 }
 
 // Helper functions
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
-do make_point(x int, y int) -> Point {
+do make_point(x i64, y i64) -> Point {
     mut p Point = Point{x: x, y: y}
     return p
 }
 
-do sum_array(nums [int]) -> int {
-    mut total int = 0
+do sum_array(nums [i64]) -> i64 {
+    mut total i64 = 0
     for_each n in nums {
         total += n
     }
     return total
 }
 
-do factorial(n int) -> int {
+do factorial(n i64) -> i64 {
     if n <= 1 {
         return 1
     }
     return n * factorial(n - 1)
 }
 
-do double_array(nums [int]) -> [int] {
-    mut result [int] = {}
+do double_array(nums [i64]) -> [i64] {
+    mut result [i64] = {}
     for_each n in nums {
         arrays.append(result, n * 2)
     }
     return result
 }
 
-do increment(&n int) {
+do increment(&n i64) {
     n = n + 1
 }
 
-do swap_values(&a, &b int) {
-    mut t int = a
+do swap_values(&a, &b i64) {
+    mut t i64 = a
     a = b
     b = t
 }
 
-do set_to_pi(&f float) {
+do set_to_pi(&f f64) {
     f = 3.14159
 }
 
@@ -283,22 +283,22 @@ do double_point(&p Point) {
     p.y = p.y * 2
 }
 
-do double_array_in_place(&arr [int]) {
+do double_array_in_place(&arr [i64]) {
     for i in range(0, len(arr)) {
         arr[i] = arr[i] * 2
     }
 }
 
-do add_to_result(&result int, value int) {
+do add_to_result(&result i64, value i64) {
     result = result + value
 }
 
-do divide_with_remainder(&quotient, &remainder int, a, b int) {
+do divide_with_remainder(&quotient, &remainder i64, a, b i64) {
     quotient = a / b
     remainder = a % b
 }
 
-do add_score(&state GameState, points int) {
+do add_score(&state GameState, points i64) {
     state.score = state.score + points
     if state.score >= state.level * 100 {
         state.level = state.level + 1

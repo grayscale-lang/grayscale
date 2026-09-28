@@ -1,0 +1,9 @@
+// expect-error: E3177
+// A C length modifier would make C read the value at a different width.
+
+import @fmt
+
+do main() {
+    mut n i64 = 70000
+    fmt.printfln("%hd", {n})
+}

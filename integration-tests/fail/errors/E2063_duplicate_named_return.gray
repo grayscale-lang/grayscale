@@ -3,7 +3,7 @@
  * Expected: "duplicate named return value 'result'" error
  */
 
-do compute(x int) -> (result int, result int) {
+do compute(x i64) -> (result i64, result i64) {
     return x, x * 2
 }
 

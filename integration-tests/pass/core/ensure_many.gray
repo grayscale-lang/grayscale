@@ -7,7 +7,7 @@
  * single function and verifies all 40 fire.
  */
 
-mut counter int = 0
+mut counter i64 = 0
 
 do bump() {
     counter += 1
@@ -58,8 +58,8 @@ do many_ensures() {
 
 do main() {
     println("=== Many Ensure Statements Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     counter = 0
     many_ensures()

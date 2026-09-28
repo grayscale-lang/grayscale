@@ -6,14 +6,14 @@
  */
 
 do foo() {
-    mut x int = 1
+    mut x i64 = 1
     mut r = ref(x)
 }
 
 do bar() {
-    mut r int = 2
-    mut passed int = 0
-    mut failed int = 0
+    mut r i64 = 2
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if r == 2 {
         println("  [PASS] plain variable 'r' in bar() not affected by ref in foo()")

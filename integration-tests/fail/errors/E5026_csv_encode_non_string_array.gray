@@ -10,6 +10,6 @@
 import @csv
 
 do main() {
-    mut data [[int]] = {{1, 2}, {3, 4}}
+    mut data [[i64]] = {{1, 2}, {3, 4}}
     println(csv.encode(data))
 }

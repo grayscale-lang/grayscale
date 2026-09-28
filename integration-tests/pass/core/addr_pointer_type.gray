@@ -5,23 +5,23 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     println("=== addr() Pointer Type ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: addr() of int assigned to ^int pointer
-    mut val int = 42
-    mut ptr ^int = addr(val)
+    // Test 1: addr() of i64 assigned to ^i64 pointer
+    mut val i64 = 42
+    mut ptr ^i64 = addr(val)
     if ptr^ == 42 {
-        println("  [PASS] addr(int) to ^int pointer")
+        println("  [PASS] addr(i64) to ^i64 pointer")
         passed += 1
     } otherwise {
-        println("  [FAIL] addr(int) to ^int pointer")
+        println("  [FAIL] addr(i64) to ^i64 pointer")
         failed += 1
     }
 

@@ -1,0 +1,108 @@
+/*
+ * uint_precision.gray - u64 carries the full UINT64_MAX range end-to-end.
+ *
+ * Prior to the fix, u64 mapped to uint64_t in storage but every surrounding
+ * path (parser overflow detection, print routing, to_string) went through
+ * the signed i64 helpers, so values above INT64_MAX came out wrong
+ * (e.g. 18446744073709551615 printed as -1).
+ */
+
+do main() {
+    println("=== u64 precision ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // 1. Decimal max: previously printed -1 via %lld cast
+    mut a u64 = 18446744073709551615
+    mut sa string = "${a}"
+    if sa == "18446744073709551615" {
+        println("  [PASS] u64 max decimal println interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 max decimal interp: got '${sa}'")
+        failed += 1
+    }
+
+    // 2. u64 max same as u64
+    mut b u64 = 18446744073709551615
+    if b == 18446744073709551615 {
+        println("  [PASS] u64 max decimal equality")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 max decimal equality")
+        failed += 1
+    }
+
+    // 3. Hex top-bit literal (previously parser never flagged overflow
+    //    for hex/oct/bin, so value silently truncated to a signed range)
+    mut c u64 = 0xFFFFFFFFFFFFFFFF
+    mut sc string = "${c}"
+    if sc == "18446744073709551615" {
+        println("  [PASS] u64 hex 0xFFFF...FFFF")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 hex 0xFFFF...FFFF: got '${sc}'")
+        failed += 1
+    }
+
+    // 4. Binary top-bit literal
+    mut d u64 = 0b1111111111111111111111111111111111111111111111111111111111111111
+    if d == 18446744073709551615 {
+        println("  [PASS] u64 binary top bits")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 binary top bits")
+        failed += 1
+    }
+
+    // 5. Octal at the top of the range
+    mut e u64 = 0o1777777777777777777777
+    if e == 18446744073709551615 {
+        println("  [PASS] u64 octal top of range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 octal top of range")
+        failed += 1
+    }
+
+    // 6. Above-INT64_MAX value: previously treated as overflow against
+    //    INT64_MAX and rejected. Now valid for u64.
+    mut f u64 = 9223372036854775808
+    mut sf string = "${f}"
+    if sf == "9223372036854775808" {
+        println("  [PASS] u64 value above INT64_MAX interpolates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 value above INT64_MAX: got '${sf}'")
+        failed += 1
+    }
+
+    // 7. print (no newline) uses %llu path
+    mut g u64 = 12345678901234567890
+    mut sg string = "${g}"
+    if sg == "12345678901234567890" {
+        println("  [PASS] large u64 interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] large u64 interpolation: got '${sg}'")
+        failed += 1
+    }
+
+    // 8. Array literal of u64 at full range (per-element overflow gating)
+    mut arr [u64] = {18446744073709551615, 0xDEADBEEFCAFEBABE, 9223372036854775808}
+    mut ok0 bool = arr[0] == 18446744073709551615
+    mut ok1 bool = arr[1] == 0xDEADBEEFCAFEBABE
+    mut ok2 bool = arr[2] == 9223372036854775808
+    if ok0 && ok1 && ok2 {
+        println("  [PASS] u64 array elements at full range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 array elements at full range")
+        failed += 1
+    }
+
+    println("=== ${passed} passed, ${failed} failed ===")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -6,7 +6,7 @@
 
 import @strings
 
-do check(label string, got string, want string, &passed int, &failed int) {
+do check(label string, got string, want string, &passed i64, &failed i64) {
     if got == want {
         println("  [PASS] ${label}")
         passed += 1
@@ -18,8 +18,8 @@ do check(label string, got string, want string, &passed int, &failed int) {
 
 do main() {
     println("=== Strings Case Expansion Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- to_kebab_case --
     check("to_kebab_case camelCase", strings.to_kebab_case("helloWorld"), "hello-world", passed, failed)

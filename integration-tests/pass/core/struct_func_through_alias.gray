@@ -1,11 +1,11 @@
 const Point struct {
-    x int
+    x i64
 
-    do get_x(p Point) -> int {
+    do get_x(p Point) -> i64 {
         return p.x
     }
 
-    do make(v int) -> Point {
+    do make(v i64) -> Point {
         return Point{x: v}
     }
 }
@@ -14,11 +14,11 @@ alias Vec2 = Point
 alias Coord = Vec2
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut p Vec2 = Vec2{x: 7}
-    mut a int = Vec2.get_x(p)
+    mut a i64 = Vec2.get_x(p)
     if a == 7 {
         println("  [PASS] static call through struct alias")
         passed += 1
@@ -36,7 +36,7 @@ do main() {
         failed += 1
     }
 
-    mut c int = Coord.get_x(p)
+    mut c i64 = Coord.get_x(p)
     if c == 7 {
         println("  [PASS] static call through chained alias")
         passed += 1
@@ -45,7 +45,7 @@ do main() {
         failed += 1
     }
 
-    mut d int = Point.get_x(p)
+    mut d i64 = Point.get_x(p)
     if d == 7 {
         println("  [PASS] static call through the struct's own name")
         passed += 1
@@ -54,7 +54,7 @@ do main() {
         failed += 1
     }
 
-    mut e int = p.get_x()
+    mut e i64 = p.get_x()
     if e == 7 {
         println("  [PASS] instance dispatch on alias-typed variable")
         passed += 1

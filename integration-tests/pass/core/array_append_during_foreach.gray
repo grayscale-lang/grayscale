@@ -1,13 +1,13 @@
 import @arrays
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Appending during for_each is allowed: the loop length is captured up
     // front, so appended elements are not visited by the running loop.
-    mut items [int] = {1, 2, 3}
-    mut visited [int] = {}
+    mut items [i64] = {1, 2, 3}
+    mut visited [i64] = {}
     for_each item in items {
         arrays.append(visited, item)
         if item == 2 {
@@ -38,8 +38,8 @@ do main() {
 
     // Starting at the initial capacity of 4 forces a reallocation mid-loop;
     // the elements already visited must survive the move.
-    mut grow [int] = {10, 20, 30, 40}
-    mut seen [int] = {}
+    mut grow [i64] = {10, 20, 30, 40}
+    mut seen [i64] = {}
     for_each g in grow {
         arrays.append(seen, g)
         arrays.append(grow, g * 10)
@@ -52,7 +52,7 @@ do main() {
         failed = failed + 1
     }
 
-    expected_seen [int] = {10, 20, 30, 40}
+    expected_seen [i64] = {10, 20, 30, 40}
     for_each i, s in seen {
         if s == expected_seen[i] {
             passed = passed + 1
@@ -69,7 +69,7 @@ do main() {
         failed = failed + 1
     }
 
-    expected_grow [int] = {10, 20, 30, 40, 100, 200, 300, 400}
+    expected_grow [i64] = {10, 20, 30, 40, 100, 200, 300, 400}
     for_each i, g in grow {
         if g == expected_grow[i] {
             passed = passed + 1

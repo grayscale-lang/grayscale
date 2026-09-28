@@ -1,0 +1,63 @@
+/*
+ * fixed_array_zero_slot_element_zero_value.gray - every zero-filled slot of a
+ * [T,N] holds the element type's zero value: an empty usable map, the first
+ * variant of a string-backed enum, a struct's field defaults, && a full
+ * length inner fixed-size array.
+ */
+
+const Status enum {
+    TODO = "todo"
+    DONE = "done"
+}
+
+const Pt struct {
+    x i64 = 5
+}
+
+const Inner struct {
+    buf [i64, 3]
+}
+
+const Holder struct {
+    st  [Status, 2]
+    pts [Pt, 2]
+    ins [Inner, 2]
+    mps [map[string:i64], 2]
+}
+
+const Partial struct {
+    st  [Status, 3] = {Status.DONE}
+    pts [Pt, 3] = {Pt{x: 1}}
+}
+
+do check(label string, ok bool) {
+    if ok {
+        println("  [PASS] ${label}")
+    } else {
+        println("  [FAIL] ${label}")
+    }
+}
+
+do main() {
+    mut h Holder = Holder{}
+    check("string enum slot", h.st[1] == Status.TODO)
+    check("struct default slot", h.pts[1].x == 5)
+    check("inner fixed array length", len(h.ins[1].buf) == 3)
+    h.ins[1].buf[2] = 7
+    check("inner fixed array write", h.ins[1].buf[2] == 7)
+    h.mps[1]["k"] = 42
+    check("map slot write", h.mps[1]["k"] == 42)
+
+    mut p Partial = Partial{}
+    check("partial field default enum", p.st[0] == Status.DONE && p.st[2] == Status.TODO)
+    check("partial field default struct", p.pts[0].x == 1 && p.pts[2].x == 5)
+
+    const local [Status, 3] = {Status.DONE}
+    check("partial local literal", local[0] == Status.DONE && local[2] == Status.TODO)
+
+    mut partial_field Holder = Holder{st: {Status.DONE}}
+    check("partial field literal", partial_field.st[0] == Status.DONE && partial_field.st[1] == Status.TODO)
+
+    mut heap ^Holder = new(Holder)
+    check("new struct slot", heap^.st[1] == Status.TODO && heap^.pts[1].x == 5)
+}

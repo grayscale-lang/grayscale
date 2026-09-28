@@ -5,11 +5,11 @@ const Request struct {
 }
 
 const Response struct {
-    status int
+    status i64
     body string
 }
 
-do get_status_text(code int) -> string {
+do get_status_text(code i64) -> string {
     if code == 200 {
         return "OK"
     }
@@ -33,7 +33,7 @@ do handle_not_found(req Request) -> Response {
     return resp
 }
 
-do start_server(port int) {
+do start_server(port i64) {
     println("Server starting on port ${port}...")
     println("Ready to handle requests!")
 }

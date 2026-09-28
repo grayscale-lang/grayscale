@@ -7,20 +7,20 @@
  */
 
 const Math struct {
-    _pad int
+    _pad i64
 
-    fn add(a int, b int) -> int {
+    fn add(a i64, b i64) -> i64 {
         return a + b
     }
 }
 
-fn double(n int) -> int {
+fn double(n i64) -> i64 {
     return n * 2
 }
 
 fn main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if double(21) == 42 {
         passed += 1

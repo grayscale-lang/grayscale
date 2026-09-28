@@ -6,8 +6,8 @@ import @strings
 
 do main() {
     println("=== Stress: @strings Edge Cases ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Empty string operations
     if strings.to_upper("") == "" && strings.to_lower("") == "" {
@@ -57,14 +57,14 @@ do main() {
     } otherwise { println("  [FAIL] starts/ends") failed += 1 }
 
     // index_of
-    mut idx int = strings.index_of("hello world", "world")
+    mut idx i64 = strings.index_of("hello world", "world")
     if idx == 6 {
         println("  [PASS] index_of found")
         passed += 1
     } otherwise { println("  [FAIL] index_of — got ${idx}") failed += 1 }
 
     // index_of not found
-    mut idx2 int = strings.index_of("hello", "xyz")
+    mut idx2 i64 = strings.index_of("hello", "xyz")
     if idx2 == -1 {
         println("  [PASS] index_of not found returns -1")
         passed += 1

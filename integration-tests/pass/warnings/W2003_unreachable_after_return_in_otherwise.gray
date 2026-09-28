@@ -4,7 +4,7 @@
  */
 
 
-do classify(x int) -> string {
+do classify(x i64) -> string {
     if x > 0 {
         return "positive"
     } otherwise {

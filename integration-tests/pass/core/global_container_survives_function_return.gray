@@ -5,22 +5,22 @@ const P struct {
     name string
 }
 
-mut registry map[string:int] = {:}
+mut registry map[string:i64] = {:}
 mut names [string] = {}
 mut labels [string] = {"", ""}
-mut by_id map[int:string] = {:}
+mut by_id map[i64:string] = {:}
 mut people [P] = {}
 mut renamed [P] = {P{name: ""}, P{name: ""}}
-mut groups map[int:[int]] = {:}
+mut groups map[i64:[i64]] = {:}
 mut title string = ""
 
 do register(name string) { registry[name] = 1 }
 do add_name(s string) { arrays.append(names, s + "!") }
-do set_label(i int, s string) { labels[i] = s + "!" }
-do set_by_id(k int, s string) { by_id[k] = s + "!" }
+do set_label(i i64, s string) { labels[i] = s + "!" }
+do set_by_id(k i64, s string) { by_id[k] = s + "!" }
 do add_person(s string) { arrays.append(people, P{name: s + "!"}) }
-do rename(i int, s string) { renamed[i].name = s + "!" }
-do set_group(k int, n int) { groups[k] = {n, n, n} }
+do rename(i i64, s string) { renamed[i].name = s + "!" }
+do set_group(k i64, n i64) { groups[k] = {n, n, n} }
 do set_title(s string) { title = s + "!" }
 
 do main() {

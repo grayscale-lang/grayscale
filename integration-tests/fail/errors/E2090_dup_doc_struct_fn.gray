@@ -3,11 +3,11 @@
 // Duplicate #doc on a struct function.
 
 const Calc struct {
-    _pad int
+    _pad i64
 
     #doc("Multiplies")
     #doc("Two numbers")
-    do mul(a int, b int) -> int {
+    do mul(a i64, b i64) -> i64 {
         return a * b
     }
 }

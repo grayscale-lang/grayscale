@@ -7,8 +7,8 @@ import @os
 
 do main() {
     println("=== Platform enum test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut cur Platform = os.current_os()
 
@@ -26,7 +26,7 @@ do main() {
         println("  [FAIL] module and bare Platform spelling disagree")
     }
 
-    mut n int = 0
+    mut n i64 = 0
     when cur {
         is .MAC_OS  { n = 1 }
         is .LINUX   { n = 2 }

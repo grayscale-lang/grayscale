@@ -1,9 +1,9 @@
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: for x in range() works
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(1, 4) {
         sum += i
     }
@@ -16,8 +16,8 @@ do main() {
     }
 
     // Test 2: for_each over array works
-    const arr [int, 3] = {10, 20, 30}
-    mut total int = 0
+    const arr [i64, 3] = {10, 20, 30}
+    mut total i64 = 0
     for_each x in arr {
         total += x
     }
@@ -30,7 +30,7 @@ do main() {
     }
 
     // Test 3: for_each over string works
-    mut count int = 0
+    mut count i64 = 0
     for_each ch in "abc" {
         count += 1
     }

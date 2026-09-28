@@ -7,12 +7,12 @@
  */
 
 const Box struct {
-    v int
+    v i64
 }
 
 const Pair struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 /* auto-deref assign via pointer param — was E3005 before the fix */
@@ -21,12 +21,12 @@ do bump(b ^Box) {
 }
 
 /* compound assign via pointer param */
-do add_to(b ^Box, n int) {
+do add_to(b ^Box, n i64) {
     b.v += n
 }
 
 /* multiple fields via pointer param */
-do set_pair(p ^Pair, x int, y int) {
+do set_pair(p ^Pair, x i64, y i64) {
     p.x = x
     p.y = y
 }
@@ -37,8 +37,8 @@ do bump_explicit(b ^Box) {
 }
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     /* basic auto-deref field write */
     mut b1 Box = Box{v: 10}

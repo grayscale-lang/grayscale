@@ -6,30 +6,30 @@
 // expect-error-count: 7
 
 const Inner struct {
-    b byte
+    b u8
 }
 const Outer struct {
     i Inner
 }
 const S struct {
-    b byte
+    b u8
 }
 
-do ret_bad() -> byte {
+do ret_bad() -> u8 {
     return 300
 }
 
-do with_default(b byte = 300) {
+do with_default(b u8 = 300) {
     println("${b}")
 }
 
 do main() {
     mut s S = S{ b: 300 }
     mut o Outer = Outer{ i: Inner{ b: 300 } }
-    mut m map[string:byte] = {"a": 300}
-    mut xs [byte] = {1, 2}
+    mut m map[string:u8] = {"a": 300}
+    mut xs [u8] = {1, 2}
     xs[0] = 300
-    mut mm map[string:byte] = {:}
+    mut mm map[string:u8] = {:}
     mm["k"] = 300
     println("${ret_bad()}")
 }

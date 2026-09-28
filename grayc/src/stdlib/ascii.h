@@ -20,29 +20,29 @@
 #include <stdbool.h>
 
 /* Takes and returns an unsigned byte value (0-255). */
-static inline unsigned char gray_ascii_upper(unsigned char c) {
-    return (c >= 'a' && c <= 'z') ? (unsigned char)(c - 32) : c;
+static inline unsigned char gray_ascii_upper(unsigned char character) {
+    return (character >= 'a' && character <= 'z') ? (unsigned char)(character - 32) : character;
 }
 
-static inline unsigned char gray_ascii_lower(unsigned char c) {
-    return (c >= 'A' && c <= 'Z') ? (unsigned char)(c + 32) : c;
+static inline unsigned char gray_ascii_lower(unsigned char character) {
+    return (character >= 'A' && character <= 'Z') ? (unsigned char)(character + 32) : character;
 }
 
 /* isspace() in the C locale: space plus the contiguous run \t \n \v \f \r. */
-static inline bool gray_ascii_is_space(unsigned char c) {
-    return c == ' ' || (c >= '\t' && c <= '\r');
+static inline bool gray_ascii_is_space(unsigned char character) {
+    return character == ' ' || (character >= '\t' && character <= '\r');
 }
 
-static inline bool gray_ascii_is_upper(unsigned char c) { return c >= 'A' && c <= 'Z'; }
-static inline bool gray_ascii_is_lower(unsigned char c) { return c >= 'a' && c <= 'z'; }
-static inline bool gray_ascii_is_digit(unsigned char c) { return c >= '0' && c <= '9'; }
+static inline bool gray_ascii_is_upper(unsigned char character) { return character >= 'A' && character <= 'Z'; }
+static inline bool gray_ascii_is_lower(unsigned char character) { return character >= 'a' && character <= 'z'; }
+static inline bool gray_ascii_is_digit(unsigned char character) { return character >= '0' && character <= '9'; }
 
-static inline bool gray_ascii_is_alpha(unsigned char c) {
-    return gray_ascii_is_upper(c) || gray_ascii_is_lower(c);
+static inline bool gray_ascii_is_alpha(unsigned char character) {
+    return gray_ascii_is_upper(character) || gray_ascii_is_lower(character);
 }
 
-static inline bool gray_ascii_is_alnum(unsigned char c) {
-    return gray_ascii_is_alpha(c) || gray_ascii_is_digit(c);
+static inline bool gray_ascii_is_alnum(unsigned char character) {
+    return gray_ascii_is_alpha(character) || gray_ascii_is_digit(character);
 }
 
 #endif /* GRAY_ASCII_H */

@@ -9,8 +9,8 @@
 
 import @arrays
 
-do double(n int) -> int { return n * 2 }
-do triple(n int) -> int { return n * 3 }
+do double(n i64) -> i64 { return n * 2 }
+do triple(n i64) -> i64 { return n * 3 }
 
 const Dispatch struct {
     table [func]
@@ -19,8 +19,8 @@ const Dispatch struct {
 
 do main() {
     println("=== func-ref container struct fields ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut d Dispatch = Dispatch{}
 

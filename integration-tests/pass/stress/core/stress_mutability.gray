@@ -6,18 +6,18 @@ import @arrays
 
 const Item struct {
     name string
-    count int
+    count i64
 }
 
-do get_value() -> int { return 99 }
+do get_value() -> i64 { return 99 }
 
 do main() {
     println("=== Stress: Mutability ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // mut variables: assign, reassign
-    mut x int = 1
+    mut x i64 = 1
     x = 2
     x = 3
     if x == 3 {
@@ -29,7 +29,7 @@ do main() {
     }
 
     // mut array: modify contents
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     arr[0] = 99
     arrays.append(arr, 4)
     if arr[0] == 99 && len(arr) == 4 {
@@ -64,7 +64,7 @@ do main() {
     }
 
     // const cannot be reassigned (tested via fail tests elsewhere)
-    const pi float = 3.14
+    const pi f64 = 3.14
     if pi == 3.14 {
         println("  [PASS] const holds value")
         passed += 1

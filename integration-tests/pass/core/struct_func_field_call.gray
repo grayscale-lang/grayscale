@@ -1,17 +1,17 @@
-do double(n int) -> int { return n * 2 }
-do triple(n int) -> int { return n * 3 }
+do double(n i64) -> i64 { return n * 2 }
+do triple(n i64) -> i64 { return n * 3 }
 
 const Wrapper struct {
-    f func(int) -> int
+    f func(i64) -> i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut w = new(Wrapper)
     w.f = ()double
-    mut r int = w.f(5)
+    mut r i64 = w.f(5)
     if r == 10 {
         println("  [PASS] new() struct func field call")
         passed += 1
@@ -21,7 +21,7 @@ do main() {
     }
 
     const w2 = Wrapper{f: ()triple}
-    mut r2 int = w2.f(5)
+    mut r2 i64 = w2.f(5)
     if r2 == 15 {
         println("  [PASS] struct literal func field call")
         passed += 1

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3002 - division by -0.0 literal
+ *
+ * the fix explicitly handles -0.0 via
+ * NODE_PREFIX_EXPR over NODE_FLOAT_VALUE so the negation doesn't
+ * hide the literal zero from the check.
+ */
+
+do main() {
+    mut x f64 = 3.14 / -0.0
+}

@@ -1,5 +1,5 @@
-do double(n int) -> int { return n * 2 }
-do get_fn() -> func(int) -> int { return ()double }
+do double(n i64) -> i64 { return n * 2 }
+do get_fn() -> func(i64) -> i64 { return ()double }
 do main() {
     println(get_fn()(5))
 }

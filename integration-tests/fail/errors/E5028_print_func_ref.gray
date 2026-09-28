@@ -3,7 +3,7 @@
  * Expected: compile-time error rejecting func ref as print argument
  */
 
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 
 do main() {
     const f = ()double

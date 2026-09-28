@@ -1,22 +1,22 @@
 import @arrays
 
-do add_two(a int, b int) -> int {
+do add_two(a i64, b i64) -> i64 {
     return a + b
 }
 
-do apply(f func(int, int) -> int, a int, b int) -> int {
+do apply(f func(i64, i64) -> i64, a i64, b i64) -> i64 {
     return f(a, b)
 }
 
-do total(nums [int]) -> int {
+do total(nums [i64]) -> i64 {
     return arrays.reduce(nums, 0, ()add_two)
 }
 
-do via_param(a int, b int) -> int {
+do via_param(a i64, b i64) -> i64 {
     return apply(()add_two, a, b)
 }
 
-do via_ref(a int, b int) -> int {
+do via_ref(a i64, b i64) -> i64 {
     const g = ref(add_two)
     return g(a, b)
 }

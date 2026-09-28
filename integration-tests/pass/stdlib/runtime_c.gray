@@ -6,16 +6,16 @@
 
 import @runtime
 
-do inner_depth() -> int {
+do inner_depth() -> i64 {
     return runtime.call_depth()
 }
 
 do main() {
     assert(runtime.version() != "", "version is non-empty")
 
-    mut a int = runtime.arena_usage()
-    mut h int = runtime.heap_usage()
-    mut t int = runtime.total_usage()
+    mut a i64 = runtime.arena_usage()
+    mut h i64 = runtime.heap_usage()
+    mut t i64 = runtime.total_usage()
     assert(a >= 0, "arena_usage is non-negative")
     assert(h >= 0, "heap_usage is non-negative")
     assert(t == a + h, "total_usage is the sum of arena_usage and heap_usage")
@@ -27,11 +27,11 @@ do main() {
      * A loop body runs against a fresh per-iteration arena that is destroyed
      * each pass, which used to reset the reported total to zero on loop entry
      * and discard everything the body allocated. */
-    mut before int = runtime.alloc_count()
-    mut prev int = before
+    mut before i64 = runtime.alloc_count()
+    mut prev i64 = before
     mut monotonic bool = true
     for i in range(0, 20) {
-        mut inside int = runtime.alloc_count()
+        mut inside i64 = runtime.alloc_count()
         if inside < prev { monotonic = false }
         prev = inside
     }
@@ -40,8 +40,8 @@ do main() {
     assert(runtime.alloc_count() >= prev, "alloc_count after a loop is at least the in-loop total")
 
     /* Allocations made in a loop body must reach the total. */
-    mut b2 int = runtime.alloc_count()
-    mut sink int = 0
+    mut b2 i64 = runtime.alloc_count()
+    mut sink i64 = 0
     for i in range(0, 30) {
         mut s string = "value ${i}"
         sink += len(s)
@@ -52,7 +52,7 @@ do main() {
     assert(runtime.heap_blocks() >= 1, "heap_blocks has at least the initial block")
     assert(runtime.arena_limit() > 0, "arena_limit is positive")
 
-    mut outer_depth int = runtime.call_depth()
+    mut outer_depth i64 = runtime.call_depth()
     assert(outer_depth >= 1, "call_depth is at least 1 inside main()")
     assert(inner_depth() > outer_depth, "call_depth increases inside a nested call")
     assert(runtime.call_limit() == 10000, "call_limit matches the documented recursion cap")

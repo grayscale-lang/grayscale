@@ -1,22 +1,22 @@
 
 const Circle struct {
-    radius float
+    radius f64
 }
 
 const Rect struct {
-    width int
-    height int
+    width i64
+    height i64
 }
 
-do make_circle(r float) -> shapes.Circle {
+do make_circle(r f64) -> shapes.Circle {
     return Circle{radius: r}
 }
 
-do make_rect(w int, h int) -> shapes.Rect {
+do make_rect(w i64, h i64) -> shapes.Rect {
     return Rect{width: w, height: h}
 }
 
-do area(r Rect) -> int {
+do area(r Rect) -> i64 {
     return r.width * r.height
 }
 
@@ -25,4 +25,4 @@ const Shade enum {
     DARK
 }
 
-alias Extent = int
+alias Extent = i64

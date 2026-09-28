@@ -1,8 +1,0 @@
-/*
- * Error Test: E3001 - mixed-type-array-int-string
- * Expected: "array elements must all be the same type"
- */
-
-do main() {
-    mut arr [int] = {1, 2, "three"}
-}

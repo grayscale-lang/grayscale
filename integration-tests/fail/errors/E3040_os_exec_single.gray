@@ -6,6 +6,6 @@
 import @os
 
 do main() {
-    mut code int = os.exec("echo", {"hi"})
+    mut code i64 = os.exec("echo", {"hi"})
     println(code)
 }

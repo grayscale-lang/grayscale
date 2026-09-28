@@ -9,8 +9,8 @@
 
 do main() {
     println("=== for_each bigint bindings ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- array of wide ints: arithmetic on the element --
     mut arr [i128] = {i128(1000000000000000000000), i128(2)}
@@ -26,7 +26,7 @@ do main() {
         failed += 1
     }
 
-    // -- map wide-int value --
+    // -- map wide-integer value --
     mut mv map[string:i128] = {:}
     mv["a"] = i128(170141183460469231731687303715884105727)
     mut val_ok bool = false
@@ -44,8 +44,8 @@ do main() {
         failed += 1
     }
 
-    // -- map wide-int key --
-    mut mk map[u128:int] = {:}
+    // -- map wide-integer key --
+    mut mk map[u128:i64] = {:}
     mk[u128(9223372036854775808)] = 7
     mut key_ok bool = false
     for_each k, v in mk {
@@ -79,7 +79,7 @@ do main() {
     }
 
     // -- binding does not leak past the loop --
-    mut after int = 5
+    mut after i64 = 5
     for_each x in arr {
         mut ignore i128 = x
     }

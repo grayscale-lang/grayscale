@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3048 - i64 + string produces exactly one error
+ *
+ * '+' with one string and one non-string operand is rejected. The
+ * infix result collapses to TK_UNKNOWN so the var_decl type check
+ * doesn't re-report the same mistake as an assignment mismatch.
+ *
+ * expect-error: E3048
+ * expect-error-count: 1
+ */
+
+do main() {
+    mut x i64 = 1 + "s"
+}

@@ -3,7 +3,7 @@
  *
  * when a wildcard-typed parameter was used inside
  * "${x}", codegen defaulted to TK_INT and emitted (long long)(x), causing
- * C compiler errors for non-integer types like string, float, bool.
+ * C compiler errors for non-integer types like string, f64, bool.
  */
 
 do show_int(x ?) -> string {
@@ -28,26 +28,26 @@ do describe(x ?) -> string {
 
 do main() {
     println("=== Wildcard Interpolation Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: int wildcard in interpolation
+    // Test 1: i64 wildcard in interpolation
     mut r1 string = show_int(42)
     if r1 == "value=42" {
-        println("  [PASS] wildcard int interpolation")
+        println("  [PASS] wildcard i64 interpolation")
         passed += 1
     } otherwise {
-        println("  [FAIL] wildcard int: got '${r1}'")
+        println("  [FAIL] wildcard i64: got '${r1}'")
         failed += 1
     }
 
-    // Test 2: float wildcard in interpolation
+    // Test 2: f64 wildcard in interpolation
     mut r2 string = show_float(3.14)
     if r2 == "value=3.140000" || r2 == "value=3.14" {
-        println("  [PASS] wildcard float interpolation")
+        println("  [PASS] wildcard f64 interpolation")
         passed += 1
     } otherwise {
-        println("  [FAIL] wildcard float: got '${r2}'")
+        println("  [FAIL] wildcard f64: got '${r2}'")
         failed += 1
     }
 
@@ -71,7 +71,7 @@ do main() {
         failed += 1
     }
 
-    // Test 5: same generic fn reused with int then string
+    // Test 5: same generic fn reused with i64 then string
     mut r5a string = describe(99)
     mut r5b string = describe("abc")
     if r5a == "item=99" && r5b == "item=abc" {

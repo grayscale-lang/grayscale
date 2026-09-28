@@ -1,0 +1,37 @@
+/*
+ * module_mut_narrow_int_literal.gray - a module-level mut of a narrow
+ * integer type with a literal initializer compiles and holds the literal.
+ */
+
+mut small i8 = 127
+mut count i32 = 0
+mut byte u8 = 255
+mut wide u16 = 65535
+mut big u32 = 4294967295
+mut low i16 = -32768
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if small == 127 && count == 0 && byte == 255 && wide == 65535 && big == 4294967295 && low == -32768 {
+        passed++
+    } otherwise {
+        println("FAIL: initial values")
+        failed++
+    }
+
+    count += 1
+    byte -= 1
+    if count == 1 && byte == 254 {
+        passed++
+    } otherwise {
+        println("FAIL: updated values")
+        failed++
+    }
+
+    println("module_mut_narrow_int_literal: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

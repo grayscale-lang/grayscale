@@ -10,18 +10,18 @@
  */
 
 const Node struct {
-    id int
+    id i64
     edges [Edge]
 }
 
 const Edge struct {
-    weight int
+    weight i64
     source Node
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut n = new(Node)
     n^.id = 7

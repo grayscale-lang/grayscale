@@ -42,9 +42,9 @@ const Wide enum {
 do main() {
     // B31 must be 2^31 = 2147483648, not -2147483648
     mut f Wide = Wide.B31
-    if cast(f, int) == 2147483648 {
+    if cast(f, i64) == 2147483648 {
         println("[PASS] flags enum B31 == 2^31")
     } otherwise {
-        println("[FAIL] flags enum B31: got ${cast(f, int)}")
+        println("[FAIL] flags enum B31: got ${cast(f, i64)}")
     }
 }

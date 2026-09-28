@@ -1,0 +1,6 @@
+import @atomic
+
+do main() {
+    mut u u64 = 1
+    println(atomic.add(addr(u), 1))
+}

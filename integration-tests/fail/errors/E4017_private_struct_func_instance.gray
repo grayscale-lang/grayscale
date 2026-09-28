@@ -4,15 +4,15 @@
  */
 
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    private do secret(v Vec) -> int {
+    private do secret(v Vec) -> i64 {
         return v.x + v.y
     }
 }
 
 do main() {
     mut a Vec = Vec{x: 3, y: 4}
-    mut r int = a.secret()
+    mut r i64 = a.secret()
 }

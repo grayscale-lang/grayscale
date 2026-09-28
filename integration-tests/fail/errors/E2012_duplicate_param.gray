@@ -3,7 +3,7 @@
  * Expected: "duplicate parameter name"
  */
 
-do foo(x int, x string) {  // Duplicate param name
+do foo(x i64, x string) {  // Duplicate param name
     println("test")
 }
 

@@ -7,19 +7,19 @@
 
 do main() {
     println("=== for_each Index Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: index + value on int array
-    mut arr [int] = {10, 20, 30}
-    mut idx_sum int = 0
-    mut val_sum int = 0
+    // Test 1: index + value on i64 array
+    mut arr [i64] = {10, 20, 30}
+    mut idx_sum i64 = 0
+    mut val_sum i64 = 0
     for_each i, val in arr {
         idx_sum += i
         val_sum += val
     }
     if idx_sum == 3 && val_sum == 60 {
-        println("  [PASS] for_each i, val in [int]")
+        println("  [PASS] for_each i, val in [i64]")
         passed += 1
     } otherwise {
         println("  [FAIL] idx_sum=${idx_sum}, val_sum=${val_sum}")
@@ -27,7 +27,7 @@ do main() {
     }
 
     // Test 2: discard index with _
-    mut total int = 0
+    mut total i64 = 0
     for_each _, val in arr {
         total += val
     }
@@ -41,7 +41,7 @@ do main() {
 
     // Test 3: index on string array
     mut names [string] = {"alice", "bob", "charlie"}
-    mut last_idx int = 0
+    mut last_idx i64 = 0
     mut last_name string = ""
     for_each i, name in names {
         last_idx = i
@@ -56,7 +56,7 @@ do main() {
     }
 
     // Test 4: index starts at 0
-    mut first_idx int = -1
+    mut first_idx i64 = -1
     for_each i, val in arr {
         if first_idx == -1 {
             first_idx = i
@@ -71,9 +71,9 @@ do main() {
     }
 
     // Test 5: nested for_each with index
-    mut matrix [[int]] = {{1, 2}, {3, 4}}
-    mut outer_count int = 0
-    mut inner_total int = 0
+    mut matrix [[i64]] = {{1, 2}, {3, 4}}
+    mut outer_count i64 = 0
+    mut inner_total i64 = 0
     for_each i, row in matrix {
         outer_count += 1
         for_each j, val in row {

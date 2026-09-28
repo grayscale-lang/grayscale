@@ -5,10 +5,10 @@
 // expect-error: E3040
 // expect-error-count: 1
 
-do get_key() -> (string, int) {
+do get_key() -> (string, i64) {
     return "a", 1
 }
 
 do main() {
-    mut m map[string:int] = { get_key(): 1 }
+    mut m map[string:i64] = { get_key(): 1 }
 }

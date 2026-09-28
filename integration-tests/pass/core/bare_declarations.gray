@@ -2,25 +2,25 @@
  * bare_declarations.gray - Test mutable-by-default variable declarations
  */
 
-do pair() -> (int, int) {
+do pair() -> (i64, i64) {
     return 10, 20
 }
 
 do main() {
     println("=== Bare Declarations Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== TYPED BARE ====================
     println("  -- Typed Bare --")
 
-    // Test 1: bare typed int
-    x int = 5
+    // Test 1: bare typed i64
+    x i64 = 5
     if x == 5 {
-        println("  [PASS] x int = 5")
+        println("  [PASS] x i64 = 5")
         passed += 1
     } otherwise {
-        println("  [FAIL] x int = 5: got ${x}")
+        println("  [FAIL] x i64 = 5: got ${x}")
         failed += 1
     }
 
@@ -34,13 +34,13 @@ do main() {
         failed += 1
     }
 
-    // Test 3: bare typed float
-    pi float = 3.14
+    // Test 3: bare typed f64
+    pi f64 = 3.14
     if pi == 3.14 {
-        println("  [PASS] pi float = 3.14")
+        println("  [PASS] pi f64 = 3.14")
         passed += 1
     } otherwise {
-        println("  [FAIL] pi float = 3.14: got ${pi}")
+        println("  [FAIL] pi f64 = 3.14: got ${pi}")
         failed += 1
     }
 
@@ -67,7 +67,7 @@ do main() {
     // ==================== INFERRED BARE ====================
     println("  -- Inferred Bare --")
 
-    // Test 6: inferred int
+    // Test 6: inferred i64
     count = 42
     if count == 42 {
         println("  [PASS] count = 42")
@@ -142,12 +142,12 @@ do main() {
 
     // Test 12: bare in if block
     if true {
-        inner int = 100
+        inner i64 = 100
         if inner == 100 {
-            println("  [PASS] inner int = 100 in if block")
+            println("  [PASS] inner i64 = 100 in if block")
             passed += 1
         } otherwise {
-            println("  [FAIL] inner int = 100 in if block: got ${inner}")
+            println("  [FAIL] inner i64 = 100 in if block: got ${inner}")
             failed += 1
         }
     }
@@ -156,12 +156,12 @@ do main() {
     println("  -- Mut Regression --")
 
     // Test 13: explicit mut still works
-    mut old_style int = 77
+    mut old_style i64 = 77
     if old_style == 77 {
-        println("  [PASS] mut old_style int = 77")
+        println("  [PASS] mut old_style i64 = 77")
         passed += 1
     } otherwise {
-        println("  [FAIL] mut old_style int = 77: got ${old_style}")
+        println("  [FAIL] mut old_style i64 = 77: got ${old_style}")
         failed += 1
     }
 

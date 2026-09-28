@@ -5,11 +5,11 @@
 
 do main() {
     println("=== Loop Statement Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Basic loop with break
-    mut count int = 0
+    mut count i64 = 0
     loop {
         if count == 5 {
             break
@@ -25,8 +25,8 @@ do main() {
     }
 
     // Test 2: Loop with continue and break
-    mut sum int = 0
-    mut i int = 0
+    mut sum i64 = 0
+    mut i i64 = 0
     loop {
         i++
         if i > 10 {
@@ -61,13 +61,13 @@ do main() {
     }
 
     // Test 4: Nested loops with break
-    mut outer_count int = 0
-    mut inner_total int = 0
+    mut outer_count i64 = 0
+    mut inner_total i64 = 0
     loop {
         if outer_count == 3 {
             break
         }
-        mut inner_count int = 0
+        mut inner_count i64 = 0
         loop {
             if inner_count == 2 {
                 break

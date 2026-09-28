@@ -52,7 +52,8 @@ var testCmd = &cobra.Command{
 Examples:
   gray test                Run tests in every .gray file under the current directory
   gray test file.gray      Run tests in a single file
-  gray test ./src          Run tests in every .gray file under ./src
+  gray test ./src          Run tests in the .gray files directly inside ./src
+  gray test ./src/...      Run tests in every .gray file under ./src (recursive)
 
 A failed assert (or any panic) inside a #test is reported as a test failure;
 the runner continues with the remaining tests. Exit status is non-zero if any
@@ -65,12 +66,12 @@ func runTest(cmd *cobra.Command, args []string) error {
 	noColor, _ := cmd.Flags().GetBool("no-color")
 	c := newTestColors(noColor)
 
-	files, err := collectTestFiles(args)
-	if err != nil {
-		return fmt.Errorf("error: %v", err)
-	}
+	files, argsOK := collectTestFiles(args)
 	if len(files) == 0 {
 		fmt.Println("No #test functions found.")
+		if !argsOK {
+			return &ExitError{1}
+		}
 		return nil
 	}
 
@@ -143,6 +144,9 @@ func runTest(cmd *cobra.Command, args []string) error {
 	// Files that passed the prescan but hold no real #test functions.
 	if len(noTestFiles) > 0 && totalPass+totalFail == 0 && !buildFailed {
 		fmt.Println("No #test functions found.")
+		if !argsOK {
+			return &ExitError{1}
+		}
 		return nil
 	}
 	for _, file := range noTestFiles {
@@ -154,62 +158,26 @@ func runTest(cmd *cobra.Command, args []string) error {
 		failWord(c, totalFail),
 		totalPass+totalFail)
 
-	if totalFail > 0 || buildFailed {
+	if totalFail > 0 || buildFailed || !argsOK {
 		return &ExitError{1}
 	}
 	return nil
 }
 
-// collectTestFiles resolves the path arguments to a de-duplicated list of
-// .gray files that contain a #test attribute. No args means "recursively from
-// the current directory".
-func collectTestFiles(args []string) ([]string, error) {
+// collectTestFiles resolves the path arguments (see expandGraySourceArgs) to
+// the .gray files that contain a #test attribute. No args means "recursively
+// from the current directory". ok is false when an argument could not be used.
+func collectTestFiles(args []string) (files []string, ok bool) {
 	if len(args) == 0 {
-		args = []string{"."}
+		args = []string{"./..."}
 	}
-	seen := map[string]bool{}
-	var files []string
-	add := func(path string) {
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			abs = path
+	sources, ok := expandGraySourceArgs("test", args)
+	for _, path := range sources {
+		if fileHasTest(path) {
+			files = append(files, path)
 		}
-		if seen[abs] {
-			return
-		}
-		if !fileHasTest(path) {
-			return
-		}
-		seen[abs] = true
-		files = append(files, path)
 	}
-
-	for _, arg := range args {
-		info, err := os.Stat(arg)
-		if err != nil {
-			return nil, err
-		}
-		if info.IsDir() {
-			err := filepath.WalkDir(arg, func(p string, d os.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !d.IsDir() && strings.HasSuffix(p, ".gray") {
-					add(p)
-				}
-				return nil
-			})
-			if err != nil {
-				return nil, err
-			}
-			continue
-		}
-		if !strings.HasSuffix(arg, ".gray") {
-			return nil, fmt.Errorf("'%s' is not a .gray file", arg)
-		}
-		add(arg)
-	}
-	return files, nil
+	return files, ok
 }
 
 func fileHasTest(path string) bool {

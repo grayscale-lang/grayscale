@@ -1,0 +1,12 @@
+// Error Test: E4016 - a removed type name passed as a stdlib type argument
+// points to the sized type that replaces it.
+// expect-error: E4016
+// expect-error-count: 1
+// expect-contains: use 'i64', or declare 'alias int = i64'
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p = mem.init(a, int)
+}

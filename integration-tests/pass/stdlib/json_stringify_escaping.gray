@@ -10,19 +10,19 @@ import @strings
 #json
 const Basic struct {
     name string
-    age int
+    age i64
     active bool
 }
 
 #json
 const WithSpecialChars struct {
     text string
-    value int
+    value i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic stringify contains name
     mut b Basic = Basic{name: "Alice", age: 30, active: true}
@@ -35,7 +35,7 @@ do main() {
         failed += 1
     }
 
-    // Test 2: int field in output
+    // Test 2: i64 field in output
     if strings.contains(s, "30") {
         println("  [PASS] stringify contains age")
         passed += 1

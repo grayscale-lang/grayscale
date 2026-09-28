@@ -8,22 +8,22 @@ do greet(name string = "World") -> string {
     return "Hello, ${name}!"
 }
 
-do add(a int, b int = 10, c int = 100) -> int {
+do add(a i64, b i64 = 10, c i64 = 100) -> i64 {
     return a + b + c
 }
 
-do modify_int(&n int) {
+do modify_int(&n i64) {
     n = n * 2
 }
 
-do modify_arr(&arr [int]) {
+do modify_arr(&arr [i64]) {
     arrays.append(arr, 99)
 }
 
 do main() {
     println("=== Stress: Default & Mutable Params ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Single default
     if greet() == "Hello, World!" && greet("Alice") == "Hello, Alice!" {
@@ -37,16 +37,16 @@ do main() {
         passed += 1
     } otherwise { println("  [FAIL] multiple defaults") failed += 1 }
 
-    // Mutable int param
-    mut x int = 5
+    // Mutable i64 param
+    mut x i64 = 5
     modify_int(x)
     if x == 10 {
-        println("  [PASS] mutable int param (&n)")
+        println("  [PASS] mutable i64 param (&n)")
         passed += 1
-    } otherwise { println("  [FAIL] mutable int — got ${x}") failed += 1 }
+    } otherwise { println("  [FAIL] mutable i64 — got ${x}") failed += 1 }
 
     // Mutable array param
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     modify_arr(arr)
     if len(arr) == 4 && arr[3] == 99 {
         println("  [PASS] mutable array param (&arr)")

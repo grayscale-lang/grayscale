@@ -9,13 +9,13 @@
  */
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
 do main() {
     mut b Box = Box{p: nil}
     if true {
-        mut inner int = 9
+        mut inner i64 = 9
         b.p = addr(inner)
     }
     println(b.p^)

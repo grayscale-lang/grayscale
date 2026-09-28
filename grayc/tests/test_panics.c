@@ -172,7 +172,7 @@ static void test_panic_P0041(void) { ASSERT_PANICS("P0041", trigger_P0041); }
  * ===========================================================================*/
 
 static void trigger_P0044(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 4);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 4, GRAY_ELEM_I64);
     int64_t v = 1;
     GRAY_ARRAY_PUSH(arena, &a, &v);
     gray_arrays_remove_at(&a, 5);
@@ -183,7 +183,7 @@ static void test_panic_P0044(void) { ASSERT_PANICS("P0044", trigger_P0044); }
  * its own; it must report whatever generated code last stamped into
  * gray_panic_call_file/line (the enclosing statement's location). */
 static void trigger_stdlib_panic_location(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_panic_call_file = "caller_probe.gray";
     gray_panic_call_line = 42;
     gray_arrays_first_ptr(&a); /* P0045, raised via gray_panic_code() */
@@ -193,26 +193,26 @@ static void test_stdlib_panic_location(void) {
 }
 
 static void trigger_P0045(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_arrays_first_ptr(&a);
 }
 static void test_panic_P0045(void) { ASSERT_PANICS("P0045", trigger_P0045); }
 
 static void trigger_P0046(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     gray_arrays_last_ptr(&a);
 }
 static void test_panic_P0046(void) { ASSERT_PANICS("P0046", trigger_P0046); }
 
 static void trigger_P0047(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t out;
     gray_arrays_remove_first_raw(&a, &out);
 }
 static void test_panic_P0047(void) { ASSERT_PANICS("P0047", trigger_P0047); }
 
 static void trigger_P0048(void) {
-    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t out;
     gray_arrays_remove_last_raw(&a, &out);
 }
@@ -247,44 +247,34 @@ static void test_panic_P0067(void) { ASSERT_PANICS("P0067", trigger_P0067); }
  * ===========================================================================*/
 
 static void trigger_P0054(void) {
-    gray_strconv_to_int(gray_string_lit("42"), 0);
+    gray_strconv_to_i64(gray_string_lit("42"), 0);
 }
 static void test_panic_P0054(void) { ASSERT_PANICS("P0054", trigger_P0054); }
 
 static void trigger_P0055(void) {
-    gray_strconv_to_int(gray_string_lit("abc"), 10);
+    gray_strconv_to_i64(gray_string_lit("abc"), 10);
 }
 static void test_panic_P0055(void) { ASSERT_PANICS("P0055", trigger_P0055); }
 
 static void trigger_P0056(void) {
-    gray_strconv_to_uint(gray_string_lit("42"), 0);
+    gray_strconv_to_u64(gray_string_lit("42"), 0);
 }
 static void test_panic_P0056(void) { ASSERT_PANICS("P0056", trigger_P0056); }
 
 static void trigger_P0057(void) {
-    gray_strconv_to_uint(gray_string_lit("abc"), 10);
+    gray_strconv_to_u64(gray_string_lit("abc"), 10);
 }
 static void test_panic_P0057(void) { ASSERT_PANICS("P0057", trigger_P0057); }
 
 static void trigger_P0058(void) {
-    gray_strconv_to_uint(gray_string_lit("-5"), 10);
+    gray_strconv_to_u64(gray_string_lit("-5"), 10);
 }
 static void test_panic_P0058(void) { ASSERT_PANICS("P0058", trigger_P0058); }
 
 static void trigger_P0059(void) {
-    gray_strconv_to_float(gray_string_lit("xyz"));
+    gray_strconv_to_f64(gray_string_lit("xyz"));
 }
 static void test_panic_P0059(void) { ASSERT_PANICS("P0059", trigger_P0059); }
-
-static void trigger_P0060(void) {
-    gray_strconv_to_bool(gray_string_lit("xyz"));
-}
-static void test_panic_P0060(void) { ASSERT_PANICS("P0060", trigger_P0060); }
-
-static void trigger_P0112(void) {
-    gray_strconv_unquote(arena, gray_string_lit("not quoted"));
-}
-static void test_panic_P0112(void) { ASSERT_PANICS("P0112", trigger_P0112); }
 
 /* ===========================================================================
  * Random
@@ -330,28 +320,18 @@ static void test_panic_P0116(void) { ASSERT_PANICS("P0116", trigger_P0116); }
  * ===========================================================================*/
 
 static void trigger_P0084(void) {
-    gray_builtin_string_to_int(gray_string_lit("abc"));
+    gray_builtin_string_to_i64(gray_string_lit("abc"));
 }
 static void test_panic_P0084(void) { ASSERT_PANICS("P0084", trigger_P0084); }
 
 static void trigger_P0085(void) {
-    gray_builtin_string_to_float(gray_string_lit("xyz"));
+    gray_builtin_string_to_f64(gray_string_lit("xyz"));
 }
 static void test_panic_P0085(void) { ASSERT_PANICS("P0085", trigger_P0085); }
 
 /* ===========================================================================
  * IO
  * ===========================================================================*/
-
-static void trigger_P0086(void) {
-    gray_io_read_file(arena, gray_string_lit("."));
-}
-static void test_panic_P0086(void) { ASSERT_PANICS("P0086", trigger_P0086); }
-
-static void trigger_P0087(void) {
-    gray_io_write_file(gray_string_lit("."), gray_string_lit("x"));
-}
-static void test_panic_P0087(void) { ASSERT_PANICS("P0087", trigger_P0087); }
 
 static void trigger_P0088(void) {
     gray_io_append_file(gray_string_lit("."), gray_string_lit("x"));
@@ -368,7 +348,7 @@ static void trigger_P0103(void) {
      * claiming len=5 makes strlen(data) (2) disagree with path.len (5),
      * which is exactly the embedded-null-byte case validate_path rejects. */
     GrayString bad_path = { "ab\0cd", 5 };
-    gray_io_write_file(bad_path, gray_string_lit("x"));
+    gray_io_append_file(bad_path, gray_string_lit("x"));
 }
 static void test_panic_P0103(void) { ASSERT_PANICS("P0103", trigger_P0103); }
 
@@ -378,7 +358,7 @@ static void test_panic_P0103(void) { ASSERT_PANICS("P0103", trigger_P0103); }
 
 static void trigger_P0104(void) {
     GrayArena *a = gray_arena_create(64);
-    a->max_bytes = 64;
+    a->maximum_bytes = 64;
     gray_arena_alloc(a, 10000);
 }
 static void test_panic_P0104(void) { ASSERT_PANICS("P0104", trigger_P0104); }
@@ -386,19 +366,10 @@ static void test_panic_P0104(void) { ASSERT_PANICS("P0104", trigger_P0104); }
 static void trigger_P0117(void) {
     GrayArena *a = gray_arena_create(64);
     int64_t x = 5;
-    a->destroyed = true;
+    a->is_destroyed = true;
     gray_mem_check_live(a, &x, __FILE__, __LINE__);
 }
 static void test_panic_P0117(void) { ASSERT_PANICS("P0117", trigger_P0117); }
-
-/* ===========================================================================
- * Time
- * ===========================================================================*/
-
-static void trigger_P0105(void) {
-    gray_time_parse(gray_string_lit("not-a-date"), gray_string_lit("2006-01-02"));
-}
-static void test_panic_P0105(void) { ASSERT_PANICS("P0105", trigger_P0105); }
 
 /* ===========================================================================
  * Bigint casts
@@ -531,8 +502,6 @@ int main(void) {
     RUN_TEST(test_panic_P0057);
     RUN_TEST(test_panic_P0058);
     RUN_TEST(test_panic_P0059);
-    RUN_TEST(test_panic_P0060);
-    RUN_TEST(test_panic_P0112);
 
     printf("--- Random ---\n");
     RUN_TEST(test_panic_P0063);
@@ -547,8 +516,6 @@ int main(void) {
     RUN_TEST(test_panic_P0085);
 
     printf("--- IO ---\n");
-    RUN_TEST(test_panic_P0086);
-    RUN_TEST(test_panic_P0087);
     RUN_TEST(test_panic_P0088);
     RUN_TEST(test_panic_P0089);
     RUN_TEST(test_panic_P0103);
@@ -557,8 +524,6 @@ int main(void) {
     RUN_TEST(test_panic_P0104);
     RUN_TEST(test_panic_P0117);
 
-    printf("--- Time ---\n");
-    RUN_TEST(test_panic_P0105);
 
     printf("--- Bigint Casts ---\n");
     RUN_TEST(test_panic_P0093);

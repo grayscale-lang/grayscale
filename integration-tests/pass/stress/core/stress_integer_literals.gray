@@ -6,13 +6,13 @@
 
 do main() {
     println("=== Stress: Integer Literals ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Decimal basics
-    mut zero int = 0
-    mut one int = 1
-    mut neg int = -42
+    mut zero i64 = 0
+    mut one i64 = 1
+    mut neg i64 = -42
     if zero == 0 && one == 1 && neg == -42 {
         println("  [PASS] decimal basics")
         passed += 1
@@ -22,7 +22,7 @@ do main() {
     }
 
     // Max i64
-    mut max64 int = 9223372036854775807
+    mut max64 i64 = 9223372036854775807
     if max64 == 9223372036854775807 {
         println("  [PASS] max i64 value")
         passed += 1
@@ -32,8 +32,8 @@ do main() {
     }
 
     // Underscored decimals
-    mut million int = 1_000_000
-    mut trillion int = 1_000_000_000_000
+    mut million i64 = 1_000_000
+    mut trillion i64 = 1_000_000_000_000
     if million == 1000000 && trillion == 1000000000000 {
         println("  [PASS] underscored decimals")
         passed += 1
@@ -43,10 +43,10 @@ do main() {
     }
 
     // Hex literals
-    mut h0 int = 0x0
-    mut hFF int = 0xFF
-    mut hDEAD int = 0xDEAD_BEEF
-    mut hCAP int = 0XFF
+    mut h0 i64 = 0x0
+    mut hFF i64 = 0xFF
+    mut hDEAD i64 = 0xDEAD_BEEF
+    mut hCAP i64 = 0XFF
     if h0 == 0 && hFF == 255 && hDEAD == 3735928559 && hCAP == 255 {
         println("  [PASS] hex literals")
         passed += 1
@@ -56,10 +56,10 @@ do main() {
     }
 
     // Octal literals
-    mut o0 int = 0o0
-    mut o777 int = 0o777
-    mut oCap int = 0O777
-    mut oSep int = 0o1_2_3
+    mut o0 i64 = 0o0
+    mut o777 i64 = 0o777
+    mut oCap i64 = 0O777
+    mut oSep i64 = 0o1_2_3
     if o0 == 0 && o777 == 511 && oCap == 511 && oSep == 83 {
         println("  [PASS] octal literals")
         passed += 1
@@ -69,9 +69,9 @@ do main() {
     }
 
     // Binary literals
-    mut b0 int = 0b0
-    mut b10 int = 0b1010
-    mut bSep int = 0b1111_0000
+    mut b0 i64 = 0b0
+    mut b10 i64 = 0b1010
+    mut bSep i64 = 0b1111_0000
     if b0 == 0 && b10 == 10 && bSep == 240 {
         println("  [PASS] binary literals")
         passed += 1

@@ -4,7 +4,7 @@ import @json
 #json
 const P struct {
     name string
-    n int
+    n i64
 }
 
 do main() {

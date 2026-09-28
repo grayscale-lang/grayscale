@@ -4,8 +4,8 @@
  */
 
 do main() {
-    mut m1 map[string:int] = {"a": 1}
-    mut m2 map[string:int] = {"a": 1}
+    mut m1 map[string:i64] = {"a": 1}
+    mut m2 map[string:i64] = {"a": 1}
     if m1 == m2 {
         println("equal")
     }

@@ -6,7 +6,7 @@
  */
 
 const Foo struct {
-    x int
+    x i64
 }
 
 do main() -> Foo {

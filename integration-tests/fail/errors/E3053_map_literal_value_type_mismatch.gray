@@ -1,12 +1,12 @@
 /*
  * Error Test: E3053 - map literal value type mismatch at var_decl
  *
- * `mut m map[string:int] = {"k": "wrong type"}`
+ * `mut m map[string:i64] = {"k": "wrong type"}`
  * used to silently pass the typechecker even though array literals
  * already got E3053 on element mismatch. Now checks each key/value
  * pair against the declared K and V.
  */
 
 do main() {
-    mut m map[string:int] = {"k": "wrong type"}
+    mut m map[string:i64] = {"k": "wrong type"}
 }

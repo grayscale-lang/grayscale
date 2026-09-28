@@ -9,8 +9,8 @@
 import and use @io
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut test_file string = "/tmp/gray_io_using_scope.txt"
     mut _, _ = io.write_file(test_file, "alpha\nbeta\ngamma")

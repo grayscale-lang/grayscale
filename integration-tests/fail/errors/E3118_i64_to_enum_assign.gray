@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3118 - integer assigned to enum variable
+ * Expected: cannot assign i64 to enum
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut c Color = .RED
+    c = 1
+}

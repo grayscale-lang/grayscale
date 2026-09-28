@@ -16,7 +16,7 @@ do cmp(a string, b string) -> i32 {
 
 do main() {
     const f func = ()cmp
-    mut buf ^int = extern.malloc(16)
+    mut buf ^i64 = extern.malloc(16)
     extern.qsort(buf, 2, 8, f)
     extern.free(buf)
 }

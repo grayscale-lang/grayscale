@@ -1,5 +1,0 @@
-/* Error Test: E3092 - int compared to nil */
-do main() {
-    mut x int = 5
-    if x == nil { println("nil") }
-}

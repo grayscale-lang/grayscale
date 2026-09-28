@@ -5,8 +5,8 @@
 import @net
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // DNS resolve
     mut ip, _ = net.resolve("localhost")
@@ -14,7 +14,7 @@ do main() {
 
     // TCP listen and close (port 0 = any available). Loopback bind: listening
     // on all interfaces triggers a firewall prompt on Windows and macOS.
-    mut listener, _ = net.listen("127.0.0.1", 0)
+    mut listener, _ = net.listen(0, "127.0.0.1")
     net.close(listener)
     pass += 1
 

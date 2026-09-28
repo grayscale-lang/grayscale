@@ -1,8 +1,8 @@
-mut passed int = 0
-mut failed int = 0
+mut passed i64 = 0
+mut failed i64 = 0
 
 do main() {
-    dynamicArr [int] = {1, 2, 3, 4, 5}
+    dynamicArr [i64] = {1, 2, 3, 4, 5}
 
     if len(dynamicArr) == 5 {
         passed += 1

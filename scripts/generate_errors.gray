@@ -13,9 +13,9 @@ import @io, @strings, @arrays, @time
 
 // find_char finds the first occurrence of ch in s at or after position start.
 // Returns -1 if not found.
-do find_char(s string, ch string, start int) -> int {
+do find_char(s string, ch string, start i64) -> i64 {
     mut rest string = strings.slice(s, start, len(s))
-    mut idx int = strings.index_of(rest, ch)
+    mut idx i64 = strings.index_of(rest, ch)
     if idx == -1 {
         return -1
     }
@@ -29,12 +29,12 @@ do extract_fields(line string) -> (string, string, string) {
     mut safe string = strings.replace(line, "\\\"", "DQUOTE")
 
     // Locate the six quote characters that delimit the three fields
-    mut q1 int = find_char(safe, "\"", 0)
-    mut q2 int = find_char(safe, "\"", q1 + 1)
-    mut q3 int = find_char(safe, "\"", q2 + 1)
-    mut q4 int = find_char(safe, "\"", q3 + 1)
-    mut q5 int = find_char(safe, "\"", q4 + 1)
-    mut q6 int = find_char(safe, "\"", q5 + 1)
+    mut q1 i64 = find_char(safe, "\"", 0)
+    mut q2 i64 = find_char(safe, "\"", q1 + 1)
+    mut q3 i64 = find_char(safe, "\"", q2 + 1)
+    mut q4 i64 = find_char(safe, "\"", q3 + 1)
+    mut q5 i64 = find_char(safe, "\"", q4 + 1)
+    mut q6 i64 = find_char(safe, "\"", q5 + 1)
 
     mut code string = strings.slice(safe, q1 + 1, q2)
     mut category string = strings.slice(safe, q3 + 1, q4)
@@ -51,9 +51,9 @@ do main() {
     if err != nil {
         println("Error: grayc/src/util/error_codes.h not found")
     } otherwise {
-        mut error_count int = 0
-        mut warning_count int = 0
-        mut panic_count int = 0
+        mut error_count i64 = 0
+        mut warning_count i64 = 0
+        mut panic_count i64 = 0
         mut error_rows [string] = {}
         mut warning_rows [string] = {}
         mut panic_rows [string] = {}
@@ -76,7 +76,7 @@ do main() {
             }
         }
 
-        mut total int = error_count + warning_count + panic_count
+        mut total i64 = error_count + warning_count + panic_count
 
         // Build output lines
         mut out [string] = {}
@@ -151,7 +151,7 @@ do main() {
         arrays.append(out, "| P0xxx | Runtime panics (overflow, out-of-bounds, nil dereference) |")
 
         // Footer with timestamp
-        mut now int = time.now()
+        mut now i64 = time.now()
         mut timestamp string = time.format("%Y-%m-%d %H:%M:%S", now)
         arrays.append(out, "")
         arrays.append(out, "---")

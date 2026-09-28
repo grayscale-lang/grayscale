@@ -12,8 +12,8 @@ import "./geometry.gray"
 
 do main() {
     println("=== Cross-Module Struct Functions Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: module.Struct.function() — the triple chain
     mut v1 = geometry.Vec2.create(3.0, 4.0)

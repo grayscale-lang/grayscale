@@ -1,14 +1,14 @@
 /*
- * Error Test: E10006 - stack overflow on recursive return
+ * Error Test: P0003 - stack overflow on recursive return
  * Expected: "stack overflow" or "maximum recursion"
  */
 
 
-do recurse(n int) -> int {
+do recurse(n i64) -> i64 {
     return recurse(n + 1)
 }
 
 do main() {
-    mut x int = recurse(0)
+    mut x i64 = recurse(0)
     println(x)
 }

@@ -5,14 +5,14 @@
 // expect-error: E5026
 // expect-error-count: 4
 const A struct {
-    x int
+    x i64
     do sf(self A, other A) { }
     do sp(self A, other ^A) { }
     do st(other A) { }
 }
 
 const B struct {
-    x int
+    x i64
 }
 
 do main() {

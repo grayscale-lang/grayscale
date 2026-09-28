@@ -1,5 +1,5 @@
 /*
- * Error Test: E5006 - integer-overflow (u256 subtraction)
+ * Error Test: P0031 - integer-overflow (u256 subtraction)
  * Expected: "integer overflow"
  * Tests that u256 underflows (goes negative)
  */

@@ -3,13 +3,13 @@
  *
  * used to fall through the strings dispatch's
  * catchall else and silently invent a string return type, which
- * cascaded into a misleading E3001 "cannot assign string to int"
+ * cascaded into a misleading E3001 "cannot assign string to i64"
  * at the use site. Now emits E4005 at the offending member access.
  */
 
 import @strings
 
 do main() {
-    mut x int = strings.totally_fake_function("abc")
+    mut x i64 = strings.totally_fake_function("abc")
     println(x)
 }

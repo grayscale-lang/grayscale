@@ -1,0 +1,9 @@
+/*
+ * Error Test: E2072 - '&' used as unary address-of on i64
+ * Expected: E2072 error directing user to use addr()
+ */
+
+do main() {
+    mut x i64 = 42
+    mut p ^i64 = &x
+}

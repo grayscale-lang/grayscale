@@ -1,0 +1,8 @@
+// expect-error: E3178
+// A precision has no meaning for %c.
+
+import @fmt
+
+do main() {
+    fmt.printfln("[%.2c]", {'a'})
+}

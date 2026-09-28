@@ -1,6 +1,6 @@
 /* Error Test: E3090 - '!' used on an array type */
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     mut r bool = !arr
     println(r)
 }

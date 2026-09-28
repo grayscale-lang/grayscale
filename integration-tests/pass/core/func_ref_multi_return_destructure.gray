@@ -7,31 +7,31 @@
  * stayed unset. Every access past the first (.v1, .v2, ...) then read back
  * as "the function returns only 1 value" regardless of the callback's real
  * arity, and any correctly-typechecked slot still lost its real type (a
- * string return coming back formatted as an int). Covers a two-slot and a
+ * string return coming back formatted as an i64). Covers a two-slot and a
  * three-slot callback return, both with a string in a non-zero slot.
  */
 
-do split_str(n int) -> (int, string) {
+do split_str(n i64) -> (i64, string) {
     return n, "tag"
 }
 
-do call_2(n int, f func(int) -> (int, string)) -> string {
+do call_2(n i64, f func(i64) -> (i64, string)) -> string {
     mut a, b = f(n)
     return "${a}-${b}"
 }
 
-do split_3(n int) -> (int, string, bool) {
+do split_3(n i64) -> (i64, string, bool) {
     return n, "tag", n > 0
 }
 
-do call_3(n int, f func(int) -> (int, string, bool)) -> string {
+do call_3(n i64, f func(i64) -> (i64, string, bool)) -> string {
     mut a, b, c = f(n)
     return "${a}-${b}-${c}"
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if call_2(7, ()split_str) == "7-tag" {
         println("  [PASS] two-slot callback destructure keeps string type")

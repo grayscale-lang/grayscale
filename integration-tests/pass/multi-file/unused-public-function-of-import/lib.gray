@@ -1,11 +1,11 @@
-private do helper() -> int {
+private do helper() -> i64 {
     return 4
 }
 
-do used() -> int {
+do used() -> i64 {
     return helper()
 }
 
-do unused_api() -> int {
+do unused_api() -> i64 {
     return 2
 }

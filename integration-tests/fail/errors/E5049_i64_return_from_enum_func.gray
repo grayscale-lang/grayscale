@@ -1,0 +1,19 @@
+/*
+ * Error Test: E5049 - i64 literal returned from function with enum return type
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+const Color enum {
+    RED,
+    GREEN,
+    BLUE
+}
+
+do bad() -> Color {
+    return 42
+}
+
+do main() {
+    mut c Color = bad()
+}

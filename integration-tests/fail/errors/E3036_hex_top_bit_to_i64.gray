@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3036 - a hex literal with the top bit set does not fit i64
+ */
+
+// expect-error: E3036
+
+do main() {
+    mut x i64 = 0xFFFFFFFFFFFFFFFF  // above INT64_MAX, not allowed for i64
+}

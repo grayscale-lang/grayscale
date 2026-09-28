@@ -1,0 +1,15 @@
+// expect-error: E3110
+// expect-error-count: 1
+// An element that fails to resolve reports only its own error, with no
+// follow-on E3088 for its unknown type.
+
+import @fmt
+
+const Color enum {
+    RED
+    GREEN
+}
+
+do main() {
+    fmt.printfln("%d", {.RED})
+}

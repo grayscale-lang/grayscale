@@ -4,10 +4,10 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
-    mut val int = Point.x
+    mut val i64 = Point.x
 }

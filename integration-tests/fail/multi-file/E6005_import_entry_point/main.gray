@@ -5,7 +5,7 @@
 
 import "./lib"
 
-do shared() -> int {
+do shared() -> i64 {
     return 10
 }
 

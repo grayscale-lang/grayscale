@@ -2,6 +2,6 @@
 import @math
 
 do main() {
-    mut x float = math.acos(-2.0)
+    mut x f64 = math.acos(-2.0)
     println(x)
 }

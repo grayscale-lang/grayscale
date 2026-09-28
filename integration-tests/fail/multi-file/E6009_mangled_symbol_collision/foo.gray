@@ -2,6 +2,6 @@
  * foo.gray - 'foo' + 'bar_baz' mangles to the same name as 'foo_bar' + 'baz'
  */
 
-do bar_baz() -> int {
+do bar_baz() -> i64 {
     return 1
 }

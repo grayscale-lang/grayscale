@@ -7,7 +7,7 @@
 do main() {
     // Build a large u256 via repeated doubling
     mut big u256 = u256(1)
-    mut i int = 0
+    mut i i64 = 0
     as_long_as i < 255 {
         big = big * u256(2)
         i += 1

@@ -6,8 +6,8 @@
 
 do main() {
     println("=== Wide integers: hex/octal/binary literals ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut hex i128 = 0xFFFFFFFFFFFFFFFF
     if "${hex}" == "18446744073709551615" {

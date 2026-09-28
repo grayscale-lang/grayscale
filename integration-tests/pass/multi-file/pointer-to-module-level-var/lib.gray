@@ -1,13 +1,13 @@
-mut counter int = 0
-const LIMIT int = 5
+mut counter i64 = 0
+const LIMIT i64 = 5
 
-do bump() -> int {
-    mut p ^int = addr(counter)
+do bump() -> i64 {
+    mut p ^i64 = addr(counter)
     p^ = p^ + 1
     return counter
 }
 
-do limit() -> int {
-    mut p ^int = addr(LIMIT)
+do limit() -> i64 {
+    mut p ^i64 = addr(LIMIT)
     return p^
 }

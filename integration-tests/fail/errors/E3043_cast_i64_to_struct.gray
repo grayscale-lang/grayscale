@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3043 - cannot cast i64 to struct
+ * Expected: "cannot cast"
+ */
+
+const Foo struct {
+    value i64
+}
+
+do main() {
+    mut n i64 = 42
+    mut f Foo = cast(n, Foo)
+}

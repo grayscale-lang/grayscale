@@ -1,8 +1,8 @@
-alias Handler = func(int) -> int
+alias Handler = func(i64) -> i64
 alias Chained = Handler
 
-do double(n int) -> int { return n * 2 }
-do triple(n int) -> int { return n * 3 }
+do double(n i64) -> i64 { return n * 2 }
+do triple(n i64) -> i64 { return n * 3 }
 
 const Wrapper struct {
     f Handler
@@ -10,11 +10,11 @@ const Wrapper struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     const w = Wrapper{f: ()double, g: ()triple}
-    mut r int = w.f(5)
+    mut r i64 = w.f(5)
     if r == 10 {
         println("  [PASS] struct literal alias-typed func field call")
         passed += 1
@@ -23,7 +23,7 @@ do main() {
         failed += 1
     }
 
-    mut r2 int = w.g(5)
+    mut r2 i64 = w.g(5)
     if r2 == 15 {
         println("  [PASS] struct literal chained-alias func field call")
         passed += 1
@@ -35,7 +35,7 @@ do main() {
     mut w2 = new(Wrapper)
     w2.f = ()double
     w2.g = ()triple
-    mut r3 int = w2.f(5)
+    mut r3 i64 = w2.f(5)
     if r3 == 10 {
         println("  [PASS] new() alias-typed func field call")
         passed += 1
@@ -44,7 +44,7 @@ do main() {
         failed += 1
     }
 
-    mut r4 int = w2.g(5)
+    mut r4 i64 = w2.g(5)
     if r4 == 15 {
         println("  [PASS] new() chained-alias func field call")
         passed += 1

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2001 - an alias target that cannot start a type
+ * Expected: "unexpected token 'fn' in alias declaration; expected a type"
+ */
+
+// expect-error: E2001
+// expect-error-count: 1
+
+alias Weird = fn
+
+do main() {
+    println("ok")
+}

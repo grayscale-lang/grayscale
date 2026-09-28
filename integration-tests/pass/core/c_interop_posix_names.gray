@@ -12,8 +12,8 @@ extern import "string.h"
 
 do main() {
     println("=== C Interop POSIX Names Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut resolved string = c_string(extern.realpath(".", nil))
     if len(resolved) > 0 {

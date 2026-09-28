@@ -1,40 +1,40 @@
 /*
  * cast_array_narrow_element.gray - cast(arr, [T]) where T is narrower than
- * 8 bytes (u8, u16, i16, i32, byte). The result is stored packed, so index
+ * 8 bytes (u8, u16, i16, i32, u8). The result is stored packed, so index
  * and for_each reads must use the matching element width, not int64_t.
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut ints [int] = {1, 2, 3}
+    mut ints [i64] = {1, 2, 3}
 
-    // [int] -> [u8], indexed
+    // [i64] -> [u8], indexed
     mut bytes [u8] = cast(ints, [u8])
     if len(bytes) == 3 && bytes[0] == 1 && bytes[1] == 2 && bytes[2] == 3 {
         passed += 1
     } otherwise {
-        println("[FAIL] [int] -> [u8] indexing: ${bytes[0]} ${bytes[1]} ${bytes[2]}")
+        println("[FAIL] [i64] -> [u8] indexing: ${bytes[0]} ${bytes[1]} ${bytes[2]}")
         failed += 1
     }
 
-    // [int] -> [u8], for_each
-    mut sum int = 0
-    for_each x in bytes { sum += cast(x, int) }
+    // [i64] -> [u8], for_each
+    mut sum i64 = 0
+    for_each x in bytes { sum += cast(x, i64) }
     if sum == 6 {
         passed += 1
     } otherwise {
-        println("[FAIL] [int] -> [u8] for_each sum: ${sum}")
+        println("[FAIL] [i64] -> [u8] for_each sum: ${sum}")
         failed += 1
     }
 
-    // [int] -> [u16]
+    // [i64] -> [u16]
     mut words [u16] = cast(ints, [u16])
     if words[0] == 1 && words[2] == 3 {
         passed += 1
     } otherwise {
-        println("[FAIL] [int] -> [u16] indexing")
+        println("[FAIL] [i64] -> [u16] indexing")
         failed += 1
     }
 
@@ -48,12 +48,12 @@ do main() {
         failed += 1
     }
 
-    // [int] -> [byte]
-    mut bs [byte] = cast(ints, [byte])
+    // [i64] -> [u8]
+    mut bs [u8] = cast(ints, [u8])
     if bs[1] == 2 {
         passed += 1
     } otherwise {
-        println("[FAIL] [int] -> [byte] indexing: ${bs[1]}")
+        println("[FAIL] [i64] -> [u8] indexing: ${bs[1]}")
         failed += 1
     }
 

@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3043 - cannot cast array to i64
+ * Expected: "cannot cast"
+ */
+
+do main() {
+    mut arr [i64] = {1, 2, 3}
+    mut n i64 = cast(arr, i64)
+}

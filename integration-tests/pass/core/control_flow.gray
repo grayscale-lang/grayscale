@@ -5,14 +5,14 @@
 
 do main() {
     println("=== Control Flow Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== IF/OR/OTHERWISE ====================
     println("  -- if/or/otherwise --")
 
     // Test 1: Simple if
-    mut val int = 15
+    mut val i64 = 15
     mut result string = ""
     if val < 10 {
         result = "small"
@@ -50,7 +50,7 @@ do main() {
     println("  -- for loop --")
 
     // Test 3: for with range
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 5) {
         sum += i
     }
@@ -63,7 +63,7 @@ do main() {
     }
 
     // Test 4: for with parentheses
-    mut sum2 int = 0
+    mut sum2 i64 = 0
     for (i in range(0, 5)) {
         sum2 += i
     }
@@ -79,7 +79,7 @@ do main() {
     // Use a for loop with decrement if you need to count backwards
 
     // Test 5: for with type annotation
-    mut sum3 int = 0
+    mut sum3 i64 = 0
     for i in range(0, 3) {
         sum3 += i
     }
@@ -95,7 +95,7 @@ do main() {
     println("  -- as_long_as (while) --")
 
     // Test 7: as_long_as basic
-    mut w int = 0
+    mut w i64 = 0
     as_long_as w < 3 {
         w += 1
     }
@@ -108,7 +108,7 @@ do main() {
     }
 
     // Test 8: as_long_as with parentheses
-    mut w2 int = 0
+    mut w2 i64 = 0
     as_long_as (w2 < 3) {
         w2 += 1
     }
@@ -154,7 +154,7 @@ do main() {
     println("  -- break --")
 
     // Test 11: break in for loop
-    mut break_sum int = 0
+    mut break_sum i64 = 0
     for i in range(0, 10) {
         if i == 3 {
             break
@@ -170,7 +170,7 @@ do main() {
     }
 
     // Test 12: break in as_long_as
-    mut break_count int = 0
+    mut break_count i64 = 0
     as_long_as (break_count < 100) {
         if (break_count == 5) {
             break
@@ -189,7 +189,7 @@ do main() {
     println("  -- continue --")
 
     // Test 13: continue in for loop
-    mut cont_sum int = 0
+    mut cont_sum i64 = 0
     for i in range(0, 5) {
         if i == 2 {
             continue
@@ -205,8 +205,8 @@ do main() {
     }
 
     // Test 14: continue in for_each
-    mut nums [int] = {1, 2, 3, 4, 5}
-    mut skip_sum int = 0
+    mut nums [i64] = {1, 2, 3, 4, 5}
+    mut skip_sum i64 = 0
     for_each n in nums {
         if (n == 3) {
             continue
@@ -225,7 +225,7 @@ do main() {
     println("  -- nested loops --")
 
     // Test 15: nested for loops
-    mut nested_sum int = 0
+    mut nested_sum i64 = 0
     for (i in range(0, 3)) {
         for (j in range(0, 2)) {
             nested_sum += 1
@@ -240,7 +240,7 @@ do main() {
     }
 
     // Test 16: for with if inside
-    mut even_sum int = 0
+    mut even_sum i64 = 0
     for (i in range(0, 6)) {
         if (i % 2 == 0) {
             even_sum += i

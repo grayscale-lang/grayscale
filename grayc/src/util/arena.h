@@ -20,8 +20,8 @@ typedef struct ArenaBlock {
 } ArenaBlock;
 
 typedef struct {
-    const char *str;
-    size_t len;
+    const char *string;
+    size_t length;
 } InternEntry;
 
 typedef struct {
@@ -30,18 +30,18 @@ typedef struct {
     size_t default_block_size;
     InternEntry *intern_table;
     int intern_count;
-    int intern_cap;
+    int intern_capacity;
 } Arena;
 
 Arena *arena_create(size_t initial_size);
-void *arena_alloc(Arena *arena, size_t size);
+void *arena_allocate(Arena *arena, size_t size);
 char *arena_copy_string(Arena *arena, const char *source);
-char *arena_copy_string_with_length(Arena *arena, const char *source, size_t len);
+char *arena_copy_string_with_length(Arena *arena, const char *source, size_t length);
 
 /* Deduplicated version of arena_copy_string_with_length: returns the same
- * arena-owned pointer for every occurrence of an identical (source, len)
+ * arena-owned pointer for every occurrence of an identical (source, length)
  * span seen so far by this arena, copying only on first occurrence. */
-const char *arena_intern_string(Arena *arena, const char *source, size_t len);
+const char *arena_intern_string(Arena *arena, const char *source, size_t length);
 
 void arena_destroy(Arena *arena);
 

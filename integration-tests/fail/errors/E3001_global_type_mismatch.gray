@@ -6,7 +6,7 @@
 
 
 // Global variable with type mismatch - should trigger E3001
-const badGlobal int = "hello"
+const badGlobal i64 = "hello"
 
 do main() {
 }

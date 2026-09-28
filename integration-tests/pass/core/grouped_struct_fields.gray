@@ -2,23 +2,23 @@
  * grouped_struct_fields.gray - Comma-grouped struct field declarations
  *
  * struct fields sharing a type via comma syntax
- * (e.g. `x, y, z float`) were not registered correctly.
+ * (e.g. `x, y, z f64`) were not registered correctly.
  */
 
 const User struct {
     name, email string
-    age int
+    age i64
     active, verified bool
 }
 
 const Point3D struct {
-    x, y, z float
+    x, y, z f64
 }
 
 do main() {
     println("=== Grouped Struct Fields Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: two string fields grouped
     mut u = User{name: "Alice", email: "alice@test.com", age: 30, active: true, verified: false}
@@ -41,10 +41,10 @@ do main() {
 
     // Test 3: non-grouped field still works
     if u.age == 30 {
-        println("  [PASS] non-grouped int field: age")
+        println("  [PASS] non-grouped i64 field: age")
         passed += 1
     } otherwise {
-        println("  [FAIL] non-grouped int field: age")
+        println("  [FAIL] non-grouped i64 field: age")
         failed += 1
     }
 
@@ -57,13 +57,13 @@ do main() {
         failed += 1
     }
 
-    // Test 5: three float fields grouped
+    // Test 5: three f64 fields grouped
     mut p = Point3D{x: 1.5, y: 2.5, z: 3.5}
     if p.x == 1.5 && p.y == 2.5 && p.z == 3.5 {
-        println("  [PASS] grouped float fields: x, y, z")
+        println("  [PASS] grouped f64 fields: x, y, z")
         passed += 1
     } otherwise {
-        println("  [FAIL] grouped float fields: x, y, z")
+        println("  [FAIL] grouped f64 fields: x, y, z")
         failed += 1
     }
 

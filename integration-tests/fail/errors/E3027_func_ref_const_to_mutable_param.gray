@@ -4,12 +4,12 @@
  */
 // expect-contains: mutable parameter 'x' of 'modify'
 
-do modify(&x int) {
+do modify(&x i64) {
     x = 99
 }
 
 do main() {
-    mut fn_ref func(&int) = ()modify
-    const val int = 10
+    mut fn_ref func(&i64) = ()modify
+    const val i64 = 10
     fn_ref(val)
 }

@@ -1,9 +1,0 @@
-/*
- * Error Test: E5005 - integer-overflow (addition)
- * Expected: "integer overflow"
- */
-
-do main() {
-    mut max i64 = 9223372036854775807  // max i64
-    mut result i64 = max + 1  // Overflow
-}

@@ -1,10 +1,10 @@
 import @arrays
 
 do main() {
-    mut x int = 10
-    mut y int = 20
-    mut z int = 30
-    mut ptrs [^int] = {}
+    mut x i64 = 10
+    mut y i64 = 20
+    mut z i64 = 30
+    mut ptrs [^i64] = {}
     arrays.append(ptrs, addr(x))
     arrays.append(ptrs, addr(y))
     arrays.append(ptrs, addr(z))

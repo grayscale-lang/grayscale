@@ -6,21 +6,21 @@
  */
 
 
-do increment(&val int) {
+do increment(&val i64) {
     val += 1
 }
 
-do set_value(&val int, new_val int) {
+do set_value(&val i64, new_val i64) {
     val = new_val
 }
 
 do main() {
     println("=== Mutable Map Element Parameters ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: increment map value via mutable param
-    mut m map[string:int] = {"a": 10, "b": 20}
+    mut m map[string:i64] = {"a": 10, "b": 20}
     increment(m["a"])
     if m["a"] == 11 {
         println("  [PASS] increment map['a'] via mutable param")
@@ -60,14 +60,14 @@ do main() {
         failed += 1
     }
 
-    // Test 5: int-keyed map
-    mut m2 map[int:int] = {1: 100, 2: 200}
+    // Test 5: i64-keyed map
+    mut m2 map[i64:i64] = {1: 100, 2: 200}
     increment(m2[1])
     if m2[1] == 101 {
-        println("  [PASS] increment int-keyed map[1]")
+        println("  [PASS] increment i64-keyed map[1]")
         passed += 1
     } otherwise {
-        println("  [FAIL] int-keyed map increment")
+        println("  [FAIL] i64-keyed map increment")
         failed += 1
     }
 

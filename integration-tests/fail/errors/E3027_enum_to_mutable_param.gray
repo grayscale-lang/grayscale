@@ -9,7 +9,7 @@ const Color enum {
     BLUE
 }
 
-do modify(&val int) {
+do modify(&val i64) {
     val = 42
 }
 

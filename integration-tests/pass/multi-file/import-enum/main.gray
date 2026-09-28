@@ -1,7 +1,7 @@
 import "./colors.gray"
 
 do main() {
-    mut c int = colors.Color.RED
+    mut c i64 = colors.Color.RED
     if c == 0 {
         println("ALL TESTS PASSED")
     } otherwise {

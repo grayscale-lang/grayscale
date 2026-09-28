@@ -14,11 +14,11 @@ import @strings
 
 do main() {
     println("=== Chained Stdlib Calls ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // binary: decode(encode(...)) chains
-    mut val1 int = binary.decode_i64_le(binary.encode_i64_le(42))
+    mut val1 i64 = binary.decode_i64_le(binary.encode_i64_le(42))
     if val1 == 42 {
         println("  [PASS] binary round-trip i64")
         passed += 1
@@ -27,7 +27,7 @@ do main() {
         failed += 1
     }
 
-    mut val2 int = binary.decode_i32_le(binary.encode_i32_le(100))
+    mut val2 i64 = binary.decode_i32_le(binary.encode_i32_le(100))
     if val2 == 100 {
         println("  [PASS] binary round-trip i32")
         passed += 1
@@ -39,10 +39,10 @@ do main() {
     // encoding: to_string(from_string(...)) chain
     mut s1 string = encoding.to_string(encoding.from_string("hello"))
     if s1 == "hello" {
-        println("  [PASS] encoding byte round-trip")
+        println("  [PASS] encoding u8 round-trip")
         passed += 1
     } otherwise {
-        println("  [FAIL] encoding byte round-trip: got '${s1}'")
+        println("  [FAIL] encoding u8 round-trip: got '${s1}'")
         failed += 1
     }
 
@@ -77,7 +77,7 @@ do main() {
     }
 
     // maps: various operations
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
 
     mut keys [string] = maps.get_keys(m)
     if len(keys) == 2 {
@@ -88,7 +88,7 @@ do main() {
         failed += 1
     }
 
-    mut vals [int] = maps.get_values(m)
+    mut vals [i64] = maps.get_values(m)
     if len(vals) == 2 {
         println("  [PASS] maps get_values")
         passed += 1

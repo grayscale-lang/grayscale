@@ -4,8 +4,8 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do mutate(p ^Point) {
@@ -14,8 +14,8 @@ do mutate(p ^Point) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut p Point = Point{x: 1, y: 2}
     mutate(addr(p))

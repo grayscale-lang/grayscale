@@ -2,34 +2,34 @@
  * bitwise_operators.gray — Integration test for all six bitwise keyword operators.
  *
  * Covers: bit_and, bit_or, bit_xor, bit_not, bit_shift_left, bit_shift_right
- * Types: int, uint, byte, char
+ * Types: i64, u64, u8, char
  * Also tests: operator precedence, chaining, flag manipulation pattern.
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- bit_and ---
     if 0b1010 bit_and 0b1100 == 0b1000 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_and int")
+        println("FAIL: bit_and i64")
         failed += 1
     }
-    mut ua uint = 18446744073709551615
-    mut ub uint = 0b1111
+    mut ua u64 = 18446744073709551615
+    mut ub u64 = 0b1111
     if ua bit_and ub == 15 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_and uint")
+        println("FAIL: bit_and u64")
         failed += 1
     }
-    mut ba byte = 0b11110000
+    mut ba u8 = 0b11110000
     if ba bit_and 0b00001111 == 0 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_and byte")
+        println("FAIL: bit_and u8")
         failed += 1
     }
 
@@ -37,7 +37,7 @@ do main() {
     if 0b1010 bit_or 0b0001 == 0b1011 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_or int")
+        println("FAIL: bit_or i64")
         failed += 1
     }
     if 0b0000 bit_or 0b1111 == 0b1111 {
@@ -48,12 +48,12 @@ do main() {
     }
 
     // --- bit_xor ---
-    mut xorA int = 0b1010
-    mut xorB int = 0b1111
+    mut xorA i64 = 0b1010
+    mut xorB i64 = 0b1111
     if xorA bit_xor xorB == 0b0101 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_xor int")
+        println("FAIL: bit_xor i64")
         failed += 1
     }
     if xorA bit_xor xorA == 0 {
@@ -64,20 +64,20 @@ do main() {
     }
 
     // --- bit_not ---
-    mut flags int = 0b1010
-    mut comp int = bit_not flags
+    mut flags i64 = 0b1010
+    mut comp i64 = bit_not flags
     if comp == -11 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_not int, got ${comp}")
+        println("FAIL: bit_not i64, got ${comp}")
         failed += 1
     }
-    mut bb byte = 0b00001111
-    mut notb byte = bit_not bb
+    mut bb u8 = 0b00001111
+    mut notb u8 = bit_not bb
     if notb == 0b11110000 {
         passed += 1
     } otherwise {
-        println("FAIL: bit_not byte")
+        println("FAIL: bit_not u8")
         failed += 1
     }
 
@@ -122,9 +122,9 @@ do main() {
     }
 
     // --- chained expressions ---
-    mut a int = 0b1111
-    mut b int = 0b1010
-    mut c int = 0b0101
+    mut a i64 = 0b1111
+    mut b i64 = 0b1010
+    mut c i64 = 0b0101
     if a bit_and b bit_or c == 0b1111 {
         passed += 1
     } otherwise {
@@ -149,11 +149,11 @@ do main() {
     }
 
     // --- flag manipulation (real-world pattern) ---
-    const READ  int = 0b001
-    const WRITE int = 0b010
-    const EXEC  int = 0b100
+    const READ  i64 = 0b001
+    const WRITE i64 = 0b010
+    const EXEC  i64 = 0b100
 
-    mut perms int = READ bit_or WRITE
+    mut perms i64 = READ bit_or WRITE
     if perms bit_and READ == READ {
         passed += 1
     } otherwise {
@@ -175,7 +175,7 @@ do main() {
     }
 
     // --- variable step with shift ---
-    mut shift int = 2
+    mut shift i64 = 2
     if 1 bit_shift_left shift == 4 {
         passed += 1
     } otherwise {

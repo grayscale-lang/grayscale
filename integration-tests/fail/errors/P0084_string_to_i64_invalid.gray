@@ -1,0 +1,6 @@
+/* Panic Test: P0084 - cannot convert string to i64 at runtime */
+do main() {
+    mut s string = "not_a_number"
+    mut x i64 = cast(s, i64)
+    println(x)
+}

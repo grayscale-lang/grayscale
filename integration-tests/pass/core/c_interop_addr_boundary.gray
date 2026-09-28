@@ -14,9 +14,9 @@
 extern import "string.h"
 extern import "stdlib.h"
 
-mut g_counter int = 0
+mut g_counter i64 = 0
 
-do do_free(p ^byte) {
+do do_free(p ^u8) {
     extern.free(p)
 }
 
@@ -25,15 +25,15 @@ do main() {
     extern.memset(addr(g_counter), 0, 8)
 
     // new() heap pointer passed directly
-    mut n ^int = new(int)
+    mut n ^i64 = new(i64)
     extern.memset(n, 0, 8)
 
     // pointer from C handed straight to another C call
-    mut m ^byte = extern.malloc(16)
+    mut m ^u8 = extern.malloc(16)
     extern.free(m)
 
     // heap pointer forwarded through a pointer-parameter wrapper
-    mut m2 ^byte = extern.malloc(16)
+    mut m2 ^u8 = extern.malloc(16)
     do_free(m2)
 
     // plain value + string-literal arguments

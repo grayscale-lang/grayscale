@@ -1,21 +1,21 @@
 /*
  * var_decl_call_same_signedness.gray
  * A mut declaration initialized by a function call whose return type matches
- * the declared signedness (or widens safely, e.g. byte -> int) must NOT be
+ * the declared signedness (or widens safely, e.g. u8 -> i64) must NOT be
  * rejected by the signedness-crossing guard.
  */
 
-do get_u() -> uint { return 42 }
-do get_i() -> int { return 7 }
-do get_b() -> byte { return 5 }
+do get_u() -> u64 { return 42 }
+do get_i() -> i64 { return 7 }
+do get_b() -> u8 { return 5 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut a uint = get_u()
-    mut b int = get_i()
-    mut c int = get_b()      // byte widens to int, no cast needed
+    mut a u64 = get_u()
+    mut b i64 = get_i()
+    mut c i64 = get_b()      // u8 widens to i64, no cast needed
     mut d i64 = get_i()
 
     if a == 42 && b == 7 && c == 5 && d == 7 {

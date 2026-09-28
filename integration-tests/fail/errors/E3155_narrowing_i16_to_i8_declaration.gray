@@ -1,0 +1,8 @@
+// Error Test: E3155 - an i16 value stored into an i8 variable narrows
+// expect-error: E3155
+
+do main() {
+    mut b i16 = 300
+    mut a i8 = b
+    println(a)
+}

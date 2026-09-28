@@ -8,7 +8,7 @@
 // expect-error-count: 1
 
 const Widget struct {
-    items [int, 3]
+    items [i64, 3]
 }
 
 do main() {

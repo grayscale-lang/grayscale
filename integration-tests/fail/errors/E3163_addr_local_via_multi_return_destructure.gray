@@ -6,14 +6,14 @@
  * still carry the temp's origin so storing it into GLOBAL is caught.
  */
 
-do forward2(x ^int, n int) -> (^int, int) {
+do forward2(x ^i64, n i64) -> (^i64, i64) {
     return x, n
 }
 
-mut GLOBAL ^int = nil
+mut GLOBAL ^i64 = nil
 
 do set() {
-    mut y int = 3
+    mut y i64 = 3
     mut p, n = forward2(addr(y), 1)
     GLOBAL = p
 }

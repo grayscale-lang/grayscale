@@ -1,4 +1,4 @@
 
-do get_value() -> int {
+do get_value() -> i64 {
     return VALUE
 }

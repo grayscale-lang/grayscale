@@ -6,8 +6,8 @@ import and use @strings, @math
 
 do main() {
     println("=== Import and Use Syntax Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: std println works
     println("  [PASS] println works via import and use")
@@ -24,7 +24,7 @@ do main() {
     }
 
     // Test 3: math function unqualified
-    mut v int = abs(-10)
+    mut v i64 = abs(-10)
     if v == 10 {
         println("  [PASS] abs via import and use")
         passed += 1

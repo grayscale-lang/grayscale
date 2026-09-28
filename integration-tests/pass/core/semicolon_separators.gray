@@ -1,0 +1,15 @@
+const Point struct { x i64; y i64 }
+const Color enum { RED; GREEN; BLUE }
+const Mixed struct {
+    a i64; b i64
+    c i64
+}
+
+do add(a i64, b i64) -> i64 { mut sum i64 = a + b; return sum }
+
+do main() {
+    mut p = Point{x: 1, y: 2}
+    mut m = Mixed{a: 1, b: 2, c: 3}
+    mut one i64 = 1; mut two i64 = 2;
+    println("${p.x + p.y + m.a + m.b + m.c + add(one, two)} ${Color.GREEN}");
+}

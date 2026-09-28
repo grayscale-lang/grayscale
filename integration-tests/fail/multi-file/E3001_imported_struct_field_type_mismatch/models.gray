@@ -1,5 +1,5 @@
 
 const Person struct {
     name string
-    age int
+    age i64
 }

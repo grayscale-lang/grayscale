@@ -10,14 +10,14 @@ const Type enum {
 }
 
 const Row struct {
-    id   int
+    id   i64
     type Type
 }
 
 do main() {
     println("=== String Enum Struct Field Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* omitted field defaults to the first variant */
     mut r Row = Row{}

@@ -10,7 +10,7 @@
 
 import "./types.gray"
 
-do collect(xs [types.Item]) -> int {
+do collect(xs [types.Item]) -> i64 {
     return len(xs)
 }
 

@@ -8,7 +8,7 @@ import @binary
 import @encoding
 
 do main() {
-    mut short [byte] = encoding.from_string("Xy")
+    mut short [u8] = encoding.from_string("Xy")
     mut v i128 = binary.decode_i128_le(short)
     println("${v}")
 }

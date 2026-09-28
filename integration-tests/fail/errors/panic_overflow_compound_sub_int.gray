@@ -1,9 +1,0 @@
-/*
- * Error Test: integer-overflow (int -= underflow)
- * Expected: "subtraction result is too large"
- */
-
-do main() {
-    mut x int = -9223372036854775808  // INT64_MIN
-    x -= 1
-}

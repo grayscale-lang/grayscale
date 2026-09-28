@@ -3,9 +3,9 @@
 // expect-error: E2094
 const Point struct {
     #deprecated
-    x int
+    x i64
 
-    do sum() -> int { return 3 }
+    do sum() -> i64 { return 3 }
 }
 
 do main() {

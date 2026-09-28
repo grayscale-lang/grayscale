@@ -3,7 +3,7 @@
  */
 
 
-do get_numbers() -> [int] {
+do get_numbers() -> [i64] {
     return {10, 20, 30}
 }
 
@@ -13,11 +13,11 @@ do get_names() -> [string] {
 
 do main() {
     println("=== Index Function Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Index first element
-    mut a int = get_numbers()[0]
+    mut a i64 = get_numbers()[0]
     if a == 10 {
         println("  [PASS] get_numbers()[0] == 10")
         passed += 1
@@ -27,7 +27,7 @@ do main() {
     }
 
     // Test 2: Index last element
-    mut b int = get_numbers()[2]
+    mut b i64 = get_numbers()[2]
     if b == 30 {
         println("  [PASS] get_numbers()[2] == 30")
         passed += 1
@@ -47,7 +47,7 @@ do main() {
     }
 
     // Test 4: Use indexed return value in expression
-    mut d int = get_numbers()[0] + get_numbers()[2]
+    mut d i64 = get_numbers()[0] + get_numbers()[2]
     if d == 40 {
         println("  [PASS] get_numbers()[0] + get_numbers()[2] == 40")
         passed += 1

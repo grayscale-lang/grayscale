@@ -1,15 +1,15 @@
 /*
- * map_non_standard_keys.gray - Maps with bool, char, byte, and float keys
+ * map_non_standard_keys.gray - Maps with bool, char, u8, and f64 keys
  *
- * map codegen only handled string and int
- * keys. bool/char/byte/float keys passed typechecking but emitted GrayString
+ * map codegen only handled string and i64
+ * keys. bool/char/u8/f64 keys passed typechecking but emitted GrayString
  * as the C key type, causing compile errors or runtime key-not-found panics.
  */
 
 do main() {
     println("=== Non-Standard Map Keys Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- bool keys --
     mut bmap map[bool:string] = {true: "yes", false: "no"}
@@ -31,7 +31,7 @@ do main() {
     }
 
     // -- char keys --
-    mut cmap map[char:int] = {'a': 1, 'b': 2, 'c': 3}
+    mut cmap map[char:i64] = {'a': 1, 'b': 2, 'c': 3}
     if cmap['a'] == 1 && cmap['b'] == 2 && cmap['c'] == 3 {
         println("  [PASS] char key literal access")
         passed += 1
@@ -49,41 +49,41 @@ do main() {
         failed += 1
     }
 
-    // -- byte keys --
-    mut ymap map[byte:string] = {0b1: "one", 0b10: "two", 0b11: "three"}
+    // -- u8 keys --
+    mut ymap map[u8:string] = {0b1: "one", 0b10: "two", 0b11: "three"}
     if ymap[0b1] == "one" && ymap[0b10] == "two" && ymap[0b11] == "three" {
-        println("  [PASS] byte key literal access")
+        println("  [PASS] u8 key literal access")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte key literal access")
+        println("  [FAIL] u8 key literal access")
         failed += 1
     }
 
     ymap[0b100] = "four"
     if ymap[0b100] == "four" && len(ymap) == 4 {
-        println("  [PASS] byte key insertion")
+        println("  [PASS] u8 key insertion")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte key insertion")
+        println("  [FAIL] u8 key insertion")
         failed += 1
     }
 
-    // -- float keys --
-    mut fmap map[float:int] = {1.5: 10, 2.5: 20, 3.5: 30}
+    // -- f64 keys --
+    mut fmap map[f64:i64] = {1.5: 10, 2.5: 20, 3.5: 30}
     if fmap[1.5] == 10 && fmap[2.5] == 20 && fmap[3.5] == 30 {
-        println("  [PASS] float key literal access")
+        println("  [PASS] f64 key literal access")
         passed += 1
     } otherwise {
-        println("  [FAIL] float key literal access")
+        println("  [FAIL] f64 key literal access")
         failed += 1
     }
 
     fmap[4.5] = 40
     if fmap[4.5] == 40 && len(fmap) == 4 {
-        println("  [PASS] float key insertion")
+        println("  [PASS] f64 key insertion")
         passed += 1
     } otherwise {
-        println("  [FAIL] float key insertion")
+        println("  [FAIL] f64 key insertion")
         failed += 1
     }
 

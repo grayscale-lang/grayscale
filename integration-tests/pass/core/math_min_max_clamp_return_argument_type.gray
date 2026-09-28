@@ -1,0 +1,55 @@
+/*
+ * math_min_max_clamp_return_argument_type.gray - math.abs, min, max and clamp
+ * return the argument type T, so the result assigns back to a sized variable.
+ * A literal argument takes the other arguments' type.
+ */
+
+import @math
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a i8 = -5
+    mut b i8 = 3
+    a = math.max(a, b)
+    mut c i8 = math.max(3, a)
+    mut d i8 = math.clamp(a, -2, 2)
+    if a == 3 && c == 3 && d == 2 && type_of(math.max(a, b)) == "i8" {
+        passed++
+    } otherwise {
+        println("FAIL: i8 min/max/clamp")
+        failed++
+    }
+
+    mut f f32 = 1.5
+    f = math.min(f, 0.5)
+    if f == 0.5 && type_of(math.min(f, f)) == "f32" {
+        passed++
+    } otherwise {
+        println("FAIL: f32 min")
+        failed++
+    }
+
+    mut u u16 = 70
+    u = math.clamp(u, 10, 60)
+    if u == 60 && type_of(math.abs(u)) == "u16" {
+        passed++
+    } otherwise {
+        println("FAIL: u16 clamp/abs")
+        failed++
+    }
+
+    mut big i64 = 1000
+    if math.max(big, a) == 1000 && type_of(math.max(1, 2)) == "i64" {
+        passed++
+    } otherwise {
+        println("FAIL: i64 max")
+        failed++
+    }
+
+    println("math_min_max_clamp_return_argument_type: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

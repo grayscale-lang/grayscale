@@ -1,11 +1,11 @@
-do use_func(x int) -> int {
+do use_func(x i64) -> i64 {
     return bump(x)
 }
 
-do use_const() -> int {
+do use_const() -> i64 {
     return LIMIT
 }
 
-do use_var() -> int {
+do use_var() -> i64 {
     return counter
 }

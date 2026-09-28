@@ -9,7 +9,7 @@ import @mem
 do main() {
     mut a = mem.arena(1024)
     for i in range(0, 3) {
-        mut p ^int = mem.alloc(a, i)
+        mut p ^i64 = mem.alloc(a, i)
         if i == 1 {
             mem.destroy(a)
         }

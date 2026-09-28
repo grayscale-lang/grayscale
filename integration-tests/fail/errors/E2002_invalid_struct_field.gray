@@ -4,7 +4,7 @@
  */
 
 struct Person {
-    int string  // int is a reserved keyword
+    i64 string  // i64 is a reserved keyword
 }
 
 do main() {

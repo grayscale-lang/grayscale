@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2069 - enum variants on same line without a separator
+ * Expected: error requiring a semicolon
+ */
+
+const Color enum {
+    RED GREEN
+    BLUE
+}
+
+do main() {
+    println("${Color.RED}")
+}

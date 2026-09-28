@@ -2,11 +2,11 @@ import mylib"./mylib"
 using mylib
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut fruits [Fruit] = get_fruits()
-    mut total int = total_price(fruits)
+    mut total i64 = total_price(fruits)
     if total == 5 {
         println("  [PASS] struct array via directory import")
         passed += 1

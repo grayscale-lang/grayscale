@@ -1,0 +1,5 @@
+/* Panic Test: P0092 - shifting an i128 by its bit width */
+do main() {
+    mut h i128 = 1
+    println(h bit_shift_left 128)
+}

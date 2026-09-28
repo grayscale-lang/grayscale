@@ -1,7 +1,7 @@
 /*
  * map_sized_element_slots.gray
  * Map key and value slots for sized-integer and f32 element types are sized
- * to the annotation (int16_t/uint8_t/float, not int64_t/double). Exercises
+ * to the annotation (int16_t/uint8_t/f64, not int64_t/double). Exercises
  * every slot path: literal construction, m[k] = v assignment, index read,
  * and maps.contains_value staging.
  */
@@ -9,10 +9,10 @@
 import @maps
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Sized-int value slots.
+    // Sized-integer value slots.
     mut mi map[string:i16] = {"a": 1000}
     mi["b"] = -2000
     if mi["a"] == 1000 && mi["b"] == -2000 &&
@@ -34,7 +34,7 @@ do main() {
         failed += 1
     }
 
-    // Sized-int key slot.
+    // Sized-integer key slot.
     mut mk map[i16:string] = {5: "five"}
     mk[300] = "three hundred"
     if mk[5] == "five" && mk[300] == "three hundred" {

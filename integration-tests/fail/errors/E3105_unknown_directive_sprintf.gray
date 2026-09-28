@@ -2,6 +2,6 @@
 import @fmt
 
 do main() {
-    mut s string = fmt.sprintf("%p", 10)
+    mut s string = fmt.sprintf("%p", {10})
     println(s)
 }

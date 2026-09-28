@@ -8,12 +8,12 @@ import @mem
 
 do main() {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     println(p^)
     mem.destroy(a)
 
     a = mem.arena(1024)
-    mut q ^int = mem.alloc(a, 7)
+    mut q ^i64 = mem.alloc(a, 7)
     println(q^)
     mem.destroy(a)
 }

@@ -5,12 +5,12 @@
  */
 
 const Bag struct {
-    items [string:int]
+    items [string:i64]
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut b = new(Bag)
 

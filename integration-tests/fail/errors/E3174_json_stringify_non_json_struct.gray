@@ -10,7 +10,7 @@
 import @json
 
 const Plain struct {
-    x int
+    x i64
 }
 
 do main() {

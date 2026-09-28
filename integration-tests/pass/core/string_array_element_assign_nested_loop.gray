@@ -18,8 +18,8 @@ do make_greeting() -> string {
 
 do main() {
     println("=== String Array Element = In Nested Loop ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* RHS is a function return value. */
     mut names [string] = {"", ""}

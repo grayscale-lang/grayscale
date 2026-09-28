@@ -1,9 +1,0 @@
-/*
- * Error Test: E3043 - cannot cast [string] to [int]
- * Expected: E3043 "cannot cast" error
- */
-
-do main() {
-    mut words [string] = {"one", "two", "three"}
-    mut nums [int] = cast(words, [int])
-}

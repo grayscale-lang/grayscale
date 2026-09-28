@@ -18,23 +18,23 @@
 
 const Bag struct {
     name string
-    items [int]
+    items [i64]
 }
 
 const Inner struct {
     tag string
-    nums [int]
+    nums [i64]
 }
 
 const Outer struct {
-    id int
+    id i64
     inner Inner
 }
 
 do main() {
     println("=== Struct Deep Copy Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- direct array field (fix in 9b055bd) --
     mut bag Bag = Bag{name: "orig", items: {1, 2, 3}}

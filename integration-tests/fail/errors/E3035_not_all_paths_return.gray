@@ -5,7 +5,7 @@
  * This function only returns in the if branch, not the fallthrough.
  */
 
-do maybe_return(x int) -> int {
+do maybe_return(x i64) -> i64 {
     if x > 0 {
         return x
     }
@@ -13,6 +13,6 @@ do maybe_return(x int) -> int {
 }
 
 do main() {
-    mut result int = maybe_return(5)
+    mut result i64 = maybe_return(5)
     println(result)
 }

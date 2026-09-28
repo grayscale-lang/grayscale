@@ -8,7 +8,7 @@
 // expect-error-count: 1
 
 const B struct {
-    len int
+    len i64
     name string
 }
 

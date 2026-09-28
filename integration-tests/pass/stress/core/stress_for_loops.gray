@@ -3,7 +3,7 @@
  */
 
 
-do early_return() -> int {
+do early_return() -> i64 {
     for i in range(0, 100) {
         if i == 5 { return i }
     }
@@ -12,12 +12,12 @@ do early_return() -> int {
 
 do main() {
     println("=== Stress: For Loops ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // range(0, 0) — empty, should not execute body
     // Note: range(0,0) is rejected by typechecker, use range(0,1) with 0 iterations check
-    mut count0 int = 0
+    mut count0 i64 = 0
     for i in range(0, 1) {
         count0 += 1
     }
@@ -27,7 +27,7 @@ do main() {
     } otherwise { println("  [FAIL] range(0,1)") failed += 1 }
 
     // range(0, 100)
-    mut sum100 int = 0
+    mut sum100 i64 = 0
     for i in range(0, 100) {
         sum100 += i
     }
@@ -37,7 +37,7 @@ do main() {
     } otherwise { println("  [FAIL] range sum — got ${sum100}") failed += 1 }
 
     // Parenthesized range
-    mut sum_paren int = 0
+    mut sum_paren i64 = 0
     for (i in range(0, 5)) {
         sum_paren += i
     }
@@ -47,7 +47,7 @@ do main() {
     } otherwise { println("  [FAIL] parens range") failed += 1 }
 
     // Nested for loops: 2 deep
-    mut product int = 0
+    mut product i64 = 0
     for i in range(0, 3) {
         for j in range(0, 3) {
             product += 1
@@ -59,7 +59,7 @@ do main() {
     } otherwise { println("  [FAIL] nested — got ${product}") failed += 1 }
 
     // Break inside for
-    mut break_val int = 0
+    mut break_val i64 = 0
     for i in range(0, 100) {
         if i == 5 { break }
         break_val = i
@@ -70,7 +70,7 @@ do main() {
     } otherwise { println("  [FAIL] break — got ${break_val}") failed += 1 }
 
     // Continue inside for
-    mut skip_sum int = 0
+    mut skip_sum i64 = 0
     for i in range(0, 10) {
         if i % 2 == 0 { continue }
         skip_sum += i
@@ -81,7 +81,7 @@ do main() {
     } otherwise { println("  [FAIL] continue — got ${skip_sum}") failed += 1 }
 
     // Break in nested loops — only breaks inner
-    mut outer_count int = 0
+    mut outer_count i64 = 0
     for i in range(0, 3) {
         for j in range(0, 100) {
             if j == 2 { break }
@@ -94,7 +94,7 @@ do main() {
     } otherwise { println("  [FAIL] break inner — got ${outer_count}") failed += 1 }
 
     // Return from inside for
-    mut rv int = early_return()
+    mut rv i64 = early_return()
     if rv == 5 {
         println("  [PASS] return from inside for loop")
         passed += 1

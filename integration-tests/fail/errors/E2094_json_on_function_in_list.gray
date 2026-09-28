@@ -4,7 +4,7 @@
 // had been stacked: #json only applies to struct declarations.
 
 #[json]
-do something() -> int {
+do something() -> i64 {
     return 1
 }
 

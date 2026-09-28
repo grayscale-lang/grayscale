@@ -1,5 +1,5 @@
 /* Error Test: E3091 - map used as if condition */
 do main() {
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     if m { println("truthy") }
 }

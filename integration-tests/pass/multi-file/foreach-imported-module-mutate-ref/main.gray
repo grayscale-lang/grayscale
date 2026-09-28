@@ -10,8 +10,8 @@ import @arrays
 import "./box"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut boxes [box.Box] = {}
     arrays.append(boxes, box.Box{id: 0})

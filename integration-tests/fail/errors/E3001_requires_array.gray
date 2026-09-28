@@ -6,5 +6,5 @@
 import @arrays
 
 do main() {
-    mut x int = arrays.sum("hello")  // string instead of array
+    mut x i64 = arrays.sum("hello")  // string instead of array
 }

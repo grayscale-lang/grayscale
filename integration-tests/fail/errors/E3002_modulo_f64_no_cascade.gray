@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3002 - modulo on f64 produces exactly one error
+ *
+ * modulo on f64 also went through the
+ * cascade-prone path. Now collapses to TK_UNKNOWN after the
+ * op-level error.
+ */
+
+do main() {
+    mut x f64 = 3.14 % 2.0
+}

@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3001 - i64 literal assigned to enum-typed variable
+ *
+ * the var_decl type-mismatch check used to
+ * carve out enum ↔ i64 in both directions. i64 → enum is unsound
+ * (any i64 could be assigned to any enum variable, bypassing the
+ * enum's valid-value contract) and is now rejected. enum → i64
+ * still works because enums are integer-backed.
+ */
+
+const Color enum {
+    RED,
+    GREEN,
+    BLUE
+}
+
+do main() {
+    mut c Color = 5
+}

@@ -6,11 +6,11 @@ import @time
 
 do main() {
     println("=== Time Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // time.now() returns reasonable timestamp (after Jan 1 2024)
-    mut now int = time.now()
+    mut now i64 = time.now()
     if now > 1704067200 {
         println("  [PASS] now")
         passed += 1
@@ -20,7 +20,7 @@ do main() {
     }
 
     // time.now_ms() returns a larger value than now
-    mut now_ms int = time.now_ms()
+    mut now_ms i64 = time.now_ms()
     if now_ms > now {
         println("  [PASS] now_ms")
         passed += 1
@@ -30,7 +30,7 @@ do main() {
     }
 
     // time.year(ts) is reasonable
-    mut year int = time.year(now)
+    mut year i64 = time.year(now)
     if year >= 2024 {
         println("  [PASS] year (${year})")
         passed += 1
@@ -40,7 +40,7 @@ do main() {
     }
 
     // time.month(ts) is 1-12
-    mut month int = time.month(now)
+    mut month i64 = time.month(now)
     if month >= 1 && month <= 12 {
         println("  [PASS] month (${month})")
         passed += 1
@@ -50,7 +50,7 @@ do main() {
     }
 
     // time.day(ts) is 1-31
-    mut day int = time.day(now)
+    mut day i64 = time.day(now)
     if day >= 1 && day <= 31 {
         println("  [PASS] day (${day})")
         passed += 1
@@ -100,7 +100,7 @@ do main() {
     }
 
     // time.diff(t1, t2) returns t2 - t1
-    mut diff1 int = time.diff(100, 200)
+    mut diff1 i64 = time.diff(100, 200)
     if diff1 == 100 {
         println("  [PASS] diff positive")
         passed += 1
@@ -110,7 +110,7 @@ do main() {
     }
 
     // time.diff returns negative when t1 > t2
-    mut diff2 int = time.diff(200, 100)
+    mut diff2 i64 = time.diff(200, 100)
     if diff2 == -100 {
         println("  [PASS] diff negative")
         passed += 1
@@ -120,7 +120,7 @@ do main() {
     }
 
     // time.diff with equal timestamps
-    mut diff3 int = time.diff(now, now)
+    mut diff3 i64 = time.diff(now, now)
     if diff3 == 0 {
         println("  [PASS] diff zero")
         passed += 1
@@ -130,9 +130,9 @@ do main() {
     }
 
     // time.tick() + time.elapsed_ms(): a short sleep registers >= 1ms
-    mut mark int = time.tick()
+    mut mark i64 = time.tick()
     sleep_ms(5)
-    mut el int = time.elapsed_ms(mark)
+    mut el i64 = time.elapsed_ms(mark)
     if el >= 1 {
         println("  [PASS] tick / elapsed_ms")
         passed += 1

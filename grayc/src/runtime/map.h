@@ -13,18 +13,11 @@
 
 #include "runtime.h"
 #include "atomic.h"
+#include "array.h"
 
-#define GRAY_MAP_MIN_CAP      8
-#define GRAY_MAP_LOAD_NUM     3
-#define GRAY_MAP_LOAD_DEN     4
-
-/* Key-kind discriminator. Multiple Grayscale key types share a key_size
- * (e.g. int64/uint64/double/pointer all 8), so size alone cannot pick
- * the right hash/equality. Codegen tags each map with its kind. */
-#define GRAY_MAP_KEY_BYTES    0   /* int, bool, pointer, struct: bytewise */
-#define GRAY_MAP_KEY_STRING   1   /* GrayString: hash content, not struct bytes */
-#define GRAY_MAP_KEY_F32      2   /* f32: normalize -0.0 and NaN */
-#define GRAY_MAP_KEY_F64      3   /* f64/float: normalize -0.0 and NaN */
+#define GRAY_MAP_MIN_CAPACITY      8
+#define GRAY_MAP_LOAD_NUMERATOR     3
+#define GRAY_MAP_LOAD_DENOMINATOR     4
 
 typedef struct {
     void *keys;
@@ -35,7 +28,7 @@ typedef struct {
      * negative slots. Holes are reclaimed by a rebuild, never by an
      * in-place compaction, so copies of this struct stay consistent. */
     int32_t *order;         /* insertion-order slot indices; -1 marks a hole */
-    int32_t *order_pos;     /* slot -> its index in order (occupied slots only) */
+    int32_t *order_position;     /* slot -> its index in order (occupied slots only) */
     GrayArena *arena;       /* arena owning keys/values/states/order */
     int32_t count;
     int32_t capacity;
@@ -43,16 +36,16 @@ typedef struct {
     int32_t value_size;
     int32_t order_len;      /* entries in order array, holes included */
     int32_t iterating;      /* >0 while a for_each is active */
-    int8_t  key_kind;       /* GRAY_MAP_KEY_* */
+    /* GrayElemKind of the keys and of the values. The key kind also picks
+     * the hash and equality: a string key hashes its content, a floating-point key
+     * treats -0.0 as 0.0 and NaN as equal to NaN, anything else is bytes. */
+    int8_t  key_kind;
+    int8_t  value_kind;
 } GrayMap;
 
-/* Create an empty map. Auto-detects GrayString by key_size; defaults to
- * KEY_BYTES otherwise. Callers that need a specific kind (e.g. float
- * keys) should use gray_map_new_kind. */
-GrayMap gray_map_new(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap);
-
-/* Create an empty map with an explicit key kind. */
-GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind);
+/* Create an empty map of key_kind keys and value_kind values. */
+GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_capacity,
+                          int8_t key_kind, int8_t value_kind);
 
 /* Get a pointer to the value for a key, or NULL if not found */
 void *gray_map_get(GrayMap *map, const void *key);
@@ -68,23 +61,21 @@ bool gray_map_remove(GrayMap *map, const void *key, const char *file, int line);
 
 /* Convenience macros for stdlib callers (uses C file/line) */
 #define GRAY_MAP_SET(arena, map, key, value) gray_map_set((arena), (map), (key), (value), __FILE__, __LINE__)
-#define GRAY_MAP_REMOVE(map, key) gray_map_remove((map), (key), __FILE__, __LINE__)
 
 /* Clear all entries */
 void gray_map_clear(GrayMap *map, const char *file, int line);
 
 /* String-keyed convenience functions */
 void *gray_map_get_str(GrayMap *map, GrayString key);
-void gray_map_set_str(GrayArena *arena, GrayMap *map, GrayString key, const void *value, const char *file, int line);
 
 /* Get key at internal index (for iteration) */
-void *gray_map_key_at(GrayMap *map, int32_t internal_idx);
-void *gray_map_value_at(GrayMap *map, int32_t internal_idx);
+void *gray_map_key_at(GrayMap *map, int32_t internal_index);
+void *gray_map_value_at(GrayMap *map, int32_t internal_index);
 
 /* Deep copy: allocate a fresh map with independent backing storage
  * (keys, values, states, order) so mutations to the copy do not affect
  * the original. */
-GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src);
+GrayMap gray_map_copy(GrayArena *arena, const GrayMap *source);
 
 /* Initialize the per-process hash seed (called by gray_runtime_init). */
 void gray_map_init_seed(void);

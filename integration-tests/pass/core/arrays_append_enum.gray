@@ -7,14 +7,14 @@ const Color enum {
 }
 
 const Shape enum {
-    Circle(float)
-    Rect(float, float)
+    Circle(f64)
+    Rect(f64, f64)
     Point
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: append non-tagged enum
     mut colors [Color] = {}

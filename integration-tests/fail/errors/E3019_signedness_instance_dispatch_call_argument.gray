@@ -3,15 +3,15 @@
 // expect-error-count: 1
 
 const V struct {
-    n int
+    n i64
 
-    do take(v V, x int) -> int {
+    do take(v V, x i64) -> i64 {
         return x
     }
 }
 
 do main() {
-    mut u uint = 18446744073709551615
+    mut u u64 = 18446744073709551615
     mut a V = V{ n: 0 }
     println("${a.take(u)}")
 }

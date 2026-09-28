@@ -29,14 +29,14 @@ var errNewCancelled = fmt.Errorf("new cancelled")
 // not a tutorial.
 const quickRefBlock = `// Grayscale Quick Reference
 // ---------------------
-// Variables:        mut x int = 5          mut x = 5          (inferred)
-// Constants:        const PI float = 3.14
+// Variables:        mut x i64 = 5          mut x = 5          (inferred)
+// Constants:        const PI f64 = 3.14
 // Strings:          "Hello, ${name}!"      (interpolation; + is not supported)
 // Functions:        do greet(name string) -> string { return "Hi ${name}" }
-// Multi-return:     do swap(a int, b int) -> (x int, y int) { return b, a }
+// Multi-return:     do swap(a i64, b i64) -> (x i64, y i64) { return b, a }
 // If/else:          if x > 0 { } or x == 0 { } otherwise { }
 // Loops:            for i in range(0, 10) { }    for_each item in items { }
-// Structs:          const Point struct { x int, y int }
+// Structs:          const Point struct { x i64, y i64 }
 //                   mut p = Point{ x: 1, y: 2 }
 // Imports:          import @os                   import "./sibling"
 //

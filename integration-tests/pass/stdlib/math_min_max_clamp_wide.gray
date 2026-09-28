@@ -1,0 +1,34 @@
+/*
+ * Pass Test: math.min, math.max and math.clamp on i128, u128, i256 and u256
+ * Expected: each returns the caller's wide type, compares at full width,
+ * and widens a narrower argument into the wide type.
+ */
+import @math
+
+do main() {
+    mut a i128 = -170141183460469231731687303715884105728
+    mut b i128 = 170141183460469231731687303715884105727
+    mut small i64 = -5
+    println(math.min(a, b))
+    println(math.max(a, b))
+    println(math.max(a, small))
+    println(math.clamp(small, a, b))
+
+    mut c u128 = 340282366920938463463374607431768211455
+    mut d u128 = 18446744073709551616
+    println(math.min(c, d))
+    println(math.max(c, d))
+    println(math.clamp(c, 1, d))
+
+    mut e i256 = -57896044618658097711785492504343953926634992332820282019728792003956564819968
+    mut f i256 = 7
+    println(math.min(e, f))
+    println(math.max(e, f))
+    println(math.clamp(100, e, f))
+
+    mut g u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    mut h u256 = 3
+    println(math.min(g, h))
+    println(math.max(g, h))
+    println(math.clamp(0, h, g))
+}

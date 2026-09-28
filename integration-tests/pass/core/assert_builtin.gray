@@ -6,7 +6,7 @@ do main() {
     assert(2 > 1)
 
     // assert with expression
-    mut x int = 42
+    mut x i64 = 42
     assert(x == 42, "x is 42")
 
     // assert with string expression

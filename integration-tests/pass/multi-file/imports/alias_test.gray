@@ -11,8 +11,8 @@
 import and use a"./libA.gray", b"./libB.gray", @math
 
 const TestResult struct {
-    passed int
-    failed int
+    passed i64
+    failed i64
 }
 
 do main() {
@@ -21,8 +21,8 @@ do main() {
     println("========================================")
     println("")
 
-    mut total_passed int = 0
-    mut total_failed int = 0
+    mut total_passed i64 = 0
+    mut total_failed i64 = 0
     mut result TestResult = TestResult{passed: 0, failed: 0}
 
     result = test_aliased_user_modules()
@@ -37,7 +37,7 @@ do main() {
     total_passed += result.passed
     total_failed += result.failed
 
-    mut total int = total_passed + total_failed
+    mut total i64 = total_passed + total_failed
 
     println("")
     println("========================================")
@@ -56,8 +56,8 @@ do test_aliased_user_modules() -> TestResult {
     println("------------------------------------------")
     println("  Test: Aliased user modules (a, b)")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // libA imported as 'a' with auto-use
     println("  Testing a.greet() and unqualified greet()...")
@@ -78,8 +78,8 @@ do test_aliased_user_modules() -> TestResult {
 
     // libB imported as 'b' with auto-use
     println("  Testing b.multiply() and unqualified multiply()...")
-    mut m1 int = b.multiply(3, 4)
-    mut m2 int = multiply(5, 6)
+    mut m1 i64 = b.multiply(3, 4)
+    mut m2 i64 = multiply(5, 6)
     println("    b.multiply(3, 4) = ${m1}")
     println("    multiply(5, 6) = ${m2}")
     if m1 == 12 {
@@ -102,13 +102,13 @@ do test_aliased_stdlib() -> TestResult {
     println("------------------------------------------")
     println("  Test: Stdlib alongside aliased locals (@math)")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // math imported with auto-use
     println("  Testing math.sqrt() and unqualified sqrt()...")
-    mut s1 float = math.sqrt(16.0)
-    mut s2 float = sqrt(25.0)
+    mut s1 f64 = math.sqrt(16.0)
+    mut s2 f64 = sqrt(25.0)
     println("    math.sqrt(16.0) = ${s1}")
     println("    sqrt(25.0) = ${s2}")
     if s1 == 4.0 {
@@ -123,7 +123,7 @@ do test_aliased_stdlib() -> TestResult {
     }
 
     println("  Testing math.abs()...")
-    mut a1 int = math.abs(-42)
+    mut a1 i64 = math.abs(-42)
     println("    math.abs(-42) = ${a1}")
     if a1 == 42 {
         passed += 1
@@ -140,15 +140,15 @@ do test_mixed_access() -> TestResult {
     println("------------------------------------------")
     println("  Test: Mixed qualified/unqualified access")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Combine functions from different modules
     // Note: add() exists in both libA and math, so use qualified access
     println("  Testing combined operations...")
-    mut sum int = a.add(10, 20)            // from libA via alias (avoids ambiguity with math.add)
-    mut product int = b.multiply(sum, 2)   // from libB via alias
-    mut root float = sqrt(float(product))  // from math via auto-use
+    mut sum i64 = a.add(10, 20)            // from libA via alias (avoids ambiguity with math.add)
+    mut product i64 = b.multiply(sum, 2)   // from libB via alias
+    mut root f64 = sqrt(cast(product, f64))  // from math via auto-use
     println("    a.add(10, 20) = ${sum}")
     println("    b.multiply(${sum}, 2) = ${product}")
     println("    sqrt(${product}) = ${root}")

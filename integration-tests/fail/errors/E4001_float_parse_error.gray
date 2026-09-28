@@ -1,8 +1,0 @@
-/*
- * Error Test: E4001 - float-parse-error
- * Expected: "cannot parse float" or "parse"
- */
-
-do main() {
-    mut x float = 1e99999999  // too large exponent
-}

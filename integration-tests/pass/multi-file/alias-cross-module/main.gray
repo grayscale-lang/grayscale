@@ -2,8 +2,8 @@
  * Test: a type alias reached through a module qualifier
  *
  * STANDARD.md 3.5: aliases are erased at compile time and are fully
- * interchangeable with the underlying type. lib.Score is int, so it accepts
- * an int, interpolates as one, and round-trips through a module function.
+ * interchangeable with the underlying type. lib.Score is i64, so it accepts
+ * an i64, interpolates as one, and round-trips through a module function.
  */
 import "./lib.gray"
 
@@ -15,7 +15,7 @@ do main() {
     mut c lib.Score = lib.bump(b)
     assert(c == 42, "alias survives a round trip through a module function")
 
-    mut plain int = c
+    mut plain i64 = c
     assert(plain == 42, "alias value assigns back to the underlying type")
 
     /* An alias for a struct declared in the same module */
@@ -33,7 +33,7 @@ do main() {
 
     /* An alias whose target is a container of another alias */
     mut all lib.Scores = {1, 2, 3}
-    assert(len(all) == 3, "alias for [Score] accepts an int array")
+    assert(len(all) == 3, "alias for [Score] accepts an i64 array")
 
     println("ALL TESTS PASSED")
 }

@@ -11,22 +11,22 @@
 
 import @mem
 
-do explicit_destroy() -> ^int {
+do explicit_destroy() -> ^i64 {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     mem.destroy(a)
     return p
 }
 
-do deferred_destroy() -> ^int {
+do deferred_destroy() -> ^i64 {
     mut a = mem.arena(1024)
     defer mem.destroy(a)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     return p
 }
 
 do main() {
-    mut d1 ^int = explicit_destroy()
-    mut d2 ^int = deferred_destroy()
+    mut d1 ^i64 = explicit_destroy()
+    mut d2 ^i64 = deferred_destroy()
     println("unreachable")
 }

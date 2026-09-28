@@ -10,7 +10,7 @@
 import @arrays
 
 const P struct {
-    x int
+    x i64
 }
 
 do main() {

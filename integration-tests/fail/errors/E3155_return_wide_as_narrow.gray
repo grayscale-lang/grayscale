@@ -1,0 +1,9 @@
+/* Error Test: E3155 - returning an i128 from a function that returns i64 */
+
+do narrow(value i128) -> i64 {
+    return value
+}
+
+do main() {
+    println(narrow(2))
+}

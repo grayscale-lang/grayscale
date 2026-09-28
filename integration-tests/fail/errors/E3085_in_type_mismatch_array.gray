@@ -1,5 +1,5 @@
 /*
- * Error Test: E3085 - 'in' operator type mismatch (int in [string])
+ * Error Test: E3085 - 'in' operator type mismatch (i64 in [string])
  * Expected: E3085 "'in' operator type mismatch"
  */
 

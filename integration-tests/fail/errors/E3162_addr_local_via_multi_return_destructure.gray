@@ -7,17 +7,17 @@
  * that per-slot member read.
  */
 
-do forward2(x ^int, n int) -> (^int, int) {
+do forward2(x ^i64, n i64) -> (^i64, i64) {
     return x, n
 }
 
-do make() -> ^int {
-    mut y int = 9
+do make() -> ^i64 {
+    mut y i64 = 9
     mut p, n = forward2(addr(y), 1)
     return p
 }
 
 do main() {
-    mut r ^int = make()
+    mut r ^i64 = make()
     println(r^)
 }

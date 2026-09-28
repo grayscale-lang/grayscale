@@ -1,7 +1,7 @@
 import "./secret.gray"
 
 do main() {
-    mut result int = secret.visible()
+    mut result i64 = secret.visible()
     if result == 42 {
         println("ALL TESTS PASSED")
     } otherwise {

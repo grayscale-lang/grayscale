@@ -4,13 +4,13 @@
  */
 
 const Secret struct {
-    value int
+    value i64
 
-    private do hidden(a int, b int) -> int {
+    private do hidden(a i64, b i64) -> i64 {
         return a * b
     }
 }
 
 do main() {
-    mut r int = Secret.hidden(5, 6)
+    mut r i64 = Secret.hidden(5, 6)
 }

@@ -10,7 +10,7 @@ const Color enum {
     BLUE
 }
 
-do color_code(c Color) -> int {
+do color_code(c Color) -> i64 {
     #strict
     switch c {
         case Color.RED   { return 0 }
@@ -21,8 +21,8 @@ do color_code(c Color) -> int {
 
 do main() {
     println("=== #strict switch terminating ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if color_code(Color.RED) == 0 && color_code(Color.GREEN) == 1 && color_code(Color.BLUE) == 2 {
         println("  [PASS] #strict switch/case, all arms return")

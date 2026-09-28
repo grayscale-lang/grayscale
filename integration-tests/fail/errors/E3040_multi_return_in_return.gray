@@ -3,11 +3,11 @@
  * Expected: "'get_val' returns 2 values"
  */
 
-do get_val() -> (int, Error) {
+do get_val() -> (i64, Error) {
     return 42, nil
 }
 
-do wrapper() -> int {
+do wrapper() -> i64 {
     return get_val()
 }
 

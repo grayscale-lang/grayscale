@@ -1,5 +1,5 @@
 /*
- * Error Test: E7032 - sleep-negative
+ * Error Test: P0083 - sleep-negative
  * Expected: "negative" or "sleep"
  */
 

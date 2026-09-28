@@ -6,6 +6,6 @@
 import @threads
 
 do main() {
-    mut id int = threads.current()
+    mut id i64 = threads.current()
     println("thread ${id}")
 }

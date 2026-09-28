@@ -3,7 +3,7 @@
 // Duplicate #strict on a when statement.
 
 do main() {
-    mut x int = 1
+    mut x i64 = 1
     #strict
     #strict
     when x {

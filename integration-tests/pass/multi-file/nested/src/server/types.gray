@@ -11,17 +11,17 @@ const Request struct {
 }
 
 const Response struct {
-    status int
+    status i64
     body string
 }
 
-mut StatusCodes map[int:string] = {
+mut StatusCodes map[i64:string] = {
     200: "OK",
     404: "Not Found",
     500: "Internal Server Error"
   }
 
-do get_status_text(code int) -> string {
+do get_status_text(code i64) -> string {
     if code == 200 {
         return StatusCodes[code]
     }

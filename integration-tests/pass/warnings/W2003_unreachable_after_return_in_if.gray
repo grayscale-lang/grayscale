@@ -4,10 +4,10 @@
  */
 
 
-do check(x int) -> int {
+do check(x i64) -> i64 {
     if x > 10 {
         return x
-        mut y int = 5  // unreachable inside if block
+        mut y i64 = 5  // unreachable inside if block
     }
     return 0
 }

@@ -8,7 +8,7 @@
 import @arrays
 
 const Buffer struct {
-    data [int, 4]
+    data [i64, 4]
 }
 
 do main() {

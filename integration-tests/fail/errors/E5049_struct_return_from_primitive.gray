@@ -1,0 +1,15 @@
+/* Error Test: E5049 - returning a struct from a primitive-typed function */
+// expect-error: E5049
+// expect-error-count: 1
+
+const Point struct {
+    x i64
+    y i64
+}
+do get_int() -> i64 {
+    mut p = Point{x: 1, y: 2}
+    return p
+}
+do main() {
+    println(get_int())
+}

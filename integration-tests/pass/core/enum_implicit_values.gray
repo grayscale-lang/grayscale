@@ -25,13 +25,13 @@ const Mixed enum {
 
 do main() {
     println("=== Enum Implicit Values Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Assign enum values to int variables, then compare
-    mut sp int = Status.PENDING
-    mut sa int = Status.ACTIVE
-    mut sd int = Status.DONE
+    // Assign enum values to i64 variables, then compare
+    mut sp i64 = Status.PENDING
+    mut sa i64 = Status.ACTIVE
+    mut sd i64 = Status.DONE
     if sp == 10 && sa == 11 && sd == 20 {
         println("  [PASS] PENDING=10, ACTIVE=11, DONE=20")
         passed += 1
@@ -40,13 +40,13 @@ do main() {
         failed += 1
     }
 
-    mut ma int = Mixed.A
-    mut mb int = Mixed.B
-    mut mc int = Mixed.C
-    mut md int = Mixed.D
-    mut me int = Mixed.E
-    mut mf int = Mixed.F
-    mut mg int = Mixed.G
+    mut ma i64 = Mixed.A
+    mut mb i64 = Mixed.B
+    mut mc i64 = Mixed.C
+    mut md i64 = Mixed.D
+    mut me i64 = Mixed.E
+    mut mf i64 = Mixed.F
+    mut mg i64 = Mixed.G
     if ma == 0 && mb == 1 && mc == 100 && md == 101 &&
        me == 200 && mf == 201 && mg == 202 {
         println("  [PASS] A=0, B=1, C=100, D=101, E=200, F=201, G=202")

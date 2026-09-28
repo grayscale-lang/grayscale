@@ -5,17 +5,17 @@
 
 
 const Register struct {
-    auto int
-    long int
+    auto i64
+    long i64
 }
 
 do main() {
     println("=== C Keyword Name Mangling ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Variable named 'static'
-    mut static int = 42
+    mut static i64 = 42
     if static == 42 {
         println("  [PASS] variable named 'static'")
         passed += 1
@@ -25,8 +25,8 @@ do main() {
     }
 
     // Test 2: Variables named 'signed' and 'unsigned'
-    mut signed int = 100
-    mut unsigned int = 200
+    mut signed i64 = 100
+    mut unsigned i64 = 200
     if signed + unsigned == 300 {
         println("  [PASS] variables named 'signed' and 'unsigned'")
         passed += 1
@@ -56,7 +56,7 @@ do main() {
     }
 
     // Test 5: For loop variable named 'volatile'
-    mut sum int = 0
+    mut sum i64 = 0
     for volatile in range(1, 4) {
         sum += volatile
     }
@@ -69,7 +69,7 @@ do main() {
     }
 
     // Test 6: Variable named 'register'
-    mut register int = 77
+    mut register i64 = 77
     if register == 77 {
         println("  [PASS] variable named 'register'")
         passed += 1

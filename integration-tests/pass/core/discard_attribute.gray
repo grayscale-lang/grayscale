@@ -5,27 +5,27 @@
  */
 
 #discard
-do get_value() -> int {
+do get_value() -> i64 {
     return 42
 }
 
 const Counter struct {
-    count int
+    count i64
 
     #discard
-    do increment(self Counter) -> int {
+    do increment(self Counter) -> i64 {
         return self.count + 1
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Called for effect, return discarded — must not be an error.
     get_value()
 
-    mut x int = get_value()
+    mut x i64 = get_value()
     if x == 42 {
         passed += 1
     } otherwise {
@@ -36,7 +36,7 @@ do main() {
     mut c Counter = Counter{ count: 5 }
     c.increment()
 
-    mut y int = c.increment()
+    mut y i64 = c.increment()
     if y == 6 {
         passed += 1
     } otherwise {

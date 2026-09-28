@@ -1,5 +1,0 @@
-do main() {
-    mut a uint = 5
-    mut b uint = -a
-    println(b)
-}

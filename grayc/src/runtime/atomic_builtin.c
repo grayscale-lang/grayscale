@@ -22,112 +22,112 @@
 
 #include "atomic.h"
 
-#define SEQ __ATOMIC_SEQ_CST
+#define SEQUENTIALLY_CONSISTENT __ATOMIC_SEQ_CST
 
 /* ── 64-bit ─────────────────────────────────────────────────────── */
 
-int64_t gray_atomic_load(int64_t *ptr) {
-    return __atomic_load_n(ptr, SEQ);
+int64_t gray_atomic_load(int64_t *target) {
+    return __atomic_load_n(target, SEQUENTIALLY_CONSISTENT);
 }
 
-void gray_atomic_store(int64_t *ptr, int64_t val) {
-    __atomic_store_n(ptr, val, SEQ);
+void gray_atomic_store(int64_t *target, int64_t value) {
+    __atomic_store_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_add(int64_t *ptr, int64_t val) {
-    return __atomic_fetch_add(ptr, val, SEQ);
+int64_t gray_atomic_add(int64_t *target, int64_t value) {
+    return __atomic_fetch_add(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_sub(int64_t *ptr, int64_t val) {
-    return __atomic_fetch_sub(ptr, val, SEQ);
+int64_t gray_atomic_sub(int64_t *target, int64_t value) {
+    return __atomic_fetch_sub(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_exchange(int64_t *ptr, int64_t val) {
-    return __atomic_exchange_n(ptr, val, SEQ);
+int64_t gray_atomic_exchange(int64_t *target, int64_t value) {
+    return __atomic_exchange_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-bool gray_atomic_cas(int64_t *ptr, int64_t expected, int64_t desired) {
+bool gray_atomic_cas(int64_t *target, int64_t expected, int64_t desired) {
     /* Strong CAS: no spurious failures, matching the cmpxchg in the assembly.
      * `expected` is by-value here, so the builtin writing the observed value
      * back into it is harmless. */
-    return __atomic_compare_exchange_n(ptr, &expected, desired, false, SEQ, SEQ);
+    return __atomic_compare_exchange_n(target, &expected, desired, false, SEQUENTIALLY_CONSISTENT, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_and(int64_t *ptr, int64_t val) {
-    return __atomic_fetch_and(ptr, val, SEQ);
+int64_t gray_atomic_and(int64_t *target, int64_t value) {
+    return __atomic_fetch_and(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_or(int64_t *ptr, int64_t val) {
-    return __atomic_fetch_or(ptr, val, SEQ);
+int64_t gray_atomic_or(int64_t *target, int64_t value) {
+    return __atomic_fetch_or(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int64_t gray_atomic_xor(int64_t *ptr, int64_t val) {
-    return __atomic_fetch_xor(ptr, val, SEQ);
+int64_t gray_atomic_xor(int64_t *target, int64_t value) {
+    return __atomic_fetch_xor(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
 /* ── 32-bit ─────────────────────────────────────────────────────── */
 
-int32_t gray_atomic_load32(int32_t *ptr) {
-    return __atomic_load_n(ptr, SEQ);
+int32_t gray_atomic_load32(int32_t *target) {
+    return __atomic_load_n(target, SEQUENTIALLY_CONSISTENT);
 }
 
-void gray_atomic_store32(int32_t *ptr, int32_t val) {
-    __atomic_store_n(ptr, val, SEQ);
+void gray_atomic_store32(int32_t *target, int32_t value) {
+    __atomic_store_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int32_t gray_atomic_add32(int32_t *ptr, int32_t val) {
-    return __atomic_fetch_add(ptr, val, SEQ);
+int32_t gray_atomic_add32(int32_t *target, int32_t value) {
+    return __atomic_fetch_add(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int32_t gray_atomic_sub32(int32_t *ptr, int32_t val) {
-    return __atomic_fetch_sub(ptr, val, SEQ);
+int32_t gray_atomic_sub32(int32_t *target, int32_t value) {
+    return __atomic_fetch_sub(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-int32_t gray_atomic_exchange32(int32_t *ptr, int32_t val) {
-    return __atomic_exchange_n(ptr, val, SEQ);
+int32_t gray_atomic_exchange32(int32_t *target, int32_t value) {
+    return __atomic_exchange_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-bool gray_atomic_cas32(int32_t *ptr, int32_t expected, int32_t desired) {
-    return __atomic_compare_exchange_n(ptr, &expected, desired, false, SEQ, SEQ);
+bool gray_atomic_cas32(int32_t *target, int32_t expected, int32_t desired) {
+    return __atomic_compare_exchange_n(target, &expected, desired, false, SEQUENTIALLY_CONSISTENT, SEQUENTIALLY_CONSISTENT);
 }
 
 /* ── 8-bit ──────────────────────────────────────────────────────── */
 
-uint8_t gray_atomic_load8(uint8_t *ptr) {
-    return __atomic_load_n(ptr, SEQ);
+uint8_t gray_atomic_load8(uint8_t *target) {
+    return __atomic_load_n(target, SEQUENTIALLY_CONSISTENT);
 }
 
-void gray_atomic_store8(uint8_t *ptr, uint8_t val) {
-    __atomic_store_n(ptr, val, SEQ);
+void gray_atomic_store8(uint8_t *target, uint8_t value) {
+    __atomic_store_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-uint8_t gray_atomic_exchange8(uint8_t *ptr, uint8_t val) {
-    return __atomic_exchange_n(ptr, val, SEQ);
+uint8_t gray_atomic_exchange8(uint8_t *target, uint8_t value) {
+    return __atomic_exchange_n(target, value, SEQUENTIALLY_CONSISTENT);
 }
 
-bool gray_atomic_cas8(uint8_t *ptr, uint8_t expected, uint8_t desired) {
-    return __atomic_compare_exchange_n(ptr, &expected, desired, false, SEQ, SEQ);
+bool gray_atomic_cas8(uint8_t *target, uint8_t expected, uint8_t desired) {
+    return __atomic_compare_exchange_n(target, &expected, desired, false, SEQUENTIALLY_CONSISTENT, SEQUENTIALLY_CONSISTENT);
 }
 
 /* ── Spinlock ───────────────────────────────────────────────────── */
 /* 0 means free and 1 means held, matching the assembly. */
 
 void gray_spin_lock(int32_t *lock) {
-    while (__atomic_exchange_n(lock, 1, SEQ) != 0) {
+    while (__atomic_exchange_n(lock, 1, SEQUENTIALLY_CONSISTENT) != 0) {
         /* Spin until the previous value observed is 0. */
     }
 }
 
 bool gray_spin_trylock(int32_t *lock) {
-    return __atomic_exchange_n(lock, 1, SEQ) == 0;
+    return __atomic_exchange_n(lock, 1, SEQUENTIALLY_CONSISTENT) == 0;
 }
 
 void gray_spin_unlock(int32_t *lock) {
-    __atomic_store_n(lock, 0, SEQ);
+    __atomic_store_n(lock, 0, SEQUENTIALLY_CONSISTENT);
 }
 
 /* ── Memory barrier ─────────────────────────────────────────────── */
 
 void gray_atomic_fence(void) {
-    __atomic_thread_fence(SEQ);
+    __atomic_thread_fence(SEQUENTIALLY_CONSISTENT);
 }

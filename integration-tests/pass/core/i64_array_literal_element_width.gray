@@ -1,0 +1,54 @@
+/*
+ * int_array_literal_element_width.gray
+ * Non-empty [u8] / sized-integer / [u64] array literals must be stored with
+ * element storage matching the annotation, not int64_t. Element indexing
+ * masks the bug on little-endian, so this checks packed-buffer reads
+ * (binary.decode_*) and the fixed-size [T, N] form too.
+ */
+
+import @binary
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // [u8] literal read as a packed 2-u8 little-endian buffer:
+    // 52 + 18*256 == 4660. An int64_t-backed literal would yield 52.
+    mut lit [u8] = {52, 18}
+    if binary.decode_i16_le(lit) == 4660 {
+        println("  [PASS] [u8] literal packed buffer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [u8] literal: decode_i16_le == ${binary.decode_i16_le(lit)}")
+        failed += 1
+    }
+
+    // Fixed-size [u8, N] literal, same check.
+    const flit [u8, 2] = {52, 18}
+    if binary.decode_i16_le(flit) == 4660 {
+        println("  [PASS] [u8, N] literal packed buffer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [u8, N] literal: decode_i16_le == ${binary.decode_i16_le(flit)}")
+        failed += 1
+    }
+
+    // Sized-integer and u64 literals still index to the right values.
+    mut s [i16] = {1, 2, 3}
+    mut u [u8] = {10, 20, 30}
+    mut n [u64] = {100, 200}
+    if s[2] == 3 && u[1] == 20 && n[0] == 100 && n[1] == 200 {
+        println("  [PASS] sized-integer / u64 literal element reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sized-integer / u64 literal reads: ${s[2]} ${u[1]} ${n[0]} ${n[1]}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

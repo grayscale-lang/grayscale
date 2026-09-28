@@ -1,0 +1,12 @@
+/*
+ * Warning Test: W2012 - when-condition-is-f64
+ * Expected: warning that f64 equality in when is imprecise
+ */
+
+do main() {
+    mut x f64 = 0.5
+    when x {
+        is 0.5 { println("half") }
+        default { println("other") }
+    }
+}

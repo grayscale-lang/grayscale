@@ -1,7 +1,7 @@
 /* Pass Test: 'while' keyword alias drives a loop the same as 'as_long_as'. */
 
-do count_to(n int) -> int {
-    mut i int = 0
+do count_to(n i64) -> i64 {
+    mut i i64 = 0
     while i < n {
         i++
     }
@@ -9,8 +9,8 @@ do count_to(n int) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if count_to(3) == 3 {
         passed += 1
@@ -20,7 +20,7 @@ do main() {
     }
 
     // A while whose condition is false from the start runs zero times.
-    mut ran int = 0
+    mut ran i64 = 0
     while false {
         ran = 1
     }
@@ -32,8 +32,8 @@ do main() {
     }
 
     // Accumulate inside the loop.
-    mut sum int = 0
-    mut k int = 1
+    mut sum i64 = 0
+    mut k i64 = 1
     while k <= 5 {
         sum += k
         k++

@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut arr [int, 3] = {1, 2, 3}
+    mut arr [i64, 3] = {1, 2, 3}
     for x in arr {
         println("${x}")
     }

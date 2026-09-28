@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3157 - nil cannot be assigned to i64
+ * Expected: error about non-nullable type
+ */
+// expect-error: E3157
+// expect-error-count: 1
+
+do main() {
+    mut x i64 = nil
+}

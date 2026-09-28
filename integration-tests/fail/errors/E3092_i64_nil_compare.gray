@@ -1,0 +1,5 @@
+/* Error Test: E3092 - i64 compared to nil */
+do main() {
+    mut x i64 = 5
+    if x == nil { println("nil") }
+}

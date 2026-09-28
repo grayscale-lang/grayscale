@@ -4,19 +4,19 @@
  * pointer and for a pointer field reached through a struct value.
  */
 
-do triple(x int) -> int { return x * 3 }
+do triple(x i64) -> i64 { return x * 3 }
 
 const Ops struct {
-    run func(int) -> int
+    run func(i64) -> i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut o ^Ops = new(Ops)
     o^.run = ()triple
-    mut r int = o^.run(7)
+    mut r i64 = o^.run(7)
     if r == 21 {
         passed = passed + 1
     } otherwise {

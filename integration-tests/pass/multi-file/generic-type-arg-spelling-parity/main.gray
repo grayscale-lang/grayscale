@@ -10,15 +10,15 @@ import "./types.gray"
 using utils
 
 const Point struct {
-    x int
+    x i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut a int = utils.new_T(int)
-    mut b int = new_T(int)
+    mut a i64 = utils.new_T(i64)
+    mut b i64 = new_T(i64)
     if a == 0 && b == 0 {
         println("  [PASS] primitive type argument, both spellings")
         passed += 1

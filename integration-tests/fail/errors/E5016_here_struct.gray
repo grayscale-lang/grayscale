@@ -7,7 +7,7 @@
  */
 
 const here struct {
-    x int
+    x i64
 }
 
 do main() {

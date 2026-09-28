@@ -9,5 +9,5 @@
  */
 
 do main() {
-    mut m map[string:int] = {}
+    mut m map[string:i64] = {}
 }

@@ -4,12 +4,12 @@
  */
 
 const Node struct {
-    value int
+    value i64
     next ^Node
 }
 
 const Other struct {
-    x int
+    x i64
 }
 
 do main() {

@@ -1,0 +1,7 @@
+/* Panic Test: P0014 - math.neg of the most negative i32 */
+import @math
+
+do main() {
+    mut x i32 = -2147483648
+    println(math.neg(x))
+}

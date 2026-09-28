@@ -1,8 +1,8 @@
-private const LIMIT int = 7
-private mut counter int = 0
-private do bump(x int) -> int { return x + LIMIT }
+private const LIMIT i64 = 7
+private mut counter i64 = 0
+private do bump(x i64) -> i64 { return x + LIMIT }
 
-do stamp() -> int {
+do stamp() -> i64 {
     counter += 1
     return bump(counter)
 }

@@ -4,12 +4,12 @@
 // expect-error: E3122
 // expect-error-count: 1
 
-do inc(&n int) {
+do inc(&n i64) {
     n = n + 1
 }
 
 do main() {
-    const v int = 10
-    mut p ^int = addr(v)
+    const v i64 = 10
+    mut p ^i64 = addr(v)
     inc(p^)
 }

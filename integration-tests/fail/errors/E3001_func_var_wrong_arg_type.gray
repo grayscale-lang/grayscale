@@ -12,5 +12,5 @@ do greet(name string) -> string {
 
 do main() {
     mut f func(string) -> string = ()greet
-    mut x string = f(42)  // int passed where string expected
+    mut x string = f(42)  // i64 passed where string expected
 }

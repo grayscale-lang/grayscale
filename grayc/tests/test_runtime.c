@@ -25,7 +25,7 @@ static void test_gray_arena_create(void) {
     ASSERT_NOT_NULL(a->first);
     ASSERT_EQ(a->default_block_size, 4096);
     ASSERT(a->first == a->current);
-    ASSERT_EQ(a->destroyed, false);
+    ASSERT_EQ(a->is_destroyed, false);
     gray_arena_destroy(a, __FILE__, __LINE__);
 }
 
@@ -178,14 +178,14 @@ static void test_gray_string_empty(void) {
 /* ===== GrayArray Tests ===== */
 
 static void test_gray_array_new(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     ASSERT_EQ(arr.len, 0);
-    ASSERT_GE(arr.cap, GRAY_ARRAY_MIN_CAP);
+    ASSERT_GE(arr.capacity, GRAY_ARRAY_MIN_CAPACITY);
     ASSERT_EQ(arr.elem_size, (int32_t)sizeof(int64_t));
 }
 
 static void test_gray_array_push_and_get(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t val = 42;
     GRAY_ARRAY_PUSH(arena, &arr, &val);
     ASSERT_EQ(arr.len, 1);
@@ -193,27 +193,28 @@ static void test_gray_array_push_and_get(void) {
 }
 
 static void test_gray_array_push_growth(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 2);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 2, GRAY_ELEM_I64);
     for (int i = 0; i < 10; i++) {
         int64_t val = i * 10;
         GRAY_ARRAY_PUSH(arena, &arr, &val);
     }
     ASSERT_EQ(arr.len, 10);
-    ASSERT_GE(arr.cap, 10);
+    ASSERT_GE(arr.capacity, 10);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 9), 90);
 }
 
 static void test_gray_array_set(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     int64_t val = 100;
     GRAY_ARRAY_PUSH(arena, &arr, &val);
-    GRAY_ARRAY_SET(arr, int64_t, 0, 200);
+    val = 200;
+    gray_array_set(&arr, 0, &val, __FILE__, __LINE__);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 200);
 }
 
 static void test_gray_array_from(void) {
     int64_t data[] = {10, 20, 30};
-    GrayArray arr = gray_array_from(arena, data, sizeof(int64_t), 3);
+    GrayArray arr = gray_array_from(arena, data, sizeof(int64_t), 3, GRAY_ELEM_I64);
     ASSERT_EQ(arr.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 10);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 1), 20);
@@ -259,12 +260,13 @@ static void test_gray_array_copy(void) {
     GrayArray dst = gray_array_copy(arena, &src);
     ASSERT_EQ(dst.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(dst, int64_t, 1), 20);
-    GRAY_ARRAY_SET(src, int64_t, 1, 999);
+    int64_t updated = 999;
+    gray_array_set(&src, 1, &updated, __FILE__, __LINE__);
     ASSERT_EQ(GRAY_ARRAY_GET(dst, int64_t, 1), 20);
 }
 
 static void test_gray_array_multiple_types(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(double), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(double), 0, GRAY_ELEM_F64);
     double v = 3.14;
     GRAY_ARRAY_PUSH(arena, &arr, &v);
     ASSERT_EQ(arr.len, 1);
@@ -273,20 +275,20 @@ static void test_gray_array_multiple_types(void) {
 }
 
 static void test_gray_array_empty(void) {
-    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0);
+    GrayArray arr = gray_array_new(arena, sizeof(int64_t), 0, GRAY_ELEM_I64);
     ASSERT_EQ(arr.len, 0);
 }
 
 /* ===== GrayMap Tests ===== */
 
-static void test_gray_map_new(void) {
-    GrayMap m = gray_map_new(arena, sizeof(int64_t), sizeof(int64_t), 0);
+static void test_gray_map_new_kind(void) {
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     ASSERT_EQ(m.count, 0);
-    ASSERT_GE(m.capacity, GRAY_MAP_MIN_CAP);
+    ASSERT_GE(m.capacity, GRAY_MAP_MIN_CAPACITY);
 }
 
 static void test_gray_map_set_get_int(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t key = 1, val = 100;
     GRAY_MAP_SET(arena, &m, &key, &val);
     void *got = gray_map_get(&m, &key);
@@ -295,17 +297,17 @@ static void test_gray_map_set_get_int(void) {
 }
 
 static void test_gray_map_set_get_string(void) {
-    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayMap m = gray_map_new_kind(arena, sizeof(GrayString), sizeof(int64_t), 0, GRAY_ELEM_STRING, GRAY_ELEM_I64);
     GrayString key = gray_string_lit("name");
     int64_t val = 42;
-    gray_map_set_str(arena, &m, key, &val, __FILE__, __LINE__);
+    gray_map_set(arena, &m, &key, &val, __FILE__, __LINE__);
     void *got = gray_map_get_str(&m, key);
     ASSERT_NOT_NULL(got);
     ASSERT_EQ(*(int64_t *)got, 42);
 }
 
 static void test_gray_map_has(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t key = 5, val = 50;
     ASSERT(!gray_map_has(&m, &key));
     GRAY_MAP_SET(arena, &m, &key, &val);
@@ -313,17 +315,17 @@ static void test_gray_map_has(void) {
 }
 
 static void test_gray_map_remove(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t key = 7, val = 70;
     GRAY_MAP_SET(arena, &m, &key, &val);
     ASSERT_EQ(m.count, 1);
-    GRAY_MAP_REMOVE(&m, &key);
+    gray_map_remove(&m, &key, __FILE__, __LINE__);
     ASSERT_EQ(m.count, 0);
     ASSERT(gray_map_get(&m, &key) == NULL);
 }
 
 static void test_gray_map_overwrite(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t key = 1, v1 = 10, v2 = 20;
     GRAY_MAP_SET(arena, &m, &key, &v1);
     GRAY_MAP_SET(arena, &m, &key, &v2);
@@ -332,7 +334,7 @@ static void test_gray_map_overwrite(void) {
 }
 
 static void test_gray_map_clear(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k1 = 1, v1 = 10, k2 = 2, v2 = 20;
     GRAY_MAP_SET(arena, &m, &k1, &v1);
     GRAY_MAP_SET(arena, &m, &k2, &v2);
@@ -341,7 +343,7 @@ static void test_gray_map_clear(void) {
 }
 
 static void test_gray_map_insertion_order(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t keys[] = {30, 10, 20};
     int64_t vals[] = {300, 100, 200};
     for (int i = 0; i < 3; i++)
@@ -358,7 +360,7 @@ static void test_gray_map_insertion_order(void) {
  * it down. Readers skip the holes, so insertion order must survive a
  * removal from the front and the middle. */
 static void test_gray_map_order_after_remove(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t keys[] = {50, 40, 30, 20, 10};
     for (int i = 0; i < 5; i++) {
         int64_t v = keys[i] * 10;
@@ -366,8 +368,8 @@ static void test_gray_map_order_after_remove(void) {
     }
     /* Drop the first and middle entries — the worst case for the old
      * linear-scan-and-memmove removal. */
-    GRAY_MAP_REMOVE(&m, &keys[0]);
-    GRAY_MAP_REMOVE(&m, &keys[2]);
+    gray_map_remove(&m, &keys[0], __FILE__, __LINE__);
+    gray_map_remove(&m, &keys[2], __FILE__, __LINE__);
     ASSERT_EQ(m.count, 3);
 
     int64_t expected[] = {40, 20, 10};
@@ -393,12 +395,12 @@ static void test_gray_map_order_after_remove(void) {
  * array in place) is what keeps the copy's order_len consistent with the
  * array it still points at. */
 static void test_gray_map_copy_sees_no_duplicates(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_ELEM_I64, GRAY_ELEM_I64);
     for (int64_t i = 0; i < 6; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
     int64_t drop = 0;
-    GRAY_MAP_REMOVE(&m, &drop);
+    gray_map_remove(&m, &drop, __FILE__, __LINE__);
     drop = 3;
-    GRAY_MAP_REMOVE(&m, &drop);
+    gray_map_remove(&m, &drop, __FILE__, __LINE__);
 
     /* Iterate through a struct copy, the way generated code passes maps to
      * gray_builtin_map_to_string, then iterate the original again. */
@@ -416,11 +418,11 @@ static void test_gray_map_copy_sees_no_duplicates(void) {
  * insert path rebuilds once the order array fills, which is what keeps
  * O(1) removal from overflowing the allocation. */
 static void test_gray_map_order_churn_bounded(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_ELEM_I64, GRAY_ELEM_I64);
     for (int64_t i = 0; i < 32; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
     for (int round = 0; round < 500; round++) {
         int64_t key = round % 32;
-        GRAY_MAP_REMOVE(&m, &key);
+        gray_map_remove(&m, &key, __FILE__, __LINE__);
         int64_t v = key * 2;
         GRAY_MAP_SET(arena, &m, &key, &v);
         ASSERT(m.order_len <= m.capacity);
@@ -434,7 +436,7 @@ static void test_gray_map_order_churn_bounded(void) {
 }
 
 static void test_gray_map_rehash(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_ELEM_I64, GRAY_ELEM_I64);
     for (int i = 0; i < 7; i++) {
         int64_t key = i, val = i * 100;
         GRAY_MAP_SET(arena, &m, &key, &val);
@@ -449,7 +451,7 @@ static void test_gray_map_rehash(void) {
 }
 
 static void test_gray_map_copy(void) {
-    GrayMap src = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap src = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     int64_t k = 1, v = 10;
     GRAY_MAP_SET(arena, &src, &k, &v);
     GrayMap dst = gray_map_copy(arena, &src);
@@ -461,7 +463,7 @@ static void test_gray_map_copy(void) {
 }
 
 static void test_gray_map_float_normalization(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(double), sizeof(int64_t), 0, GRAY_MAP_KEY_F64);
+    GrayMap m = gray_map_new_kind(arena, sizeof(double), sizeof(int64_t), 0, GRAY_ELEM_F64, GRAY_ELEM_I64);
     double pos_zero = 0.0;
     double neg_zero = -0.0;
     int64_t val = 42;
@@ -472,7 +474,7 @@ static void test_gray_map_float_normalization(void) {
 }
 
 static void test_gray_map_empty(void) {
-    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_ELEM_I64, GRAY_ELEM_I64);
     ASSERT_EQ(m.count, 0);
     int64_t key = 999;
     ASSERT(gray_map_get(&m, &key) == NULL);
@@ -519,7 +521,7 @@ int main(void) {
     RUN_TEST(test_gray_array_empty);
 
     printf("--- GrayMap ---\n");
-    RUN_TEST(test_gray_map_new);
+    RUN_TEST(test_gray_map_new_kind);
     RUN_TEST(test_gray_map_set_get_int);
     RUN_TEST(test_gray_map_set_get_string);
     RUN_TEST(test_gray_map_has);

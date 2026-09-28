@@ -1,95 +1,95 @@
 /*
  * bigint_implicit_assign.gray - Test implicit scalar→wide integer assignment
  *
- * Covers: assigning integer literals and int/uint variables directly to
+ * Covers: assigning integer literals and i64/u64 variables directly to
  * i128/u128/i256/u256 declared variables without explicit constructor.
  */
 
 do main() {
     println("=== Wide Integer Implicit Assignment Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: int literal → i128
+    // Test 1: i64 literal → i128
     mut a i128 = 42
     if a == i128(42) {
-        println("  [PASS] int literal → i128")
+        println("  [PASS] i64 literal → i128")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal → i128: got ${a}")
+        println("  [FAIL] i64 literal → i128: got ${a}")
         failed += 1
     }
 
-    // Test 2: int literal → u128
+    // Test 2: i64 literal → u128
     mut b u128 = 100
     if b == u128(100) {
-        println("  [PASS] int literal → u128")
+        println("  [PASS] i64 literal → u128")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal → u128: got ${b}")
+        println("  [FAIL] i64 literal → u128: got ${b}")
         failed += 1
     }
 
-    // Test 3: int literal → i256
+    // Test 3: i64 literal → i256
     mut c i256 = 9999
     if c == i256(9999) {
-        println("  [PASS] int literal → i256")
+        println("  [PASS] i64 literal → i256")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal → i256: got ${c}")
+        println("  [FAIL] i64 literal → i256: got ${c}")
         failed += 1
     }
 
-    // Test 4: int literal → u256
+    // Test 4: i64 literal → u256
     mut d u256 = 555
     if d == u256(555) {
-        println("  [PASS] int literal → u256")
+        println("  [PASS] i64 literal → u256")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal → u256: got ${d}")
+        println("  [FAIL] i64 literal → u256: got ${d}")
         failed += 1
     }
 
-    // Test 5: int variable → i128
-    mut n int = 77
+    // Test 5: i64 variable → i128
+    mut n i64 = 77
     mut e i128 = n
     if e == i128(77) {
-        println("  [PASS] int variable → i128")
+        println("  [PASS] i64 variable → i128")
         passed += 1
     } otherwise {
-        println("  [FAIL] int variable → i128: got ${e}")
+        println("  [FAIL] i64 variable → i128: got ${e}")
         failed += 1
     }
 
-    // Test 6: uint variable → u128
-    mut m uint = 200
+    // Test 6: u64 variable → u128
+    mut m u64 = 200
     mut f u128 = m
     if f == u128(200) {
-        println("  [PASS] uint variable → u128")
+        println("  [PASS] u64 variable → u128")
         passed += 1
     } otherwise {
-        println("  [FAIL] uint variable → u128: got ${f}")
+        println("  [FAIL] u64 variable → u128: got ${f}")
         failed += 1
     }
 
-    // Test 7: int variable → i256
-    mut k int = 1234
+    // Test 7: i64 variable → i256
+    mut k i64 = 1234
     mut g i256 = k
     if g == i256(1234) {
-        println("  [PASS] int variable → i256")
+        println("  [PASS] i64 variable → i256")
         passed += 1
     } otherwise {
-        println("  [FAIL] int variable → i256: got ${g}")
+        println("  [FAIL] i64 variable → i256: got ${g}")
         failed += 1
     }
 
-    // Test 8: negative int literal → i128
+    // Test 8: negative i64 literal → i128
     mut h i128 = -50
     if h == i128(-50) {
-        println("  [PASS] negative int literal → i128")
+        println("  [PASS] negative i64 literal → i128")
         passed += 1
     } otherwise {
-        println("  [FAIL] negative int literal → i128: got ${h}")
+        println("  [FAIL] negative i64 literal → i128: got ${h}")
         failed += 1
     }
 

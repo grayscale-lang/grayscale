@@ -9,9 +9,9 @@
 import @channels
 
 const Box struct {
-    n int
+    n i64
 
-    do send(&b Box, v int) -> bool {
+    do send(&b Box, v i64) -> bool {
         b.n = b.n + v
         return true
     }
@@ -28,7 +28,7 @@ do main() {
         _ = box.send(i)
     }
 
-    mut total int = 0
+    mut total i64 = 0
     for _ in range(0, 3) {
         total = total + channels.receive(ch)
     }

@@ -5,7 +5,7 @@
  * The type is inferred from the first pair only; a later pair whose value
  * type does not match used to skip the typechecker and leak a C compiler
  * error. Now it gets the same E3053 the annotated form emits.
- * Expected: "type mismatch in map literal value; expected 'int', got 'string'"
+ * Expected: "type mismatch in map literal value; expected 'i64', got 'string'"
  */
 
 // expect-error: E3053

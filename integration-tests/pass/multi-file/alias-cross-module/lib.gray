@@ -1,12 +1,12 @@
-alias Score = int
+alias Score = i64
 
 do bump(s Score) -> Score {
     return s + 1
 }
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Color enum {
@@ -19,10 +19,10 @@ alias Spot = Vec
 alias Hue = Color
 alias Scores = [Score]
 
-do make_vec(x int, y int) -> Vec {
+do make_vec(x i64, y i64) -> Vec {
     return Vec{x: x, y: y}
 }
 
-do vec_sum(v Spot) -> int {
+do vec_sum(v Spot) -> i64 {
     return v.x + v.y
 }

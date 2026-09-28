@@ -1,5 +1,5 @@
 const Shape enum {
-    Circle(int)
-    Rect(int, int)
+    Circle(i64)
+    Rect(i64, i64)
     Empty
 }

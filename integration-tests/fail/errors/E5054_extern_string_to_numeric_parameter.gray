@@ -8,6 +8,6 @@
 extern import "math.h"
 
 do main() {
-    mut x float = extern.sqrt("x")
+    mut x f64 = extern.sqrt("x")
     println("${x}")
 }

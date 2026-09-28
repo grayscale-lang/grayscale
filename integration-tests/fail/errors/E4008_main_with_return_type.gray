@@ -3,6 +3,6 @@
  * Expected: "main function cannot have a return type" error
  */
 
-do main() -> int {
+do main() -> i64 {
     return 0
 }

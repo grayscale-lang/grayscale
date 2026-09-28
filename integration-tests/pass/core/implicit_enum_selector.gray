@@ -25,7 +25,7 @@ do get_direction() -> Direction {
     return .NORTH
 }
 
-do move(d Direction) -> int {
+do move(d Direction) -> i64 {
     when d {
         is .NORTH { return 0 }
         is .EAST { return 1 }
@@ -35,7 +35,7 @@ do move(d Direction) -> int {
     return -1
 }
 
-do with_default(d Direction = .SOUTH) -> int {
+do with_default(d Direction = .SOUTH) -> i64 {
     if d == .SOUTH {
         return 1
     }
@@ -44,8 +44,8 @@ do with_default(d Direction = .SOUTH) -> int {
 
 do main() {
     println("=== Implicit Enum Selector Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Variable declaration with type annotation
     mut dir Direction = .NORTH
@@ -68,7 +68,7 @@ do main() {
     }
 
     // Test 3: Function argument
-    mut result int = move(.EAST)
+    mut result i64 = move(.EAST)
     if result == 1 {
         println("  [PASS] function argument")
         passed += 1
@@ -79,7 +79,7 @@ do main() {
 
     // Test 4: When/is branches
     dir = .WEST
-    mut when_result int = -1
+    mut when_result i64 = -1
     when dir {
         is .NORTH { when_result = 0 }
         is .EAST { when_result = 1 }
@@ -142,7 +142,7 @@ do main() {
     }
 
     // Test 9: Default parameter value
-    mut def_result int = with_default()
+    mut def_result i64 = with_default()
     if def_result == 1 {
         println("  [PASS] default parameter value")
         passed += 1

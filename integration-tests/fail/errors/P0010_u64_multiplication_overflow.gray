@@ -1,0 +1,6 @@
+/* Panic Test: P0010 - u64 multiplication overflow */
+do main() {
+    mut x u64 = 9223372036854775807
+    mut y u64 = x * 3
+    println(y)
+}

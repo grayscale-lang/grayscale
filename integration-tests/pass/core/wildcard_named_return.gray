@@ -7,19 +7,19 @@
  * type bindings.
  */
 
-do first_and_len(arr [?]) -> (?, int) {
+do first_and_len(arr [?]) -> (?, i64) {
     return arr[0], len(arr)
 }
 
 do main() {
     println("=== Wildcard Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- int binding --
-    mut v int, n int = first_and_len({10, 20, 30})
+    // -- i64 binding --
+    mut v i64, n i64 = first_and_len({10, 20, 30})
     if v == 10 && n == 3 {
-        println("  [PASS] first_and_len([int]) = (10, 3)")
+        println("  [PASS] first_and_len([i64]) = (10, 3)")
         passed += 1
     } otherwise {
         println("  [FAIL] got (${v}, ${n})")
@@ -27,7 +27,7 @@ do main() {
     }
 
     // -- string binding (different instantiation) --
-    mut s string, n2 int = first_and_len({"a", "b"})
+    mut s string, n2 i64 = first_and_len({"a", "b"})
     if s == "a" && n2 == 2 {
         println("  [PASS] first_and_len([string]) = (a, 2)")
         passed += 1
@@ -36,10 +36,10 @@ do main() {
         failed += 1
     }
 
-    // -- float binding --
-    mut f float, n3 int = first_and_len({1.5, 2.5, 3.5, 4.5})
+    // -- f64 binding --
+    mut f f64, n3 i64 = first_and_len({1.5, 2.5, 3.5, 4.5})
     if f == 1.5 && n3 == 4 {
-        println("  [PASS] first_and_len([float]) = (1.5, 4)")
+        println("  [PASS] first_and_len([f64]) = (1.5, 4)")
         passed += 1
     } otherwise {
         println("  [FAIL] got (${f}, ${n3})")

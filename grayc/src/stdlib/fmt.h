@@ -26,10 +26,10 @@
  *@module fmt
  *@group Output
  *@sig printf(format string, args [T])
- *@desc Prints a formatted string to stdout. Uses C-style format directives: %d (int), %f (float), %s (string), %b (bool), %c (char). Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char). Pass one array element per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. The elements of an array literal may differ in type, e.g. {name, 30}; an array variable's element type must suit every directive, and the program panics if it has fewer elements than directives. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.printf("hello %s, you are %d years old\n", "alice", 30)
+ *   fmt.printf("hello %s, you are %d years old\n", {"alice", 30})
  *@end
  */
 /* fmt.printf — handled directly by codegen */
@@ -38,10 +38,10 @@
  *@module fmt
  *@group Output
  *@sig sprintf(format string, args [T]) -> string
- *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   mut s string = fmt.sprintf("x = %d", 42)
+ *   mut s string = fmt.sprintf("x = %d", {42})
  *   println(s)
  *@end
  */
@@ -51,10 +51,10 @@
  *@module fmt
  *@group Output
  *@sig printfln(format string, args [T])
- *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.printfln("hello %s, you are %d years old", "alice", 30)
+ *   fmt.printfln("hello %s, you are %d years old", {"alice", 30})
  *@end
  */
 /* fmt.printfln — handled directly by codegen */
@@ -63,10 +63,10 @@
  *@module fmt
  *@group Output
  *@sig eprintf(format string, args [T])
- *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.eprintf("error: %s\n", "something went wrong")
+ *   fmt.eprintf("error: %s\n", {"something went wrong"})
  *@end
  */
 /* fmt.eprintf — handled directly by codegen */
@@ -75,10 +75,10 @@
  *@module fmt
  *@group Output
  *@sig eprintfln(format string, args [T])
- *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   fmt.eprintfln("error: %s", "something went wrong")
+ *   fmt.eprintfln("error: %s", {"something went wrong"})
  *@end
  */
 /* fmt.eprintfln — handled directly by codegen */
@@ -87,10 +87,10 @@
  *@module fmt
  *@group Output
  *@sig sprintfln(format string, args [T]) -> string
- *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
+ *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one array element per format directive, of a type that directive accepts. Composite types are rejected.
  *@example
  *   import @fmt
- *   mut s string = fmt.sprintfln("x = %d", 42)
+ *   mut s string = fmt.sprintfln("x = %d", {42})
  *   println(s)
  *@end
  */
@@ -99,103 +99,107 @@
 /*@man pad_left
  *@module fmt
  *@group Padding
- *@sig pad_left(s string, width int, ch char) -> string
+ *@sig pad_left(s string, width i64, ch char) -> string
  *@desc Returns s padded on the left with ch until the total length reaches width. Returns s unchanged if it is already at least width characters long.
  *@example
  *   import @fmt
  *   println(fmt.pad_left("42", 5, '0'))
  *@end
  */
-GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
+
+/* fmt.printf %c: `codepoint` as UTF-8, padded with spaces to `width`
+ * characters (on the right when left_align). NUL-terminated, for %s. */
+GrayString gray_fmt_char_field(GrayArena *arena, int32_t codepoint, int32_t width, bool left_align);
 
 /*@man pad_right
  *@module fmt
  *@group Padding
- *@sig pad_right(s string, width int, ch char) -> string
+ *@sig pad_right(s string, width i64, ch char) -> string
  *@desc Returns s padded on the right with ch until the total length reaches width. Returns s unchanged if it is already at least width characters long.
  *@example
  *   import @fmt
  *   println(fmt.pad_right("hi", 6, '.'))
  *@end
  */
-GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_pad_right(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
 /*@man center
  *@module fmt
  *@group Padding
- *@sig center(s string, width int, ch char) -> string
+ *@sig center(s string, width i64, ch char) -> string
  *@desc Returns s centered within width, padded on both sides with ch. If padding is uneven, the extra character goes on the right.
  *@example
  *   import @fmt
  *   println(fmt.center("hi", 8, '-'))
  *@end
  */
-GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, int32_t ch);
+GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character);
 
-/*@man int_to_hex
+/*@man i64_to_hex
  *@module fmt
  *@group Number Formatting
- *@sig int_to_hex(n int) -> string
- *@desc Returns the integer n formatted as a lowercase hexadecimal string with no "0x" prefix.
+ *@sig i64_to_hex(n i64) -> string
+ *@desc Returns the integer n formatted as a lowercase hexadecimal string with no "0x" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
- *   println(fmt.int_to_hex(255))
+ *   println(fmt.i64_to_hex(255))
  *@end
  */
-GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_hex(GrayArena *arena, int64_t value);
 
-/*@man int_to_binary
+/*@man i64_to_binary
  *@module fmt
  *@group Number Formatting
- *@sig int_to_binary(n int) -> string
- *@desc Returns the integer n formatted as a binary string with no "0b" prefix.
+ *@sig i64_to_binary(n i64) -> string
+ *@desc Returns the integer n formatted as a binary string with no "0b" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
- *   println(fmt.int_to_binary(10))
+ *   println(fmt.i64_to_binary(10))
  *@end
  */
-GrayString gray_fmt_int_to_binary(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_binary(GrayArena *arena, int64_t value);
 
-/*@man int_to_octal
+/*@man i64_to_octal
  *@module fmt
  *@group Number Formatting
- *@sig int_to_octal(n int) -> string
- *@desc Returns the integer n formatted as an octal string with no "0o" prefix.
+ *@sig i64_to_octal(n i64) -> string
+ *@desc Returns the integer n formatted as an octal string with no "0o" prefix. A negative n is formatted as its 64-bit two's-complement bits.
  *@example
  *   import @fmt
- *   println(fmt.int_to_octal(8))
+ *   println(fmt.i64_to_octal(8))
  *@end
  */
-GrayString gray_fmt_int_to_octal(GrayArena *arena, int64_t value);
+GrayString gray_fmt_i64_to_octal(GrayArena *arena, int64_t value);
 
-/*@man float_fixed
+/*@man f64_to_fixed
  *@module fmt
  *@group Number Formatting
- *@sig float_fixed(f float, decimals int) -> string
+ *@sig f64_to_fixed(f f64, decimals i64) -> string
  *@desc Returns f formatted with exactly decimals digits after the decimal point.
  *@example
  *   import @fmt
- *   println(fmt.float_fixed(3.14159, 2))
+ *   println(fmt.f64_to_fixed(3.14159, 2))
  *@end
  */
-GrayString gray_fmt_float_fixed(GrayArena *arena, double value, int64_t decimals);
+GrayString gray_fmt_f64_to_fixed(GrayArena *arena, double value, int64_t decimals);
 
-/*@man float_sci
+/*@man f64_to_scientific
  *@module fmt
  *@group Number Formatting
- *@sig float_sci(f float) -> string
+ *@sig f64_to_scientific(f f64) -> string
  *@desc Returns f formatted in scientific notation (e.g. "3.14e+00").
  *@example
  *   import @fmt
- *   println(fmt.float_sci(0.000123))
+ *   println(fmt.f64_to_scientific(0.000123))
  *@end
  */
-GrayString gray_fmt_float_sci(GrayArena *arena, double value);
+GrayString gray_fmt_f64_to_scientific(GrayArena *arena, double value);
 
 /*@man format_number
  *@module fmt
  *@group Number Formatting
- *@sig format_number(n int) -> string
+ *@sig format_number(n i64) -> string
  *@desc Returns n as a decimal string with ASCII comma thousands separators (no locale). 1234567 becomes "1,234,567"; -1000 becomes "-1,000".
  *@example
  *   import @fmt
@@ -207,7 +211,7 @@ GrayString gray_fmt_format_number(GrayArena *arena, int64_t value);
 /*@man format_bytes
  *@module fmt
  *@group Number Formatting
- *@sig format_bytes(n int) -> string
+ *@sig format_bytes(n i64) -> string
  *@desc Returns n formatted as a human-readable byte count using binary units (B, KiB, MiB, GiB, TiB, PiB). Values below 1024 are shown as whole bytes ("1023 B"); larger values use one decimal place ("1.5 KiB"). A negative n keeps a leading minus on the magnitude.
  *@example
  *   import @fmt

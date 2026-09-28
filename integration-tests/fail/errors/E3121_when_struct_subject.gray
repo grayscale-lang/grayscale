@@ -1,6 +1,6 @@
 /* Error Test: E3121 - struct used as when condition */
 const Point struct {
-    x int
+    x i64
 }
 do main() {
     mut p = Point{x: 1}

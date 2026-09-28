@@ -3,10 +3,10 @@
  * Expected: "too many variables; the function returns N value(s) but variable N was requested"
  */
 
-do getTwo() -> (int, int) {
+do getTwo() -> (i64, i64) {
     return 1, 2
 }
 
 do main() {
-    mut a int, b int, c int = getTwo()  // 3 vars, 2 values
+    mut a i64, b i64, c i64 = getTwo()  // 3 vars, 2 values
 }

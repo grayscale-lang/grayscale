@@ -1,6 +1,6 @@
 /* Error Test: E5037 - copy() on a pointer type */
 const Point struct {
-    x int
+    x i64
 }
 do main() {
     mut p = new(Point)

@@ -5,7 +5,7 @@
 // expect-error: E3040
 // expect-error-count: 1
 
-do pair() -> (int, Error) {
+do pair() -> (i64, Error) {
     return 1, nil
 }
 

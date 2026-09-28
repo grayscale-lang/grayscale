@@ -1,0 +1,4 @@
+do main() {
+    mut c char = char(1114112)
+    println(c)
+}

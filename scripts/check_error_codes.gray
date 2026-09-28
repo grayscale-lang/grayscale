@@ -9,6 +9,9 @@
 //   3. no duplicate code in the registry
 //   4. no E/W code is emitted from more than 15 distinct call sites
 //   5. no code is emitted from both parser.c and typechecker.c
+//   6. E3019, E3036 and E3155 (signedness crossing, literal out of range,
+//      narrowing) are emitted only from check_expression_as in typechecker.c —
+//      the one function that applies the sized-type conversion rules
 //
 // P-codes (runtime panics) are checked for (1) and (3) only: many are
 // emitted from headers (bigint.h, runtime.h) this script does not scan,
@@ -24,7 +27,7 @@
 
 import @io, @strings, @arrays
 
-const MAX_SITES int = 15
+const MAX_SITES i64 = 15
 
 // is_digit reports whether c is an ASCII digit.
 do is_digit(c char) -> bool {
@@ -42,27 +45,52 @@ do registry_code(line string) -> string {
     if !is_err && !is_warn && !is_panic {
         return ""
     }
-    mut open int = strings.index_of(trimmed, "\"")
+    mut open i64 = strings.index_of(trimmed, "\"")
     mut rest string = strings.slice(trimmed, open + 1, len(trimmed))
-    mut close int = strings.index_of(rest, "\"")
+    mut close i64 = strings.index_of(rest, "\"")
     if close == -1 {
         return ""
     }
     return strings.slice(rest, 0, close)
 }
 
+// defined_function returns the name of the function a source line opens at
+// file scope ("static void f(int x) {" gives "f"), or "" for any other line.
+do defined_function(line string) -> string {
+    if len(line) == 0 || !strings.ends_with(line, "{") {
+        return ""
+    }
+    mut first char = strings.char_at(line, 0)
+    if first == ' ' || first == '\t' || first == '/' || first == '#' || first == '}' {
+        return ""
+    }
+    mut paren i64 = strings.index_of(line, "(")
+    if paren <= 0 {
+        return ""
+    }
+    mut start i64 = paren
+    for start > 0 {
+        mut c char = strings.char_at(line, start - 1)
+        if !(is_digit(c) || c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+            break
+        }
+        start = start - 1
+    }
+    return strings.slice(line, start, paren)
+}
+
 // scan_line_codes returns every quoted "E####"/"W####"/"P####" literal on a
 // source line.
 do scan_line_codes(line string) -> [string] {
     mut found [string] = {}
-    mut n int = len(line)
-    mut i int = 0
+    mut n i64 = len(line)
+    mut i i64 = 0
     for i < n - 2 {
         mut c char = strings.char_at(line, i)
         mut c1 char = strings.char_at(line, i + 1)
         mut c2 char = strings.char_at(line, i + 2)
         if c == '"' && (c1 == 'E' || c1 == 'W' || c1 == 'P') && is_digit(c2) {
-            mut j int = i + 2
+            mut j i64 = i + 2
             for j < n && is_digit(strings.char_at(line, j)) {
                 j = j + 1
             }
@@ -110,9 +138,10 @@ do main() {
 
     mut emitted [string] = {}
     mut site_codes [string] = {}
-    mut site_counts [int] = {}
+    mut site_counts [i64] = {}
     mut in_parser [string] = {}
     mut in_typechecker [string] = {}
+    mut sized_rule_sites [string] = {}
 
     for_each entry in walked {
         mut path string = entry
@@ -132,13 +161,22 @@ do main() {
         if file_err != nil {
             continue
         }
+        mut current_function string = ""
         for_each src in file_lines {
+            mut opened string = defined_function(src)
+            if opened != "" {
+                current_function = opened
+            }
             mut codes [string] = scan_line_codes(src)
             for_each code in codes {
+                if (code == "E3019" || code == "E3036" || code == "E3155") &&
+                        !(is_typechecker && current_function == "check_expression_as") {
+                    arrays.append(sized_rule_sites, "${code} in ${path} (${current_function})")
+                }
                 if !arrays.contains(emitted, code) {
                     arrays.append(emitted, code)
                 }
-                mut idx int = arrays.index_of(site_codes, code)
+                mut idx i64 = arrays.index_of(site_codes, code)
                 if idx == -1 {
                     arrays.append(site_codes, code)
                     arrays.append(site_counts, 1)
@@ -181,7 +219,7 @@ do main() {
     }
 
     // (4) more than MAX_SITES call sites (E/W only — see header note on P-codes)
-    mut i int = 0
+    mut i i64 = 0
     for i < len(site_codes) {
         if !strings.starts_with(site_codes[i], "P") && site_counts[i] > MAX_SITES {
             arrays.append(violations,
@@ -196,6 +234,12 @@ do main() {
             arrays.append(violations,
                 "code ${code} emitted from both parser.c and typechecker.c")
         }
+    }
+
+    // (6) a sized-type conversion code emitted outside check_expression_as
+    for_each site in sized_rule_sites {
+        arrays.append(violations,
+            "${site}: E3019, E3036 and E3155 may only be emitted from check_expression_as")
     }
 
     // --- 4. Report ---------------------------------------------------------

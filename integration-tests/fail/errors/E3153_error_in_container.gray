@@ -4,7 +4,7 @@
 // and map[K:Error] leak a C type error from the constructor. Reject them;
 // wrap Error in a struct, or store err.code / err.msg.
 
-do f() -> (int, Error) {
+do f() -> (i64, Error) {
     return 0, error(.NotFound, "x")
 }
 

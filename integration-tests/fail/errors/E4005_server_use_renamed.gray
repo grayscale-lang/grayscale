@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4005 - server.use renamed to server.add_middleware
+ * Expected: undefined function error for the old name
+ */
+
+import @server
+
+do stamp(req ^HttpRequest, resp ^HttpResponse) {
+    resp^.headers["X-Served-By"] = "grayscale"
+}
+
+do main() {
+    mut r = server.add_router()
+    server.use(r, ()stamp)
+}

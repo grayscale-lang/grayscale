@@ -4,13 +4,13 @@
 // expect-error-count: 2
 
 const S struct {
-    n int
+    n i64
 }
 
 do main() {
     mut s S = S{ n: 0 }
     mut p ^S = new(S)
-    mut u uint = 18446744073709551615
+    mut u u64 = 18446744073709551615
     s.n = u
     p^.n = u
     println("${s.n} ${p^.n}")

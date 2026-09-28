@@ -8,12 +8,12 @@
 
 do main() {
     println("=== Array Copy-by-Default Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic array copy on declaration
-    mut arr1 [int] = {1, 2, 3}
-    mut arr2 [int] = arr1
+    mut arr1 [i64] = {1, 2, 3}
+    mut arr2 [i64] = arr1
     arr2[0] = 999
     if arr1[0] == 1 && arr2[0] == 999 {
         println("  [PASS] declaration copy is independent")
@@ -24,8 +24,8 @@ do main() {
     }
 
     // Test 2: array copy on reassignment
-    mut a [int] = {10, 20, 30}
-    mut b [int] = {0, 0, 0}
+    mut a [i64] = {10, 20, 30}
+    mut b [i64] = {0, 0, 0}
     b = a
     b[1] = 999
     if a[1] == 20 && b[1] == 999 {
@@ -37,8 +37,8 @@ do main() {
     }
 
     // Test 3: original unchanged after copy modification
-    mut orig [int] = {5, 10, 15}
-    mut dup [int] = orig
+    mut orig [i64] = {5, 10, 15}
+    mut dup [i64] = orig
     dup[0] = 0
     dup[1] = 0
     dup[2] = 0
@@ -51,8 +51,8 @@ do main() {
     }
 
     // Test 4: copy preserves length
-    mut src [int] = {1, 2, 3, 4, 5}
-    mut dst [int] = src
+    mut src [i64] = {1, 2, 3, 4, 5}
+    mut dst [i64] = src
     if len(dst) == 5 {
         println("  [PASS] copy preserves length")
         passed += 1
@@ -74,8 +74,8 @@ do main() {
     }
 
     // Test 6: copy vs ref — copy is independent, ref is shared
-    mut data [int] = {100, 200}
-    mut copied [int] = data
+    mut data [i64] = {100, 200}
+    mut copied [i64] = data
     mut shared = ref(data)
     copied[0] = 0
     shared[0] = 999

@@ -1,0 +1,81 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // shift left past the low word of an i128
+    mut h i128 = 1
+    if (h bit_shift_left 100) == 1267650600228229401496703205376 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // signed right shift keeps the sign
+    mut n i128 = -256
+    if (n bit_shift_right 4) == -16 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // unsigned right shift fills with zeros
+    mut u u128 = 340282366920938463463374607431768211455
+    if (u bit_shift_right 127) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // shifts across every word of a 256-bit value
+    mut s i256 = -1
+    if (s bit_shift_right 200) == -1 && (s bit_shift_left 70) == -1180591620717411303424 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    mut big u256 = 1
+    if (big bit_shift_left 255) == 57896044618658097711785492504343953926634992332820282019728792003956564819968 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // and, or, xor, not
+    mut k i128 = 12
+    mut j i128 = 10
+    if (k bit_and j) == 8 && (k bit_or j) == 14 && (k bit_xor j) == 6 && (bit_not k) == -13 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    mut x u256 = 7
+    if (bit_not x) == 115792089237316195423570985008687907853269984665640564039457584007913129639928 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // a narrow operand is widened to match
+    if (k bit_and 4) == 4 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // a wide shift amount
+    mut amount i128 = 3
+    mut a i64 = 6
+    if (a bit_shift_left amount) == 48 && (h bit_shift_left amount) == 8 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

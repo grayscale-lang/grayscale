@@ -5,6 +5,6 @@
  * and could spin the parser loop. Must now diagnose cleanly.
  */
 
-do foo(a int b int) {}
+do foo(a i64 b i64) {}
 
 do main() {}

@@ -2,25 +2,25 @@
 // Typed blank identifiers should trigger W1005 warning but still run successfully
 
 
-do returnTwo() -> (int, string) {
+do returnTwo() -> (i64, string) {
     return 42, "hello"
 }
 
-do returnThree() -> (int, string, bool) {
+do returnThree() -> (i64, string, bool) {
     return 1, "two", true
 }
 
 do main() {
     // Test 1: typed blank after named - should warn for the typed blank
-    mut x int, _ string = returnTwo()
+    mut x i64, _ string = returnTwo()
     println(x)
 
     // Test 2: all typed blanks - should warn for both
-    mut _ int, _ string = returnTwo()
+    mut _ i64, _ string = returnTwo()
     println("discarded both")
 
     // Test 3: typed blank in the middle
-    mut a int, _ string, c bool = returnThree()
+    mut a i64, _ string, c bool = returnThree()
     println(a)
     println(c)
 

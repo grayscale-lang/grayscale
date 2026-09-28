@@ -1,5 +1,5 @@
 const Node struct {
-    val int
+    val i64
     next ^Node
 }
 

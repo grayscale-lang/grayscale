@@ -11,13 +11,13 @@ extern import "strings.h"
 
 do main() {
     println("=== C interop: system header collision ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // <time.h>: difftime is declared only by the real system header
-    mut a int = 100
-    mut b int = 40
-    mut d float = extern.difftime(a, b)
+    mut a i64 = 100
+    mut b i64 = 40
+    mut d f64 = extern.difftime(a, b)
     if d > 59.9 && d < 60.1 {
         passed += 1
     } otherwise {
@@ -26,7 +26,7 @@ do main() {
     }
 
     // <strings.h>: strcasecmp compares two C strings ignoring case
-    mut cmp int = extern.strcasecmp("Hello", "hello")
+    mut cmp i64 = extern.strcasecmp("Hello", "hello")
     if cmp == 0 {
         passed += 1
     } otherwise {

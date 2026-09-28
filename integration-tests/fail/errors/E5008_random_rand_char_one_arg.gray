@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5008 - random.rand_char takes no bounds or both bounds
+ * Expected: "expects 0 or 2 argument(s), got 1"
+ */
+// expect-error: E5008
+// expect-error-count: 1
+import @random
+
+do main() {
+    mut c char = random.rand_char('a')
+    println(c)
+}

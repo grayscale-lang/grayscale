@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = "hello"  // Assigning string to int
+    mut x i64 = "hello"  // Assigning string to i64
 }

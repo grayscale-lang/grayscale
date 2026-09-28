@@ -7,11 +7,11 @@ do two_defaults(a, b string = "hello") -> string {
     return "${a} ${b}"
 }
 
-do three_defaults(x, y, z int = 42) -> int {
+do three_defaults(x, y, z i64 = 42) -> i64 {
     return x + y + z
 }
 
-do mixed(name string, a, b int = 10) -> string {
+do mixed(name string, a, b i64 = 10) -> string {
     return "${name}: ${a}, ${b}"
 }
 
@@ -21,8 +21,8 @@ do all_provided(a, b string = "default") -> string {
 
 do main() {
     println("=== Grouped Param Defaults Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: both params use default
     mut r1 string = two_defaults()
@@ -55,7 +55,7 @@ do main() {
     }
 
     // Test 4: three grouped params all using default
-    mut r4 int = three_defaults()
+    mut r4 i64 = three_defaults()
     if r4 == 126 {
         println("  [PASS] three_defaults() = 126")
         passed += 1
@@ -65,7 +65,7 @@ do main() {
     }
 
     // Test 5: three grouped, first provided
-    mut r5 int = three_defaults(1)
+    mut r5 i64 = three_defaults(1)
     if r5 == 85 {
         println("  [PASS] three_defaults(1) = 85")
         passed += 1
@@ -75,7 +75,7 @@ do main() {
     }
 
     // Test 6: three grouped, first two provided
-    mut r6 int = three_defaults(1, 2)
+    mut r6 i64 = three_defaults(1, 2)
     if r6 == 45 {
         println("  [PASS] three_defaults(1, 2) = 45")
         passed += 1

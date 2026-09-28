@@ -6,26 +6,26 @@
  *         compound masking patterns, identity/annihilation properties
  */
 
-do mask_low(v int, bits int) -> int {
+do mask_low(v i64, bits i64) -> i64 {
     return v bit_and (1 bit_shift_left bits) - 1
 }
 
-do toggle(v int, flag int) -> int {
+do toggle(v i64, flag i64) -> i64 {
     return v bit_xor flag
 }
 
-do has_flag(v int, flag int) -> bool {
+do has_flag(v i64, flag i64) -> bool {
     return v bit_and flag == flag
 }
 
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- identity properties ---
     // x bit_and x == x
-    mut v int = 0b10101010
+    mut v i64 = 0b10101010
     if v bit_and v == v {
         passed += 1
     } otherwise {
@@ -103,8 +103,8 @@ do main() {
         failed += 1
     }
 
-    // --- edge values: -1 (all bits set for int) ---
-    mut all_ones int = -1
+    // --- edge values: -1 (all bits set for i64) ---
+    mut all_ones i64 = -1
     if all_ones bit_and 0xFF == 0xFF {
         passed += 1
     } otherwise {
@@ -148,16 +148,16 @@ do main() {
         failed += 1
     }
 
-    // --- uint edge values ---
-    mut u uint = 0
+    // --- u64 edge values ---
+    mut u u64 = 0
     if bit_not u == 18446744073709551615 {
         passed += 1
     } otherwise {
-        println("  [FAIL] bit_not uint 0 == max uint")
+        println("  [FAIL] bit_not u64 0 == max u64")
         failed += 1
     }
 
-    mut umax uint = 18446744073709551615
+    mut umax u64 = 18446744073709551615
     if umax bit_and 0xFF == 255 {
         passed += 1
     } otherwise {
@@ -172,9 +172,9 @@ do main() {
         failed += 1
     }
 
-    // --- byte edge values ---
-    mut bmax byte = 0xFF
-    mut bzero byte = 0x00
+    // --- u8 edge values ---
+    mut bmax u8 = 0xFF
+    mut bzero u8 = 0x00
     if bmax bit_and bzero == 0 {
         passed += 1
     } otherwise {
@@ -196,17 +196,17 @@ do main() {
         failed += 1
     }
 
-    mut bnotmax byte = bit_not bmax
+    mut bnotmax u8 = bit_not bmax
     if bnotmax == 0 {
         passed += 1
     } otherwise {
-        println("  [FAIL] bit_not 0xFF byte == 0")
+        println("  [FAIL] bit_not 0xFF u8 == 0")
         failed += 1
     }
 
     // --- deeply chained operations ---
-    mut x int = 0b11111111
-    mut result int = x bit_and 0b11001100 bit_or 0b00110011 bit_xor 0b01010101
+    mut x i64 = 0b11111111
+    mut result i64 = x bit_and 0b11001100 bit_or 0b00110011 bit_xor 0b01010101
     if result == 0b10101010 {
         passed += 1
     } otherwise {
@@ -215,7 +215,7 @@ do main() {
     }
 
     // --- bitwise in function return values ---
-    mut masked int = mask_low(0xFF, 4)
+    mut masked i64 = mask_low(0xFF, 4)
     if masked == 0x0F {
         passed += 1
     } otherwise {
@@ -223,7 +223,7 @@ do main() {
         failed += 1
     }
 
-    mut toggled int = toggle(0b1010, 0b0011)
+    mut toggled i64 = toggle(0b1010, 0b0011)
     if toggled == 0b1001 {
         passed += 1
     } otherwise {
@@ -232,7 +232,7 @@ do main() {
     }
 
     // --- bitwise in conditionals ---
-    mut flags int = 0b00000111
+    mut flags i64 = 0b00000111
     if has_flag(flags, 0b100) {
         passed += 1
     } otherwise {
@@ -248,12 +248,12 @@ do main() {
     }
 
     // --- multi-flag masking pattern ---
-    const FLAG_A int = 1 bit_shift_left 0
-    const FLAG_B int = 1 bit_shift_left 1
-    const FLAG_C int = 1 bit_shift_left 2
-    const FLAG_D int = 1 bit_shift_left 3
+    const FLAG_A i64 = 1 bit_shift_left 0
+    const FLAG_B i64 = 1 bit_shift_left 1
+    const FLAG_C i64 = 1 bit_shift_left 2
+    const FLAG_D i64 = 1 bit_shift_left 3
 
-    mut state int = FLAG_A bit_or FLAG_C
+    mut state i64 = FLAG_A bit_or FLAG_C
     if state bit_and FLAG_A == FLAG_A {
         passed += 1
     } otherwise {
@@ -296,7 +296,7 @@ do main() {
     }
 
     // --- double bit_not cancels out ---
-    mut dbl int = 0b10110100
+    mut dbl i64 = 0b10110100
     if bit_not (bit_not dbl) == dbl {
         passed += 1
     } otherwise {
@@ -305,9 +305,9 @@ do main() {
     }
 
     // --- shift then mask (common pattern) ---
-    mut packed int = 0xABCD
-    mut low_byte int = packed bit_and 0xFF
-    mut high_byte int = (packed bit_shift_right 8) bit_and 0xFF
+    mut packed i64 = 0xABCD
+    mut low_byte i64 = packed bit_and 0xFF
+    mut high_byte i64 = (packed bit_shift_right 8) bit_and 0xFF
     if low_byte == 0xCD {
         passed += 1
     } otherwise {
@@ -322,8 +322,8 @@ do main() {
     }
 
     // --- variable shift amounts in loop ---
-    mut shift_results int = 0
-    mut i int = 0
+    mut shift_results i64 = 0
+    mut i i64 = 0
     for i < 8 {
         shift_results = shift_results bit_or (1 bit_shift_left i)
         i++

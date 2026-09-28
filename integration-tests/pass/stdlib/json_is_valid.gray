@@ -18,8 +18,8 @@ import @json
 
 do main() {
     println("=== JSON is_valid Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- malformed: every one of these used to return true ---
 
@@ -106,10 +106,10 @@ do main() {
     }
 
     if json.is_valid("-3.14") {
-        println("  [PASS] accepts negative float")
+        println("  [PASS] accepts negative f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] negative float")
+        println("  [FAIL] negative f64")
         failed += 1
     }
 

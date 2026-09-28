@@ -1,7 +1,7 @@
 
 const Hero struct {
     name string
-    hp int
+    hp i64
 }
 
 do update_hero(hero Hero) {

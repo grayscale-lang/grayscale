@@ -2,20 +2,20 @@ import @mem
 using mem
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-alias Num = int
+alias Num = i64
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a = mem.arena(4096)
     ensure mem.destroy(a)
 
-    mut i ^int = mem.init(a, int)
+    mut i ^i64 = mem.init(a, i64)
     i^ = 42
     if i^ == 42 {
         println("  [PASS] mem.init with a primitive type argument")
@@ -46,7 +46,7 @@ do main() {
         failed += 1
     }
 
-    mut b ^int = init(a, int)
+    mut b ^i64 = init(a, i64)
     b^ = 5
     if b^ == 5 {
         println("  [PASS] mem.init reached bare through 'using'")

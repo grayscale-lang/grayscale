@@ -8,8 +8,8 @@ import @sync
 
 do main() {
     println("=== Sync Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: create mutex
     mut m = sync.mutex()
@@ -23,7 +23,7 @@ do main() {
     passed += 1
 
     // Test 3: lock, modify shared state, unlock
-    mut counter int = 0
+    mut counter i64 = 0
     sync.lock(m)
     counter += 1
     counter += 1

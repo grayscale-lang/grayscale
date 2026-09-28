@@ -10,5 +10,5 @@ const Color enum {
 
 const Item struct {
     name string
-    val int
+    val i64
 }

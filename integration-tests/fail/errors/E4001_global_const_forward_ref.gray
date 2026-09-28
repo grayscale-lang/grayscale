@@ -1,8 +1,8 @@
 /* E4001: file-scope constant forward references are rejected */
 // expect-error: E4001
 
-const B int = A + 1
-const A int = 10
+const B i64 = A + 1
+const A i64 = 10
 
 do main() {
     println("${B}")

@@ -13,7 +13,7 @@ do cleanup(a Arena) {
 
 do main() {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     cleanup(a)
     println(p^)
 }

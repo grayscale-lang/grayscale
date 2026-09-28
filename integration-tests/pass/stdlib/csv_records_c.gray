@@ -8,7 +8,7 @@
 import @csv
 import @strconv
 
-do check(label string, got string, want string, &passed int, &failed int) {
+do check(label string, got string, want string, &passed i64, &failed i64) {
     if got == want {
         println("  [PASS] ${label}")
         passed += 1
@@ -19,14 +19,14 @@ do check(label string, got string, want string, &passed int, &failed int) {
 }
 
 do adult(row [string]) -> bool {
-    mut n, _ = strconv.to_int(row[1], 10)
+    mut n, _ = strconv.to_i64(row[1], 10)
     return n >= 18
 }
 
 do main() {
     println("=== csv records / formatting Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut rows [[string]] = csv.parse("name,age\nAda,36\nBob,12\nCy,20")
 

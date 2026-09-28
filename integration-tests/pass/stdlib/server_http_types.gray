@@ -17,8 +17,8 @@ do echo_method(req HttpRequest) -> HttpResponse {
 
 do main() {
     println("=== Server HTTP Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: HttpRequest usable as handler param type
     mut r = server.add_router()

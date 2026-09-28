@@ -8,11 +8,11 @@
 
 do main() {
     println("=== Nested Map Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: array of maps declaration and length
-    mut arr [map[string:int]] = {
+    mut arr [map[string:i64]] = {
         {"a": 1, "b": 2},
         {"c": 3}
     }
@@ -25,7 +25,7 @@ do main() {
     }
 
     // Test 2: extract map from array and access value
-    mut first map[string:int] = arr[0]
+    mut first map[string:i64] = arr[0]
     if first["a"] == 1 {
         println("  [PASS] array of maps element access")
         passed += 1
@@ -35,7 +35,7 @@ do main() {
     }
 
     // Test 3: second map in array
-    mut second map[string:int] = arr[1]
+    mut second map[string:i64] = arr[1]
     if second["c"] == 3 {
         println("  [PASS] array of maps second element")
         passed += 1
@@ -45,10 +45,10 @@ do main() {
     }
 
     // Test 4: map of maps declaration and access
-    mut nested map[string:map[string:int]] = {
+    mut nested map[string:map[string:i64]] = {
         "outer": {"inner": 42}
     }
-    mut inner map[string:int] = nested["outer"]
+    mut inner map[string:i64] = nested["outer"]
     if inner["inner"] == 42 {
         println("  [PASS] map of maps access")
         passed += 1
@@ -58,12 +58,12 @@ do main() {
     }
 
     // Test 5: map of maps with multiple outer keys
-    mut multi map[string:map[string:int]] = {
+    mut multi map[string:map[string:i64]] = {
         "x": {"val": 10},
         "y": {"val": 20}
     }
-    mut mx map[string:int] = multi["x"]
-    mut my map[string:int] = multi["y"]
+    mut mx map[string:i64] = multi["x"]
+    mut my map[string:i64] = multi["y"]
     if mx["val"] == 10 && my["val"] == 20 {
         println("  [PASS] map of maps multiple keys")
         passed += 1

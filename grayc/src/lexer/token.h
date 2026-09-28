@@ -15,135 +15,135 @@
 
 typedef enum {
     /* Special tokens */
-    TOK_ILLEGAL,
-    TOK_EOF,
+    TOKEN_ILLEGAL,
+    TOKEN_END_OF_FILE,
 
     /* Identifiers and literals */
-    TOK_IDENT,
-    TOK_INT,
-    TOK_FLOAT,
-    TOK_STRING,
-    TOK_RAW_STRING,
-    TOK_CHAR,
+    TOKEN_IDENTIFIER,
+    TOKEN_INTEGER_LITERAL,
+    TOKEN_FLOATING_POINT_LITERAL,
+    TOKEN_STRING,
+    TOKEN_RAW_STRING,
+    TOKEN_CHAR,
 
     /* Operators */
-    TOK_ASSIGN,         /* = */
-    TOK_PLUS,           /* + */
-    TOK_MINUS,          /* - */
-    TOK_BANG,           /* ! */
-    TOK_ASTERISK,       /* * */
-    TOK_SLASH,          /* / */
-    TOK_PERCENT,        /* % */
+    TOKEN_ASSIGN,         /* = */
+    TOKEN_PLUS,           /* + */
+    TOKEN_MINUS,          /* - */
+    TOKEN_BANG,           /* ! */
+    TOKEN_ASTERISK,       /* * */
+    TOKEN_SLASH,          /* / */
+    TOKEN_PERCENT,        /* % */
 
     /* Comparison */
-    TOK_LT,             /* < */
-    TOK_GT,             /* > */
-    TOK_EQ,             /* == */
-    TOK_NOT_EQ,         /* != */
-    TOK_LT_EQ,          /* <= */
-    TOK_GT_EQ,          /* >= */
+    TOKEN_LESS_THAN,             /* < */
+    TOKEN_GREATER_THAN,             /* > */
+    TOKEN_EQUAL,             /* == */
+    TOKEN_NOT_EQUAL,         /* != */
+    TOKEN_LESS_THAN_OR_EQUAL,          /* <= */
+    TOKEN_GREATER_THAN_OR_EQUAL,          /* >= */
 
     /* Compound assignment */
-    TOK_PLUS_ASSIGN,    /* += */
-    TOK_MINUS_ASSIGN,   /* -= */
-    TOK_ASTERISK_ASSIGN,/* *= */
-    TOK_SLASH_ASSIGN,   /* /= */
-    TOK_PERCENT_ASSIGN, /* %= */
+    TOKEN_PLUS_ASSIGN,    /* += */
+    TOKEN_MINUS_ASSIGN,   /* -= */
+    TOKEN_ASTERISK_ASSIGN,/* *= */
+    TOKEN_SLASH_ASSIGN,   /* /= */
+    TOKEN_PERCENT_ASSIGN, /* %= */
 
     /* Increment/Decrement */
-    TOK_INCREMENT,      /* ++ */
-    TOK_DECREMENT,      /* -- */
+    TOKEN_INCREMENT,      /* ++ */
+    TOKEN_DECREMENT,      /* -- */
 
     /* Logical */
-    TOK_AND,            /* && */
-    TOK_OR,             /* || */
+    TOKEN_AND,            /* && */
+    TOKEN_OR,             /* || */
 
     /* Delimiters */
-    TOK_COMMA,          /* , */
-    TOK_COLON,          /* : */
-    TOK_SEMICOLON,      /* ; */
-    TOK_NEWLINE,
+    TOKEN_COMMA,          /* , */
+    TOKEN_COLON,          /* : */
+    TOKEN_SEMICOLON,      /* ; */
+    TOKEN_NEWLINE,
 
-    TOK_LPAREN,         /* ( */
-    TOK_RPAREN,         /* ) */
-    TOK_LBRACE,         /* { */
-    TOK_RBRACE,         /* } */
-    TOK_LBRACKET,       /* [ */
-    TOK_RBRACKET,       /* ] */
+    TOKEN_LEFT_PARENTHESIS,         /* ( */
+    TOKEN_RIGHT_PARENTHESIS,         /* ) */
+    TOKEN_LEFT_BRACE,         /* { */
+    TOKEN_RIGHT_BRACE,         /* } */
+    TOKEN_LEFT_BRACKET,       /* [ */
+    TOKEN_RIGHT_BRACKET,       /* ] */
 
     /* Symbols */
-    TOK_CARET,          /* ^  — pointer type */
-    TOK_ARROW,          /* -> */
-    TOK_DOT,            /* . */
-    TOK_AT,             /* @ */
-    TOK_AMPERSAND,      /* & */
-    TOK_QUESTION,       /* ?  — wildcard type placeholder */
+    TOKEN_CARET,          /* ^  — pointer type */
+    TOKEN_ARROW,          /* -> */
+    TOKEN_DOT,            /* . */
+    TOKEN_AT,             /* @ */
+    TOKEN_AMPERSAND,      /* & */
+    TOKEN_QUESTION,       /* ?  — wildcard type placeholder */
 
     /* Hash attributes */
-    TOK_HASH_LBRACKET,  /* #[ — opens a single-line attribute list */
-    TOK_STRICT,         /* #strict */
-    TOK_FLAGS,          /* #flags */
-    TOK_DOC,            /* #doc */
-    TOK_JSON_ATTR,      /* #json */
-    TOK_DISCARD,        /* #discard */
-    TOK_DEPRECATED,     /* #deprecated */
-    TOK_TEST,           /* #test */
-    TOK_ERROR_CODE_ATTR, /* #error_code */
+    TOKEN_HASH_LEFT_BRACKET,  /* #[ — opens a single-line attribute list */
+    TOKEN_STRICT,         /* #strict */
+    TOKEN_FLAGS,          /* #flags */
+    TOKEN_DOC,            /* #doc */
+    TOKEN_JSON_ATTRIBUTE,      /* #json */
+    TOKEN_DISCARD,        /* #discard */
+    TOKEN_DEPRECATED,     /* #deprecated */
+    TOKEN_TEST,           /* #test */
+    TOKEN_ERROR_CODE_ATTRIBUTE, /* #error_code */
 
     /* Keywords */
-    TOK_MUT,
-    TOK_CONST,
-    TOK_DO,
-    TOK_RETURN,
-    TOK_IF,
-    TOK_OR_KW,
-    TOK_OTHERWISE,
-    TOK_FOR,
-    TOK_FOR_EACH,
-    TOK_AS_LONG_AS,
-    TOK_LOOP,
-    TOK_BREAK,
-    TOK_CONTINUE,
-    TOK_IN,
-    TOK_NOT_IN,
-    TOK_RANGE,
-    TOK_IMPORT,
-    TOK_USING,
-    TOK_STRUCT,
-    TOK_ENUM,
-    TOK_NIL,
-    TOK_NEW,
-    TOK_TRUE,
-    TOK_FALSE,
-    TOK_BLANK,
-    TOK_ENSURE,
-    TOK_OR_RETURN,
-    TOK_EXTERN,
+    TOKEN_MUT,
+    TOKEN_CONST,
+    TOKEN_DO,
+    TOKEN_RETURN,
+    TOKEN_IF,
+    TOKEN_OR_KEYWORD,
+    TOKEN_OTHERWISE,
+    TOKEN_FOR,
+    TOKEN_FOR_EACH,
+    TOKEN_AS_LONG_AS,
+    TOKEN_LOOP,
+    TOKEN_BREAK,
+    TOKEN_CONTINUE,
+    TOKEN_IN,
+    TOKEN_NOT_IN,
+    TOKEN_RANGE,
+    TOKEN_IMPORT,
+    TOKEN_USING,
+    TOKEN_STRUCT,
+    TOKEN_ENUM,
+    TOKEN_NIL,
+    TOKEN_NEW,
+    TOKEN_TRUE,
+    TOKEN_FALSE,
+    TOKEN_BLANK,
+    TOKEN_ENSURE,
+    TOKEN_OR_RETURN,
+    TOKEN_EXTERN,
 
     /* Module system keywords */
-    TOK_PRIVATE,
-    TOK_USE,
+    TOKEN_PRIVATE,
+    TOKEN_USE,
 
     /* When/Is keywords */
-    TOK_WHEN,
-    TOK_IS,
-    TOK_DEFAULT,
+    TOKEN_WHEN,
+    TOKEN_IS,
+    TOKEN_DEFAULT,
 
     /* Type aliasing */
-    TOK_ALIAS,
+    TOKEN_ALIAS,
 
     /* Type conversion */
-    TOK_CAST,
+    TOKEN_CAST,
 
     /* Bitwise keyword operators */
-    TOK_BIT_AND,
-    TOK_BIT_OR,
-    TOK_BIT_XOR,
-    TOK_BIT_NOT,
-    TOK_BIT_SHIFT_LEFT,
-    TOK_BIT_SHIFT_RIGHT,
+    TOKEN_BIT_AND,
+    TOKEN_BIT_OR,
+    TOKEN_BIT_XOR,
+    TOKEN_BIT_NOT,
+    TOKEN_BIT_SHIFT_LEFT,
+    TOKEN_BIT_SHIFT_RIGHT,
 
-    TOK_COUNT /* sentinel */
+    TOKEN_COUNT /* sentinel */
 } TokenType;
 
 typedef struct {
@@ -152,7 +152,7 @@ typedef struct {
     int line;
     int column;
     const char *file;       /* Source file this token came from (NULL = main file) */
-    bool preceded_by_ws;    /* True if whitespace/comments were skipped before this token */
+    bool is_preceded_by_whitespace;    /* True if whitespace/comments were skipped before this token */
 } Token;
 
 /* Look up a source-text span of the given length against the keyword table,
@@ -161,7 +161,7 @@ typedef struct {
  * out_type / out_keyword with the keyword's token type and canonical static
  * string on a match; returns false (leaving both untouched) for a plain
  * identifier. */
-bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword);
+bool token_lookup_keyword_with_length(const char *identifier, int length, TokenType *out_type, const char **out_keyword);
 
 /* Return true if the given token type is produced by the lexer's keyword
  * table (a reserved word). Derived from that table so the parser's
@@ -174,6 +174,6 @@ const char *token_type_name(TokenType type);
 /* Return the spelling a token was actually written with, for diagnostics.
  * Keyword tokens report the alias the user typed (`while`, not `as_long_as`);
  * every other token falls back to token_type_name. */
-const char *token_display_name(Token tok);
+const char *token_display_name(Token token);
 
 #endif

@@ -9,8 +9,8 @@ import "./checks.gray"
 
 do main() {
     println("=== Negated User Module Calls ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: !checks.is_positive() with negative number
     if !checks.is_positive(-5) {

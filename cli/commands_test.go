@@ -17,7 +17,7 @@ import (
 func TestLangDisplayName(t *testing.T) {
 	cases := []struct{ key, want string }{
 		{"string_type", "string"},
-		{"int_type", "int"},
+		{"i64_type", "i64"},
 		{"do", "do"},
 		{"mut", "mut"},
 	}
@@ -172,7 +172,7 @@ func TestStdlibManExamplesPopulated(t *testing.T) {
 
 func TestPrintBuiltinsIndex(t *testing.T) {
 	out := captureStdout(t, printBuiltinsIndex)
-	for _, expected := range []string{"println", "exit", "len", "int"} {
+	for _, expected := range []string{"println", "exit", "len", "cast"} {
 		if !strings.Contains(out, expected) {
 			t.Errorf("printBuiltinsIndex missing %q in output", expected)
 		}
@@ -208,7 +208,7 @@ func TestPrintManEntry_Type(t *testing.T) {
 
 func TestPrintManEntry_WithExample(t *testing.T) {
 	out := captureStdout(t, func() {
-		printManEntry("math", "sqrt", "func", "sqrt(x float) -> float", "", "Square root.", "mut r float = math.sqrt(2.0)")
+		printManEntry("math", "sqrt", "func", "sqrt(x f64) -> f64", "", "Square root.", "mut r f64 = math.sqrt(2.0)")
 	})
 	if !strings.Contains(out, "Example") {
 		t.Errorf("output missing Example section: %q", out)

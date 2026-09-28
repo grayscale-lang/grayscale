@@ -13,11 +13,11 @@ const Suit enum {
 }
 
 const Card struct {
-    rank int
+    rank i64
     suit Suit
 }
 
-do suit_weight(s Suit) -> int {
+do suit_weight(s Suit) -> i64 {
     if s == Suit.HEARTS {
         return 4
     } or s == Suit.SPADES {
@@ -28,11 +28,11 @@ do suit_weight(s Suit) -> int {
     return 1
 }
 
-do score(c Card) -> int {
+do score(c Card) -> i64 {
     return c.rank * suit_weight(c.suit)
 }
 
-do describe(n int) -> string {
+do describe(n i64) -> string {
     if n <= 0 {
         return "empty"
     } or n == 1 {
@@ -50,15 +50,15 @@ do main() {
         Card{rank: 5, suit: Suit.SPADES}
     }
 
-    mut total int = 0
-    mut best int = 0
+    mut total i64 = 0
+    mut best i64 = 0
     mut order string = ""
     for pass in range(0, 200) {
         total = 0
         best = 0
         order = ""
         for_each c in hand {
-            mut s int = score(c)
+            mut s i64 = score(c)
             total += s
             if s > best {
                 best = s

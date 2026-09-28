@@ -6,5 +6,5 @@
 // expect-error-count: 1
 
 do main() {
-    private mut x int = 5  // private not allowed inside functions
+    private mut x i64 = 5  // private not allowed inside functions
 }

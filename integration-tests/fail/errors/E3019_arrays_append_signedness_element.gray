@@ -1,12 +1,12 @@
-// Error Test: E3019 - arrays.append rejects a signed value flowing into an
-// unsigned element type, the same way `xs[i] = value` does.
+// Error Test: E3019 - arrays.append rejects a signed value flowing into a
+// same-width unsigned element type, the same way `xs[i] = value` does.
 // expect-error: E3019
 // expect-error-count: 1
 
 import @arrays
 
 do main() {
-    mut a [byte] = {}
-    mut n int = 42
+    mut a [u8] = {}
+    mut n i8 = 42
     arrays.append(a, n)
 }

@@ -7,21 +7,21 @@
 
 import @mem
 
-do build(keep mem.Arena) -> ^int {
+do build(keep mem.Arena) -> ^i64 {
     mut scratch = mem.arena(64)
-    mut tmp ^int = mem.alloc(scratch, 7)
+    mut tmp ^i64 = mem.alloc(scratch, 7)
     tmp^ = tmp^ + 1
     mem.destroy(scratch)                 // private scratch, torn down here
 
-    mut result ^int = mem.alloc(keep, 100)   // into the caller's arena
+    mut result ^i64 = mem.alloc(keep, 100)   // into the caller's arena
     return result
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     mut a = mem.arena(1024)
-    mut r ^int = build(a)
+    mut r ^i64 = build(a)
     if r^ == 100 {
         println("  [PASS] returned pointer into caller-owned arena")
         passed += 1

@@ -1,10 +1,10 @@
 /*
- * Error Test: E10003 - string negative index
+ * Error Test: P0082 - string negative index
  * Expected: "string index" and "out of bounds"
  */
 
 do main() {
     mut s string = "hello"
-    mut neg int = -1
+    mut neg i64 = -1
     mut c char = s[neg]
 }

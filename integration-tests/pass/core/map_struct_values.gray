@@ -4,21 +4,21 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Person struct {
     name string
-    age int
+    age i64
 }
 
-do bump(&n int) { n = n + 1 }
+do bump(&n i64) { n = n + 1 }
 
 do main() {
     println("=== Map Struct Values Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Create map with struct values
     mut points map[string:Point] = {"origin": Point{x: 0, y: 0}, "corner": Point{x: 10, y: 20}}
@@ -64,7 +64,7 @@ do main() {
     }
 
     // Test 5: for_each over map with struct values
-    mut count int = 0
+    mut count i64 = 0
     for_each key, val in points {
         count += 1
     }
@@ -89,8 +89,8 @@ do main() {
     }
 
     // Test 7: write through a nested map index
-    mut grid map[string:map[string:int]] = {:}
-    mut row map[string:int] = {"a": 1}
+    mut grid map[string:map[string:i64]] = {:}
+    mut row map[string:i64] = {"a": 1}
     grid["r"] = row
     grid["r"]["a"] = 42
     grid["r"]["a"] += 5

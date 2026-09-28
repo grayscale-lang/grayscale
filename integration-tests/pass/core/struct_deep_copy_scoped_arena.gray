@@ -1,11 +1,11 @@
 const Item struct {
     name string
-    weight int
+    weight i64
 }
 
-do find_heaviest(items [Item]) -> (Item, int) {
+do find_heaviest(items [Item]) -> (Item, i64) {
     mut best Item = items[0]
-    mut bestIdx int = 0
+    mut bestIdx i64 = 0
     for_each i, item in items {
         if item.weight > best.weight {
             best = item
@@ -16,8 +16,8 @@ do find_heaviest(items [Item]) -> (Item, int) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut items [Item] = {
         Item{name: "Sword", weight: 5},

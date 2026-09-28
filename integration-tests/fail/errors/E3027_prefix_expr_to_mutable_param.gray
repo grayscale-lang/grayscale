@@ -4,7 +4,7 @@
 // expect-error: E3027
 // expect-error-count: 2
 
-do inc(&n int) {
+do inc(&n i64) {
     n = n + 1
 }
 
@@ -13,7 +13,7 @@ do flip(&b bool) {
 }
 
 do main() {
-    mut v int = 10
+    mut v i64 = 10
     mut t bool = true
     inc(-v)
     flip(!t)

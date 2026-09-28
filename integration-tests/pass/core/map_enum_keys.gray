@@ -2,9 +2,9 @@
  * map_enum_keys.gray - Maps keyed by enum types
  *
  * enum keys were rejected at
- * index time with "expected 'Color', got 'int'" because enum members
- * resolve as int. Enums are int-backed and hash fine; the typechecker
- * now accepts int expressions against an enum-typed key in
+ * index time with "expected 'Color', got 'i64'" because enum members
+ * resolve as i64. Enums are integer-backed and hash fine; the typechecker
+ * now accepts i64 expressions against an enum-typed key in
  * NODE_INDEX_EXPR.
  */
 
@@ -22,8 +22,8 @@ const Status enum {
 
 do main() {
     println("=== Enum Map Keys Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- literal init + access --
     mut cmap map[Color:string] = {
@@ -50,7 +50,7 @@ do main() {
     }
 
     // -- insertion of new enum key --
-    mut smap map[Status:int] = {:}
+    mut smap map[Status:i64] = {:}
     smap[Status.PENDING] = 1
     smap[Status.ACTIVE] = 2
     smap[Status.DONE] = 3

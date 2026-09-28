@@ -8,7 +8,7 @@ import @json
 #json
 const Settings struct {
     name string = "default"
-    value int = 42
+    value i64 = 42
 }
 
 do main() {

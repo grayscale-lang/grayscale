@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4027 - return keyword as parameter name
+ */
+// expect-error: E4027
+// expect-error-count: 1
+
+do test(return i64) {
+    return
+}
+
+do main() {}

@@ -4,8 +4,8 @@
  */
 
 const Point struct {
-    x int
-    x int
+    x i64
+    x i64
 }
 
 do main() {}

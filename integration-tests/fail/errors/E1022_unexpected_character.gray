@@ -5,5 +5,5 @@
  */
 
 do main() {
-    mut x int = 42 ~ 3  // tilde is not a valid operator
+    mut x i64 = 42 ~ 3  // tilde is not a valid operator
 }

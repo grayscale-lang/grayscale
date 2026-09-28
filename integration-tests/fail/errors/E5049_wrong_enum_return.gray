@@ -1,0 +1,23 @@
+/*
+ * Error Test: E5049 - returning wrong enum type from function
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Dir enum {
+    NORTH
+    SOUTH
+}
+
+do get_color() -> Color {
+    return Dir.NORTH
+}
+
+do main() {
+    mut c Color = get_color()
+}

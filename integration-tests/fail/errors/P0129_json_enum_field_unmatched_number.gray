@@ -1,5 +1,5 @@
 // expect-contains: .gray:
-/* Panic Test: P0129 - json.parse into an int-backed enum field with a value that matches no variant */
+/* Panic Test: P0129 - json.parse into an integer-backed enum field with a value that matches no variant */
 import @json
 
 const Priority enum {

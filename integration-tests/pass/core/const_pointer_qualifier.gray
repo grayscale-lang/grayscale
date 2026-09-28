@@ -7,12 +7,12 @@
  */
 
 const Node struct {
-    val int
+    val i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Mutation through a const pointer must compile without warnings
     // and produce the correct result at runtime.
@@ -29,7 +29,7 @@ do main() {
 
     // addr() of a field accessed through a const pointer must be usable
     // as a mutable pointer (no const qualifier on the pointee).
-    mut field_ptr ^int = addr(p^.val)
+    mut field_ptr ^i64 = addr(p^.val)
     field_ptr^ = 99
     if n^.val == 99 {
         passed++

@@ -5,8 +5,8 @@
 
 do main() {
     println("=== Typeof Sized Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Signed integers
     mut a i8 = 1
@@ -102,21 +102,21 @@ do main() {
     }
 
     // Parent types still work
-    mut k int = 42
-    if type_of(k) == "int" {
-        println("  [PASS] type_of(int) == \"int\"")
+    mut k i64 = 42
+    if type_of(k) == "i64" {
+        println("  [PASS] type_of(i64) == \"i64\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] type_of(int) got \"${type_of(k)}\"")
+        println("  [FAIL] type_of(i64) got \"${type_of(k)}\"")
         failed += 1
     }
 
-    mut l float = 3.14
-    if type_of(l) == "float" {
-        println("  [PASS] type_of(float) == \"float\"")
+    mut l f64 = 3.14
+    if type_of(l) == "f64" {
+        println("  [PASS] type_of(f64) == \"f64\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] type_of(float) got \"${type_of(l)}\"")
+        println("  [FAIL] type_of(f64) got \"${type_of(l)}\"")
         failed += 1
     }
 

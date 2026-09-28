@@ -12,16 +12,16 @@ extern import "string.h"
 
 do main() {
     println("=== C interop result: typed uses ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // annotated declaration, numeric
-    mut root float = extern.sqrt(2.0)
+    mut root f64 = extern.sqrt(2.0)
     if root > 1.41 && root < 1.42 {
         passed += 1
     } otherwise {
         failed += 1
-        println("  [FAIL] annotated float decl")
+        println("  [FAIL] annotated f64 decl")
     }
 
     // annotated declaration, integer
@@ -34,12 +34,12 @@ do main() {
     }
 
     // annotated declaration, pointer + pass straight back into C
-    mut buf ^byte = extern.malloc(8)
+    mut buf ^u8 = extern.malloc(8)
     extern.free(buf)
     passed += 1
 
     // result of one extern. call as an argument to another
-    mut copied ^byte = extern.malloc(4)
+    mut copied ^u8 = extern.malloc(4)
     extern.memset(copied, 0, 4)
     extern.free(copied)
     passed += 1
@@ -56,7 +56,7 @@ do main() {
     }
 
     // through cast()
-    mut truncated int = cast(extern.sqrt(9.0), int)
+    mut truncated i64 = cast(extern.sqrt(9.0), i64)
     if truncated == 3 {
         passed += 1
     } otherwise {
@@ -65,7 +65,7 @@ do main() {
     }
 
     // C constants follow the same rule: annotate, then use
-    mut exit_ok int = extern.EXIT_SUCCESS
+    mut exit_ok i64 = extern.EXIT_SUCCESS
     if exit_ok == 0 {
         passed += 1
     } otherwise {

@@ -1,6 +1,6 @@
 const Expr enum {
-    Literal(int)
-    Binary(^Expr, int, ^Expr)
+    Literal(i64)
+    Binary(^Expr, i64, ^Expr)
 }
 
 do main() {

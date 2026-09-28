@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3036 - u8-array-element-out-of-range
+ * Expected: "u8" or "0 and 255"
+ */
+
+do main() {
+    mut arr [u8] = {100, 200, 300}  // 300 out of range
+}

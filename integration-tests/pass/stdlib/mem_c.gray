@@ -6,8 +6,8 @@ import @mem
 
 do main() {
     println("=== Mem Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // arena(size) returns a pointer
     mut arena = mem.arena(1024)
@@ -15,7 +15,7 @@ do main() {
     passed += 1
 
     // usage returns >= 0
-    mut usage int = mem.usage(arena)
+    mut usage i64 = mem.usage(arena)
     if usage >= 0 {
         println("  [PASS] usage (${usage})")
         passed += 1
@@ -30,7 +30,7 @@ do main() {
     passed += 1
 
     // usage after reset
-    mut usage_after int = mem.usage(arena)
+    mut usage_after i64 = mem.usage(arena)
     if usage_after >= 0 {
         println("  [PASS] usage after reset (${usage_after})")
         passed += 1
@@ -45,7 +45,7 @@ do main() {
     passed += 1
 
     // raw byte ops on scalar storage
-    mut z int = 123456789
+    mut z i64 = 123456789
     mem.zero(addr(z), 8)
     if z == 0 {
         println("  [PASS] zero")
@@ -55,7 +55,7 @@ do main() {
         failed += 1
     }
 
-    mut fbyte int = 0
+    mut fbyte i64 = 0
     mem.fill(addr(fbyte), 0xFF, 1)
     if fbyte == 255 {
         println("  [PASS] fill")
@@ -65,8 +65,8 @@ do main() {
         failed += 1
     }
 
-    mut cp_src int = 777
-    mut cp_dst int = 0
+    mut cp_src i64 = 777
+    mut cp_dst i64 = 0
     mem.raw_copy(addr(cp_dst), addr(cp_src), 8)
     if cp_dst == 777 {
         println("  [PASS] raw_copy")

@@ -10,16 +10,16 @@
  */
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
-do wrap(q ^int) -> Box {
+do wrap(q ^i64) -> Box {
     mut b Box = Box{p: q}
     return b
 }
 
 do outer() -> Box {
-    mut local int = 41
+    mut local i64 = 41
     return wrap(addr(local))
 }
 

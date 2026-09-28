@@ -11,6 +11,6 @@ import "./lib"
 
 do main() {
     println("${lib.lib_call(5)}")
-    mut r float = extern.myfunc(1.0, 2.0)
+    mut r f64 = extern.myfunc(1.0, 2.0)
     println("${r}")
 }

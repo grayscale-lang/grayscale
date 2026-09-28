@@ -11,7 +11,7 @@ const Play struct {
 }
 
 const Actor struct {
-    id int
+    id i64
 }
 
 do make_play(a Actor) -> Play {

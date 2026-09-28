@@ -3,13 +3,13 @@
  * Verifies parser allows exactly MAX_MULTI_VARS variables
  */
 
-do get16() -> (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) {
+do get16() -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) {
     return 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: declare exactly 16 variables from multi-return
     mut a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p = get16()
@@ -22,7 +22,7 @@ do main() {
     }
 
     // Test 2: verify all values correct
-    mut sum int = a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p
+    mut sum i64 = a + b + c + d + e + f + g + h + i + j + k + l + m + n + o + p
     if sum == 136 {
         println("  [PASS] sum of 1..16 = 136")
         passed += 1

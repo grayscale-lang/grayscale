@@ -28,15 +28,15 @@ do get_color() -> Color {
 
 do main() {
     println("=== Stress: Enums ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Basic int enum access
+    // Basic i64 enum access
     mut c = Color.RED
     if c == Color.RED {
-        println("  [PASS] int enum access")
+        println("  [PASS] i64 enum access")
         passed += 1
-    } otherwise { println("  [FAIL] int enum") failed += 1 }
+    } otherwise { println("  [FAIL] i64 enum") failed += 1 }
 
     // Enum comparison
     if Color.RED != Color.BLUE {

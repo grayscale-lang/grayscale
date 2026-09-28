@@ -9,11 +9,11 @@ do module_path(name string) -> string {
 
 do main() {
     println("=== module Identifier Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: 'module' as a variable name
-    mut module int = 5
+    mut module i64 = 5
     if module == 5 {
         println("  [PASS] module usable as variable name")
         passed += 1

@@ -9,13 +9,13 @@ const Box struct {
     a i128 = 99999999999999999999999999999999999999
     b u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935
     c i128 = 100
-    n int = 7
+    n i64 = 7
 }
 
 do main() {
     println("=== Struct field default: wide integers ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut declared Box
     mut literal Box = Box{}

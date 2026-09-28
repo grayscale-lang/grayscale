@@ -19,8 +19,8 @@ const Job struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: implicit enum default used via empty literal
     mut t = Task{}

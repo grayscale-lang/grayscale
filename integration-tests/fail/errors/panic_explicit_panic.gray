@@ -1,5 +1,5 @@
 /*
- * Error Test: E5021 - panic
+ * Error Test: P0076 - panic
  * Expected: "panic"
  * Note: panic() is a global builtin, no import needed
  */

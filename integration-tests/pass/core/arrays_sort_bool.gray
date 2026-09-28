@@ -1,0 +1,39 @@
+import @arrays
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // bool sort_asc puts every false before every true
+    mut a [bool] = {true, false, true, false, false}
+    arrays.sort_asc(a)
+    if !a[0] && !a[1] && !a[2] && a[3] && a[4] {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // is_sorted agrees with sort_asc
+    if arrays.is_sorted(a) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // bool sort_desc puts every true before every false
+    mut b [bool] = {false, true, false, true, true}
+    arrays.sort_desc(b)
+    if b[0] && b[1] && b[2] && !b[3] && !b[4] {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut n int = 5
-    const arr [int, n] = {1, 2, 3, 4, 5}
+    mut n i64 = 5
+    const arr [i64, n] = {1, 2, 3, 4, 5}
 }

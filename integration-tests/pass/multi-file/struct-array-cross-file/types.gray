@@ -1,6 +1,6 @@
 const Item struct {
     name string
-    weight int
+    weight i64
 }
 
 do find_heaviest(items [Item]) -> Item {

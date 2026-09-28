@@ -1,10 +1,10 @@
-mut counter int = 0
+mut counter i64 = 0
 
-do who() -> int {
+do who() -> i64 {
     return 7
 }
 
 const Shape enum {
     Circle
-    Square(int)
+    Square(i64)
 }

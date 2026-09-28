@@ -1,20 +1,20 @@
 /*
  * lexer - tokenize a large generated source file.
- * Exercises: char/byte scanning, string indexing, tight loops, string building.
+ * Exercises: char/u8 scanning, string indexing, tight loops, string building.
  */
 
 import @io
 import @os
 
-do is_alpha(c int) -> bool {
+do is_alpha(c i64) -> bool {
     return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
 }
 
-do is_digit(c int) -> bool {
+do is_digit(c i64) -> bool {
     return c >= 48 && c <= 57
 }
 
-do is_space(c int) -> bool {
+do is_space(c i64) -> bool {
     return c == 32 || c == 9 || c == 10 || c == 13
 }
 
@@ -40,27 +40,27 @@ do main() {
         exit(1)
     }
 
-    mut idents int = 0
-    mut numbers int = 0
-    mut puncts int = 0
-    mut ident_chars int = 0
+    mut idents i64 = 0
+    mut numbers i64 = 0
+    mut puncts i64 = 0
+    mut ident_chars i64 = 0
 
     for pass in range(0, 3) {
-        mut i int = 0
-        mut n int = len(src)
+        mut i i64 = 0
+        mut n i64 = len(src)
         as_long_as i < n {
-            mut c int = int(src[i])
+            mut c i64 = cast(src[i], i64)
             if is_space(c) {
                 i += 1
             } or is_alpha(c) {
-                mut start int = i
-                as_long_as i < n && (is_alpha(int(src[i])) || is_digit(int(src[i]))) {
+                mut start i64 = i
+                as_long_as i < n && (is_alpha(cast(src[i], i64)) || is_digit(cast(src[i], i64))) {
                     i += 1
                 }
                 idents += 1
                 ident_chars += i - start
             } or is_digit(c) {
-                as_long_as i < n && is_digit(int(src[i])) {
+                as_long_as i < n && is_digit(cast(src[i], i64)) {
                     i += 1
                 }
                 numbers += 1

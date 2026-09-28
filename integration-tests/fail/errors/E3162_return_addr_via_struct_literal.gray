@@ -6,16 +6,16 @@
 // expect-error-count: 1
 
 const B struct {
-    p ^int
+    p ^i64
 }
 
-do f() -> ^int {
-    mut x int = 1
+do f() -> ^i64 {
+    mut x i64 = 1
     mut b B = B{p: addr(x)}
     return b.p
 }
 
 do main() {
-    mut d ^int = f()
+    mut d ^i64 = f()
     println("done")
 }

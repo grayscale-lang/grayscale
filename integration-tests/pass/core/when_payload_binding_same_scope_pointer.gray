@@ -7,19 +7,19 @@
  */
 
 const Result enum {
-    Found(^int),
+    Found(^i64),
     Missing
 }
 
-do lookup(cond bool, p ^int) -> Result {
+do lookup(cond bool, p ^i64) -> Result {
     if cond { return Result.Found(p) }
     return Result.Missing
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
-    mut x int = 20
+    mut x i64 = 20
     mut r Result = Result.Found(addr(x))
     when r {
         is Found(ptr) {
@@ -33,11 +33,11 @@ do main() {
         default { println("  [FAIL] direct: took default") }
     }
 
-    mut y int = 22
+    mut y i64 = 22
     mut r2 Result = lookup(true, addr(y))
     when r2 {
         is Found(ptr) {
-            mut local int = ptr^          // copy out — a value, not the pointer
+            mut local i64 = ptr^          // copy out — a value, not the pointer
             if local + x == 42 {
                 println("  [PASS] deref payload binding, helper-returned enum")
                 passed += 1

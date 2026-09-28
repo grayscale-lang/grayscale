@@ -9,7 +9,7 @@
 import "./shapes.gray"
 import "./dirs.gray"
 
-do area(s shapes.Shape) -> float {
+do area(s shapes.Shape) -> f64 {
     #strict
     when s {
         is shapes.Shape.Circle(r)  { return 3.0 * r * r }

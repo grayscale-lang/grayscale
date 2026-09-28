@@ -3,7 +3,7 @@
 // expect-error-count: 1
 
 do main() {
-    mut u uint = 18446744073709551615
-    mut arr [int] = {u}
+    mut u u64 = 18446744073709551615
+    mut arr [i64] = {u}
     println("${arr[0]}")
 }

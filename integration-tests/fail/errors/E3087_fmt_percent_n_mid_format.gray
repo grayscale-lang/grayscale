@@ -1,0 +1,10 @@
+// expect-error: E3087
+// expect-error-count: 1
+// A %n between directives is rejected on its own; it takes no element, so
+// the elements after it still line up with their directives.
+
+import @fmt
+
+do main() {
+    fmt.printfln("%d %n %d", {1, 2})
+}

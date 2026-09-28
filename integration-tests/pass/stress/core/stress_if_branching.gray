@@ -5,11 +5,11 @@
 
 do main() {
     println("=== Stress: If/Or/Otherwise ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Simple if true
-    mut r1 int = 0
+    mut r1 i64 = 0
     if true { r1 = 1 }
     if r1 == 1 {
         println("  [PASS] simple if true")
@@ -17,7 +17,7 @@ do main() {
     } otherwise { println("  [FAIL] simple if true") failed += 1 }
 
     // Simple if false (no effect)
-    mut r2 int = 0
+    mut r2 i64 = 0
     if false { r2 = 1 }
     if r2 == 0 {
         println("  [PASS] simple if false")
@@ -33,7 +33,7 @@ do main() {
     } otherwise { println("  [FAIL] if/otherwise") failed += 1 }
 
     // if/or/otherwise with 3 branches
-    mut val int = 2
+    mut val i64 = 2
     mut r4 string = ""
     if val == 1 { r4 = "one" } or val == 2 { r4 = "two" } otherwise { r4 = "other" }
     if r4 == "two" {
@@ -42,7 +42,7 @@ do main() {
     } otherwise { println("  [FAIL] 3 branches") failed += 1 }
 
     // 5 branches
-    mut v5 int = 4
+    mut v5 i64 = 4
     mut r5 string = ""
     if v5 == 1 { r5 = "a" } or v5 == 2 { r5 = "b" } or v5 == 3 { r5 = "c" } or v5 == 4 { r5 = "d" } otherwise { r5 = "e" }
     if r5 == "d" {
@@ -65,8 +65,8 @@ do main() {
     } otherwise { println("  [FAIL] nested if") failed += 1 }
 
     // Complex condition
-    mut a int = 5
-    mut b int = 10
+    mut a i64 = 5
+    mut b i64 = 10
     if a > 0 && b > 0 && a < b {
         println("  [PASS] complex condition")
         passed += 1

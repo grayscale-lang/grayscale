@@ -7,8 +7,8 @@
 // expect-error: E3040
 // expect-error-count: 1
 
-do risky() -> (int, string) { return 42, "err" }
+do risky() -> (i64, string) { return 42, "err" }
 
-do greet(n int = risky()) { println("${n}") }
+do greet(n i64 = risky()) { println("${n}") }
 
 do main() { greet() }

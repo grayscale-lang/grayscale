@@ -1,16 +1,16 @@
-/* E2002: type keywords cannot be used as when/is binding names */
+/* E4028: type keywords cannot be used as when/is binding names */
 // expect-error: E4028
 
 const Wrapper enum {
-    Value(int)
+    Value(i64)
     Empty
 }
 
 do main() {
     mut w = Wrapper.Value(42)
     when w {
-        is Wrapper.Value(int) {
-            println("got: ${int}")
+        is Wrapper.Value(i64) {
+            println("got: ${i64}")
         }
         is Wrapper.Empty {
             println("empty")

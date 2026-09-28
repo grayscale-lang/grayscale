@@ -1,6 +1,6 @@
 /* Error Test: E3122 - cannot modify value through pointer to const-declared variable */
 do main() {
-    const x int = 5
-    mut p ^int = addr(x)
+    const x i64 = 5
+    mut p ^i64 = addr(x)
     p^ = 99
 }

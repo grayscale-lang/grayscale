@@ -9,8 +9,8 @@ import @math, @arrays, @strings
 
 do main() {
     println("=== Import Syntax Variants Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: inline multi-import with qualified access
     mut abs_val = math.abs(-5)
@@ -23,7 +23,7 @@ do main() {
     }
 
     // Test 2: second module from inline import
-    mut arr [int] = {3, 1, 2}
+    mut arr [i64] = {3, 1, 2}
     arrays.sort_asc(arr)
     if arr[0] == 1 {
         println("  [PASS] second module from inline import")

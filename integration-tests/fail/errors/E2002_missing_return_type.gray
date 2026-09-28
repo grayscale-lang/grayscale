@@ -8,5 +8,5 @@ do foo() -> {  // Arrow without return type
 }
 
 do main() {
-    mut x int = foo()
+    mut x i64 = foo()
 }

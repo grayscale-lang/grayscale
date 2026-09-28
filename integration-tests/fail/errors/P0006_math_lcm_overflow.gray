@@ -1,0 +1,6 @@
+/* Panic Test: P0006 - math.lcm overflows i64 */
+import @math
+
+do main() {
+    println(math.lcm(9223372036854775807, 2))
+}

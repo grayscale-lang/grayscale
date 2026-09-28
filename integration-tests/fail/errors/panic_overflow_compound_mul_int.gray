@@ -1,9 +1,0 @@
-/*
- * Error Test: integer-overflow (int *= overflow)
- * Expected: "multiplication result is too large"
- */
-
-do main() {
-    mut x int = 9223372036854775807
-    x *= 2
-}

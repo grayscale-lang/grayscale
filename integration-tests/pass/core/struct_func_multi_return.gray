@@ -1,27 +1,27 @@
 const Counter struct {
-    value int
+    value i64
 
-    do bounds(c Counter) -> (int, int) {
+    do bounds(c Counter) -> (i64, i64) {
         return 0, c.value
     }
 
-    do split(c Counter) -> (int, int, int) {
+    do split(c Counter) -> (i64, i64, i64) {
         return 0, c.value / 2, c.value
     }
 }
 
 const Range struct {
-    lo int
-    hi int
+    lo i64
+    hi i64
 
-    do endpoints(r Range) -> (int, int) {
+    do endpoints(r Range) -> (i64, i64) {
         return r.lo, r.hi
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut c Counter = Counter{value: 10}
 

@@ -5,7 +5,7 @@
 
 
 do main() {
-    mut arr [int, 3] = {1, 2, 3}  // Fixed-size array of 3 elements
+    mut arr [i64, 3] = {1, 2, 3}  // Fixed-size array of 3 elements
     mut x = arr[5]  // Index 5 is out of bounds (valid: 0-2)
     println(x)
 }

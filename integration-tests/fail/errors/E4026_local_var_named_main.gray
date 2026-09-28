@@ -3,6 +3,6 @@
 // A local variable cannot be named 'main'.
 
 do main() {
-    mut main int = 5
+    mut main i64 = 5
     println("${main}")
 }

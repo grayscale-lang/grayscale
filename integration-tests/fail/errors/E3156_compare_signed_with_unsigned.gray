@@ -1,0 +1,10 @@
+// Error Test: E3156 - a signed and an unsigned value have no common type to
+// compare at; one side needs a cast.
+// expect-error: E3156
+// expect-error-count: 1
+
+do main() {
+    mut u u64 = 5
+    mut s i64 = -1
+    println(u > s)
+}

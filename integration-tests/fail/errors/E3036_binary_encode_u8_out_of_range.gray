@@ -1,0 +1,5 @@
+import @binary
+
+do main() {
+    println(binary.encode_u8(300))
+}

@@ -4,6 +4,6 @@
 
 import "./main"
 
-do use_it() -> int {
+do use_it() -> i64 {
     return main.shared()
 }

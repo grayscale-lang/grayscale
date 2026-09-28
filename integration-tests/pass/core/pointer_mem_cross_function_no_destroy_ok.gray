@@ -8,11 +8,11 @@
 import @mem
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do make_point(a Arena, x int, y int) -> ^Point {
+do make_point(a Arena, x i64, y i64) -> ^Point {
     mut p ^Point = mem.init(a, Point)
     p^.x = x
     p^.y = y

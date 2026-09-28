@@ -9,8 +9,8 @@ const ROUTES [map[string:string], 2] = {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if len(ROUTES) == 2 {
         passed += 1

@@ -20,10 +20,10 @@ const Pool struct {
 
 do main() {
     println("=== Map Empty Literal Assignment Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    /* String values are 16 bytes; an 8-byte slot truncated them */
+    /* String values are 16 bytes; an 8-u8 slot truncated them */
     mut a map[string:string] = {"seed": "s"}
     a = {:}
     a["k"] = "v"
@@ -36,12 +36,12 @@ do main() {
     }
 
     /* Non-string keys took the string hash path and crashed */
-    mut b map[int:int] = {1: 1}
+    mut b map[i64:i64] = {1: 1}
     b = {:}
     b[7] = 42
     b[9] = 99
     if len(b) == 2 && b[7] == 42 && b[9] == 99 {
-        println("  [PASS] map[int:int] reassigned to {:}")
+        println("  [PASS] map[i64:i64] reassigned to {:}")
         passed += 1
     } otherwise {
         println("  [FAIL] expected 7=42 and 9=99, got ${b[7]} and ${b[9]}")
@@ -49,12 +49,12 @@ do main() {
     }
 
     /* Array values carry a header wider than 8 bytes */
-    mut c map[string:[int]] = {"seed": {1}}
+    mut c map[string:[i64]] = {"seed": {1}}
     c = {:}
     c["k"] = {1, 2, 3}
-    mut got [int] = c["k"]
+    mut got [i64] = c["k"]
     if len(c) == 1 && len(got) == 3 && got[2] == 3 {
-        println("  [PASS] map[string:[int]] reassigned to {:}")
+        println("  [PASS] map[string:[i64]] reassigned to {:}")
         passed += 1
     } otherwise {
         println("  [FAIL] expected a 3-element array, got ${len(got)}")

@@ -1,0 +1,9 @@
+/*
+ * Error Test: integer-overflow (i64 -= underflow)
+ * Expected: "subtraction result is too large"
+ */
+
+do main() {
+    mut x i64 = -9223372036854775808  // INT64_MIN
+    x -= 1
+}

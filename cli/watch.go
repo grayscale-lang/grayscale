@@ -37,12 +37,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	target := args[0]
 
 	var compilerArgs []string
-	quiet, _ := cmd.Flags().GetString("quiet")
-	if quiet == "all" {
-		compilerArgs = append(compilerArgs, "--quiet")
-	} else if quiet != "" {
-		compilerArgs = append(compilerArgs, "--quiet", quiet)
-	}
+	compilerArgs = append(compilerArgs, quietArgs(cmd)...)
 	if noColor, _ := cmd.Flags().GetBool("no-color"); noColor {
 		compilerArgs = append(compilerArgs, "--no-color")
 	}

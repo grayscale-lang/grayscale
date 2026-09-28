@@ -1,12 +1,12 @@
 // Test: raw(p^) and addr(p^) compile and produce correct results
 do main() {
-    mut passed int = 0
-    mut failed int = 0
-    mut x int = 42
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut x i64 = 42
 
     // addr(p^) should work — &(*p) = p
-    mut p ^int = addr(x)
-    mut q ^int = addr(p^)
+    mut p ^i64 = addr(x)
+    mut q ^i64 = addr(p^)
     if q^ == 42 {
         passed = passed + 1
     } otherwise {
@@ -15,7 +15,7 @@ do main() {
     }
 
     // raw(p^) should work — &(*p) = p, no nil check
-    mut r ^int = raw(p^)
+    mut r ^i64 = raw(p^)
     if r^ == 42 {
         passed = passed + 1
     } otherwise {

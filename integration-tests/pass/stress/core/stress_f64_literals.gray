@@ -1,0 +1,83 @@
+/* Stress test: Float literal edge cases (Section 1.2)
+ * Expected: all tests pass
+ */
+
+
+do main() {
+    println("=== Stress: Float Literals ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // Basic floats
+    mut z f64 = 0.0
+    mut half f64 = 0.5
+    mut pi f64 = 3.14159
+    mut hundred f64 = 100.0
+    if z == 0.0 && half == 0.5 && pi == 3.14159 && hundred == 100.0 {
+        println("  [PASS] basic floats")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] basic floats")
+        failed += 1
+    }
+
+    // Negative floats
+    mut neg f64 = -2.5
+    mut negZero f64 = -0.0
+    if neg == -2.5 {
+        println("  [PASS] negative floats")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative floats")
+        failed += 1
+    }
+
+    // Many decimal places
+    mut precise f64 = 3.141592653589793
+    if precise > 3.14159 && precise < 3.14160 {
+        println("  [PASS] many decimal places")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] many decimal places")
+        failed += 1
+    }
+
+    // Underscored floats
+    mut sep f64 = 3.141_592_653
+    if sep > 3.14159 && sep < 3.14160 {
+        println("  [PASS] underscored floats")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] underscored floats")
+        failed += 1
+    }
+
+    // Large f64
+    mut big f64 = 999999999.999999
+    if big > 999999999.0 {
+        println("  [PASS] large f64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] large f64")
+        failed += 1
+    }
+
+    // Small f64 near zero
+    mut tiny f64 = 0.000001
+    if tiny > 0.0 && tiny < 0.001 {
+        println("  [PASS] small f64 near zero")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] small f64 near zero")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

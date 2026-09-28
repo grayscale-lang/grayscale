@@ -1,0 +1,9 @@
+/*
+ * Error Test: E8001 - bit_and on f64
+ * Expected: E8001 — 'bit_and' can only be used with integers
+ */
+do main() {
+    mut x f64 = 1.5
+    mut y f64 = 2.5
+    mut z = x bit_and y
+}

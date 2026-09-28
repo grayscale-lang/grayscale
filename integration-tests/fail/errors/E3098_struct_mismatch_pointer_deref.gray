@@ -6,14 +6,14 @@
  */
 
 const Vec2 struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Vec3 struct {
-    x int
-    y int
-    z int
+    x i64
+    y i64
+    z i64
 }
 
 do main() {

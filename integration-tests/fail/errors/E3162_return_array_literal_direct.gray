@@ -5,12 +5,12 @@
 // expect-error: E3162
 // expect-error-count: 1
 
-do f() -> [^int] {
-    mut x int = 1
+do f() -> [^i64] {
+    mut x i64 = 1
     return {addr(x)}
 }
 
 do main() {
-    mut a [^int] = f()
+    mut a [^i64] = f()
     println("done")
 }

@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = math.abs(-5)  // Using math without importing
+    mut x i64 = math.abs(-5)  // Using math without importing
 }

@@ -9,8 +9,8 @@ import and use @math, @strings, @arrays
 
 do main() {
     println("=== Import And Use Multi Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: unqualified math function
     mut val = abs(-42)
@@ -33,7 +33,7 @@ do main() {
     }
 
     // Test 3: unqualified arrays function
-    mut arr [int] = {5, 2, 8, 1}
+    mut arr [i64] = {5, 2, 8, 1}
     sort_asc(arr)
     if arr[0] == 1 && arr[3] == 8 {
         println("  [PASS] unqualified sort_asc")

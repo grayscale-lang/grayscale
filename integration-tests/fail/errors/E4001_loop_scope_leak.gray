@@ -4,9 +4,9 @@
  */
 
 do main() {
-    mut count int = 0
+    mut count i64 = 0
     loop {
-        mut inner int = 99
+        mut inner i64 = 99
         count++
         if count >= 1 {
             break

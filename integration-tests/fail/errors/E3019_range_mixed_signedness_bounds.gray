@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3019 - range() runs in the widest wide integer type among its
+ * bounds; a bound of the other signedness at that width needs a cast.
+ */
+
+// expect-error: E3019
+
+do main() {
+    mut a i128 = 1
+    mut b u128 = 3
+    for i in range(a, b) { println(i) }
+}

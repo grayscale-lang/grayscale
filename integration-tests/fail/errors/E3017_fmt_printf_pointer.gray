@@ -2,11 +2,13 @@
  * Error Test: E3017 - fmt.printf cannot format pointer
  * Expected: "cannot format value of type"
  */
+// expect-error: E3017
+// expect-error-count: 1
 
 import @fmt
 
 do main() {
-    mut x int = 42
-    mut p ^int = addr(x)
-    fmt.printf("%s", p)
+    mut x i64 = 42
+    mut p ^i64 = addr(x)
+    fmt.printf("%s", {p})
 }

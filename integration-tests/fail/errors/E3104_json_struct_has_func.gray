@@ -8,7 +8,7 @@ import @json
 #json
 const User struct {
     name string
-    age  int
+    age  i64
 
     do greet() {
         println("hi")

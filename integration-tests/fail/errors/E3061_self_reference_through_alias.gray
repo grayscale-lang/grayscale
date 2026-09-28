@@ -10,7 +10,7 @@
 
 const Node struct {
     next NodeAlias
-    v int
+    v i64
 }
 
 alias NodeAlias = Node

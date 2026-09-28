@@ -3,42 +3,42 @@
  */
 
 
-do two() -> (int, string) { return 42, "hello" }
-do three() -> (int, string, bool) { return 1, "two", true }
-do five() -> (int, int, int, int, int) { return 10, 20, 30, 40, 50 }
-do eight() -> (int, int, int, int, int, int, int, int) { return 1, 2, 3, 4, 5, 6, 7, 8 }
+do two() -> (i64, string) { return 42, "hello" }
+do three() -> (i64, string, bool) { return 1, "two", true }
+do five() -> (i64, i64, i64, i64, i64) { return 10, 20, 30, 40, 50 }
+do eight() -> (i64, i64, i64, i64, i64, i64, i64, i64) { return 1, 2, 3, 4, 5, 6, 7, 8 }
 
 // Named returns
-do named_single() -> (result int) {
-    mut result int = 42
+do named_single() -> (result i64) {
+    mut result i64 = 42
     return result
 }
 
-do named_multi() -> (name string, age int) {
+do named_multi() -> (name string, age i64) {
     mut name string = "Alice"
-    mut age int = 30
+    mut age i64 = 30
     return name, age
 }
 
 // Explicit return with named values
-do explicit_return() -> (x int, y int) {
-    mut x int = 10
-    mut y int = 20
+do explicit_return() -> (x i64, y i64) {
+    mut x i64 = 10
+    mut y i64 = 20
     return x, y
 }
 
 // Grouped type named returns
-do grouped() -> (a, b int, c string) {
-    mut a int = 1
-    mut b int = 2
+do grouped() -> (a, b i64, c string) {
+    mut a i64 = 1
+    mut b i64 = 2
     mut c string = "three"
     return a, b, c
 }
 
 do main() {
     println("=== Stress: Multi & Named Returns ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // 2 returns
     mut a, b = two()
@@ -76,28 +76,28 @@ do main() {
     } otherwise { println("  [FAIL] discard") failed += 1 }
 
     // Named single return
-    mut ns int = named_single()
+    mut ns i64 = named_single()
     if ns == 42 {
         println("  [PASS] named single return")
         passed += 1
     } otherwise { println("  [FAIL] named single") failed += 1 }
 
     // Named multi return
-    mut nm_name string, nm_age int = named_multi()
+    mut nm_name string, nm_age i64 = named_multi()
     if nm_name == "Alice" && nm_age == 30 {
         println("  [PASS] named multi return")
         passed += 1
     } otherwise { println("  [FAIL] named multi") failed += 1 }
 
     // Explicit return
-    mut bx int, by int = explicit_return()
+    mut bx i64, by i64 = explicit_return()
     if bx == 10 && by == 20 {
         println("  [PASS] explicit return with named values")
         passed += 1
     } otherwise { println("  [FAIL] explicit return") failed += 1 }
 
     // Grouped type return
-    mut ga int, gb int, gc string = grouped()
+    mut ga i64, gb i64, gc string = grouped()
     if ga == 1 && gb == 2 && gc == "three" {
         println("  [PASS] grouped type named return")
         passed += 1

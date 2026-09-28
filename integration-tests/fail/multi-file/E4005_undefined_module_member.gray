@@ -6,5 +6,5 @@
 import @math
 
 do main() {
-    mut x int = math.nonexistent_function()  // Function doesn't exist
+    mut x i64 = math.nonexistent_function()  // Function doesn't exist
 }

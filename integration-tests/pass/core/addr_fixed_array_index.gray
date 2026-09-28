@@ -6,9 +6,9 @@
  */
 
 do main() {
-    const fixed [int, 4] = {10, 20, 30, 40}
+    const fixed [i64, 4] = {10, 20, 30, 40}
 
-    mut p ^int = addr(fixed[1])
+    mut p ^i64 = addr(fixed[1])
     if p^ == 20 {
         println("  [PASS] addr(fixed[i])")
     } else {
@@ -22,7 +22,7 @@ do main() {
         println("  [FAIL] ref(fixed[i]): ${r}")
     }
 
-    mut q ^int = raw(fixed[3])
+    mut q ^i64 = raw(fixed[3])
     if q^ == 40 {
         println("  [PASS] raw(fixed[i])")
     } else {

@@ -5,18 +5,18 @@
  * pointers into memory that outlives the function, are fine.
  */
 
-mut g_slot int = 0
+mut g_slot i64 = 0
 
-do add_to_slot(n int) { g_slot += n }
+do add_to_slot(n i64) { g_slot += n }
 
-do bump(p ^int) { p^ += 1 }
+do bump(p ^i64) { p^ += 1 }
 
 mut adders [func] = {ref(add_to_slot)}
 
-do run_ptr(f func(^int), p ^int) { f(p) }
+do run_ptr(f func(^i64), p ^i64) { f(p) }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // 1. array-indexed call, by-value argument
     adders[0](42)
@@ -37,7 +37,7 @@ do main() {
     }
 
     // 3. func-typed local, by-value argument
-    const local_fn func(int) = ref(add_to_slot)
+    const local_fn func(i64) = ref(add_to_slot)
     local_fn(7)
     if g_slot == 50 {
         println("  [PASS] func-typed local call, value arg")

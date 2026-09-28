@@ -8,7 +8,7 @@ import @io
 import @os
 import @strings
 
-const CHUNK int = 4096
+const CHUNK i64 = 4096
 
 // The runner exports BENCH_GEN; running a workload by hand falls back to
 // benchmarks/.gen next to this file's directory.
@@ -32,14 +32,14 @@ do main() {
         exit(1)
     }
 
-    mut n int = len(blob)
+    mut n i64 = len(blob)
     mut rolling string = "seed"
-    mut chunks int = 0
+    mut chunks i64 = 0
 
     for round in range(0, 12) {
-        mut off int = 0
+        mut off i64 = 0
         as_long_as off < n {
-            mut end int = off + CHUNK
+            mut end i64 = off + CHUNK
             if end > n {
                 end = n
             }

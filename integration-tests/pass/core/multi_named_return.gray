@@ -1,17 +1,17 @@
 /* Test: multiple named return values of different types, destructured at
  * the call site. */
 
-do get_person_info() -> (age int, name string) {
-    mut age int = 25
+do get_person_info() -> (age i64, name string) {
+    mut age i64 = 25
     mut name string = "Bob"
     return age, name
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut a int, n string = get_person_info()
+    mut a i64, n string = get_person_info()
     if a == 25 {
         passed += 1
     } otherwise {

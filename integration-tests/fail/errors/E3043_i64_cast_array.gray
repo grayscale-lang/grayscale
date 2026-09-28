@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3043 - cannot convert array to i64
+ * Expected: type cannot be converted error
+ */
+
+do main() {
+    mut arr [i64] = {1, 2, 3}
+    mut x i64 = cast(arr, i64)
+    println(x)
+}

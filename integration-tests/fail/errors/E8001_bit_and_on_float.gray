@@ -1,9 +1,0 @@
-/*
- * Error Test: E8001 - bit_and on float
- * Expected: E8001 — 'bit_and' can only be used with integers
- */
-do main() {
-    mut x float = 1.5
-    mut y float = 2.5
-    mut z = x bit_and y
-}

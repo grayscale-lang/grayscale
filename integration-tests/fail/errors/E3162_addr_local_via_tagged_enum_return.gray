@@ -8,12 +8,12 @@
  */
 
 const Box enum {
-    Full(^int)
+    Full(^i64)
     Empty
 }
 
 do make_box() -> Box {
-    mut x int = 42
+    mut x i64 = 42
     return Box.Full(addr(x))
 }
 

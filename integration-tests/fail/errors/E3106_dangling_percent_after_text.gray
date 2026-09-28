@@ -2,5 +2,5 @@
 import @fmt
 
 do main() {
-    fmt.printf("hello %")
+    fmt.printf("hello %", {})
 }

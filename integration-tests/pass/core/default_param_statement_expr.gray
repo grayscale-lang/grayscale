@@ -1,4 +1,4 @@
-do add(a int, b int = a + 1) -> int {
+do add(a i64, b i64 = a + 1) -> i64 {
     return a + b
 }
 
@@ -7,8 +7,8 @@ do greet(name string, msg string = "Hello, ${name}!") -> string {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: default param using earlier param in expression
     mut r1 = add(5)

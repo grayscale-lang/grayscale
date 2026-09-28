@@ -1,5 +1,5 @@
-const VALUE int = 42
+const VALUE i64 = 42
 
-do get_value() -> int {
+do get_value() -> i64 {
     return VALUE
 }

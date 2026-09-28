@@ -11,9 +11,9 @@
 import @arrays
 
 do main() {
-    mut ptrs [^int] = {}
+    mut ptrs [^i64] = {}
     for i in range(3) {
-        mut x int = i * 10
+        mut x i64 = i * 10
         arrays.append(ptrs, addr(x))
     }
     println(ptrs[0]^)

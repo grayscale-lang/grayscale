@@ -1,5 +1,5 @@
 /*
- * Error Test: E10003 - string direct index out of bounds
+ * Error Test: P0082 - string direct index out of bounds
  * Expected: "string index" and "out of bounds"
  */
 

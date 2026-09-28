@@ -6,6 +6,6 @@
  * return statement. Both errors are now suppressed after E4008.
  */
 
-do main() -> int {
+do main() -> i64 {
     return 42
 }

@@ -1,5 +1,5 @@
 const Rec struct {
-    n int
+    n i64
 }
 
 do positive(r Rec) -> bool {
@@ -18,8 +18,8 @@ do call2(a Rec, b Rec, pred func(Rec, Rec) -> bool) -> bool {
     return pred(a, b)
 }
 
-do run() -> int {
-    mut passed int = 0
+do run() -> i64 {
+    mut passed i64 = 0
     mut r Rec = Rec{n: 5}
     if call_it(r, ()positive) { passed += 1 }
     mut a Rec = Rec{n: 5}

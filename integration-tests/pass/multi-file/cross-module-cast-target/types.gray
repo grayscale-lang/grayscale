@@ -4,4 +4,4 @@ const Color enum {
     BLUE
 }
 
-alias Score = int
+alias Score = i64

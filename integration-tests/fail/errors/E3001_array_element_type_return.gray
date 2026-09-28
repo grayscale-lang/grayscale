@@ -1,9 +1,0 @@
-/* Error Test: E3001 - returning [int] from function declared -> [string] */
-do get_strings() -> [string] {
-    mut a [int] = {1, 2, 3}
-    return a
-}
-do main() {
-    mut s [string] = get_strings()
-    println(s)
-}

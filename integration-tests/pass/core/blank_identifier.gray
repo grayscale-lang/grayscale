@@ -3,18 +3,18 @@
  */
 
 
-do get_pair() -> (int, string) {
+do get_pair() -> (i64, string) {
     return 42, "hello"
 }
 
-do get_triple() -> (int, int, int) {
+do get_triple() -> (i64, i64, i64) {
     return 1, 2, 3
 }
 
 do main() {
     println("=== Blank Identifier Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: discard second return value
     mut val, _ = get_pair()

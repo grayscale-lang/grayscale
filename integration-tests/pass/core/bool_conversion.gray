@@ -4,8 +4,8 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: bool(0) -> false
     mut a bool = bool(0)
@@ -37,18 +37,18 @@ do main() {
         failed += 1
     }
 
-    // Test 4: bool from int variable
-    mut x int = 0
+    // Test 4: bool from i64 variable
+    mut x i64 = 0
     mut d bool = bool(x)
     if d == false {
-        println("  [PASS] bool(int 0) == false")
+        println("  [PASS] bool(i64 0) == false")
         passed += 1
     } otherwise {
-        println("  [FAIL] bool(int 0): expected false")
+        println("  [FAIL] bool(i64 0): expected false")
         failed += 1
     }
 
-    // Test 5: bool from float
+    // Test 5: bool from f64
     mut e bool = bool(1.5)
     if e == true {
         println("  [PASS] bool(1.5) == true")

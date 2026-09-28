@@ -8,20 +8,20 @@
 import @arrays
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut a [byte] = {}
+    mut a [u8] = {}
     arrays.append(a, 255)
     arrays.prepend(a, 0)
     arrays.insert_at(a, 1, 128)
-    mut x byte = 42
+    mut x u8 = 42
     arrays.append(a, x)
     if a[0] == 0 && a[1] == 128 && a[2] == 255 && a[3] == 42 {
-        println("  [PASS] [byte] in-range append/prepend/insert_at")
+        println("  [PASS] [u8] in-range append/prepend/insert_at")
         passed += 1
     } otherwise {
-        println("  [FAIL] [byte]: ${a[0]} ${a[1]} ${a[2]} ${a[3]}")
+        println("  [FAIL] [u8]: ${a[0]} ${a[1]} ${a[2]} ${a[3]}")
         failed += 1
     }
 
@@ -37,13 +37,13 @@ do main() {
     }
 
     // Full-width element: large value is fine.
-    mut n [int] = {}
+    mut n [i64] = {}
     arrays.append(n, 999999999)
     if n[0] == 999999999 {
-        println("  [PASS] [int] wide value")
+        println("  [PASS] [i64] wide value")
         passed += 1
     } otherwise {
-        println("  [FAIL] [int]: ${n[0]}")
+        println("  [FAIL] [i64]: ${n[0]}")
         failed += 1
     }
 

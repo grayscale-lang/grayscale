@@ -7,7 +7,7 @@
 // expect-error-count: 1
 
 do main() {
-    mut m map[string:int] = {"a": 1}
-    mut n map[string:int] = cast(m, map[string:int])
+    mut m map[string:i64] = {"a": 1}
+    mut n map[string:i64] = cast(m, map[string:i64])
     println(len(n))
 }

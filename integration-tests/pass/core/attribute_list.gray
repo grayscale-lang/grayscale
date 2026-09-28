@@ -15,26 +15,26 @@ const Perm enum {
 
 #[json, doc("a 2D point")]
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 #[doc("adds two integers"), deprecated("use add_v2")]
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 // Mixed: a stacked attribute above a container on the same declaration.
 #doc("returns a noisy value the caller may ignore")
 #[discard]
-do noisy() -> int {
+do noisy() -> i64 {
     return 7
 }
 
 do main() {
     println("=== Attribute List Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if add(3, 4) == 7 {
         println("  [PASS] #[doc, deprecated] on function")
@@ -48,7 +48,7 @@ do main() {
     println("  [PASS] #doc stacked with #[discard]")
     passed += 1
 
-    mut x int = int(Perm.WRITE)
+    mut x i64 = cast(Perm.WRITE, i64)
     #[strict]
     when x {
         is 1 { println("  [PASS] #[strict] when") passed += 1 }

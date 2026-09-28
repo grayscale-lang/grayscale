@@ -11,7 +11,7 @@
  */
 
 const Inner struct {
-    data [int, 3] = {1, 2}
+    data [i64, 3] = {1, 2}
 }
 
 const Outer struct {
@@ -19,8 +19,8 @@ const Outer struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Omitted nested-struct field: inner's own fixed field keeps length 3
     const o Outer = Outer{}

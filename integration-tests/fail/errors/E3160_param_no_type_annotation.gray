@@ -5,7 +5,7 @@
 // expect-error: E3160
 // expect-error-count: 1
 
-do scale(factor = 2) -> int {
+do scale(factor = 2) -> i64 {
     return factor * 10
 }
 

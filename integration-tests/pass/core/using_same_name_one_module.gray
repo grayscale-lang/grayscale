@@ -6,7 +6,7 @@ import and use @chars
 import @regex
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // bare call resolves to the used module
     if escape('A') == "A" {

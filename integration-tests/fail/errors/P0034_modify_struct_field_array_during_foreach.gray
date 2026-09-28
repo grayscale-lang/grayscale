@@ -3,7 +3,7 @@
 import @arrays
 
 const Bag struct {
-    items [int]
+    items [i64]
 }
 
 do main() {

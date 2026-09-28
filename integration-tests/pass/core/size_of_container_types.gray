@@ -1,28 +1,28 @@
 /*
  * size_of_container_types.gray - Test size_of on container type expressions
  *
- * Covers: size_of([int]), size_of([int,3]), size_of([[int]]),
- *         size_of(map[string:int]), and cast to a container type.
+ * Covers: size_of([i64]), size_of([i64,3]), size_of([[i64]]),
+ *         size_of(map[string:i64]), and cast to a container type.
  * Every array spelling is the same runtime value, so their sizes agree.
  */
 
 do main() {
     println("=== size_of Container Type Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: size_of([int]) is a real size
-    if size_of([int]) > 0 {
-        println("  [PASS] size_of([int]) == ${size_of([int])}")
+    // Test 1: size_of([i64]) is a real size
+    if size_of([i64]) > 0 {
+        println("  [PASS] size_of([i64]) == ${size_of([i64])}")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of([int]) == ${size_of([int])}")
+        println("  [FAIL] size_of([i64]) == ${size_of([i64])}")
         failed += 1
     }
 
     // Test 2: every array spelling is the same runtime value
-    if size_of([string]) == size_of([int]) {
-        println("  [PASS] size_of([string]) == size_of([int])")
+    if size_of([string]) == size_of([i64]) {
+        println("  [PASS] size_of([string]) == size_of([i64])")
         passed += 1
     } otherwise {
         println("  [FAIL] size_of([string]) == ${size_of([string])}")
@@ -30,35 +30,35 @@ do main() {
     }
 
     // Test 3: fixed-size array spelling
-    if size_of([int,3]) == size_of([int]) {
-        println("  [PASS] size_of([int,3]) == size_of([int])")
+    if size_of([i64,3]) == size_of([i64]) {
+        println("  [PASS] size_of([i64,3]) == size_of([i64])")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of([int,3]) == ${size_of([int,3])}")
+        println("  [FAIL] size_of([i64,3]) == ${size_of([i64,3])}")
         failed += 1
     }
 
     // Test 4: nested array spelling
-    if size_of([[int]]) == size_of([int]) {
-        println("  [PASS] size_of([[int]]) == size_of([int])")
+    if size_of([[i64]]) == size_of([i64]) {
+        println("  [PASS] size_of([[i64]]) == size_of([i64])")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of([[int]]) == ${size_of([[int]])}")
+        println("  [FAIL] size_of([[i64]]) == ${size_of([[i64]])}")
         failed += 1
     }
 
     // Test 5: map spelling
-    if size_of(map[string:int]) > 0 {
-        println("  [PASS] size_of(map[string:int]) == ${size_of(map[string:int])}")
+    if size_of(map[string:i64]) > 0 {
+        println("  [PASS] size_of(map[string:i64]) == ${size_of(map[string:i64])}")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of(map[string:int]) == ${size_of(map[string:int])}")
+        println("  [FAIL] size_of(map[string:i64]) == ${size_of(map[string:i64])}")
         failed += 1
     }
 
     // Test 6: a map is not an array
-    if size_of(map[string:int]) != size_of([int]) {
-        println("  [PASS] size_of(map[string:int]) != size_of([int])")
+    if size_of(map[string:i64]) != size_of([i64]) {
+        println("  [PASS] size_of(map[string:i64]) != size_of([i64])")
         passed += 1
     } otherwise {
         println("  [FAIL] map and array sizes matched")
@@ -66,13 +66,13 @@ do main() {
     }
 
     // Test 7: cast still takes an array spelling
-    mut ints [int] = {1, 2, 3}
-    mut floats [float] = cast(ints, [float])
+    mut ints [i64] = {1, 2, 3}
+    mut floats [f64] = cast(ints, [f64])
     if floats[2] == 3.0 {
-        println("  [PASS] cast(ints, [float]) converts elements")
+        println("  [PASS] cast(ints, [f64]) converts elements")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(ints, [float]) gave ${floats[2]}")
+        println("  [FAIL] cast(ints, [f64]) gave ${floats[2]}")
         failed += 1
     }
 

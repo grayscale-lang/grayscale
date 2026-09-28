@@ -8,6 +8,6 @@
 extern import "stdio.h"
 
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     extern.puts(arr)
 }

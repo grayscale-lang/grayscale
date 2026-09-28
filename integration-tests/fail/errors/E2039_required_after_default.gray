@@ -3,7 +3,7 @@
  * Expected: compiler should reject this with E2039
  */
 
-do bad_func(x int = 10, y int) {
+do bad_func(x i64 = 10, y i64) {
     // This should fail - y is required but comes after x which has a default
     println(x + y)
 }

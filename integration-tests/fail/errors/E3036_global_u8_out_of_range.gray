@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3036 - u8-value-out-of-range (global variable)
+ * Expected: "u8" or "0 and 255"
+ * Tests that global u8 declarations check value range
+ */
+
+
+// Global u8 with out of range value - should trigger E3036
+const badByte u8 = 300
+
+do main() {
+}

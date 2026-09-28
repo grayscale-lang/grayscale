@@ -1,0 +1,12 @@
+// Error Test: E3036 - an array or map literal reassigned to a narrow element
+// type rejects an out-of-range literal, the same way a declaration does.
+// expect-error: E3036
+// expect-error-count: 2
+
+do main() {
+    mut bytes [u8] = {1}
+    bytes = {300}
+
+    mut counts map[string:u8] = {"a": 1}
+    counts = {"b": 300}
+}

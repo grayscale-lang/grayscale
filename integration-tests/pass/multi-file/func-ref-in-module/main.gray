@@ -10,7 +10,7 @@
 import "./helper.gray"
 
 do main() {
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     assert(helper.total(nums) == 6, "func ref passed to a stdlib higher-order function")
     assert(helper.via_param(4, 5) == 9, "func ref passed to a user func parameter")
     assert(helper.via_ref(6, 7) == 13, "ref(name) bound to a const")

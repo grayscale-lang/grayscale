@@ -17,7 +17,7 @@
 /*@man arena
  *@module mem
  *@group Arena
- *@sig arena(size int) -> Arena
+ *@sig arena(size i64) -> Arena
  *@desc Create a new arena with the given initial block size in bytes.
  *@example
  *   import @mem
@@ -56,11 +56,11 @@ void gray_mem_reset(GrayArena *arena);
 /*@man usage
  *@module mem
  *@group Arena
- *@sig usage(a Arena) -> int
+ *@sig usage(a Arena) -> i64
  *@desc Return the number of bytes currently used in the arena.
  *@example
  *   import @mem
- *   mut used int = mem.usage(a)
+ *   mut used i64 = mem.usage(a)
  *   println("${used} bytes used")
  *@end
  */
@@ -75,7 +75,7 @@ int64_t gray_mem_usage(GrayArena *arena);
  *@example
  *   import @mem
  *   mut a Arena = mem.arena(4096)
- *   mut p ^int = mem.alloc(a, 42)
+ *   mut p ^i64 = mem.alloc(a, 42)
  *@end
  */
 /*
@@ -92,7 +92,7 @@ int64_t gray_mem_usage(GrayArena *arena);
  *@example
  *   import @mem
  *   mut a Arena = mem.arena(4096)
- *   mut p ^int = mem.init(a, int)
+ *   mut p ^i64 = mem.init(a, i64)
  *@end
  */
 /* mem.init(arena, Type) — handled by codegen */
@@ -100,7 +100,7 @@ int64_t gray_mem_usage(GrayArena *arena);
 /*@man raw_copy
  *@module mem
  *@group Raw
- *@sig raw_copy(dest ^T, src ^T, n int)
+ *@sig raw_copy(dest ^T, src ^T, n i64)
  *@desc Copy n bytes from src to dest.
  *@example
  *   import @mem
@@ -108,12 +108,12 @@ int64_t gray_mem_usage(GrayArena *arena);
  *@end
  */
 /* mem.copy(dest, src, n) — copy n bytes from src to dest (memcpy) */
-void gray_mem_copy(void *dest, const void *src, int64_t byte_count);
+void gray_mem_copy(void *dest, const void *source, int64_t byte_count);
 
 /*@man zero
  *@module mem
  *@group Raw
- *@sig zero(ptr ^T, n int)
+ *@sig zero(ptr ^T, n i64)
  *@desc Zero n bytes starting at ptr.
  *@example
  *   import @mem
@@ -121,12 +121,12 @@ void gray_mem_copy(void *dest, const void *src, int64_t byte_count);
  *@end
  */
 /* mem.zero(ptr, n) — zero n bytes starting at ptr (memset 0) */
-void gray_mem_zero(void *ptr, int64_t byte_count);
+void gray_mem_zero(void *pointer, int64_t byte_count);
 
 /*@man fill
  *@module mem
  *@group Raw
- *@sig fill(ptr ^T, val int, n int)
+ *@sig fill(ptr ^T, val i64, n i64)
  *@desc Set n bytes starting at ptr to val.
  *@example
  *   import @mem
@@ -134,7 +134,7 @@ void gray_mem_zero(void *ptr, int64_t byte_count);
  *@end
  */
 /* mem.set(ptr, val, n) — set n bytes to val (memset) */
-void gray_mem_set(void *ptr, int64_t value, int64_t byte_count);
+void gray_mem_set(void *pointer, int64_t value, int64_t byte_count);
 
 
 #endif

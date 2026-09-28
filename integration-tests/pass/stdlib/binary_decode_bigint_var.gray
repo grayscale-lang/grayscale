@@ -11,7 +11,7 @@ do main() {
     println("=== binary.decode_* bigint variable assignment ===")
 
     mut a i128 = i128(-123456789012345)
-    mut a_bytes [byte] = binary.encode_i128_le(a)
+    mut a_bytes [u8] = binary.encode_i128_le(a)
     mut a_back i128 = binary.decode_i128_le(a_bytes)
     if a_back == a {
         println("  [PASS] decode_i128_le into declared i128 variable")
@@ -20,7 +20,7 @@ do main() {
     }
 
     mut b u128 = u128(987654321098765)
-    mut b_bytes [byte] = binary.encode_u128_be(b)
+    mut b_bytes [u8] = binary.encode_u128_be(b)
     mut b_back u128 = binary.decode_u128_be(b_bytes)
     if b_back == b {
         println("  [PASS] decode_u128_be into declared u128 variable")
@@ -29,7 +29,7 @@ do main() {
     }
 
     mut c i256 = i256(-42)
-    mut c_bytes [byte] = binary.encode_i256_le(c)
+    mut c_bytes [u8] = binary.encode_i256_le(c)
     mut c_back i256 = binary.decode_i256_le(c_bytes)
     if c_back == c {
         println("  [PASS] decode_i256_le into declared i256 variable")
@@ -38,7 +38,7 @@ do main() {
     }
 
     mut d u256 = u256(255)
-    mut d_bytes [byte] = binary.encode_u256_be(d)
+    mut d_bytes [u8] = binary.encode_u256_be(d)
     mut d_back u256 = binary.decode_u256_be(d_bytes)
     if d_back == d {
         println("  [PASS] decode_u256_be into declared u256 variable")

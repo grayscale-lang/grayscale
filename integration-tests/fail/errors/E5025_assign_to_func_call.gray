@@ -3,7 +3,7 @@
  * Expected: "cannot assign to this expression" error
  */
 
-do get_value() -> int {
+do get_value() -> i64 {
     return 5
 }
 

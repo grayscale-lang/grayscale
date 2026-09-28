@@ -8,8 +8,8 @@ import @io
 
 do main() {
     println("=== stdlib ErrorCode test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut _, err = io.read_file("/definitely/not/a/real/path/xyzzy_8729.txt")
 

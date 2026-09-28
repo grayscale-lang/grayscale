@@ -2,16 +2,16 @@
  * range_bigint_bounds.gray - range() with i128, u128, i256 and u256 bounds
  *
  * Covers: wide start, end and step; the loop variable takes the wide type;
- * int bounds widen; a negative wide step; a start above the int64 range.
+ * i64 bounds widen; a negative wide step; a start above the int64 range.
  */
 
 do main() {
     println("=== Range Bigint Bounds Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut e i128 = 3
-    mut n int = 0
+    mut n i64 = 0
     for i in range(0, e) { n += 1 }
     if n == 3 {
         println("  [PASS] i128 end")

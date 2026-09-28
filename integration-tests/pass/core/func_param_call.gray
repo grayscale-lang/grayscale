@@ -1,6 +1,6 @@
 /*
  * func_param_call.gray - Calling a func-typed parameter with correct
- * return type propagation for struct, int, and string returns.
+ * return type propagation for struct, i64, and string returns.
  *
  * calling a func
  * parameter that returned a struct emitted (int64_t (*)(...))f
@@ -10,8 +10,8 @@
  */
 
 const Pair struct {
-    a int
-    b int
+    a i64
+    b i64
 }
 
 do swap(p Pair) -> Pair {
@@ -23,18 +23,18 @@ do apply_twice(f func(Pair) -> Pair, p Pair) -> Pair {
     return f(r)
 }
 
-do double_it(n int) -> int {
+do double_it(n i64) -> i64 {
     return n * 2
 }
 
-do apply_int(f func(int) -> int, x int) -> int {
+do apply_int(f func(i64) -> i64, x i64) -> i64 {
     return f(x)
 }
 
 do main() {
     println("=== Func Param Call Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- struct return through func param --
     mut p Pair = Pair{a: 1, b: 2}
@@ -47,7 +47,7 @@ do main() {
         failed += 1
     }
 
-    // -- int return through func param --
+    // -- i64 return through func param --
     if apply_int(()double_it, 21) == 42 {
         println("  [PASS] apply_int(double_it, 21) = 42")
         passed += 1

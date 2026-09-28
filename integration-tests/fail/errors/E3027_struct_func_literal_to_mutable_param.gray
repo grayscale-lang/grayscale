@@ -4,9 +4,9 @@
  */
 
 const Calculator struct {
-    _pad int
+    _pad i64
 
-    do double(&x int) {
+    do double(&x i64) {
         x = x * 2
     }
 }

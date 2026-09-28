@@ -7,31 +7,31 @@ import @arrays
 // Empty function body
 do noop() { }
 
-do func1() -> int { return 1 }
-do func2() -> int { return 2 }
-do func3() -> int { return 3 }
-do func4() -> int { return 4 }
-do func5() -> int { return 5 }
-do func6() -> int { return 6 }
-do func7() -> int { return 7 }
-do func8() -> int { return 8 }
-do func9() -> int { return 9 }
-do func10() -> int { return 10 }
-do func11() -> int { return 11 }
-do func12() -> int { return 12 }
-do func13() -> int { return 13 }
-do func14() -> int { return 14 }
-do func15() -> int { return 15 }
-do func16() -> int { return 16 }
-do func17() -> int { return 17 }
-do func18() -> int { return 18 }
-do func19() -> int { return 19 }
-do func20() -> int { return 20 }
+do func1() -> i64 { return 1 }
+do func2() -> i64 { return 2 }
+do func3() -> i64 { return 3 }
+do func4() -> i64 { return 4 }
+do func5() -> i64 { return 5 }
+do func6() -> i64 { return 6 }
+do func7() -> i64 { return 7 }
+do func8() -> i64 { return 8 }
+do func9() -> i64 { return 9 }
+do func10() -> i64 { return 10 }
+do func11() -> i64 { return 11 }
+do func12() -> i64 { return 12 }
+do func13() -> i64 { return 13 }
+do func14() -> i64 { return 14 }
+do func15() -> i64 { return 15 }
+do func16() -> i64 { return 16 }
+do func17() -> i64 { return 17 }
+do func18() -> i64 { return 18 }
+do func19() -> i64 { return 19 }
+do func20() -> i64 { return 20 }
 
 do main() {
     println("=== Stress: Boundary Cases ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Empty function body
     noop()
@@ -39,7 +39,7 @@ do main() {
     passed += 1
 
     // File with 20+ functions
-    mut sum int = func1() + func2() + func3() + func4() + func5() + func6() + func7() + func8() + func9() + func10()
+    mut sum i64 = func1() + func2() + func3() + func4() + func5() + func6() + func7() + func8() + func9() + func10()
     sum += func11() + func12() + func13() + func14() + func15() + func16() + func17() + func18() + func19() + func20()
     if sum == 210 {
         println("  [PASS] 20+ functions in file")
@@ -75,7 +75,7 @@ do main() {
     } otherwise { println("  [FAIL] deep nesting") failed += 1 }
 
     // Array with 1000 elements
-    mut big_arr [int] = {}
+    mut big_arr [i64] = {}
     for i in range(0, 1000) {
         arrays.append(big_arr, i)
     }
@@ -95,14 +95,14 @@ do main() {
     } otherwise { println("  [FAIL] long string — len ${len(long_str)}") failed += 1 }
 
     // Long identifier (Grayscale allows long names)
-    mut this_is_a_very_long_variable_name_that_tests_the_compilers_ability_to_handle_long_identifiers int = 42
+    mut this_is_a_very_long_variable_name_that_tests_the_compilers_ability_to_handle_long_identifiers i64 = 42
     if this_is_a_very_long_variable_name_that_tests_the_compilers_ability_to_handle_long_identifiers == 42 {
         println("  [PASS] long identifier (93 chars)")
         passed += 1
     } otherwise { println("  [FAIL] long identifier") failed += 1 }
 
     // Many statements in main
-    mut acc int = 0
+    mut acc i64 = 0
     acc += 1
     acc += 1
     acc += 1

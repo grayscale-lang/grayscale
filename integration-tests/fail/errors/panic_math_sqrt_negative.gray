@@ -6,5 +6,5 @@
 import @math
 
 do main() {
-    mut x float = math.sqrt(-1.0)  // sqrt of negative
+    mut x f64 = math.sqrt(-1.0)  // sqrt of negative
 }

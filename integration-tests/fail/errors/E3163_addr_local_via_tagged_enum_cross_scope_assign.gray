@@ -7,14 +7,14 @@
  */
 
 const Box enum {
-    Full(^int)
+    Full(^i64)
     Empty
 }
 
 do main() {
     mut outer Box = Box.Empty
     if true {
-        mut x int = 1
+        mut x i64 = 1
         outer = Box.Full(addr(x))
     }
     when outer {

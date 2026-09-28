@@ -7,12 +7,12 @@
 import @json
 
 const Inner struct {
-    x int
+    x i64
 }
 
 #json
 const S struct {
-    a int
+    a i64
     n Inner
 }
 

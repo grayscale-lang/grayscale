@@ -1,7 +1,7 @@
 import "./shapes.gray"
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     mut p shapes.Point = shapes.Point{x: 10, y: 20}
     if p.x == 10 && p.y == 20 {

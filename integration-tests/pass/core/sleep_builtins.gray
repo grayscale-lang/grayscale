@@ -6,13 +6,13 @@
 import @time
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // sleep_ms(10) must block for at least ~10ms of wall clock.
-    mut start int = time.now_ns()
+    mut start i64 = time.now_ns()
     sleep_ms(10)
-    mut elapsed int = time.now_ns() - start
+    mut elapsed i64 = time.now_ns() - start
     if elapsed >= 8000000 {
         passed += 1
     } otherwise {
@@ -21,7 +21,7 @@ do main() {
     }
 
     // sleep_ns with a small duration returns without error.
-    mut s2 int = time.now_ns()
+    mut s2 i64 = time.now_ns()
     sleep_ns(500000)
     if time.now_ns() >= s2 {
         passed += 1
@@ -35,7 +35,7 @@ do main() {
     passed += 1
 
     // A computed (non-literal) duration is accepted.
-    mut d int = 5
+    mut d i64 = 5
     sleep_ms(d)
     passed += 1
 

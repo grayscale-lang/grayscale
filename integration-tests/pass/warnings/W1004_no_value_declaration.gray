@@ -5,7 +5,7 @@
  */
 
 do main() {
-    foobar int          // implicit mut, no value
+    foobar i64          // implicit mut, no value
     mut baz string      // explicit mut, no value
     foobar = 1
     baz = "x"

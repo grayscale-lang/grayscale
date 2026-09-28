@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5053 - a declaration annotates an extern.func() result with an
+ * integer type while the real C function returns the struct div_t. The struct
+ * is spelled through a typedef, so the return type has to be resolved.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut d i64 = extern.div(7, 2)
+    println("${d}")
+}

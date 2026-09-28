@@ -5,6 +5,6 @@
 
 
 do main() {
-    const arr [int, 5] = {42}
+    const arr [i64, 5] = {42}
     println(arr)
 }

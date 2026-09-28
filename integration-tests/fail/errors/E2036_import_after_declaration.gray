@@ -1,4 +1,4 @@
-const MY_ARRAY [int, 5] = {1, 2, 3, 4, 5}
+const MY_ARRAY [i64, 5] = {1, 2, 3, 4, 5}
 
 do some_function() {
     println("hello")

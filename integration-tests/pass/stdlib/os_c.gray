@@ -6,8 +6,8 @@ import @os
 
 do main() {
     println("=== OS Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // args returns an array
     mut args [string] = os.args()
@@ -135,8 +135,8 @@ do main() {
         failed += 1
     }
 
-    // pid returns a positive int
-    mut pid_val int = os.pid()
+    // pid returns a positive i64
+    mut pid_val i64 = os.pid()
     if pid_val > 0 {
         println("  [PASS] pid (${pid_val})")
         passed += 1

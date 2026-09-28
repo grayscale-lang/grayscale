@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3001 - i64-returning call assigned to a func-typed variable
+ *
+ * the bug was not return-type specific. The fix
+ * rejects every non-func initializer at the `mut f func = ...` site,
+ * regardless of the call's return type. This test locks in the i64
+ * shape alongside the string shape.
+ */
+
+do answer() -> i64 {
+    return 42
+}
+
+do main() {
+    mut f func() -> i64 = answer()
+}

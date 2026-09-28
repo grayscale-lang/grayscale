@@ -5,18 +5,18 @@
 
 import @arrays
 
-do is_even(x int) -> bool { return x % 2 == 0 }
+do is_even(x i64) -> bool { return x % 2 == 0 }
 
 do main() {
     println("=== Arrays Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- Query Functions ---
 
     // is_empty
-    mut empty_arr [int] = {}
-    mut nonempty_arr [int] = {1}
+    mut empty_arr [i64] = {}
+    mut nonempty_arr [i64] = {1}
     if arrays.is_empty(empty_arr) == true && arrays.is_empty(nonempty_arr) == false {
         println("  [PASS] is_empty")
         passed += 1
@@ -26,7 +26,7 @@ do main() {
     }
 
     // contains
-    mut has_arr [int] = {1, 2, 3, 4, 5}
+    mut has_arr [i64] = {1, 2, 3, 4, 5}
     if arrays.contains(has_arr, 3) == true && arrays.contains(has_arr, 99) == false {
         println("  [PASS] contains")
         passed += 1
@@ -36,9 +36,9 @@ do main() {
     }
 
     // index_of
-    mut idx_arr [int] = {10, 20, 30, 40}
-    mut idx int = arrays.index_of(idx_arr, 30)
-    mut idx_missing int = arrays.index_of(idx_arr, 99)
+    mut idx_arr [i64] = {10, 20, 30, 40}
+    mut idx i64 = arrays.index_of(idx_arr, 30)
+    mut idx_missing i64 = arrays.index_of(idx_arr, 99)
     if idx == 2 && idx_missing == -1 {
         println("  [PASS] index_of")
         passed += 1
@@ -48,8 +48,8 @@ do main() {
     }
 
     // count
-    mut count_arr [int] = {1, 2, 2, 3, 2, 4}
-    mut cnt int = arrays.count(count_arr, 2)
+    mut count_arr [i64] = {1, 2, 2, 3, 2, 4}
+    mut cnt i64 = arrays.count(count_arr, 2)
     if cnt == 3 {
         println("  [PASS] count")
         passed += 1
@@ -61,8 +61,8 @@ do main() {
     // --- Access Functions ---
 
     // get_first
-    mut first_arr [int] = {10, 20, 30}
-    mut first_val int = arrays.get_first(first_arr)
+    mut first_arr [i64] = {10, 20, 30}
+    mut first_val i64 = arrays.get_first(first_arr)
     if first_val == 10 {
         println("  [PASS] get_first")
         passed += 1
@@ -72,7 +72,7 @@ do main() {
     }
 
     // get_last
-    mut last_val int = arrays.get_last(first_arr)
+    mut last_val i64 = arrays.get_last(first_arr)
     if last_val == 30 {
         println("  [PASS] get_last")
         passed += 1
@@ -84,7 +84,7 @@ do main() {
     // --- Modification Functions ---
 
     // append
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     arrays.append(arr, 4)
     if len(arr) == 4 && arr[3] == 4 {
         println("  [PASS] append")
@@ -95,7 +95,7 @@ do main() {
     }
 
     // prepend
-    mut pre_arr [int] = {2, 3, 4}
+    mut pre_arr [i64] = {2, 3, 4}
     arrays.prepend(pre_arr, 1)
     if len(pre_arr) == 4 && pre_arr[0] == 1 && pre_arr[1] == 2 {
         println("  [PASS] prepend")
@@ -106,7 +106,7 @@ do main() {
     }
 
     // insert_at
-    mut ins_arr [int] = {1, 2, 4, 5}
+    mut ins_arr [i64] = {1, 2, 4, 5}
     arrays.insert_at(ins_arr, 2, 3)
     if len(ins_arr) == 5 && ins_arr[2] == 3 && ins_arr[3] == 4 {
         println("  [PASS] insert_at")
@@ -117,7 +117,7 @@ do main() {
     }
 
     // remove_at
-    mut rm_arr [int] = {10, 20, 30, 40}
+    mut rm_arr [i64] = {10, 20, 30, 40}
     arrays.remove_at(rm_arr, 1)
     if len(rm_arr) == 3 && rm_arr[0] == 10 && rm_arr[1] == 30 {
         println("  [PASS] remove_at")
@@ -128,8 +128,8 @@ do main() {
     }
 
     // remove_first
-    mut rf_arr [int] = {100, 200, 300}
-    mut removed_first int = arrays.remove_first(rf_arr)
+    mut rf_arr [i64] = {100, 200, 300}
+    mut removed_first i64 = arrays.remove_first(rf_arr)
     if removed_first == 100 && len(rf_arr) == 2 && rf_arr[0] == 200 {
         println("  [PASS] remove_first")
         passed += 1
@@ -139,8 +139,8 @@ do main() {
     }
 
     // remove_last
-    mut rl_arr [int] = {100, 200, 300}
-    mut removed_last int = arrays.remove_last(rl_arr)
+    mut rl_arr [i64] = {100, 200, 300}
+    mut removed_last i64 = arrays.remove_last(rl_arr)
     if removed_last == 300 && len(rl_arr) == 2 && rl_arr[1] == 200 {
         println("  [PASS] remove_last")
         passed += 1
@@ -150,7 +150,7 @@ do main() {
     }
 
     // clear
-    mut cl_arr [int] = {1, 2, 3}
+    mut cl_arr [i64] = {1, 2, 3}
     arrays.clear(cl_arr)
     if len(cl_arr) == 0 {
         println("  [PASS] clear")
@@ -161,7 +161,7 @@ do main() {
     }
 
     // fill
-    mut fill_arr [int] = {}
+    mut fill_arr [i64] = {}
     arrays.fill(fill_arr, 7, 5)
     if len(fill_arr) == 5 && fill_arr[0] == 7 && fill_arr[4] == 7 {
         println("  [PASS] fill")
@@ -172,7 +172,7 @@ do main() {
     }
 
     // sort_asc
-    mut unsorted [int] = {5, 3, 1, 4, 2}
+    mut unsorted [i64] = {5, 3, 1, 4, 2}
     arrays.sort_asc(unsorted)
     if unsorted[0] == 1 && unsorted[1] == 2 && unsorted[4] == 5 {
         println("  [PASS] sort_asc")
@@ -183,7 +183,7 @@ do main() {
     }
 
     // sort_desc
-    mut desc_arr [int] = {1, 4, 2, 5, 3}
+    mut desc_arr [i64] = {1, 4, 2, 5, 3}
     arrays.sort_desc(desc_arr)
     if desc_arr[0] == 5 && desc_arr[1] == 4 && desc_arr[4] == 1 {
         println("  [PASS] sort_desc")
@@ -196,8 +196,8 @@ do main() {
     // --- Transformation Functions ---
 
     // reverse
-    mut to_rev [int] = {1, 2, 3}
-    mut rev [int] = arrays.reverse(to_rev)
+    mut to_rev [i64] = {1, 2, 3}
+    mut rev [i64] = arrays.reverse(to_rev)
     if rev[0] == 3 && rev[1] == 2 && rev[2] == 1 {
         println("  [PASS] reverse")
         passed += 1
@@ -207,8 +207,8 @@ do main() {
     }
 
     // slice
-    mut sl_arr [int] = {0, 1, 2, 3, 4, 5}
-    mut sliced [int] = arrays.slice(sl_arr, 2, 5)
+    mut sl_arr [i64] = {0, 1, 2, 3, 4, 5}
+    mut sliced [i64] = arrays.slice(sl_arr, 2, 5)
     if len(sliced) == 3 && sliced[0] == 2 && sliced[2] == 4 {
         println("  [PASS] slice")
         passed += 1
@@ -218,9 +218,9 @@ do main() {
     }
 
     // concat
-    mut ca [int] = {1, 2}
-    mut cb [int] = {3, 4}
-    mut cat [int] = arrays.concat(ca, cb)
+    mut ca [i64] = {1, 2}
+    mut cb [i64] = {3, 4}
+    mut cat [i64] = arrays.concat(ca, cb)
     if len(cat) == 4 && cat[0] == 1 && cat[3] == 4 {
         println("  [PASS] concat")
         passed += 1
@@ -230,8 +230,8 @@ do main() {
     }
 
     // deduplicate
-    mut dup_arr [int] = {1, 2, 2, 3, 3, 3, 4}
-    mut deduped [int] = arrays.deduplicate(dup_arr)
+    mut dup_arr [i64] = {1, 2, 2, 3, 3, 3, 4}
+    mut deduped [i64] = arrays.deduplicate(dup_arr)
     if len(deduped) == 4 && deduped[0] == 1 && deduped[3] == 4 {
         println("  [PASS] deduplicate")
         passed += 1
@@ -241,8 +241,8 @@ do main() {
     }
 
     // flatten
-    mut nested [[int]] = {{1, 2}, {3, 4}, {5}}
-    mut flat [int] = arrays.flatten(nested)
+    mut nested [[i64]] = {{1, 2}, {3, 4}, {5}}
+    mut flat [i64] = arrays.flatten(nested)
     if len(flat) == 5 && flat[0] == 1 && flat[4] == 5 {
         println("  [PASS] flatten")
         passed += 1
@@ -252,8 +252,8 @@ do main() {
     }
 
     // split_every
-    mut split_arr [int] = {1, 2, 3, 4, 5, 6}
-    mut chunks [[int]] = arrays.split_every(split_arr, 2)
+    mut split_arr [i64] = {1, 2, 3, 4, 5, 6}
+    mut chunks [[i64]] = arrays.split_every(split_arr, 2)
     if len(chunks) == 3 && len(chunks[0]) == 2 && chunks[0][0] == 1 && chunks[2][1] == 6 {
         println("  [PASS] split_every")
         passed += 1
@@ -263,9 +263,9 @@ do main() {
     }
 
     // pair
-    mut pa [int] = {1, 2, 3}
-    mut pb [int] = {4, 5, 6}
-    mut paired [[int]] = arrays.pair(pa, pb)
+    mut pa [i64] = {1, 2, 3}
+    mut pb [i64] = {4, 5, 6}
+    mut paired [[i64]] = arrays.pair(pa, pb)
     if len(paired) == 3 && paired[0][0] == 1 && paired[0][1] == 4 && paired[2][0] == 3 && paired[2][1] == 6 {
         println("  [PASS] pair")
         passed += 1
@@ -277,8 +277,8 @@ do main() {
     // --- Computation Functions ---
 
     // get_sum
-    mut sum_arr [int] = {1, 2, 3, 4, 5}
-    mut total int = arrays.get_sum(sum_arr)
+    mut sum_arr [i64] = {1, 2, 3, 4, 5}
+    mut total i64 = arrays.get_sum(sum_arr)
     if total == 15 {
         println("  [PASS] get_sum")
         passed += 1
@@ -288,8 +288,8 @@ do main() {
     }
 
     // get_min
-    mut min_arr [int] = {5, 2, 8, 1, 9}
-    mut min_val int = arrays.get_min(min_arr)
+    mut min_arr [i64] = {5, 2, 8, 1, 9}
+    mut min_val i64 = arrays.get_min(min_arr)
     if min_val == 1 {
         println("  [PASS] get_min")
         passed += 1
@@ -299,8 +299,8 @@ do main() {
     }
 
     // get_max
-    mut max_arr [int] = {5, 2, 8, 1, 9}
-    mut max_val int = arrays.get_max(max_arr)
+    mut max_arr [i64] = {5, 2, 8, 1, 9}
+    mut max_val i64 = arrays.get_max(max_arr)
     if max_val == 9 {
         println("  [PASS] get_max")
         passed += 1
@@ -310,7 +310,7 @@ do main() {
     }
 
     // any - at least one even
-    mut any_arr [int] = {1, 3, 4, 7}
+    mut any_arr [i64] = {1, 3, 4, 7}
     if arrays.any(any_arr, ()is_even) == true {
         println("  [PASS] any (true)")
         passed += 1
@@ -320,7 +320,7 @@ do main() {
     }
 
     // any - none match
-    mut any_arr2 [int] = {1, 3, 5, 7}
+    mut any_arr2 [i64] = {1, 3, 5, 7}
     if arrays.any(any_arr2, ()is_even) == false {
         println("  [PASS] any (false)")
         passed += 1
@@ -330,7 +330,7 @@ do main() {
     }
 
     // all - all even
-    mut all_arr [int] = {2, 4, 6}
+    mut all_arr [i64] = {2, 4, 6}
     if arrays.all(all_arr, ()is_even) == true {
         println("  [PASS] all (true)")
         passed += 1
@@ -340,7 +340,7 @@ do main() {
     }
 
     // all - not all even
-    mut all_arr2 [int] = {2, 4, 5}
+    mut all_arr2 [i64] = {2, 4, 5}
     if arrays.all(all_arr2, ()is_even) == false {
         println("  [PASS] all (false)")
         passed += 1
@@ -350,9 +350,9 @@ do main() {
     }
 
     // is_equal - order-sensitive element comparison
-    mut eq_a [int] = {1, 2, 3}
-    mut eq_b [int] = {1, 2, 3}
-    mut eq_c [int] = {1, 3, 2}
+    mut eq_a [i64] = {1, 2, 3}
+    mut eq_b [i64] = {1, 2, 3}
+    mut eq_c [i64] = {1, 3, 2}
     if arrays.is_equal(eq_a, eq_b) && !arrays.is_equal(eq_a, eq_c) {
         println("  [PASS] is_equal")
         passed += 1

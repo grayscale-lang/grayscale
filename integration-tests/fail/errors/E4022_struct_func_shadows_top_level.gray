@@ -11,7 +11,7 @@ do rename(n string) -> string {
 }
 
 const Actor struct {
-    id int
+    id i64
     name string
 
     do rename(a Actor, n string) -> Actor {

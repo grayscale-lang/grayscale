@@ -1,0 +1,6 @@
+/* Panic Test: P0019 - a NaN float cast to u8 */
+do main() {
+    mut n f64 = cast("nan", f64)
+    mut c u8 = cast(n, u8)
+    println(c)
+}

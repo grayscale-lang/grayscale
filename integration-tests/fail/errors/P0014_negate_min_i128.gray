@@ -1,0 +1,6 @@
+/* Panic Test: P0014 - negating the most negative i128 */
+
+do main() {
+    mut x i128 = -170141183460469231731687303715884105728
+    println(-x)
+}

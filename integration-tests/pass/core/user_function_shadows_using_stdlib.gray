@@ -6,20 +6,20 @@
 
 import and use @arrays
 
-do append(xs [int], v int) -> int {
+do append(xs [i64], v i64) -> i64 {
     // Deliberately does NOT append — returns a marker instead.
     return 777
 }
 
 do main() {
     println("=== User Function Shadows Using Stdlib ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut xs [int] = {1, 2, 3}
+    mut xs [i64] = {1, 2, 3}
 
     // bare call resolves to the user's function
-    mut marker int = append(xs, 4)
+    mut marker i64 = append(xs, 4)
     if marker == 777 && len(xs) == 3 {
         println("  [PASS] bare append() is the user's function")
         passed += 1

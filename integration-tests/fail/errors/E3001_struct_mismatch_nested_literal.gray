@@ -6,14 +6,14 @@
  */
 
 const Vec2 struct {
-    x float
-    y float
+    x f64
+    y f64
 }
 
 const Vec3 struct {
-    x float
-    y float
-    z float
+    x f64
+    y f64
+    z f64
 }
 
 const Player struct {

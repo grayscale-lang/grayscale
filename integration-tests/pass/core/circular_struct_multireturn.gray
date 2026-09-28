@@ -31,21 +31,21 @@ do make_parent(name string) -> (Parent, bool) {
 
 // --- Three-way cycle ---
 const Alpha struct {
-    value int
+    value i64
     betas [Beta]
 }
 
 const Beta struct {
-    value int
+    value i64
     gamma Gamma
 }
 
 const Gamma struct {
-    value int
+    value i64
     origin Alpha
 }
 
-do make_alpha(v int) -> (Alpha, bool) {
+do make_alpha(v i64) -> (Alpha, bool) {
     mut a = new(Alpha)
     a^.value = v
     return a^, true
@@ -81,19 +81,19 @@ do create_collection(n string, kind DataKind = DataKind.PRIMARY) -> (Collection,
 
 // --- Self-referential (single-return, regression guard) ---
 const TreeNode struct {
-    value int
+    value i64
     children [TreeNode]
 }
 
-do make_tree_node(v int) -> TreeNode {
+do make_tree_node(v i64) -> TreeNode {
     mut n = new(TreeNode)
     n^.value = v
     return n^
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: two-way cycle multi-return ok flag
     mut p, ok1 = make_parent("root")

@@ -10,7 +10,7 @@
 extern import "stdlib.h"
 
 const S struct {
-    x int = extern.abs(-5)
+    x i64 = extern.abs(-5)
 }
 
 do main() {

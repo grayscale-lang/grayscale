@@ -9,8 +9,8 @@ import @strings
 
 do main() {
     println("=== JSON Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // is_valid - valid object
     if json.is_valid("{\"key\": \"value\"}") == true {
@@ -75,13 +75,13 @@ do main() {
         failed += 1
     }
 
-    // encode int
+    // encode i64
     mut enc_int string = json.encode(42)
     if enc_int == "42" {
-        println("  [PASS] encode(int)")
+        println("  [PASS] encode(i64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] encode(int): got '${enc_int}'")
+        println("  [FAIL] encode(i64): got '${enc_int}'")
         failed += 1
     }
 
@@ -105,18 +105,18 @@ do main() {
         failed += 1
     }
 
-    // encode float
+    // encode f64
     mut enc_float string = json.encode(3.14)
     if strings.contains(enc_float, "3.14") {
-        println("  [PASS] encode(float)")
+        println("  [PASS] encode(f64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] encode(float): got '${enc_float}'")
+        println("  [FAIL] encode(f64): got '${enc_float}'")
         failed += 1
     }
 
     // encode array
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     mut enc_arr string = json.encode(arr)
     if enc_arr == "[1,2,3]" || enc_arr == "[1, 2, 3]" {
         println("  [PASS] encode(array)")
@@ -127,7 +127,7 @@ do main() {
     }
 
     // encode map
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     mut enc_map string = json.encode(m)
     if strings.contains(enc_map, "\"a\"") && strings.contains(enc_map, "1") {
         println("  [PASS] encode(map)")

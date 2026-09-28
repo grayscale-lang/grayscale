@@ -1,6 +1,6 @@
 const Pool struct {
-    cache map[string:int]
-    items [int]
+    cache map[string:i64]
+    items [i64]
     label string
 }
 
@@ -19,8 +19,8 @@ do create_pool_auto() -> ^Pool {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* explicit p^.field = {:} on a new()-heap struct that escapes the function */
     pool1 = create_pool_explicit()

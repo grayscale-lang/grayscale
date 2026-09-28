@@ -3,10 +3,10 @@
  * Expected: "'get_val' returns 2 values"
  */
 
-do get_val() -> (int, Error) {
+do get_val() -> (i64, Error) {
     return 42, nil
 }
 
 do main() {
-    mut m map[string:int] = {"a": get_val()}
+    mut m map[string:i64] = {"a": get_val()}
 }

@@ -3,7 +3,7 @@
  *
  * struct field assignment wasn't range-checked.
  * Uses new() to initialize (sidesteps a pre-existing E3001 on
- * sized-int literals in struct literal field initializers).
+ * sized-integer literals in struct literal field initializers).
  */
 
 const Person struct {

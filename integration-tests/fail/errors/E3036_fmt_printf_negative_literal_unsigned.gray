@@ -1,0 +1,8 @@
+// expect-error: E3036
+// A negative literal for %u is out of range for the u64 it takes from its directive.
+
+import @fmt
+
+do main() {
+    fmt.printfln("%u", {-1})
+}

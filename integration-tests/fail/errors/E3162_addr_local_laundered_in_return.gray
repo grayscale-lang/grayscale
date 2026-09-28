@@ -7,14 +7,14 @@
  * 'local' still dies when the function returns.
  */
 
-do leak() -> ^int {
-    mut local int = 7
-    mut p ^int = addr(local)
-    mut q ^int = p
+do leak() -> ^i64 {
+    mut local i64 = 7
+    mut p ^i64 = addr(local)
+    mut q ^i64 = p
     return q
 }
 
 do main() {
-    mut d ^int = leak()
+    mut d ^i64 = leak()
     println(d^)
 }

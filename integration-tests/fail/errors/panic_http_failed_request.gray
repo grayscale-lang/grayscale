@@ -1,5 +1,5 @@
 /*
- * Error Test: E14002 - http-failed-request
+ * Error Test: P0076 - http-failed-request
  * Expected: "request failed" or "network" or "connection"
  */
 
@@ -7,7 +7,8 @@ import @http
 
 do main() {
     // Use a URL that will fail to connect (invalid port on localhost)
-    mut response, err = http.get("http://127.0.0.1:1")
+    mut headers map[string:string] = {:}
+    mut response, err = http.get("http://127.0.0.1:1", headers)
     if err != nil {
         panic("${err}")
     }

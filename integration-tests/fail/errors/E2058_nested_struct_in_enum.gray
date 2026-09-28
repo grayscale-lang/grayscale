@@ -4,7 +4,7 @@
 const Color enum {
     Red
     const Point struct {
-        x int
+        x i64
     }
 }
 

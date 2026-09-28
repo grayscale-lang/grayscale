@@ -1,0 +1,76 @@
+/*
+ * server_add_middleware.gray - server.add_middleware registers middleware
+ * that runs after the handler, in registration order, including on the
+ * 404 response.
+ */
+
+import @http
+import @server
+import @threads
+
+do home(req HttpRequest) -> HttpResponse {
+    mut resp = server.text(200, "home")
+    resp.headers["X-Last"] = "handler"
+    return resp
+}
+
+do first(req ^HttpRequest, resp ^HttpResponse) {
+    resp^.headers["X-First"] = "yes"
+    resp^.headers["X-Last"] = "first"
+}
+
+do second(req ^HttpRequest, resp ^HttpResponse) {
+    resp^.headers["X-Second"] = "yes"
+    resp^.headers["X-Last"] = "second"
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "GET", "/home", ()home)
+    server.add_middleware(router, ()first)
+    server.add_middleware(router, ()second)
+    server.listen(router, 18743, "127.0.0.1")
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut worker = threads.spawn(()serve)
+    threads.detach(worker)
+    threads.sleep(300)
+
+    mut headers map[string:string] = {:}
+    mut home_resp HttpResponse, home_err Error = http.get("http://127.0.0.1:18743/home", headers)
+    if home_resp.status == 200 && home_resp.headers["X-First"] == "yes" && home_resp.headers["X-Second"] == "yes" {
+        println("  [PASS] both middleware functions run")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] both middleware functions run")
+        failed += 1
+    }
+
+    if home_resp.headers["X-Last"] == "second" {
+        println("  [PASS] middleware runs after the handler, in registration order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] middleware runs after the handler, in registration order")
+        failed += 1
+    }
+
+    mut missing, missing_err = http.get("http://127.0.0.1:18743/missing", headers)
+    if missing.status == 404 && missing.headers["X-First"] == "yes" && missing.headers["X-Last"] == "second" {
+        println("  [PASS] middleware runs on the 404 response")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] middleware runs on the 404 response")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

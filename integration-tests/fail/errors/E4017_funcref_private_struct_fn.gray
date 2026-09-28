@@ -4,9 +4,9 @@
  */
 
 const Calc struct {
-    value int
+    value i64
 
-    private do secret(n int) -> int {
+    private do secret(n i64) -> i64 {
         return n * 99
     }
 }

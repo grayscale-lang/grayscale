@@ -4,32 +4,32 @@
  */
 
 const Stats struct {
-    hp int
-    mp int
+    hp i64
+    mp i64
 
-    do max_health() -> int {
+    do max_health() -> i64 {
         return 100
     }
 
-    do max_mana() -> int {
+    do max_mana() -> i64 {
         return 50
     }
 
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return a + b
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut s = new(Stats)
     s.hp = 80
     s.mp = 30
 
     // Test 1: no-arg struct function via instance dispatch
-    mut mh int = s.max_health()
+    mut mh i64 = s.max_health()
     if mh == 100 {
         println("  [PASS] instance.max_health() returned 100")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 2: another no-arg struct function via instance dispatch
-    mut mm int = s.max_mana()
+    mut mm i64 = s.max_mana()
     if mm == 50 {
         println("  [PASS] instance.max_mana() returned 50")
         passed += 1
@@ -49,7 +49,7 @@ do main() {
     }
 
     // Test 3: struct function with args (no self) via instance dispatch
-    mut sum int = s.add(3, 7)
+    mut sum i64 = s.add(3, 7)
     if sum == 10 {
         println("  [PASS] instance.add(3, 7) returned 10")
         passed += 1
@@ -59,7 +59,7 @@ do main() {
     }
 
     // Test 4: static call still works
-    mut mh2 int = Stats.max_health()
+    mut mh2 i64 = Stats.max_health()
     if mh2 == 100 {
         println("  [PASS] Stats.max_health() returned 100")
         passed += 1

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E8002 - bit_not on f64
+ * Expected: E8002 — 'bit_not' can only be used with integers
+ */
+do main() {
+    mut x f64 = 3.14
+    mut z = bit_not x
+}

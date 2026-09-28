@@ -16,18 +16,18 @@ import @maps
 
 do main() {
     println("=== Map Assign Escapes Scope Arena Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* Loop body: the merged map is built in the iteration arena. */
-    mut acc map[string:int] = {:}
+    mut acc map[string:i64] = {:}
     for i in range(0, 40) {
-        mut tmp map[string:int] = {:}
+        mut tmp map[string:i64] = {:}
         tmp["k${i}"] = i
         acc = maps.merge(acc, tmp)
     }
 
-    mut lost int = 0
+    mut lost i64 = 0
     for i in range(0, 40) {
         if !("k${i}" in acc) { lost = lost + 1 }
     }
@@ -40,12 +40,12 @@ do main() {
     }
 
     /* if-body: plain map-to-map assignment, no stdlib involved. */
-    mut a map[string:int] = {:}
-    mut i int = 0
+    mut a map[string:i64] = {:}
+    mut i i64 = 0
     loop {
         if i >= 40 { break }
         if true {
-            mut t map[string:int] = a
+            mut t map[string:i64] = a
             t["k${i}"] = i
             a = t
         }
@@ -66,7 +66,7 @@ do main() {
         t["k${n}"] = "v${n}"
         b = t
     }
-    mut bad int = 0
+    mut bad i64 = 0
     for n in range(0, 40) {
         if b["k${n}"] != "v${n}" { bad = bad + 1 }
     }
@@ -79,19 +79,19 @@ do main() {
     }
 
     /* Array values recurse through the per-entry copy path. */
-    mut c map[string:[int]] = {:}
+    mut c map[string:[i64]] = {:}
     for n in range(0, 20) {
-        mut t map[string:[int]] = c
+        mut t map[string:[i64]] = c
         t["k${n}"] = {n, n + 1}
         c = t
     }
-    mut cbad int = 0
+    mut cbad i64 = 0
     for n in range(0, 20) {
         e = c["k${n}"]
         if len(e) != 2 || e[0] != n || e[1] != n + 1 { cbad = cbad + 1 }
     }
     if len(c) == 20 && cbad == 0 {
-        println("  [PASS] map[string:[int]] values intact")
+        println("  [PASS] map[string:[i64]] values intact")
         passed += 1
     } otherwise {
         println("  [FAIL] expected 20 entries and 0 bad, got ${len(c)} and ${cbad}")
@@ -100,10 +100,10 @@ do main() {
 
     /* Nested loops: the copy must reach the function's arena, not the
      * outer loop's iteration arena. */
-    mut d map[string:int] = {:}
+    mut d map[string:i64] = {:}
     for x in range(0, 6) {
         for y in range(0, 6) {
-            mut t map[string:int] = d
+            mut t map[string:i64] = d
             t["${x}_${y}"] = x * 6 + y
             d = t
         }

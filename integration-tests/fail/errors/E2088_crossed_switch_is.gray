@@ -5,7 +5,7 @@
  */
 // expect-error: E2088
 do main() {
-    mut x int = 1
+    mut x i64 = 1
     switch x {
         is 1 { println("one") }
         default { println("other") }

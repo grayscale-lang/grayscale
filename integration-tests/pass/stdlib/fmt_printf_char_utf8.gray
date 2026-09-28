@@ -1,0 +1,59 @@
+/*
+ * fmt_printf_char_utf8.gray - %c prints a char as its UTF-8 encoding, not
+ * the low byte of its codepoint; an integer that is not a Unicode scalar
+ * value (negative, a surrogate, or above U+10FFFF) prints U+FFFD. A %c
+ * width counts characters.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut glyphs [char] = {'é', '😀'}
+    mut from_variable string = fmt.sprintf("[%c][%c]", glyphs)
+    if from_variable == "[é][😀]" {
+        println("  [PASS] %c prints non-ASCII chars from an array variable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %c prints non-ASCII chars from an array variable: got '${from_variable}'")
+        failed += 1
+    }
+
+    mut accent string = fmt.sprintf("%c", {'é'})
+    if len(accent) == 2 {
+        println("  [PASS] %c of 'é' is two bytes")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %c of 'é' is two bytes: got ${len(accent)}")
+        failed += 1
+    }
+
+    mut codepoint i64 = 233
+    mut surrogate i64 = 0xDC00
+    mut from_integers string = fmt.sprintf("%c%c%c%c%c", {codepoint, 65, -5, surrogate, 1114112})
+    if from_integers == "éA���" {
+        println("  [PASS] %c of an integer prints its codepoint, or U+FFFD for a non-scalar value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %c of an integer prints its codepoint, or U+FFFD for a non-scalar value: got '${from_integers}'")
+        failed += 1
+    }
+
+    mut padded string = fmt.sprintf("[%3c] [%-3c] [%3c]", {'é', 'é', 'a'})
+    if padded == "[  é] [é  ] [  a]" {
+        println("  [PASS] %c width counts characters, not UTF-8 bytes")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %c width counts characters, not UTF-8 bytes: got '${padded}'")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

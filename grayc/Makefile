@@ -258,7 +258,8 @@ STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                    src/stdlib/strings.o src/stdlib/chars.o src/stdlib/arrays.o src/stdlib/maps.o \
                    src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
                    src/stdlib/strconv.o src/stdlib/json.o src/stdlib/io.o \
-                   src/stdlib/regex.o src/stdlib/builtins.o src/stdlib/net.o $(ATOMIC_OBJ)
+                   src/stdlib/regex.o src/stdlib/builtins.o src/stdlib/net.o \
+                   src/stdlib/csv.o src/stdlib/crypto.o src/stdlib/uuid.o src/stdlib/binary.o $(ATOMIC_OBJ)
 
 tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread

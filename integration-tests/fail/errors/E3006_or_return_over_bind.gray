@@ -4,9 +4,9 @@
  * the raw Error slot.
  */
 
-do two() -> (int, int, Error) { return 10, 20, nil }
+do two() -> (i64, i64, Error) { return 10, 20, nil }
 
-do consume() -> (int, Error) {
+do consume() -> (i64, Error) {
     mut a, b, c = two() or_return
     return a + b, nil
 }

@@ -5,9 +5,9 @@
 
 
 do main() {
-    mut x int = 10
+    mut x i64 = 10
     if true {
-        mut x int = 20  // Shadows outer x
+        mut x i64 = 20  // Shadows outer x
         println(x)
     }
     println(x)

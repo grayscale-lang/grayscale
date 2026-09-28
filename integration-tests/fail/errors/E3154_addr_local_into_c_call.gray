@@ -13,17 +13,17 @@
 
 extern import "stdio.h"
 
-do leak(param ^int) {
-    mut local int = 1337
+do leak(param ^i64) {
+    mut local i64 = 1337
     extern.printf("%p\n", addr(local))
     extern.printf("%p\n", ref(local))
     extern.printf("%p\n", raw(param))
     if true {
-        mut inner int = 5
+        mut inner i64 = 5
         extern.printf("%p\n", addr(inner))
     }
 }
 
 do main() {
-    leak(new(int))
+    leak(new(i64))
 }

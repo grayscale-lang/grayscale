@@ -1,0 +1,9 @@
+/*
+ * Error Test: integer-overflow (u64 += overflow)
+ * Expected: "unsigned addition result is too large"
+ */
+
+do main() {
+    mut x u64 = 18446744073709551615  // UINT64_MAX
+    x += 1
+}

@@ -8,8 +8,8 @@
 extern import "stdio.h"
 
 const Shape enum {
-    CIRCLE(float),
-    SQUARE(float)
+    CIRCLE(f64),
+    SQUARE(f64)
 }
 
 do main() {

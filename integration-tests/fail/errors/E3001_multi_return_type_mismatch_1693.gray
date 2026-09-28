@@ -3,11 +3,11 @@
  * Expected: "type mismatch" or "multi-return"
  */
 
-do get_pair() -> (int, string) {
+do get_pair() -> (i64, string) {
     return 42, "hello"
 }
 
 do main() {
     // Types reversed - should fail
-    mut x string, y int = get_pair()
+    mut x string, y i64 = get_pair()
 }

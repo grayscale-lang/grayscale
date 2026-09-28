@@ -5,7 +5,7 @@
  * token, so they are interchangeable, but a single file must pick one.
  */
 
-mut cleanups int = 0
+mut cleanups i64 = 0
 
 do cleanup() {
     cleanups += 1
@@ -20,8 +20,8 @@ do work(early bool) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     work(false)
     if cleanups == 1 {

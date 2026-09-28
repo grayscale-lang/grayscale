@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     mut r = string(m)
 }

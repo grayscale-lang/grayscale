@@ -1,0 +1,10 @@
+/*
+ * Warning Test: W3003 - partial init with f64 type
+ * Expected: warning about fixed-size array not fully initialized
+ */
+
+
+do main() {
+    const values [f64, 6] = {1.5, 2.5, 3.5}
+    println(values)
+}

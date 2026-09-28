@@ -11,15 +11,15 @@
 import @math
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(x int, y int) -> Point {
+    do create(x i64, y i64) -> Point {
         return Point{x: x, y: y}
     }
 
-    do distance(a Point, b Point) -> float {
-        return math.sqrt(math.pow(float(a.x - b.x), 2) + math.pow(float(a.y - b.y), 2))
+    do distance(a Point, b Point) -> f64 {
+        return math.sqrt(math.pow(cast(a.x - b.x, f64), 2) + math.pow(cast(a.y - b.y, f64), 2))
     }
 
     do origin() -> Point {
@@ -30,14 +30,14 @@ const Point struct {
         return p.x >= 0 && p.y >= 0
     }
 
-    do is_valid(x int, y int) -> bool {
+    do is_valid(x i64, y i64) -> bool {
         mut p = Point.create(x, y)
         return Point.validate(p)
     }
 }
 
 const Counter struct {
-    value int
+    value i64
 
     do zero() -> Counter {
         return Counter{value: 0}
@@ -50,8 +50,8 @@ const Counter struct {
 
 do main() {
     println("=== Struct-Namespaced Functions Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Basic struct function call
     mut p1 = Point.create(3, 4)

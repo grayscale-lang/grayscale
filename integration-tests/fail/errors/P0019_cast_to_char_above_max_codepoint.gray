@@ -1,0 +1,6 @@
+/* Panic Test: P0019 - cast of a runtime value above U+10FFFF to char */
+do main() {
+    mut w i64 = 1114112
+    mut b char = cast(w, char)
+    println(b)
+}

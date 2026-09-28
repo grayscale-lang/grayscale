@@ -1,6 +1,6 @@
 /*
  * Error Test: E5050 - a C function whose *return type* is itself a function
- * pointer (e.g. signal's "void (*(int, void (*)(int)))(int)" AST-dump
+ * pointer (e.g. signal's "void (*(i64, void (*)(i64)))(i64)" AST-dump
  * spelling) must still have its own parameter list parsed correctly, not the
  * trailing parameter list of the returned function pointer. A 1-argument
  * call to signal (which takes 2) is caught with E5050, not left to fail at

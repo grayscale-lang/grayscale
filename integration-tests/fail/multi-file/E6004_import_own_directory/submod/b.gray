@@ -2,6 +2,6 @@
  * b.gray - second file so directory qualifies as a module
  */
 
-do other() -> int {
+do other() -> i64 {
     return 99
 }

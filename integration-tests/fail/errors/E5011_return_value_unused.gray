@@ -3,7 +3,7 @@
  * Expected: "return value" or "unused" or "not used"
  */
 
-do getValue() -> int {
+do getValue() -> i64 {
     return 42
 }
 

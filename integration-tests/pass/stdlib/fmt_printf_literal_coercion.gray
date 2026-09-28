@@ -1,0 +1,37 @@
+/*
+ * fmt_printf_literal_coercion.gray - a bare number literal in a printf
+ * values literal takes the type its directive reads: u64 for %u, f64 for
+ * %f/%e/%g.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut unsigned_text string = fmt.sprintf("%u %u", {255, 18446744073709551615})
+    if unsigned_text == "255 18446744073709551615" {
+        println("  [PASS] integer literals for %u are u64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] integer literals for %u are u64: got '${unsigned_text}'")
+        failed += 1
+    }
+
+    mut float_text string = fmt.sprintf("%.1f %.1e %g", {3, 2, 1 + 6})
+    if float_text == "3.0 2.0e+00 7" {
+        println("  [PASS] integer literals for %f/%e/%g are f64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] integer literals for %f/%e/%g are f64: got '${float_text}'")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

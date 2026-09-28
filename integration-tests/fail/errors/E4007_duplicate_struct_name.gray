@@ -4,13 +4,13 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Point struct {
-    a float
-    b float
+    a f64
+    b f64
 }
 
 do main() {

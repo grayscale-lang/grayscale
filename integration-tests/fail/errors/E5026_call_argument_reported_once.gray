@@ -6,11 +6,11 @@
 // expect-error: E5026
 // expect-error-count: 4
 const A struct {
-    x int
+    x i64
 }
 
 const B struct {
-    x int
+    x i64
 }
 
 const Color enum {
@@ -24,7 +24,7 @@ const Mode enum {
 do fs(a A) { }
 do fp(a ^A) { }
 do fe(c Color) { }
-do fa(xs [int]) { }
+do fa(xs [i64]) { }
 
 do main() {
     b B = B{x: 1}

@@ -233,7 +233,7 @@ func TestE2E_Build_CompilerWarningsStayQuiet(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "a.h"), []byte("#define MAX_SIZE 100\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "b.h"), []byte("#define MAX_SIZE 200\n"), 0644)
 	src := filepath.Join(dir, "redef.gray")
-	os.WriteFile(src, []byte("extern import \"./a.h\", \"./b.h\"\n\ndo main() {\n    mut m int = extern.MAX_SIZE\n    println(\"${m}\")\n}\n"), 0644)
+	os.WriteFile(src, []byte("extern import \"./a.h\", \"./b.h\"\n\ndo main() {\n    mut m i64 = extern.MAX_SIZE\n    println(\"${m}\")\n}\n"), 0644)
 	out := filepath.Join(dir, "redef")
 
 	stdout, stderr, code := runGray(t, "build", "-o", out, src)
@@ -302,7 +302,7 @@ func TestE2E_Doc(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "lib.gray")
 	os.WriteFile(src, []byte(`#doc("Adds two numbers")
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 `), 0644)
@@ -349,7 +349,7 @@ func TestE2E_Test_PassAndFail(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "demo.gray")
 	os.WriteFile(src, []byte(
-		"do add(a int, b int) -> int { return a + b }\n\n"+
+		"do add(a i64, b i64) -> i64 { return a + b }\n\n"+
 			"#test\ndo test_pass() { assert(add(2, 3) == 5) }\n\n"+
 			"#test\ndo test_fail() { assert(add(2, 2) == 5) }\n"), 0644)
 
@@ -516,7 +516,7 @@ func TestE2E_Test_StdoutCannotForgeProtocol(t *testing.T) {
 func TestE2E_Test_ImportedTestsRunOnce(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "lib.gray"), []byte(
-		"do double(x int) -> int { return x * 2 }\n\n"+
+		"do double(x i64) -> i64 { return x * 2 }\n\n"+
 			"#test\ndo test_in_import() { assert(double(21) == 42) }\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "app.gray"), []byte(
 		"import \"./lib\"\n\n"+
@@ -544,8 +544,8 @@ func TestE2E_Test_RecursionGuardDoesNotLeakBetweenTests(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "depth.gray")
 	os.WriteFile(src, []byte(
-		"do recurse(n int) -> int { return recurse(n + 1) + 1 }\n\n"+
-			"#test\ndo test_overflows() { mut x int = recurse(0) println(\"${x}\") }\n\n"+
+		"do recurse(n i64) -> i64 { return recurse(n + 1) + 1 }\n\n"+
+			"#test\ndo test_overflows() { mut x i64 = recurse(0) println(\"${x}\") }\n\n"+
 			"#test\ndo test_trivial_pass() { assert(2 == 2) }\n"), 0644)
 
 	stdout, stderr, code := runGray(t, "test", "--no-color", src)

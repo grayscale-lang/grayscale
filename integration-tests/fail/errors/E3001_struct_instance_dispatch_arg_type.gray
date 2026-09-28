@@ -4,14 +4,14 @@
  */
 
 const Calculator struct {
-    value int
+    value i64
 
-    do add(&self Calculator, n int) -> int {
+    do add(&self Calculator, n i64) -> i64 {
         return self.value + n
     }
 }
 
 do main() {
     mut c Calculator = Calculator{value: 10}
-    mut result int = c.add("not an int")
+    mut result i64 = c.add("not an i64")
 }

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3134 - a module-qualified alias target is the only error;
+ * the declaration after it still parses
+ * Expected: alias cannot target a module-qualified type
+ */
+
+// expect-error: E3134
+// expect-error-count: 1
+
+alias W = lib.Thing
+
+do main() {
+    println("ok")
+}

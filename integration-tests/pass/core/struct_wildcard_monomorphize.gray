@@ -5,7 +5,7 @@
  */
 
 const Box struct {
-    value int
+    value i64
 
     do identity(val ?) -> ? {
         return val
@@ -17,10 +17,10 @@ const Box struct {
 }
 
 const Pair struct {
-    first int
-    second int
+    first i64
+    second i64
 
-    do pick(index int, a ?, b ?) -> ? {
+    do pick(index i64, a ?, b ?) -> ? {
         if index == 0 {
             return a
         }
@@ -29,15 +29,15 @@ const Pair struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut b = Box { value: 10 }
 
-    mut r1 int = Box.identity(42)
+    mut r1 i64 = Box.identity(42)
     mut r2 string = Box.identity("hello")
     mut r3 bool = Box.identity(true)
-    mut r4 float = Box.identity(3.5)
+    mut r4 f64 = Box.identity(3.5)
     if r1 == 42 && r2 == "hello" && r3 == true && r4 == 3.5 {
         passed += 1
     } otherwise {
@@ -45,7 +45,7 @@ do main() {
         failed += 1
     }
 
-    mut r5 int = b.wrap(99)
+    mut r5 i64 = b.wrap(99)
     mut r6 string = b.wrap("world")
     if r5 == 99 && r6 == "world" {
         passed += 1
@@ -54,7 +54,7 @@ do main() {
         failed += 1
     }
 
-    mut r7 int = Pair.pick(0, 10, 20)
+    mut r7 i64 = Pair.pick(0, 10, 20)
     mut r8 string = Pair.pick(1, "left", "right")
     if r7 == 10 && r8 == "right" {
         passed += 1

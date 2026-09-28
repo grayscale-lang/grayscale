@@ -1,7 +1,7 @@
 const Node struct {
-    val int
+    val i64
 
-    do set_parent(self Node, parent ^Node) -> int {
+    do set_parent(self Node, parent ^Node) -> i64 {
         if parent == nil {
             return -1
         }
@@ -20,8 +20,8 @@ do make_node(parent ^Node) -> ^Node {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if take_ptr(nil) {
         println("  [PASS] plain function accepts nil for pointer param")

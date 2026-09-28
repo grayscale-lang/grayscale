@@ -6,6 +6,6 @@
 // expect-error-count: 1
 
 do main() {
-    mut a [int] = {10, 20, 30, 40}
-    mut p ^int = raw(a[2])
+    mut a [i64] = {10, 20, 30, 40}
+    mut p ^i64 = raw(a[2])
 }

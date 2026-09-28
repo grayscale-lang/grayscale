@@ -1,6 +1,6 @@
 import "./color"
 import "./color.gray"
 
-do combine() -> int {
+do combine() -> i64 {
     return color.hue() + 1
 }

@@ -11,17 +11,17 @@
 #define GRAY_CONSTANTS_H
 
 /* --- Diagnostic buffer sizes --- */
-#define MSG_BUF_SIZE         256
-#define MSG_BUF_LARGE        512
+#define MESSAGE_BUFFER_SIZE         256
+#define MESSAGE_BUFFER_LARGE_SIZE        512
 #define SOURCE_LINE_MAX      2048
 #define TYPE_NAME_MAX        128
 #define MAX_IDENTIFIER_LENGTH 255
 /* Buffer large enough for "name_name\0" (two max-length identifiers joined) */
-#define IDENT_BUF            (TYPE_NAME_MAX * 2 + 2)
+#define IDENTIFIER_BUFFER_SIZE            (TYPE_NAME_MAX * 2 + 2)
 
 /* --- Time unit conversions --- */
-#define NS_PER_SEC              1000000000LL
-#define NS_PER_MS               1000000LL
-#define MS_PER_SEC              1000LL
+#define NANOSECONDS_PER_SECOND              1000000000LL
+#define NANOSECONDS_PER_MILLISECOND               1000000LL
+#define MILLISECONDS_PER_SECOND              1000LL
 
 #endif

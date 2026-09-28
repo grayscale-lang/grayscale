@@ -8,8 +8,8 @@
  */
 
 const Cell struct {
-    a int
-    b int
+    a i64
+    b i64
 }
 
 const Box struct {
@@ -17,8 +17,8 @@ const Box struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut cells [Cell] = {Cell{a: 0, b: 0}, Cell{a: 0, b: 0}}
     cells[0] = Cell{a: 1, b: 2}

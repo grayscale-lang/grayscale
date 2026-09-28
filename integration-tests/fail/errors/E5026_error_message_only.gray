@@ -1,0 +1,10 @@
+// expect-error: E5026
+// error() takes a code first; a bare message is not an ErrorCode.
+
+do f() -> (i64, Error) {
+    return 0, error("msg")
+}
+
+do main() {
+    mut _, e = f()
+}

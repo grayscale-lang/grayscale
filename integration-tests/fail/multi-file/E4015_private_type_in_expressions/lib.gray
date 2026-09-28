@@ -1,6 +1,6 @@
 private const Hidden struct {
-    n int
-    do make(n int) -> Hidden { return Hidden{n: n} }
+    n i64
+    do make(n i64) -> Hidden { return Hidden{n: n} }
 }
 
 private const Mode enum {
@@ -9,6 +9,6 @@ private const Mode enum {
 }
 
 private const Tag enum {
-    A(int)
+    A(i64)
     B
 }

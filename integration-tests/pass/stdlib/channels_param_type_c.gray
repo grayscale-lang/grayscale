@@ -6,11 +6,11 @@
 
 import @channels
 
-do send_value(ch channels.Channel, val int) {
+do send_value(ch channels.Channel, val i64) {
     channels.send(ch, val)
 }
 
-do receive_value(ch channels.Channel) -> int {
+do receive_value(ch channels.Channel) -> i64 {
     return channels.receive(ch)
 }
 

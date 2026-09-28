@@ -1,7 +1,7 @@
 // expect-error: E3149
 // ErrorCode is an open enum: `when err.code` always needs a default branch.
 
-do f() -> (int, Error) {
+do f() -> (i64, Error) {
     return 0, error(.NotFound, "x")
 }
 

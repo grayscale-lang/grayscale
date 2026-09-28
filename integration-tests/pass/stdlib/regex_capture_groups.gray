@@ -6,7 +6,7 @@
 import @regex
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // find_groups: index 0 is the whole match, 1..n the parenthesized groups
     mut g, err = regex.find_groups("([0-9]+)-([0-9]+)", "order 12-345 shipped")

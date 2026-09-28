@@ -4,18 +4,18 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     println("=== raw() pointer tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: raw() on a const var, write through it (bypasses const_source)
-    const val int = 10
-    mut p ^int = raw(val)
+    const val i64 = 10
+    mut p ^i64 = raw(val)
     p^ = 99
     if p^ == 99 {
         println("  [PASS] write through raw(const) pointer")
@@ -26,8 +26,8 @@ do main() {
     }
 
     // Test 2: raw() on a mut var, basic dereference
-    mut x int = 42
-    mut q ^int = raw(x)
+    mut x i64 = 42
+    mut q ^i64 = raw(x)
     if q^ == 42 {
         println("  [PASS] read through raw(mut) pointer")
         passed += 1
@@ -59,8 +59,8 @@ do main() {
     }
 
     // Test 5: addr() still nil-checks (ensure raw didn't break addr)
-    mut z int = 7
-    mut ap ^int = addr(z)
+    mut z i64 = 7
+    mut ap ^i64 = addr(z)
     if ap^ == 7 {
         println("  [PASS] addr() still works correctly")
         passed += 1

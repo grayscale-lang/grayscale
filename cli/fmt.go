@@ -14,7 +14,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/grayscale-lang/grayscale/internal/driver"
@@ -72,86 +71,19 @@ func formatGraySource(src []byte) []byte {
 	return []byte(strings.Join(out, "\n") + "\n")
 }
 
-// collectFmtFiles expands the user-supplied args into a deduplicated list
-// of .gray file paths. Supported forms:
-//
-//   - "file.gray"           — single file
-//   - "dir"               — all .gray files directly inside dir (non-recursive)
-//   - "dir/subdir"        — all .gray files directly inside dir/subdir
-//   - "./..." or "dir/..." — recursive walk for .gray files
-func collectFmtFiles(args []string) []string {
-	seen := make(map[string]struct{})
-	var files []string
-
-	add := func(p string) {
-		ap, err := filepath.Abs(p)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "gray fmt: cannot resolve %s: %v\n", p, err)
-			return
-		}
-		if _, ok := seen[ap]; ok {
-			return
-		}
-		seen[ap] = struct{}{}
-		files = append(files, ap)
-	}
-
-	for _, arg := range args {
-		// Accept both src/... and src\... — Windows tab completion produces
-		// backslashes, and the recursive suffix should work either way.
-		if slashed := filepath.ToSlash(arg); strings.HasSuffix(slashed, "/...") || arg == "..." {
-			baseDir := filepath.FromSlash(strings.TrimSuffix(slashed, "/..."))
-			if baseDir == "" || baseDir == "." || baseDir == "..." {
-				baseDir = "."
-			}
-			filepath.Walk(baseDir, func(p string, info os.FileInfo, err error) error {
-				if err != nil {
-					return nil
-				}
-				if !info.IsDir() && strings.HasSuffix(p, ".gray") {
-					add(p)
-				}
-				return nil
-			})
-			continue
-		}
-
-		info, err := os.Stat(arg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
-			continue
-		}
-
-		if info.IsDir() {
-			entries, err := os.ReadDir(arg)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
-				continue
-			}
-			for _, e := range entries {
-				if !e.IsDir() && strings.HasSuffix(e.Name(), ".gray") {
-					add(filepath.Join(arg, e.Name()))
-				}
-			}
-		} else if strings.HasSuffix(arg, ".gray") {
-			add(arg)
-		} else {
-			fmt.Fprintf(os.Stderr, "gray fmt: '%s' is not a .gray file or directory\n", arg)
-		}
-	}
-	return files
-}
-
 // runFmt is the entry point invoked by the Cobra fmtCmd. It returns the
 // exit code the caller should propagate (0 success, 1 on error).
 func runFmt(args []string, checkMode bool) int {
-	files := collectFmtFiles(args)
+	files, ok := expandGraySourceArgs("fmt", args)
+	exit := 0
+	if !ok {
+		exit = 1
+	}
 	if len(files) == 0 {
 		fmt.Println("gray fmt: no .gray files found")
-		return 0
+		return exit
 	}
 
-	exit := 0
 	changed := 0
 
 	for _, path := range files {

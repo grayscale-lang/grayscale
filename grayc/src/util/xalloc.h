@@ -20,36 +20,36 @@
 #include <string.h>
 
 static inline void *xmalloc(size_t size) {
-    void *ptr = malloc(size);
+    void *pointer = malloc(size);
 
-    if (!ptr) {
+    if (!pointer) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
 
-    return ptr;
+    return pointer;
 }
 
-static inline void *xcalloc(size_t nmemb, size_t size) {
-    void *ptr = calloc(nmemb, size);
+static inline void *xcalloc(size_t member_count, size_t size) {
+    void *pointer = calloc(member_count, size);
 
-    if (!ptr) {
+    if (!pointer) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
 
-    return ptr;
+    return pointer;
 }
 
-static inline void *xrealloc(void *ptr, size_t size) {
-    void *new_ptr = realloc(ptr, size);
+static inline void *xrealloc(void *pointer, size_t size) {
+    void *resized_pointer = realloc(pointer, size);
 
-    if (!new_ptr) {
+    if (!resized_pointer) {
         fprintf(stderr, "grayc: out of memory\n");
         exit(1);
     }
 
-    return new_ptr;
+    return resized_pointer;
 }
 
 /* Read an entire seekable file into a malloc'd NUL-terminated string.
@@ -69,8 +69,8 @@ static inline char *read_file_to_string(const char *path) {
         return NULL;
     }
 
-    size_t n = fread(buffer, 1, (size_t)size, file);
-    buffer[n] = '\0';
+    size_t bytes_read = fread(buffer, 1, (size_t)size, file);
+    buffer[bytes_read] = '\0';
 
     fclose(file);
     return buffer;
@@ -78,44 +78,44 @@ static inline char *read_file_to_string(const char *path) {
 
 /* Initial capacity for GROW_ARRAY — small enough to avoid waste,
  * large enough to cover the common case without early resizes. */
-#define GROW_ARRAY_INIT_CAP 8
+#define GROW_ARRAY_INITIAL_CAPACITY 8
 
-/* The shared doubling policy: the next capacity after cap. */
-#define GROW_NEXT_CAP(cap) ((cap) ? (cap) * 2 : GROW_ARRAY_INIT_CAP)
+/* The shared doubling policy: the next capacity after capacity. */
+#define GROW_NEXT_CAPACITY(capacity) ((capacity) ? (capacity) * 2 : GROW_ARRAY_INITIAL_CAPACITY)
 
 /* Grow a dynamic array when count reaches capacity.
- * Doubles capacity (starting from GROW_ARRAY_INIT_CAP), then xrealloc's. */
-#define GROW_ARRAY(arr, count, cap) \
+ * Doubles capacity (starting from GROW_ARRAY_INITIAL_CAPACITY), then xrealloc's. */
+#define GROW_ARRAY(array, count, capacity) \
     do { \
-        if ((count) >= (cap)) { \
-            (cap) = GROW_NEXT_CAP(cap); \
-            (arr) = xrealloc((arr), sizeof(*(arr)) * (size_t)(cap)); \
+        if ((count) >= (capacity)) { \
+            (capacity) = GROW_NEXT_CAPACITY(capacity); \
+            (array) = xrealloc((array), sizeof(*(array)) * (size_t)(capacity)); \
         } \
     } while (0)
 
-/* Reallocate an arena-backed array to newcap elements, carrying the first
+/* Reallocate an arena-backed array to new_capacity elements, carrying the first
  * count across. The arena has no realloc, so growth is always allocate-and-
  * copy; the old allocation lives on until the arena is destroyed.
  * The count guard keeps the first growth of a NULL/empty array out of
  * memcpy, which may not take a NULL source even for zero bytes.
  * Use this directly only for parallel arrays that share one capacity: bump
- * the shared cap once with GROW_NEXT_CAP, then grow each array to it.
+ * the shared capacity once with GROW_NEXT_CAPACITY, then grow each array to it.
  * Otherwise prefer ARENA_GROW. */
-#define ARENA_GROW_TO(arena, arr, count, newcap) \
+#define ARENA_GROW_TO(arena, array, count, new_capacity) \
     do { \
-        void *arena_grown_ = arena_alloc((arena), sizeof(*(arr)) * (size_t)(newcap)); \
+        void *arena_grown_array_ = arena_allocate((arena), sizeof(*(array)) * (size_t)(new_capacity)); \
         if ((count) > 0) \
-            memcpy(arena_grown_, (arr), sizeof(*(arr)) * (size_t)(count)); \
-        (arr) = arena_grown_; \
+            memcpy(arena_grown_array_, (array), sizeof(*(array)) * (size_t)(count)); \
+        (array) = arena_grown_array_; \
     } while (0)
 
 /* Arena counterpart to GROW_ARRAY: same doubling policy, allocate-and-copy
  * instead of xrealloc. */
-#define ARENA_GROW(arena, arr, count, cap) \
+#define ARENA_GROW(arena, array, count, capacity) \
     do { \
-        if ((count) >= (cap)) { \
-            (cap) = GROW_NEXT_CAP(cap); \
-            ARENA_GROW_TO((arena), (arr), (count), (cap)); \
+        if ((count) >= (capacity)) { \
+            (capacity) = GROW_NEXT_CAPACITY(capacity); \
+            ARENA_GROW_TO((arena), (array), (count), (capacity)); \
         } \
     } while (0)
 

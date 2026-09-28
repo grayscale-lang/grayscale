@@ -3,7 +3,7 @@
  * Expected: E8001 — 'bit_xor' can only be used with integers
  */
 do main() {
-    mut a [int] = {1, 2, 3}
-    mut b [int] = {4, 5, 6}
+    mut a [i64] = {1, 2, 3}
+    mut b [i64] = {4, 5, 6}
     mut z = a bit_xor b
 }

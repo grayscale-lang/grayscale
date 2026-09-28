@@ -4,13 +4,13 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Vec struct {
-    a int
-    b int
+    a i64
+    b i64
 }
 
 do main() {

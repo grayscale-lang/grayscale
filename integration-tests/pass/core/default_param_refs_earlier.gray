@@ -8,17 +8,17 @@
  * binds earlier args to named locals.
  */
 
-do f(a int, b int = a + 1) -> int { return a + b }
-do g(a int, b int, c int = a * b) -> int { return c }
-do h(a int = 10, b int = 20) -> int { return a + b }
+do f(a i64, b i64 = a + 1) -> i64 { return a + b }
+do g(a i64, b i64, c i64 = a * b) -> i64 { return c }
+do h(a i64 = 10, b i64 = 20) -> i64 { return a + b }
 
 do main() {
     println("=== default-param refs earlier ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // b defaults from a
-    mut r1 int = f(10)
+    mut r1 i64 = f(10)
     if r1 == 21 {
         println("  [PASS] default refs earlier param")
         passed += 1
@@ -28,7 +28,7 @@ do main() {
     }
 
     // explicit override still wins
-    mut r2 int = f(10, 99)
+    mut r2 i64 = f(10, 99)
     if r2 == 109 {
         println("  [PASS] explicit arg overrides default")
         passed += 1
@@ -38,7 +38,7 @@ do main() {
     }
 
     // default uses multiple earlier params
-    mut r3 int = g(3, 4)
+    mut r3 i64 = g(3, 4)
     if r3 == 12 {
         println("  [PASS] default uses two earlier params")
         passed += 1
@@ -48,9 +48,9 @@ do main() {
     }
 
     // literal defaults still work when nothing references earlier params
-    mut r4 int = h()
-    mut r5 int = h(1)
-    mut r6 int = h(1, 2)
+    mut r4 i64 = h()
+    mut r5 i64 = h(1)
+    mut r6 i64 = h(1, 2)
     if r4 == 30 && r5 == 21 && r6 == 3 {
         println("  [PASS] literal defaults unaffected")
         passed += 1

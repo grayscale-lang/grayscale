@@ -19,7 +19,13 @@
  * reaches the real header (on macOS those names also live in <string.h>, so
  * this is a no-op there). See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../strings.h>)
+#      include <sys/../strings.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<strings.h>)
 #      include_next <strings.h>
 #    endif
@@ -36,7 +42,7 @@
  *   println(strings.to_upper("hello"))
  *@end
  */
-GrayString gray_strings_to_upper(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_upper(GrayArena *arena, GrayString string);
 
 /*@man to_lower
  *@module strings
@@ -48,7 +54,7 @@ GrayString gray_strings_to_upper(GrayArena *arena, GrayString str);
  *   println(strings.to_lower("HELLO"))
  *@end
  */
-GrayString gray_strings_to_lower(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_lower(GrayArena *arena, GrayString string);
 
 /*@man to_title
  *@module strings
@@ -60,7 +66,7 @@ GrayString gray_strings_to_lower(GrayArena *arena, GrayString str);
  *   println(strings.to_title("hello WORLD"))
  *@end
  */
-GrayString gray_strings_to_title(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_title(GrayArena *arena, GrayString string);
 
 /*@man to_snake_case
  *@module strings
@@ -72,7 +78,7 @@ GrayString gray_strings_to_title(GrayArena *arena, GrayString str);
  *   println(strings.to_snake_case("userIDValue"))
  *@end
  */
-GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString string);
 
 /*@man to_camel_case
  *@module strings
@@ -84,7 +90,7 @@ GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString str);
  *   println(strings.to_camel_case("user_id_value"))
  *@end
  */
-GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString string);
 
 /*@man to_kebab_case
  *@module strings
@@ -96,7 +102,7 @@ GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString str);
  *   println(strings.to_kebab_case("helloWorld"))
  *@end
  */
-GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString string);
 
 /*@man to_pascal_case
  *@module strings
@@ -108,7 +114,7 @@ GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString str);
  *   println(strings.to_pascal_case("hello_world"))
  *@end
  */
-GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString string);
 
 /*@man to_screaming_snake_case
  *@module strings
@@ -120,7 +126,7 @@ GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString str);
  *   println(strings.to_screaming_snake_case("helloWorld"))
  *@end
  */
-GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString str);
+GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString string);
 
 /*@man capitalize
  *@module strings
@@ -132,7 +138,7 @@ GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString str
  *   println(strings.capitalize("hello"))
  *@end
  */
-GrayString gray_strings_capitalize(GrayArena *arena, GrayString str);
+GrayString gray_strings_capitalize(GrayArena *arena, GrayString string);
 
 /*@man trim
  *@module strings
@@ -144,7 +150,7 @@ GrayString gray_strings_capitalize(GrayArena *arena, GrayString str);
  *   println(strings.trim("  hello  "))
  *@end
  */
-GrayString gray_strings_trim(GrayArena *arena, GrayString str);
+GrayString gray_strings_trim(GrayArena *arena, GrayString string);
 
 /*@man trim_left
  *@module strings
@@ -156,7 +162,7 @@ GrayString gray_strings_trim(GrayArena *arena, GrayString str);
  *   println(strings.trim_left("  hello  "))
  *@end
  */
-GrayString gray_strings_trim_left(GrayArena *arena, GrayString str);
+GrayString gray_strings_trim_left(GrayArena *arena, GrayString string);
 
 /*@man trim_right
  *@module strings
@@ -168,7 +174,7 @@ GrayString gray_strings_trim_left(GrayArena *arena, GrayString str);
  *   println(strings.trim_right("  hello  "))
  *@end
  */
-GrayString gray_strings_trim_right(GrayArena *arena, GrayString str);
+GrayString gray_strings_trim_right(GrayArena *arena, GrayString string);
 
 /*@man contains
  *@module strings
@@ -181,7 +187,7 @@ GrayString gray_strings_trim_right(GrayArena *arena, GrayString str);
  *   println(strings.contains("hello world", "xyz"))
  *@end
  */
-bool gray_strings_contains(GrayString str, GrayString sub);
+bool gray_strings_contains(GrayString string, GrayString substring);
 
 /*@man starts_with
  *@module strings
@@ -193,7 +199,7 @@ bool gray_strings_contains(GrayString str, GrayString sub);
  *   println(strings.starts_with("hello", "hel"))
  *@end
  */
-bool gray_strings_starts_with(GrayString str, GrayString prefix);
+bool gray_strings_starts_with(GrayString string, GrayString prefix);
 
 /*@man ends_with
  *@module strings
@@ -205,12 +211,12 @@ bool gray_strings_starts_with(GrayString str, GrayString prefix);
  *   println(strings.ends_with("hello", "llo"))
  *@end
  */
-bool gray_strings_ends_with(GrayString str, GrayString suffix);
+bool gray_strings_ends_with(GrayString string, GrayString suffix);
 
 /*@man index_of
  *@module strings
  *@group Query
- *@sig index_of(s string, sub string) -> int
+ *@sig index_of(s string, sub string) -> i64
  *@desc Returns the byte index of the first occurrence of sub in s, or -1 if not found.
  *@example
  *   import @strings
@@ -218,12 +224,12 @@ bool gray_strings_ends_with(GrayString str, GrayString suffix);
  *   println(strings.index_of("hello world", "xyz"))
  *@end
  */
-int64_t gray_strings_index_of(GrayString str, GrayString sub);
+int64_t gray_strings_index_of(GrayString string, GrayString substring);
 
 /*@man last_index_of
  *@module strings
  *@group Query
- *@sig last_index_of(s string, sub string) -> int
+ *@sig last_index_of(s string, sub string) -> i64
  *@desc Returns the byte index of the last occurrence of sub in s, or -1 if not found.
  *@example
  *   import @strings
@@ -231,19 +237,19 @@ int64_t gray_strings_index_of(GrayString str, GrayString sub);
  *   println(strings.last_index_of("hello world", "xyz"))
  *@end
  */
-int64_t gray_strings_last_index_of(GrayString str, GrayString sub);
+int64_t gray_strings_last_index_of(GrayString string, GrayString substring);
 
 /*@man count
  *@module strings
  *@group Query
- *@sig count(s string, sub string) -> int
+ *@sig count(s string, sub string) -> i64
  *@desc Returns the number of non-overlapping occurrences of sub in s.
  *@example
  *   import @strings
  *   println(strings.count("banana", "a"))
  *@end
  */
-int64_t gray_strings_count(GrayString str, GrayString sub);
+int64_t gray_strings_count(GrayString string, GrayString substring);
 
 /*@man is_empty
  *@module strings
@@ -256,7 +262,7 @@ int64_t gray_strings_count(GrayString str, GrayString sub);
  *   println(strings.is_empty("hi"))
  *@end
  */
-bool gray_strings_is_empty(GrayString str);
+bool gray_strings_is_empty(GrayString string);
 
 /*@man contains_any
  *@module strings
@@ -268,7 +274,7 @@ bool gray_strings_is_empty(GrayString str);
  *   println(strings.contains_any("hello", "xyz!l"))
  *@end
  */
-bool gray_strings_contains_any(GrayString str, GrayString chars);
+bool gray_strings_contains_any(GrayString string, GrayString chars);
 
 /*@man equal_fold
  *@module strings
@@ -285,7 +291,7 @@ bool gray_strings_equal_fold(GrayString left, GrayString right);
 /*@man compare
  *@module strings
  *@group Query
- *@sig compare(a string, b string) -> int
+ *@sig compare(a string, b string) -> i64
  *@desc Compares a and b bytewise and returns -1 if a sorts before b, 1 if it sorts after, and 0 if they are equal.
  *@example
  *   import @strings
@@ -305,7 +311,7 @@ int64_t gray_strings_compare(GrayString left, GrayString right);
  *   println(strings.remove_prefix("hello world", "xyz"))
  *@end
  */
-GrayString gray_strings_remove_prefix(GrayArena *arena, GrayString str, GrayString prefix);
+GrayString gray_strings_remove_prefix(GrayArena *arena, GrayString string, GrayString prefix);
 
 /*@man remove_suffix
  *@module strings
@@ -318,7 +324,7 @@ GrayString gray_strings_remove_prefix(GrayArena *arena, GrayString str, GrayStri
  *   println(strings.remove_suffix("hello world", "xyz"))
  *@end
  */
-GrayString gray_strings_remove_suffix(GrayArena *arena, GrayString str, GrayString suffix);
+GrayString gray_strings_remove_suffix(GrayArena *arena, GrayString string, GrayString suffix);
 
 /*@man replace
  *@module strings
@@ -330,19 +336,19 @@ GrayString gray_strings_remove_suffix(GrayArena *arena, GrayString str, GrayStri
  *   println(strings.replace("hello world", "world", "Grayscale"))
  *@end
  */
-GrayString gray_strings_replace(GrayArena *arena, GrayString str, GrayString old_s, GrayString new_s);
+GrayString gray_strings_replace(GrayArena *arena, GrayString string, GrayString old_text, GrayString new_text);
 
 /*@man repeat
  *@module strings
  *@group Transformation
- *@sig repeat(s string, count int) -> string
+ *@sig repeat(s string, count i64) -> string
  *@desc Returns a string consisting of count copies of s concatenated together.
  *@example
  *   import @strings
  *   println(strings.repeat("ab", 3))
  *@end
  */
-GrayString gray_strings_repeat(GrayArena *arena, GrayString str, int64_t count);
+GrayString gray_strings_repeat(GrayArena *arena, GrayString string, int64_t count);
 
 /*@man reverse
  *@module strings
@@ -354,31 +360,31 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString str, int64_t count);
  *   println(strings.reverse("hello"))
  *@end
  */
-GrayString gray_strings_reverse(GrayArena *arena, GrayString str);
+GrayString gray_strings_reverse(GrayArena *arena, GrayString string);
 
 /*@man truncate
  *@module strings
  *@group Transformation
- *@sig truncate(s string, max int, ellipsis string) -> string
+ *@sig truncate(s string, max i64, ellipsis string) -> string
  *@desc Returns s unchanged when its byte length is at most max. Otherwise returns the first (max - len(ellipsis)) bytes of s followed by ellipsis, for a total byte length of exactly max. Panics if max is smaller than the byte length of ellipsis.
  *@example
  *   import @strings
  *   println(strings.truncate("hello world", 8, "..."))
  *@end
  */
-GrayString gray_strings_truncate(GrayArena *arena, GrayString str, int64_t max, GrayString ellipsis);
+GrayString gray_strings_truncate(GrayArena *arena, GrayString string, int64_t maximum, GrayString ellipsis);
 
 /*@man slice
  *@module strings
  *@group Transformation
- *@sig slice(s string, start int, end int) -> string
+ *@sig slice(s string, start i64, end i64) -> string
  *@desc Returns the substring of s from byte index start (inclusive) to end (exclusive).
  *@example
  *   import @strings
  *   println(strings.slice("hello world", 6, 11))
  *@end
  */
-GrayString gray_strings_slice(GrayArena *arena, GrayString str, int64_t start, int64_t end);
+GrayString gray_strings_slice(GrayArena *arena, GrayString string, int64_t start, int64_t end_index);
 
 /*@man split
  *@module strings
@@ -391,7 +397,7 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString str, int64_t start, i
  *   println(parts[0])
  *@end
  */
-GrayArray gray_strings_split(GrayArena *arena, GrayString str, GrayString sep);
+GrayArray gray_strings_split(GrayArena *arena, GrayString string, GrayString separator);
 
 /*@man split_whitespace
  *@module strings
@@ -403,19 +409,19 @@ GrayArray gray_strings_split(GrayArena *arena, GrayString str, GrayString sep);
  *   println(strings.split_whitespace("  one   two \n three "))
  *@end
  */
-GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str);
+GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString string);
 
 /*@man split_n
  *@module strings
  *@group Split/Join
- *@sig split_n(s string, sep string, n int) -> [string]
+ *@sig split_n(s string, sep string, n i64) -> [string]
  *@desc Splits s on sep into at most n pieces; the final piece holds the unsplit remainder. Returns an empty array when n is zero or negative.
  *@example
  *   import @strings
  *   println(strings.split_n("a=b=c", "=", 2))
  *@end
  */
-GrayArray gray_strings_split_n(GrayArena *arena, GrayString str, GrayString sep, int64_t max_parts);
+GrayArray gray_strings_split_n(GrayArena *arena, GrayString string, GrayString separator, int64_t maximum_parts);
 
 /*@man join
  *@module strings
@@ -428,12 +434,12 @@ GrayArray gray_strings_split_n(GrayArena *arena, GrayString str, GrayString sep,
  *   println(strings.join(parts, "-"))
  *@end
  */
-GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep);
+GrayString gray_strings_join(GrayArena *arena, GrayArray array, GrayString separator);
 
 /*@man char_at
  *@module strings
  *@group Access
- *@sig char_at(s string, index int) -> char
+ *@sig char_at(s string, index i64) -> char
  *@desc Returns the character at the given byte index. Panics if the index is out of bounds.
  *@example
  *   import @strings
@@ -441,7 +447,7 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep);
  *   println(strings.char_at("hello", 4))
  *@end
  */
-char gray_strings_char_at(GrayString str, int64_t index);
+char gray_strings_char_at(GrayString string, int64_t index);
 
 /*@man append_char
  *@module strings
@@ -453,7 +459,7 @@ char gray_strings_char_at(GrayString str, int64_t index);
  *   println(strings.append_char("hell", 'o'))
  *@end
  */
-GrayString gray_strings_append_char(GrayArena *arena, GrayString str, int32_t codepoint);
+GrayString gray_strings_append_char(GrayArena *arena, GrayString string, int32_t codepoint);
 
 /*@man prepend_char
  *@module strings
@@ -465,43 +471,43 @@ GrayString gray_strings_append_char(GrayArena *arena, GrayString str, int32_t co
  *   println(strings.prepend_char("ello", 'h'))
  *@end
  */
-GrayString gray_strings_prepend_char(GrayArena *arena, GrayString str, int32_t codepoint);
+GrayString gray_strings_prepend_char(GrayArena *arena, GrayString string, int32_t codepoint);
 
 /*@man insert_char_at
  *@module strings
  *@group Editing
- *@sig insert_char_at(s string, index int, c char) -> string
+ *@sig insert_char_at(s string, index i64, c char) -> string
  *@desc Returns a new string with c (UTF-8 encoded) inserted at byte index. An index equal to the length appends; panics if the index is negative or greater than the length. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.insert_char_at("helo", 3, 'l'))
  *@end
  */
-GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint);
+GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString string, int64_t index, int32_t codepoint);
 
 /*@man remove_at
  *@module strings
  *@group Editing
- *@sig remove_at(s string, index int) -> string
+ *@sig remove_at(s string, index i64) -> string
  *@desc Returns a new string with the byte at byte index removed. Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.remove_at("hello!", 5))
  *@end
  */
-GrayString gray_strings_remove_at(GrayArena *arena, GrayString str, int64_t index);
+GrayString gray_strings_remove_at(GrayArena *arena, GrayString string, int64_t index);
 
 /*@man set_char_at
  *@module strings
  *@group Editing
- *@sig set_char_at(s string, index int, c char) -> string
+ *@sig set_char_at(s string, index i64, c char) -> string
  *@desc Returns a new string with the byte at byte index replaced by c (UTF-8 encoded). Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.set_char_at("hello", 0, 'H'))
  *@end
  */
-GrayString gray_strings_set_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint);
+GrayString gray_strings_set_char_at(GrayArena *arena, GrayString string, int64_t index, int32_t codepoint);
 
 /*@man to_chars
  *@module strings
@@ -510,21 +516,21 @@ GrayString gray_strings_set_char_at(GrayArena *arena, GrayString str, int64_t in
  *@desc Converts a string to an array of its individual characters.
  *@example
  *   import @strings
- *   mut chars [char] = strings.to_chars("hello")
- *   println(chars[0])
+ *   mut characters [char] = strings.to_chars("hello")
+ *   println(characters[0])
  *@end
  */
-GrayArray gray_strings_to_chars(GrayArena *arena, GrayString str);
+GrayArray gray_strings_to_chars(GrayArena *arena, GrayString string);
 
 /*@man from_chars
  *@module strings
  *@group Conversion
- *@sig from_chars(chars [char]) -> string
+ *@sig from_chars(characters [char]) -> string
  *@desc Converts an array of characters back into a string.
  *@example
  *   import @strings
- *   mut chars [char] = strings.to_chars("hello")
- *   mut s string = strings.from_chars(chars)
+ *   mut characters [char] = strings.to_chars("hello")
+ *   mut s string = strings.from_chars(characters)
  *   println(s)
  *@end
  */
@@ -541,7 +547,7 @@ GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars);
  *   println(strings.is_alpha('1'))
  *@end
  */
-bool gray_strings_is_alpha(char c);
+bool gray_strings_is_alpha(char character);
 
 /*@man is_digit
  *@module strings
@@ -554,7 +560,7 @@ bool gray_strings_is_alpha(char c);
  *   println(strings.is_digit('a'))
  *@end
  */
-bool gray_strings_is_digit(char c);
+bool gray_strings_is_digit(char character);
 
 /*@man is_alnum
  *@module strings
@@ -568,7 +574,7 @@ bool gray_strings_is_digit(char c);
  *   println(strings.is_alnum('!'))
  *@end
  */
-bool gray_strings_is_alnum(char c);
+bool gray_strings_is_alnum(char character);
 
 /*@man is_whitespace
  *@module strings
@@ -581,7 +587,7 @@ bool gray_strings_is_alnum(char c);
  *   println(strings.is_whitespace('a'))
  *@end
  */
-bool gray_strings_is_whitespace(char c);
+bool gray_strings_is_whitespace(char character);
 
 /*@man is_upper
  *@module strings
@@ -594,7 +600,7 @@ bool gray_strings_is_whitespace(char c);
  *   println(strings.is_upper('a'))
  *@end
  */
-bool gray_strings_is_upper(char c);
+bool gray_strings_is_upper(char character);
 
 /*@man is_lower
  *@module strings
@@ -607,7 +613,7 @@ bool gray_strings_is_upper(char c);
  *   println(strings.is_lower('A'))
  *@end
  */
-bool gray_strings_is_lower(char c);
+bool gray_strings_is_lower(char character);
 
 /* --- Builder: amortized string assembly --- */
 
@@ -627,7 +633,7 @@ bool gray_strings_is_lower(char c);
 typedef struct {
     char *data;
     int32_t len;
-    int32_t cap;
+    int32_t capacity;
     GrayArena *arena;   /* arena the buffer grows into */
 } GrayStringsBuilder;
 
@@ -647,7 +653,7 @@ GrayStringsBuilder *gray_strings_builder(GrayArena *arena);
 /*@man builder_reserve
  *@module strings
  *@group Builder
- *@sig builder_reserve(b Builder, n int) -> void
+ *@sig builder_reserve(&b Builder, n i64) -> void
  *@desc Grows the builder's buffer so it can hold at least n bytes without reallocating. Optional; use it when the final size is known ahead of time. A negative n is ignored.
  *@example
  *   import @strings
@@ -660,7 +666,7 @@ void gray_strings_builder_reserve(GrayStringsBuilder *builder, int64_t capacity)
 /*@man builder_append
  *@module strings
  *@group Builder
- *@sig builder_append(b Builder, s string) -> void
+ *@sig builder_append(&b Builder, s string) -> void
  *@desc Appends the bytes of s to the builder.
  *@example
  *   import @strings
@@ -668,12 +674,12 @@ void gray_strings_builder_reserve(GrayStringsBuilder *builder, int64_t capacity)
  *   strings.builder_append(b, "row")
  *@end
  */
-void gray_strings_builder_append(GrayStringsBuilder *builder, GrayString str);
+void gray_strings_builder_append(GrayStringsBuilder *builder, GrayString string);
 
 /*@man builder_append_char
  *@module strings
  *@group Builder
- *@sig builder_append_char(b Builder, c char) -> void
+ *@sig builder_append_char(&b Builder, c char) -> void
  *@desc Appends the codepoint c to the builder, UTF-8 encoded (1 to 4 bytes).
  *@example
  *   import @strings
@@ -686,34 +692,34 @@ void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codep
 /*@man builder_append_bytes
  *@module strings
  *@group Builder
- *@sig builder_append_bytes(b Builder, data [byte]) -> void
+ *@sig builder_append_bytes(&b Builder, data [u8]) -> void
  *@desc Appends every byte of data to the builder.
  *@example
  *   import @strings
  *   mut b Builder = strings.builder()
- *   mut data [byte] = {104, 105}
+ *   mut data [u8] = {104, 105}
  *   strings.builder_append_bytes(b, data)
  *@end
  */
 void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray data);
 
-/*@man builder_append_int
+/*@man builder_append_i64
  *@module strings
  *@group Builder
- *@sig builder_append_int(b Builder, n int) -> void
+ *@sig builder_append_i64(&b Builder, n i64) -> void
  *@desc Appends the decimal text of n to the builder (e.g. -42 appends "-42").
  *@example
  *   import @strings
  *   mut b Builder = strings.builder()
- *   strings.builder_append_int(b, 2637)
+ *   strings.builder_append_i64(b, 2637)
  *@end
  */
-void gray_strings_builder_append_int(GrayStringsBuilder *builder, int64_t value);
+void gray_strings_builder_append_i64(GrayStringsBuilder *builder, int64_t value);
 
 /*@man builder_append_line
  *@module strings
  *@group Builder
- *@sig builder_append_line(b Builder, s string) -> void
+ *@sig builder_append_line(&b Builder, s string) -> void
  *@desc Appends s followed by a newline character.
  *@example
  *   import @strings
@@ -722,12 +728,12 @@ void gray_strings_builder_append_int(GrayStringsBuilder *builder, int64_t value)
  *   strings.builder_append_line(b, "second")
  *@end
  */
-void gray_strings_builder_append_line(GrayStringsBuilder *builder, GrayString str);
+void gray_strings_builder_append_line(GrayStringsBuilder *builder, GrayString string);
 
 /*@man builder_len
  *@module strings
  *@group Builder
- *@sig builder_len(b Builder) -> int
+ *@sig builder_len(b Builder) -> i64
  *@desc Returns the number of bytes accumulated in the builder so far.
  *@example
  *   import @strings
@@ -741,7 +747,7 @@ int64_t gray_strings_builder_len(GrayStringsBuilder *builder);
 /*@man builder_clear
  *@module strings
  *@group Builder
- *@sig builder_clear(b Builder) -> void
+ *@sig builder_clear(&b Builder) -> void
  *@desc Resets the builder's length to zero while keeping its allocated capacity, so it can be reused without reallocating.
  *@example
  *   import @strings

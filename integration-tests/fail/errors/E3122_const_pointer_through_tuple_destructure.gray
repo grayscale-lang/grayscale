@@ -7,11 +7,11 @@
 // expect-error-count: 1
 
 const Box struct {
-    v int
+    v i64
 }
 const K Box = Box{v: 1}
 
-do pair() -> (^Box, int) {
+do pair() -> (^Box, i64) {
     return addr(K), 1
 }
 

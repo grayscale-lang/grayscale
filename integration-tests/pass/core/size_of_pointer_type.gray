@@ -1,30 +1,30 @@
 /*
  * size_of_pointer_type.gray - Test size_of on pointer type expressions
  *
- * Covers: size_of(^int), size_of(^^int), size_of(^string)
+ * Covers: size_of(^i64), size_of(^^i64), size_of(^string)
  * All pointer sizes should be 8 on 64-bit platforms.
  */
 
 do main() {
     println("=== size_of Pointer Type Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: size_of(^int) → 8
-    if size_of(^int) == 8 {
-        println("  [PASS] size_of(^int) == 8")
+    // Test 1: size_of(^i64) → 8
+    if size_of(^i64) == 8 {
+        println("  [PASS] size_of(^i64) == 8")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of(^int) == ${size_of(^int)}")
+        println("  [FAIL] size_of(^i64) == ${size_of(^i64)}")
         failed += 1
     }
 
-    // Test 2: size_of(^^int) → 8 (pointer to pointer)
-    if size_of(^^int) == 8 {
-        println("  [PASS] size_of(^^int) == 8")
+    // Test 2: size_of(^^i64) → 8 (pointer to pointer)
+    if size_of(^^i64) == 8 {
+        println("  [PASS] size_of(^^i64) == 8")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_of(^^int) == ${size_of(^^int)}")
+        println("  [FAIL] size_of(^^i64) == ${size_of(^^i64)}")
         failed += 1
     }
 

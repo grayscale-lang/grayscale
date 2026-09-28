@@ -12,8 +12,8 @@ const Color enum {
 }
 
 const Shape enum {
-    Circle(float)
-    Rect(float, float)
+    Circle(f64)
+    Rect(f64, f64)
 }
 
 // plain enum
@@ -27,7 +27,7 @@ do color_name(c Color) -> string {
 }
 
 // tagged enum with payload bindings
-do area(s Shape) -> float {
+do area(s Shape) -> f64 {
     #strict
     when s {
         is Shape.Circle(r)  { return 3.0 * r * r }
@@ -37,8 +37,8 @@ do area(s Shape) -> float {
 
 do main() {
     println("=== #strict when terminating ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if color_name(Color.RED) == "r" && color_name(Color.BLUE) == "b" {
         println("  [PASS] #strict when, all arms return")

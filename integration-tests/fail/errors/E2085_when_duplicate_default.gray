@@ -1,6 +1,6 @@
 /* Error Test: E2085 - when statement with multiple default branches */
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     when x {
         is 1 { println("one") }
         default { println("default1") }

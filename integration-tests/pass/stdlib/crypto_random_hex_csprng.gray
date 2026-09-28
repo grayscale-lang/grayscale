@@ -8,8 +8,8 @@
 import @crypto
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // length=0 -> empty string
     mut r0 string = crypto.random_hex(0)

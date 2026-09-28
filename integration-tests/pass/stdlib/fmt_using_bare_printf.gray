@@ -1,0 +1,38 @@
+/*
+ * fmt_using_bare_printf.gray - printf-family calls made by bare name through
+ * 'using fmt' are checked and lowered exactly like the qualified form.
+ */
+
+import @fmt
+using fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut line string = sprintf("%s is %d", {"bob", 30})
+    if line == "bob is 30" {
+        println("  [PASS] bare sprintf formats a mixed literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare sprintf formats a mixed literal: got '${line}'")
+        failed += 1
+    }
+
+    mut values [i64] = {7, 255}
+    mut from_variable string = sprintfln("%d %x", values)
+    if from_variable == "7 ff\n" {
+        println("  [PASS] bare sprintfln formats an array variable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare sprintfln formats an array variable: got '${from_variable}'")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

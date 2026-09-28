@@ -1,0 +1,54 @@
+/*
+ * binary_encode_decode_named_types.gray - each 8- to 64-bit binary encoder
+ * takes the type it names and each decoder returns it.
+ */
+
+import @binary
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut all_ff [u8] = {255, 255, 255, 255, 255, 255, 255, 255}
+    mut big u64 = binary.decode_u64_le(all_ff)
+    if big == 18446744073709551615 {
+        passed++
+    } otherwise {
+        println("FAIL: decode_u64_le")
+        failed++
+    }
+
+    mut one_ff [u8] = {255}
+    mut small i8 = binary.decode_i8(one_ff)
+    mut byte u8 = binary.decode_u8(one_ff)
+    if small == -1 && byte == 255 {
+        passed++
+    } otherwise {
+        println("FAIL: decode_i8/decode_u8")
+        failed++
+    }
+
+    mut half [u8] = {0, 0, 192, 63}
+    mut f f32 = binary.decode_f32_le(half)
+    if f == 1.5 && type_of(binary.decode_u16_be(half)) == "u16" {
+        passed++
+    } otherwise {
+        println("FAIL: decode_f32_le/decode_u16_be")
+        failed++
+    }
+
+    mut narrow u8 = 7
+    mut encoded [u8] = binary.encode_u16_be(narrow)
+    mut top [u8] = binary.encode_u64_le(18446744073709551615)
+    if encoded[0] == 0 && encoded[1] == 7 && top[7] == 255 {
+        passed++
+    } otherwise {
+        println("FAIL: encode_u16_be/encode_u64_le")
+        failed++
+    }
+
+    println("binary_encode_decode_named_types: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

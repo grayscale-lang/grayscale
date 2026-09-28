@@ -3,7 +3,7 @@
  * Expected: E4001 with hint about declaring the named return variable
  */
 
-do getValue() -> (result int) {
+do getValue() -> (result i64) {
     return result
 }
 

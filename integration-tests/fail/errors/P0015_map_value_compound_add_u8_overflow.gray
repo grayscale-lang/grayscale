@@ -1,0 +1,6 @@
+/* Panic Test: P0015 - += on a u8 map value overflows */
+do main() {
+    mut u map[string:u8] = {"k": 255}
+    u["k"] += 1
+    println(u)
+}

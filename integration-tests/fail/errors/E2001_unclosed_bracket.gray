@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut arr [int] = {1, 2, 3
-    mut y int = arr[0
+    mut arr [i64] = {1, 2, 3
+    mut y i64 = arr[0
 }

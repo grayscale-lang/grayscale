@@ -4,6 +4,6 @@ const Color enum {
 }
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }

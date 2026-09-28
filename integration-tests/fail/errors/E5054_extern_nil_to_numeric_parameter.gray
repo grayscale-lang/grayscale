@@ -1,6 +1,6 @@
 /*
  * Error Test: E5054 - nil passed to an extern.func() parameter the imported
- * header declares as an int.
+ * header declares as an i64.
  */
 // expect-error: E5054
 // expect-error-count: 1

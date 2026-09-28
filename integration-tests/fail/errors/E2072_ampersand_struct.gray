@@ -4,7 +4,7 @@
  */
 
 const Thing struct {
-    val int
+    val i64
 }
 
 do main() {

@@ -3,7 +3,7 @@
  * Expected: "'len' is a built-in name and cannot be used as a parameter name"
  */
 
-do test(len int) {
+do test(len i64) {
     return
 }
 

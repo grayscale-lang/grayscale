@@ -6,9 +6,9 @@
  * the same as returning the element through an index expression (#2695).
  */
 
-do bad() -> ^int {
-    mut x int = 7
-    mut pts [^int] = {addr(x)}
+do bad() -> ^i64 {
+    mut x i64 = 7
+    mut pts [^i64] = {addr(x)}
     for_each pp in pts {
         return pp
     }
@@ -16,6 +16,6 @@ do bad() -> ^int {
 }
 
 do main() {
-    mut d ^int = bad()
+    mut d ^i64 = bad()
     println("unreachable")
 }

@@ -3,7 +3,7 @@
  * Expected: warning about a private function that nothing calls
  */
 
-private do unused_helper() -> int {
+private do unused_helper() -> i64 {
     return 42
 }
 

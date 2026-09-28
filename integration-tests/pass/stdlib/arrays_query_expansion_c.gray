@@ -5,16 +5,16 @@
 
 import @arrays
 
-do is_even(x int) -> bool { return x % 2 == 0 }
-do is_big(x int) -> bool { return x > 100 }
+do is_even(x i64) -> bool { return x % 2 == 0 }
+do is_big(x i64) -> bool { return x > 100 }
 
 do main() {
     println("=== Arrays Query Expansion Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- average --
-    mut ints [int] = {2, 4, 6}
+    mut ints [i64] = {2, 4, 6}
     if arrays.average(ints) == 4.0 {
         println("  [PASS] average of ints")
         passed += 1
@@ -22,7 +22,7 @@ do main() {
         println("  [FAIL] average of ints: got ${arrays.average(ints)}")
         failed += 1
     }
-    mut floats [float] = {1.0, 2.0}
+    mut floats [f64] = {1.0, 2.0}
     if arrays.average(floats) == 1.5 {
         println("  [PASS] average of floats")
         passed += 1
@@ -32,8 +32,8 @@ do main() {
     }
 
     // -- find --
-    mut nums [int] = {1, 3, 4, 7}
-    mut hit int, ok bool = arrays.find(nums, ()is_even)
+    mut nums [i64] = {1, 3, 4, 7}
+    mut hit i64, ok bool = arrays.find(nums, ()is_even)
     if hit == 4 && ok {
         println("  [PASS] find match")
         passed += 1
@@ -41,7 +41,7 @@ do main() {
         println("  [FAIL] find match: hit=${hit} ok=${ok}")
         failed += 1
     }
-    mut miss int, found bool = arrays.find(nums, ()is_big)
+    mut miss i64, found bool = arrays.find(nums, ()is_big)
     if !found && miss == 0 {
         println("  [PASS] find no match yields zero + false")
         passed += 1
@@ -67,9 +67,9 @@ do main() {
     }
 
     // -- is_sorted --
-    mut sorted [int] = {1, 2, 2, 5}
-    mut unsorted [int] = {3, 1, 2}
-    mut empty [int] = {}
+    mut sorted [i64] = {1, 2, 2, 5}
+    mut unsorted [i64] = {3, 1, 2}
+    mut empty [i64] = {}
     mut words [string] = {"apple", "banana", "cherry"}
     if arrays.is_sorted(sorted) && !arrays.is_sorted(unsorted) && arrays.is_sorted(empty) && arrays.is_sorted(words) {
         println("  [PASS] is_sorted")
@@ -80,7 +80,7 @@ do main() {
     }
 
     // -- swap --
-    mut sw [int] = {1, 2, 3}
+    mut sw [i64] = {1, 2, 3}
     arrays.swap(sw, 0, 2)
     if sw[0] == 3 && sw[1] == 2 && sw[2] == 1 {
         println("  [PASS] swap")

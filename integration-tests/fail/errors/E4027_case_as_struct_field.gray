@@ -5,7 +5,7 @@
  */
 // expect-error: E4027
 const Record struct {
-    case int
+    case i64
 }
 
 do main() {

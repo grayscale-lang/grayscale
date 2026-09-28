@@ -10,6 +10,6 @@ do mk_stack(T <?>) -> ? {
 }
 
 do main() {
-    mut x = mk_stack(int)
+    mut x = mk_stack(i64)
     println(x)
 }

@@ -19,7 +19,13 @@
  * this directory shadows libc, so step past it so `extern import "regex.h"`
  * reaches the real header. See math.h for the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../regex.h>)
+#      include <sys/../regex.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<regex.h>)
 #      include_next <regex.h>
 #    endif
@@ -64,7 +70,6 @@ bool gray_regex_match(GrayString pattern, GrayString text);
  *@end
  */
 /* regex.find(pattern, text) -> string (first match, or empty) */
-GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man find_all
  *@module regex
@@ -77,7 +82,6 @@ GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text
  *@end
  */
 /* regex.find_all(pattern, text) -> [string] */
-GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man replace
  *@module regex
@@ -91,7 +95,6 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
  *@end
  */
 /* regex.replace(pattern, text, replacement) -> string */
-GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement);
 
 /*@man split
  *@module regex
@@ -104,7 +107,6 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
  *@end
  */
 /* regex.split(pattern, text) -> [string] */
-GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text);
 
 /*@man find_groups
  *@module regex
@@ -137,14 +139,14 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
 /*@man count
  *@module regex
  *@group Search
- *@sig count(pattern string, text string) -> int
+ *@sig count(pattern string, text string) -> i64
  *@desc Return the number of non-overlapping matches of pattern in text. An invalid pattern returns 0.
  *@example
  *   import @regex
  *   println(regex.count("[0-9]+", "a1b22c333"))   // 3
  *@end
  */
-/* regex.count(pattern, text) -> int */
+/* regex.count(pattern, text) -> i64 */
 int64_t gray_regex_count(GrayString pattern, GrayString text);
 
 /*@man escape
@@ -158,7 +160,7 @@ int64_t gray_regex_count(GrayString pattern, GrayString text);
  *@end
  */
 /* regex.escape(s) -> string */
-GrayString gray_regex_escape(GrayArena *arena, GrayString str);
+GrayString gray_regex_escape(GrayArena *arena, GrayString string);
 
 /* _result variants */
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text);

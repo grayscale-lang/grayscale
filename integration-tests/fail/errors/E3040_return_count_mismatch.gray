@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3040 - return-count-mismatch
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do getValue() -> (i64, i64) {
+    return 1  // expected 2 values
+}
+
+do main() {
+    mut a i64, b i64 = getValue()
+}

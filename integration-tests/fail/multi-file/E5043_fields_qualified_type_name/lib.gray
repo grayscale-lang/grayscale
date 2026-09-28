@@ -1,5 +1,5 @@
 const Point struct {
-    x int
+    x i64
 }
 
 const Mode enum {

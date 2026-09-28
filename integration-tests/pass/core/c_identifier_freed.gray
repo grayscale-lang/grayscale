@@ -7,20 +7,20 @@
  */
 
 const Pair struct {
-    c int
-    d int
+    c i64
+    d i64
 }
 
-do bump(c int) -> int {
+do bump(c i64) -> i64 {
     return c + 1
 }
 
 do main() {
     println("=== c identifier freed ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut c int = 41
+    mut c i64 = 41
     if c == 41 {
         passed += 1
     } otherwise {

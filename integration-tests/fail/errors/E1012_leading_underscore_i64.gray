@@ -1,0 +1,9 @@
+/*
+ * Error Test: E1012 - leading underscore in integer literal
+ * Expected: "numeric literals cannot start with an underscore"
+ */
+
+do main() {
+    mut x i64 = _123
+    println(x)
+}

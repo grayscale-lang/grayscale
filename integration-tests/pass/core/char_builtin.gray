@@ -1,11 +1,11 @@
 /*
  * Test: char() builtin — converts an integer codepoint to a char value.
- * Accepts int and byte arguments; the result compares against char literals.
+ * Accepts i64 and u8 arguments; the result compares against char literals.
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if char(65) == 'A' {
         passed += 1
@@ -22,24 +22,24 @@ do main() {
         failed += 1
     }
 
-    mut n int = 67
+    mut n i64 = 67
     if char(n) == 'C' {
         passed += 1
     } otherwise {
-        println("[FAIL] char() of an int variable")
+        println("[FAIL] char() of an i64 variable")
         failed += 1
     }
 
-    mut by byte = 68
+    mut by u8 = 68
     if char(by) == 'D' {
         passed += 1
     } otherwise {
-        println("[FAIL] char() of a byte variable")
+        println("[FAIL] char() of a u8 variable")
         failed += 1
     }
 
-    // Codepoint outside ASCII: ☺ is U+263A. Round-trips through int().
-    if int(char(0x263A)) == 0x263A {
+    // Codepoint outside ASCII: ☺ is U+263A. Round-trips through i64().
+    if cast(char(0x263A), i64) == 0x263A {
         passed += 1
     } otherwise {
         println("[FAIL] char() of a non-ASCII codepoint round-trips")

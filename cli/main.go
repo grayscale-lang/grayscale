@@ -78,19 +78,17 @@ func getVersionString() string {
 
 	var latestStable, latestPre string
 	if releases, err := fetchAllReleases(ctx); err == nil {
+		if r := pickLatestStable(releases); r != nil {
+			latestStable = r.TagName
+		}
 		for i := range releases {
 			r := &releases[i]
-			if !strings.HasPrefix(r.TagName, releaseTagPrefix) {
-				continue // skip legacy (pre-Grayscale) releases
+			// Unlike pickLatestPrerelease, skip legacy (pre-Grayscale) tags.
+			if !r.Prerelease || !strings.HasPrefix(r.TagName, releaseTagPrefix) {
+				continue
 			}
-			if r.Prerelease {
-				if latestPre == "" || compareSemver(r.TagName, latestPre) > 0 {
-					latestPre = r.TagName
-				}
-			} else {
-				if latestStable == "" || compareSemver(r.TagName, latestStable) > 0 {
-					latestStable = r.TagName
-				}
+			if latestPre == "" || compareSemver(r.TagName, latestPre) > 0 {
+				latestPre = r.TagName
 			}
 		}
 		// Cache the latest stable for CheckForUpdateAsync

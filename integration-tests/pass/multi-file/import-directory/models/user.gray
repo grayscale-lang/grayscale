@@ -1,10 +1,10 @@
 const User struct {
     name string
-    age int
+    age i64
 }
 
-do create_user(name string, age int) -> User {
+do create_user(name string, age i64) -> User {
     return User{name: name, age: age}
 }
 
-const DEFAULT_AGE int = 25
+const DEFAULT_AGE i64 = 25

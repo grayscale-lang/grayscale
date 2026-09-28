@@ -6,10 +6,10 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut m map[string:[int]] = {:}
+    mut m map[string:[i64]] = {:}
     m["k"] = {7, 8, 9}
 
     // read
@@ -29,7 +29,7 @@ do main() {
     }
 
     // for_each over the lookup
-    mut sum int = 0
+    mut sum i64 = 0
     for_each v in m["k"] { sum += v }
     if sum == 24 {
         passed += 1
@@ -57,8 +57,8 @@ do main() {
     }
 
     // map -> map -> array
-    mut mm map[string:map[string:[int]]] = {:}
-    mut inner map[string:[int]] = {:}
+    mut mm map[string:map[string:[i64]]] = {:}
+    mut inner map[string:[i64]] = {:}
     inner["a"] = {10, 20}
     mm["x"] = inner
     if mm["x"]["a"][1] == 20 {

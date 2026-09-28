@@ -2,6 +2,6 @@
 // expect-error-count: 1
 // A type alias cannot be named 'main'.
 
-alias main = int
+alias main = i64
 
 do main() {}

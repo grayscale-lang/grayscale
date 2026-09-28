@@ -8,10 +8,10 @@
  * with a message pointing at `foo()` to call or `()foo` to reference.
  */
 
-do foo() -> int {
+do foo() -> i64 {
     return 42
 }
 
 do main() {
-    mut x int = foo
+    mut x i64 = foo
 }

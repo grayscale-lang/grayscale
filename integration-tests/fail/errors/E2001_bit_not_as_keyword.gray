@@ -1,7 +1,0 @@
-/*
- * Error Test: E2001 - bit_not used as variable name (reserved keyword)
- * Expected: E2001 — unexpected symbol
- */
-do main() {
-    mut bit_not int = 5
-}

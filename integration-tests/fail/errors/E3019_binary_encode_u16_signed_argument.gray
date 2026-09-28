@@ -1,0 +1,6 @@
+import @binary
+
+do main() {
+    mut x i16 = 7000
+    println(binary.encode_u16_le(x))
+}

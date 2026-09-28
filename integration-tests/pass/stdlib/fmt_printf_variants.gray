@@ -7,11 +7,11 @@ import @fmt
 
 do main() {
     println("=== Fmt Printf Variants Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: sprintfln returns string with trailing newline
-    mut s1 string = fmt.sprintfln("hello %s", "world")
+    mut s1 string = fmt.sprintfln("hello %s", {"world"})
     if s1 == "hello world\n" {
         println("  [PASS] sprintfln basic")
         passed += 1
@@ -20,18 +20,18 @@ do main() {
         failed += 1
     }
 
-    // Test 2: sprintfln with int arg
-    mut s2 string = fmt.sprintfln("x = %d", 42)
+    // Test 2: sprintfln with i64 arg
+    mut s2 string = fmt.sprintfln("x = %d", {42})
     if s2 == "x = 42\n" {
-        println("  [PASS] sprintfln with int")
+        println("  [PASS] sprintfln with i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] sprintfln with int: expected 'x = 42\\n'")
+        println("  [FAIL] sprintfln with i64: expected 'x = 42\\n'")
         failed += 1
     }
 
     // Test 3: sprintfln with multiple args
-    mut s3 string = fmt.sprintfln("%s is %d", "age", 25)
+    mut s3 string = fmt.sprintfln("%s is %d", {"age", 25})
     if s3 == "age is 25\n" {
         println("  [PASS] sprintfln with multiple args")
         passed += 1
@@ -41,32 +41,32 @@ do main() {
     }
 
     // Test 4: printfln compiles and runs (output goes to stdout)
-    fmt.printfln("  [INFO] printfln test: %s %d", "value", 99)
+    fmt.printfln("  [INFO] printfln test: %s %d", {"value", 99})
     println("  [PASS] printfln runs without crash")
     passed += 1
 
     // Test 5: eprintf compiles and runs (output goes to stderr)
-    fmt.eprintf("eprintf test: %s\n", "stderr output")
+    fmt.eprintf("eprintf test: %s\n", {"stderr output"})
     println("  [PASS] eprintf runs without crash")
     passed += 1
 
     // Test 6: eprintfln compiles and runs (output goes to stderr)
-    fmt.eprintfln("eprintfln test: %d", 123)
+    fmt.eprintfln("eprintfln test: %d", {123})
     println("  [PASS] eprintfln runs without crash")
     passed += 1
 
-    // Test 7: sprintfln with float
-    mut s4 string = fmt.sprintfln("pi = %.2f", 3.14)
+    // Test 7: sprintfln with f64
+    mut s4 string = fmt.sprintfln("pi = %.2f", {3.14})
     if s4 == "pi = 3.14\n" {
-        println("  [PASS] sprintfln with float")
+        println("  [PASS] sprintfln with f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] sprintfln with float")
+        println("  [FAIL] sprintfln with f64")
         failed += 1
     }
 
     // Test 8: sprintfln with no extra args (just format string)
-    mut s5 string = fmt.sprintfln("no args here")
+    mut s5 string = fmt.sprintfln("no args here", {})
     if s5 == "no args here\n" {
         println("  [PASS] sprintfln no args")
         passed += 1

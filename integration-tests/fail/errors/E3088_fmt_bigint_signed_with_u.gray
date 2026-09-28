@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3088 - %u format directive rejects a signed bigint element
+ * Expected: "format directive '%u' expects unsigned integer but element 0 has type 'i256'"
+ */
+
+// expect-error: E3088
+
+import @fmt
+
+do main() {
+    mut a i256 = -9
+    fmt.printfln("%u", {a})
+}

@@ -10,12 +10,12 @@
 
 extern import "stdlib.h"
 
-do cmp(a map[string:int], b map[string:int]) -> i32 {
+do cmp(a map[string:i64], b map[string:i64]) -> i32 {
     return 0
 }
 
 do main() {
-    mut buf ^int = extern.malloc(16)
+    mut buf ^i64 = extern.malloc(16)
     extern.qsort(buf, 2, 8, ()cmp)
     extern.free(buf)
 }

@@ -1,0 +1,124 @@
+/*
+ * math_float_returns.gray - Test math functions return f64 for f64 args
+ *
+ * Verifies that math.abs, min, max, clamp, neg return f64 when
+ * given f64 arguments instead of truncating to i64.
+ */
+
+import @math
+
+do main() {
+    println("=== Math Float Return Type Tests ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // Test 1: math.abs(f64) returns f64
+    mut a f64 = math.abs(-3.14)
+    if a > 3.13 && a < 3.15 {
+        println("  [PASS] math.abs(-3.14) == 3.14 (f64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.abs(-3.14) got ${a}")
+        failed += 1
+    }
+
+    // Test 2: math.abs(i64) still returns i64
+    mut b i64 = math.abs(-42)
+    if b == 42 {
+        println("  [PASS] math.abs(-42) == 42 (i64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.abs(-42) got ${b}")
+        failed += 1
+    }
+
+    // Test 3: math.min(f64, f64) returns f64
+    mut c f64 = math.min(1.5, 2.7)
+    if c > 1.49 && c < 1.51 {
+        println("  [PASS] math.min(1.5, 2.7) == 1.5 (f64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.min(1.5, 2.7) got ${c}")
+        failed += 1
+    }
+
+    // Test 4: math.max(f64, f64) returns f64
+    mut d f64 = math.max(1.5, 2.7)
+    if d > 2.69 && d < 2.71 {
+        println("  [PASS] math.max(1.5, 2.7) == 2.7 (f64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.max(1.5, 2.7) got ${d}")
+        failed += 1
+    }
+
+    // Test 5: math.min(i64, i64) still returns i64
+    mut e i64 = math.min(10, 20)
+    if e == 10 {
+        println("  [PASS] math.min(10, 20) == 10 (i64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.min(10, 20) got ${e}")
+        failed += 1
+    }
+
+    // Test 6: math.max(i64, i64) still returns i64
+    mut f i64 = math.max(10, 20)
+    if f == 20 {
+        println("  [PASS] math.max(10, 20) == 20 (i64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.max(10, 20) got ${f}")
+        failed += 1
+    }
+
+    // Test 7: math.clamp(f64, f64, f64) returns f64
+    mut g f64 = math.clamp(5.5, 0.0, 3.0)
+    if g > 2.99 && g < 3.01 {
+        println("  [PASS] math.clamp(5.5, 0.0, 3.0) == 3.0 (f64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.clamp(5.5, 0.0, 3.0) got ${g}")
+        failed += 1
+    }
+
+    // Test 8: math.clamp(i64, i64, i64) still returns i64
+    mut h i64 = math.clamp(150, 0, 100)
+    if h == 100 {
+        println("  [PASS] math.clamp(150, 0, 100) == 100 (i64)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.clamp(150, 0, 100) got ${h}")
+        failed += 1
+    }
+
+    // Test 9: math.clamp(f64) within range passes through
+    mut i f64 = math.clamp(1.5, 0.0, 3.0)
+    if i > 1.49 && i < 1.51 {
+        println("  [PASS] math.clamp(1.5, 0.0, 3.0) == 1.5 (passthrough)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.clamp passthrough got ${i}")
+        failed += 1
+    }
+
+    // Test 10: math.abs(f64) with zero
+    mut j f64 = math.abs(0.0)
+    if j > -0.01 && j < 0.01 {
+        println("  [PASS] math.abs(0.0) == 0.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math.abs(0.0) got ${j}")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

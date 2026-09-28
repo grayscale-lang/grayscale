@@ -20,7 +20,13 @@
  * reaches the real header where it exists (absent on macOS). See math.h for
  * the full rationale. */
 #ifdef GRAY_GENERATED_C
-#  ifdef __has_include_next
+#  if defined(__TINYC__)
+/* TinyCC's include_next re-finds this header when a quoted include from its
+ * own .c file reached it; <sys/..> steps past this directory instead. */
+#    if __has_include(<sys/../threads.h>)
+#      include <sys/../threads.h>
+#    endif
+#  elif defined(__has_include_next)
 #    if __has_include_next(<threads.h>)
 #      include_next <threads.h>
 #    endif
@@ -35,7 +41,7 @@ typedef struct {
  *@module threads
  *@group Lifecycle
  *@sig spawn(fn func()) -> Thread
- *@desc Spawn a new thread running fn. To pass an int argument to fn, use spawn_arg (or call spawn with a second int argument, which forwards to spawn_arg).
+ *@desc Spawn a new thread running fn. To pass an i64 argument to fn, use spawn_arg.
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn(()my_func)
@@ -46,8 +52,8 @@ typedef struct {
 /*@man spawn_arg
  *@module threads
  *@group Lifecycle
- *@sig spawn_arg(fn func(int), arg int) -> Thread
- *@desc Spawn a new thread running fn, passing arg to it as its single int parameter.
+ *@sig spawn_arg(fn func(i64), arg i64) -> Thread
+ *@desc Spawn a new thread running fn, passing arg to it as its single i64 parameter.
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn_arg(()worker, 7)
@@ -58,7 +64,7 @@ typedef struct {
  * The function pointer must match: void (*fn)(void) or void (*fn)(int64_t)
  * Returns a thread handle for joining. */
 GrayThread gray_threads_spawn(void (*fn)(void));
-GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg);
+GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t argument);
 
 /*@man join
  *@module threads
@@ -67,7 +73,7 @@ GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg);
  *@desc Wait for a thread to finish. Frees the underlying handle.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(work)
+ *   mut t Thread = threads.spawn(()work)
  *   threads.join(t)
  *@end
  */
@@ -81,7 +87,7 @@ void gray_threads_join(GrayThread thread);
  *@desc Release ownership; the thread runs independently. After detach the handle must not be joined or queried.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(background_work)
+ *   mut t Thread = threads.spawn(()background_work)
  *   threads.detach(t)
  *@end
  */
@@ -97,7 +103,7 @@ void gray_threads_detach(GrayThread thread);
  *@desc True while the thread's body has not returned. Not valid after detach or join.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(work)
+ *   mut t Thread = threads.spawn(()work)
  *   if threads.is_alive(t) { println("still running") }
  *@end
  */
@@ -108,11 +114,11 @@ bool gray_threads_is_alive(GrayThread thread);
 /*@man get_id
  *@module threads
  *@group Query
- *@sig get_id() -> int
+ *@sig get_id() -> i64
  *@desc Get the current thread's ID.
  *@example
  *   import @threads
- *   mut id int = threads.get_id()
+ *   mut id i64 = threads.get_id()
  *   println("thread ${id}")
  *@end
  */
@@ -135,7 +141,7 @@ void gray_threads_yield(void);
 /*@man sleep
  *@module threads
  *@group Control
- *@sig sleep(ms int)
+ *@sig sleep(ms i64)
  *@desc Sleep the current thread for ms milliseconds.
  *@example
  *   import @threads
@@ -143,16 +149,16 @@ void gray_threads_yield(void);
  *@end
  */
 /* Sleep the current thread for `ms` milliseconds. */
-void gray_threads_sleep(int64_t ms);
+void gray_threads_sleep(int64_t milliseconds);
 
 /*@man thread_count
  *@module threads
  *@group Query
- *@sig thread_count() -> int
+ *@sig thread_count() -> i64
  *@desc Number of live threads spawned through this module. Excludes the main thread and non-Grayscale threads.
  *@example
  *   import @threads
- *   mut n int = threads.thread_count()
+ *   mut n i64 = threads.thread_count()
  *   println("${n} threads running")
  *@end
  */

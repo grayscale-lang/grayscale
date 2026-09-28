@@ -5,7 +5,7 @@
 #test
 #discard
 #test
-do check_thing() -> int {
+do check_thing() -> i64 {
     return 0
 }
 

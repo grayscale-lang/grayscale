@@ -4,7 +4,7 @@
  */
 
 
-do get_num() -> int {
+do get_num() -> i64 {
     return 42
 }
 

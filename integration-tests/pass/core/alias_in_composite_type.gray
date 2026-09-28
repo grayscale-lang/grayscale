@@ -9,21 +9,21 @@ const Color enum {
     GREEN
 }
 
-alias I = int
+alias I = i64
 alias Hue = Color
 alias IntMap = map[string:I]
 
 do add(a I, b I) -> I { return a + b }
 
-do apply(x int, f func(I) -> I) -> int {
+do apply(x i64, f func(I) -> I) -> i64 {
     return f(x)
 }
 
-do dbl(n int) -> int { return n * 2 }
+do dbl(n i64) -> i64 { return n * 2 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // alias in map value position
     mut mv map[string:I] = {"a": 1}
@@ -36,7 +36,7 @@ do main() {
     }
 
     // alias in map key position (enum alias)
-    mut mk map[Hue:int] = {Hue.RED: 7}
+    mut mk map[Hue:i64] = {Hue.RED: 7}
     if mk[Hue.RED] == 7 {
         println("  [PASS] alias in map key position")
         passed += 1

@@ -6,8 +6,8 @@ import @uuid
 
 do main() {
     println("=== Stress: uuid ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // generate() returns UUID with 36-char hyphenated string
     mut id UUID = uuid.generate()

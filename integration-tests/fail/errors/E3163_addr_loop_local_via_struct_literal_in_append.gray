@@ -10,13 +10,13 @@
 import @arrays
 
 const Holder struct {
-    p ^int
+    p ^i64
 }
 
 do main() {
     mut outer [Holder] = {}
     for i in range(3) {
-        mut x int = i * 10
+        mut x i64 = i * 10
         arrays.append(outer, Holder{ p: addr(x) })
     }
     println(outer[0].p^)

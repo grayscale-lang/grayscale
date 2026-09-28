@@ -1,6 +1,6 @@
-const LIMIT int = 5
+const LIMIT i64 = 5
 
 do sneak() {
-    mut p ^int = addr(LIMIT)
+    mut p ^i64 = addr(LIMIT)
     p^ = 6
 }

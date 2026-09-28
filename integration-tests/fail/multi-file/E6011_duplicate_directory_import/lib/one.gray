@@ -1,3 +1,3 @@
-do g() -> int {
+do g() -> i64 {
     return 2
 }

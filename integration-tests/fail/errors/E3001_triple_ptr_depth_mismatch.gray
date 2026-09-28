@@ -1,18 +1,18 @@
 /*
- * Error Test: E3001 - returning ^^^int from a -> ^int function
+ * Error Test: E3001 - returning ^^^i64 from a -> ^i64 function
  *
  * same check at deeper nesting.
  */
 
-do bad() -> ^int {
-    mut x int = 42
-    mut p ^int = addr(x)
-    mut pp ^^int = addr(p)
-    mut ppp ^^^int = addr(pp)
+do bad() -> ^i64 {
+    mut x i64 = 42
+    mut p ^i64 = addr(x)
+    mut pp ^^i64 = addr(p)
+    mut ppp ^^^i64 = addr(pp)
     return ppp
 }
 
 do main() {
-    mut r ^int = bad()
+    mut r ^i64 = bad()
     println(r^)
 }

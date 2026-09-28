@@ -1,9 +1,0 @@
-/*
- * Error Test: E5006 - integer-overflow (subtraction)
- * Expected: "integer overflow"
- */
-
-do main() {
-    mut min i64 = -9223372036854775808  // min i64
-    mut result i64 = min - 1  // Underflow
-}

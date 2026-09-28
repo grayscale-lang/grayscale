@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5039 - constant expression overflows type 'i128'
+ * Expected: overflow in i128 const arithmetic is a compile-time error
+ */
+
+const G i128 = 170141183460469231731687303715884105727
+const H i128 = G + 1
+
+do main() {
+    println(H)
+}
+// expect-error: E5039
+// expect-error-count: 1

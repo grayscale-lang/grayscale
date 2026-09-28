@@ -13,6 +13,7 @@
 
 #include "../runtime/runtime.h"
 #include "../runtime/map.h"
+#include "http.h"
 
 /*@man HttpRequest
  *@module server
@@ -47,10 +48,10 @@ typedef struct {
  *@module server
  *@group Types
  *@kind type
- *@field status int
+ *@field status i64
  *@field body string
- *@field content_type string
- *@desc The response object returned by handler functions. Build using server.text(), server.json(), server.html(), or server.redirect() rather than constructing directly.
+ *@field headers map[string:string]
+ *@desc The response object returned by handler functions. It is the same type the http module returns, so a handler can return an http.get() response unchanged. Build one with server.text(), server.json(), server.html(), or server.redirect(); the content type is the "Content-Type" entry in headers. Every header is sent with the response.
  *@example
  *   import @server
  *   do handler(req HttpRequest) -> HttpResponse {
@@ -58,22 +59,15 @@ typedef struct {
  *   }
  *@end
  */
-/* Response struct returned by handlers */
-typedef struct {
-    int64_t status;
-    GrayString body;
-    GrayString content_type;
-} GrayResponse;
-
 /* Route entry */
 typedef struct {
     const char *method;
     const char *pattern;
-    GrayResponse (*handler)(GrayRequest);
+    GrayHttpResponse (*handler)(GrayRequest);
 } GrayRoute;
 
 /* Middleware function pointer */
-typedef void (*GrayMiddleware)(GrayRequest *req, GrayResponse *resp);
+typedef void (*GrayMiddleware)(GrayRequest *request, GrayHttpResponse *response);
 
 /*@man Router
  *@module server
@@ -94,8 +88,8 @@ typedef struct {
     int capacity;
     const char *cors_origin;    /* NULL = no CORS */
     GrayMiddleware *middlewares;
-    int mw_count;
-    int mw_capacity;
+    int middleware_count;
+    int middleware_capacity;
 } GrayRouter;
 
 /*@man add_router
@@ -127,13 +121,13 @@ GrayRouter gray_server_router(void);
  */
 /* Register a route: server.route(router, method, pattern, handler) */
 void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern,
-                     GrayResponse (*handler)(GrayRequest));
+                     GrayHttpResponse (*handler)(GrayRequest));
 
 /*@man listen
  *@module server
  *@group Routing
- *@sig listen(router Router, port int)
- *@desc Starts the HTTP server on the given port. Blocks until the process is killed.
+ *@sig listen(router Router, port i64, [host string])
+ *@desc Starts the HTTP server on the given port, bound to host. host defaults to "0.0.0.0" (all interfaces). Blocks until the process is killed.
  *@example
  *   import @server
  *   mut r = server.add_router()
@@ -159,25 +153,25 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *router);
 /* Enable CORS with the given origin (e.g. "*" or "http://example.com") */
 void gray_server_cors(GrayRouter *router, GrayString origin);
 
-/*@man use
+/*@man add_middleware
  *@module server
  *@group Routing
- *@sig use(router Router, middleware func(^HttpRequest, ^HttpResponse))
- *@desc Registers a middleware function on the router. Middleware runs before each handler and receives pointers to the request and response so it can inspect or modify either.
+ *@sig add_middleware(router Router, middleware func(^HttpRequest, ^HttpResponse))
+ *@desc Registers a middleware function on the router. Middleware runs after the handler, in the order registered, and receives pointers to the request and the handler's response so it can inspect or modify either before the response is sent. It also runs when no route matches, on the 404 response.
  *@example
  *   import @server
  *   mut r = server.add_router()
- *   server.use(r, ()my_logger)
+ *   server.add_middleware(r, ()my_logger)
  *@end
  */
 /* Register a middleware function */
-void gray_server_use(GrayRouter *router, GrayMiddleware fn);
+void gray_server_add_middleware(GrayRouter *router, GrayMiddleware middleware);
 
 /*@man text
  *@module server
  *@group Response Builders
- *@sig text(status int, body string) -> HttpResponse
- *@desc Returns an HttpResponse with Content-Type: text/plain and the given status code and body.
+ *@sig text(status i64, body string) -> HttpResponse
+ *@desc Returns an HttpResponse with the given status code and body, and headers["Content-Type"] set to "text/plain".
  *@example
  *   import @server
  *   do handler(req HttpRequest) -> HttpResponse {
@@ -186,13 +180,13 @@ void gray_server_use(GrayRouter *router, GrayMiddleware fn);
  *@end
  */
 /* Response builders */
-GrayResponse gray_server_text(int64_t status, GrayString body);
+GrayHttpResponse gray_server_text(GrayArena *arena, int64_t status, GrayString body);
 
 /*@man json
  *@module server
  *@group Response Builders
- *@sig json(status int, body string) -> HttpResponse
- *@desc Returns an HttpResponse with Content-Type: application/json and the given status code and body.
+ *@sig json(status i64, body string) -> HttpResponse
+ *@desc Returns an HttpResponse with the given status code and body, and headers["Content-Type"] set to "application/json".
  *@example
  *   import @server
  *   do handler(req HttpRequest) -> HttpResponse {
@@ -200,13 +194,13 @@ GrayResponse gray_server_text(int64_t status, GrayString body);
  *   }
  *@end
  */
-GrayResponse gray_server_json(int64_t status, GrayString body);
+GrayHttpResponse gray_server_json(GrayArena *arena, int64_t status, GrayString body);
 
 /*@man html
  *@module server
  *@group Response Builders
- *@sig html(status int, body string) -> HttpResponse
- *@desc Returns an HttpResponse with Content-Type: text/html and the given status code and body.
+ *@sig html(status i64, body string) -> HttpResponse
+ *@desc Returns an HttpResponse with the given status code and body, and headers["Content-Type"] set to "text/html".
  *@example
  *   import @server
  *   do handler(req HttpRequest) -> HttpResponse {
@@ -214,13 +208,13 @@ GrayResponse gray_server_json(int64_t status, GrayString body);
  *   }
  *@end
  */
-GrayResponse gray_server_html(int64_t status, GrayString body);
+GrayHttpResponse gray_server_html(GrayArena *arena, int64_t status, GrayString body);
 
 /*@man redirect
  *@module server
  *@group Response Builders
- *@sig redirect(status int, url string) -> HttpResponse
- *@desc Returns an HttpResponse that redirects to url. Use 301 for permanent or 302 for temporary redirects.
+ *@sig redirect(status i64, url string) -> HttpResponse
+ *@desc Returns an HttpResponse that redirects to url: an empty body and headers["Location"] set to url. Use 301 for permanent or 302 for temporary redirects.
  *@example
  *   import @server
  *   do handler(req HttpRequest) -> HttpResponse {
@@ -228,6 +222,6 @@ GrayResponse gray_server_html(int64_t status, GrayString body);
  *   }
  *@end
  */
-GrayResponse gray_server_redirect(int64_t status, GrayString location);
+GrayHttpResponse gray_server_redirect(GrayArena *arena, int64_t status, GrayString location);
 
 #endif

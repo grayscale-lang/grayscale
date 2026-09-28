@@ -4,11 +4,11 @@
  * and the whole-result discard form.
  */
 
-do two() -> (int, int, Error) { return 3, 4, nil }
-do three() -> (int, string, bool, Error) { return 7, "ok", true, nil }
-do one() -> (int, Error) { return 9, nil }
+do two() -> (i64, i64, Error) { return 3, 4, nil }
+do three() -> (i64, string, bool, Error) { return 7, "ok", true, nil }
+do one() -> (i64, Error) { return 9, nil }
 
-do run() -> (int, Error) {
+do run() -> (i64, Error) {
     mut a, b = two() or_return           // exact: 2 bindings, 2 non-error slots
     mut _, d = two() or_return            // '_' still counts as a slot
     mut n, label, flag = three() or_return
@@ -23,10 +23,10 @@ do run() -> (int, Error) {
 
 do main() {
     println("=== or_return exact arity ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut total int, e Error = run()
+    mut total i64, e Error = run()
     if e == nil && total == 3 + 4 + 4 + 7 + 9 {
         println("  [PASS] exact-arity or_return binds every non-error slot")
         passed += 1

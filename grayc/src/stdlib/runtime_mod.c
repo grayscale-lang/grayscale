@@ -39,7 +39,7 @@ int64_t gray_runtime_heap_blocks(void) {
 }
 
 int64_t gray_runtime_arena_limit(void) {
-    return (int64_t)gray_default_arena->max_bytes;
+    return (int64_t)gray_default_arena->maximum_bytes;
 }
 
 int64_t gray_runtime_call_depth(void) {

@@ -25,7 +25,7 @@ awk 'BEGIN {
 # 2. Source file for the lexer: ~8000 lines of function-shaped text.
 awk 'BEGIN {
     for (i = 0; i < 8000; i++) {
-        printf "do func_%d(a int, b int) -> int { mut x int = a + b * %d; return x - %d }\n", i, i % 97, i % 13
+        printf "do func_%d(a i64, b i64) -> i64 { mut x i64 = a + b * %d; return x - %d }\n", i, i % 97, i % 13
     }
 }' > "$gen/source.txt"
 
@@ -52,10 +52,10 @@ awk 'BEGIN {
 {
     awk 'BEGIN {
         for (i = 0; i < 4000; i++)
-            printf "do helper_%d(n int) -> int { return n * %d + %d }\n", i, i % 7, i % 3
+            printf "do helper_%d(n i64) -> i64 { return n * %d + %d }\n", i, i % 7, i % 3
     }'
     echo "do main() {"
-    echo "    mut total int = 0"
+    echo "    mut total i64 = 0"
     awk 'BEGIN {
         for (i = 0; i < 4000; i++)
             printf "    total += helper_%d(%d)\n", i, i

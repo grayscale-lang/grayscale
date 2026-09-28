@@ -3,9 +3,9 @@
  * Expected: compile-time error on both explicit and inferred type
  */
 
-do double(n int) -> int { return n * 2 }
+do double(n i64) -> i64 { return n * 2 }
 
 do main() {
-    mut f func(int) -> int = ()double
+    mut f func(i64) -> i64 = ()double
     mut g = ()double
 }

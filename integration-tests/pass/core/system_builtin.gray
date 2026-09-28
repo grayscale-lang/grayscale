@@ -1,8 +1,8 @@
 do main() {
-    mut code int = system("true")
+    mut code i64 = system("true")
     assert(code == 0, "system('true') should return 0")
 
-    mut code2 int = system("exit 42")
+    mut code2 i64 = system("exit 42")
     assert(code2 == 42, "system('exit 42') should return 42")
 
     system("true")

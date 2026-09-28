@@ -1,0 +1,12 @@
+// expect-error: E3088
+// A generic printf call is checked against the type it is instantiated with.
+
+import @fmt
+
+do show(value ?) {
+    fmt.printfln("%s", {value})
+}
+
+do main() {
+    show(7)
+}

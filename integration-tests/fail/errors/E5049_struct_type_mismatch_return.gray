@@ -1,0 +1,21 @@
+/*
+ * Error Test: E5049 - returning wrong struct type
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+const Cat struct {
+    name string
+}
+
+const Dog struct {
+    name string
+}
+
+do get_cat() -> Cat {
+    return Dog{name: "Rex"}
+}
+
+do main() {
+    mut c = get_cat()
+}

@@ -1,20 +1,20 @@
 const Engine struct {
-    total int = 0
+    total i64 = 0
 
-    do tick(&e Engine, n int) -> int {
+    do tick(&e Engine, n i64) -> i64 {
         e.total = e.total + n
         return e.total
     }
 
-    do peek(e Engine) -> int {
+    do peek(e Engine) -> i64 {
         return e.total
     }
 }
 
 mut pool Engine
 
-do run_worker(n int) -> int {
-    mut a int = Engine.peek(pool)     // by-value receiver
-    mut b int = Engine.tick(pool, n)  // &-receiver: pool must resolve to eng_pool
+do run_worker(n i64) -> i64 {
+    mut a i64 = Engine.peek(pool)     // by-value receiver
+    mut b i64 = Engine.tick(pool, n)  // &-receiver: pool must resolve to eng_pool
     return a + b
 }

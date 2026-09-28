@@ -14,18 +14,99 @@
 </p>
 
 ---
-<p align="center">
-    <img src="images/Example1.png" alt="Code_Example1" width="400" >
-</p>
-<p align="center">
-    <img src="images/Example2.png" alt="Code_Example2" width="600" >
-</p>
-<p align="center">
-    <img src="images/Example3.png" alt="Code_Example3" width="600" >
-</p>
-<p align="center">
-    <img src="images/Example4.png" alt="Code_Example4" width="600" >
-</p>
+
+### Readable syntax
+
+```grayscale
+do divmod(a i64, b i64) -> (i64, i64) {
+    return a / b, a % b
+}
+
+do main() {
+    const name string = "Grayscale"
+    mut total i64 = 0
+    for i in range(1, 6) {
+        total += i
+    }
+    mut quotient, remainder = divmod(total, 4)
+    if remainder == 0 {
+        println("${name}: ${total} divides evenly")
+    } or quotient > 3 {
+        println("${name}: ${total} / 4 = ${quotient} remainder ${remainder}")
+    } otherwise {
+        println("${name}: ${total} is small")
+    }
+}
+```
+
+### Structs and tagged enums
+
+```grayscale
+const Shape enum {
+    Circle(f64)
+    Rect(f64, f64)
+    Point
+}
+
+const Vec struct {
+    x i64
+    y i64
+
+    do scale(self Vec, factor i64) -> Vec {
+        return Vec{x: self.x * factor, y: self.y * factor}
+    }
+}
+
+do area(shape Shape) -> f64 {
+    when shape {
+        is Shape.Circle(radius) { return 3.14159 * radius * radius }
+        is Shape.Rect(w, h) { return w * h }
+        default { return 0.0 }
+    }
+}
+
+do main() {
+    mut v = Vec{x: 2, y: 3}
+    mut scaled = v.scale(factor: 5)
+    println("scaled: ${scaled.x}, ${scaled.y}")
+    println("rect: ${area(Shape.Rect(3.0, 4.0))}")
+}
+```
+
+### Explicit errors and cleanup
+
+```grayscale
+import @io
+
+do cleanup() {
+    println("cleanup ran")
+}
+
+do load(path string) -> (string, Error) {
+    ensure cleanup()
+    mut content = io.read_file(path) or_return
+    return content, nil
+}
+
+do main() {
+    mut content, err = load("missing.txt")
+    if err != nil {
+        println("could not load file")
+    } otherwise {
+        println(content)
+    }
+}
+```
+
+### Standard library
+
+```grayscale
+import @math
+
+do main() {
+    println("sqrt(144) = ${math.sqrt(144.0)}")
+}
+```
 
 
 ---
@@ -94,7 +175,7 @@ it does not need to be on `PATH`.
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
 | `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
-| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src` |
+| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src/...` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
 | `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
 | `gray fmt --check <path>` | Check formatting without modifying files (CI gate) | `gray fmt --check ./...` |

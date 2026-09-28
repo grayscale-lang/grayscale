@@ -1,10 +1,10 @@
 /*
- * Error Test: E3088 - %b format directive requires a bool argument
- * Expected: "format directive '%b' expects bool but got int"
+ * Error Test: E3088 - %b format directive requires a bool element
+ * Expected: "format directive '%b' expects bool but got i64"
  */
 
 import @fmt
 
 do main() {
-    fmt.printfln("%b", 42)
+    fmt.printfln("%b", {42})
 }

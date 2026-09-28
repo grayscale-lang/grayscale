@@ -6,7 +6,7 @@
 
 alias ErrBag = [Error]
 
-do split() -> (int, Error) {
+do split() -> (i64, Error) {
     return 0, error(.NotFound, "n")
 }
 

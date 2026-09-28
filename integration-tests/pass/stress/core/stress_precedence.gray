@@ -5,8 +5,8 @@
 
 do main() {
     println("=== Stress: Operator Precedence ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Multiplication before addition
     if 2 + 3 * 4 == 14 {
@@ -63,7 +63,7 @@ do main() {
     }
 
     // Complex chain
-    mut result int = (1 + 2) * (3 + 4) - 5
+    mut result i64 = (1 + 2) * (3 + 4) - 5
     if result == 16 {
         println("  [PASS] (1+2)*(3+4)-5 == 16")
         passed += 1

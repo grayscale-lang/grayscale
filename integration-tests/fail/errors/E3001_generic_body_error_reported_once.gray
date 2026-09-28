@@ -7,18 +7,18 @@
  * Covers both the '?' wildcard and the 'T <?>' forms.
  */
 
-do wrap(s ?) -> int {
-    mut v int = "not an int"
+do wrap(s ?) -> i64 {
+    mut v i64 = "not an i64"
     return v
 }
 
-do first(T <?>) -> int {
-    mut v int = "also not an int"
+do first(T <?>) -> i64 {
+    mut v i64 = "also not an i64"
     return v
 }
 
 do main() {
     println("${wrap(42)}")
     println("${wrap("x")}")
-    println("${first(int)}")
+    println("${first(i64)}")
 }

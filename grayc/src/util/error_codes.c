@@ -11,12 +11,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *code; const char *msg; } ErrorEntry;
+typedef struct { const char *code; const char *message; } ErrorEntry;
 
 static ErrorEntry entries[] = {
-#define GRAY_ERROR(c, cat, msg) { c, msg },
-#define GRAY_WARNING(c, cat, msg) { c, msg },
-#define GRAY_PANIC(c, cat, msg) { c, msg },
+#define GRAY_ERROR(code, category, message) { code, message },
+#define GRAY_WARNING(code, category, message) { code, message },
+#define GRAY_PANIC(code, category, message) { code, message },
     GRAY_LEXER_ERRORS
     GRAY_PARSER_ERRORS
     GRAY_TYPE_ERRORS
@@ -34,19 +34,19 @@ static ErrorEntry entries[] = {
 
 #define ENTRY_COUNT (sizeof(entries) / sizeof(entries[0]))
 
-static int error_code_compare(const void *a, const void *b) {
-    return strcmp(((const ErrorEntry *)a)->code, ((const ErrorEntry *)b)->code);
+static int error_code_compare(const void *left, const void *right) {
+    return strcmp(((const ErrorEntry *)left)->code, ((const ErrorEntry *)right)->code);
 }
 
-static int sorted = 0;
+static int is_sorted = 0;
 
 const char *gray_error_message(const char *code) {
     if (!code) return NULL;
-    if (!sorted) {
+    if (!is_sorted) {
         qsort(entries, ENTRY_COUNT, sizeof(ErrorEntry), error_code_compare);
-        sorted = 1;
+        is_sorted = 1;
     }
     ErrorEntry key = { code, NULL };
-    ErrorEntry *hit = bsearch(&key, entries, ENTRY_COUNT, sizeof(ErrorEntry), error_code_compare);
-    return hit ? hit->msg : NULL;
+    ErrorEntry *matching_entry = bsearch(&key, entries, ENTRY_COUNT, sizeof(ErrorEntry), error_code_compare);
+    return matching_entry ? matching_entry->message : NULL;
 }

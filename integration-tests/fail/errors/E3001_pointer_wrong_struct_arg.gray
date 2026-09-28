@@ -1,11 +1,11 @@
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Color struct {
-    r int
-    g int
+    r i64
+    g i64
 }
 
 do mutate(p ^Point) {

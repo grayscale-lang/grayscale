@@ -8,24 +8,24 @@
  * the inferred return type is usable in expressions.
  */
 
-do add(a int, b int) -> int { return a + b }
-do mul(a int, b int) -> int { return a * b }
+do add(a i64, b i64) -> i64 { return a + b }
+do mul(a i64, b i64) -> i64 { return a * b }
 do greet(name string) -> string { return name }
-do is_even(n int) -> bool { return n % 2 == 0 }
+do is_even(n i64) -> bool { return n % 2 == 0 }
 
 do main() {
     println("=== Func Variable Call Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- int return --
-    const f func(int, int) -> int = ()add
-    mut result int = f(10, 20) + 1
+    // -- i64 return --
+    const f func(i64, i64) -> i64 = ()add
+    mut result i64 = f(10, 20) + 1
     if result == 31 {
-        println("  [PASS] int-returning func var call + arithmetic")
+        println("  [PASS] i64-returning func var call + arithmetic")
         passed += 1
     } otherwise {
-        println("  [FAIL] int-returning func var call: got ${result}")
+        println("  [FAIL] i64-returning func var call: got ${result}")
         failed += 1
     }
 
@@ -41,7 +41,7 @@ do main() {
     }
 
     // -- bool return used in condition --
-    const p func(int) -> bool = ()is_even
+    const p func(i64) -> bool = ()is_even
     if p(4) && !p(5) {
         println("  [PASS] bool-returning func var call in condition")
         passed += 1

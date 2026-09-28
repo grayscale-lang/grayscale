@@ -39,11 +39,11 @@ typedef struct {
     GrayArenaBlock *first;
     GrayArenaBlock *current;
     size_t default_block_size;
-    size_t max_bytes;         /* 0 = unlimited (user arenas) */
+    size_t maximum_bytes;         /* 0 = unlimited (user arenas) */
     size_t total_allocated;   /* cumulative bytes across all blocks */
     size_t peak_bytes;        /* high-water mark of total_allocated */
     size_t alloc_count;       /* cumulative allocations on this arena */
-    bool destroyed;
+    bool is_destroyed;
 } GrayArena;
 
 GrayArena *gray_arena_create(size_t initial_size);
@@ -54,12 +54,37 @@ void gray_arena_destroy(GrayArena *arena, const char *file, int line);
 size_t gray_arena_usage(GrayArena *arena);
 size_t gray_arena_block_count(GrayArena *arena);
 
+/* TinyCC emits ELF-style thread-local access, which faults on Mach-O and has
+ * no runtime to back it in a program it links itself. Under it the per-thread
+ * globals below live in one heap block per thread, reached through an
+ * accessor; each name expands to an lvalue, so no use site changes. */
+#if defined(__TINYC__)
+typedef struct {
+    GrayArena *default_arena;
+    GrayArena *heap_arena;
+    size_t total_alloc_count;
+    const char *panic_call_file;
+    int panic_call_line;
+} GrayThreadState;
+
+GrayThreadState *gray_thread_state(void);
+#define gray_default_arena (gray_thread_state()->default_arena)
+#define gray_heap_arena (gray_thread_state()->heap_arena)
+#define gray_total_alloc_count (gray_thread_state()->total_alloc_count)
+#define gray_panic_call_file (gray_thread_state()->panic_call_file)
+#define gray_panic_call_line (gray_thread_state()->panic_call_line)
+#endif
+
 /* Per-thread default arena — each thread (including spawned threads) gets its own. */
+#if !defined(__TINYC__)
 extern _Thread_local GrayArena *gray_default_arena;
+#endif
 
 /* Persistent heap arena — lives for the lifetime of the program.
  * Used by new() so returned pointers are never dangling. */
+#if !defined(__TINYC__)
 extern _Thread_local GrayArena *gray_heap_arena;
+#endif
 
 /* Cumulative count of allocations made against whichever arena is installed
  * as the default or heap arena. Tracked separately from GrayArena::alloc_count
@@ -67,7 +92,9 @@ extern _Thread_local GrayArena *gray_heap_arena;
  * every pass: reading the installed arena's own counter makes the total drop
  * to zero on loop entry and discards everything the body allocated.
  * Thread-local to match the arena globals it follows. */
+#if !defined(__TINYC__)
 extern _Thread_local size_t gray_total_alloc_count;
+#endif
 
 /* --- String --- */
 
@@ -95,10 +122,10 @@ typedef struct {
 } GrayError;
 
 /* Create an error on the default arena */
-GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString msg);
+GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString message);
 
 /* Map a C errno value to the closest builtin ErrorCode slot. */
-int64_t gray_errno_code(int err);
+int64_t gray_errno_code(int error_number);
 
 /* gray_error_code_name(int64_t) — variant name for an ErrorCode slot — is
  * emitted per-program into the generated C (builtins + #error_code variants),
@@ -114,25 +141,25 @@ typedef struct {
 
 /* Create a string from a C string literal (no copy, points to static data) */
 static inline GrayString gray_string_lit(const char *text) {
-    GrayString str;
-    str.data = text;
-    str.len = (int32_t)strlen(text);
-    return str;
+    GrayString string;
+    string.data = text;
+    string.len = (int32_t)strlen(text);
+    return string;
 }
 
 /* String literal with explicit length — for strings containing null bytes */
-static inline GrayString gray_string_lit_len(const char *text, int32_t len) {
-    GrayString str;
-    str.data = text;
-    str.len = len;
-    return str;
+static inline GrayString gray_string_lit_len(const char *text, int32_t length) {
+    GrayString string;
+    string.data = text;
+    string.len = length;
+    return string;
 }
 
 /* Compile-time string literal — works at file scope (C11 compliant) */
 #define GRAY_STRING_LIT(s) ((GrayString){ (s), sizeof(s) - 1 })
 
 /* Create a string with a copy on the arena */
-GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len);
+GrayString gray_string_new(GrayArena *arena, const char *text, int32_t length);
 
 /* Create a Grayscale string from a C char* by copying onto the arena.
  * NULL input -> empty string. Length is clamped at INT32_MAX. The
@@ -141,15 +168,15 @@ GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len);
 GrayString gray_c_string_dup(GrayArena *arena, const char *text);
 
 /* String formatting (for interpolation) */
-GrayString gray_string_format(GrayArena *arena, const char *fmt, ...);
+GrayString gray_string_format(GrayArena *arena, const char *format, ...);
 
 /* Null-terminate a GrayString into a caller-provided buffer.
  * Truncates to buf_size-1 if needed. Returns buf for convenience. */
-static inline const char *gray_cstr(GrayString str, char *buf, size_t buf_size) {
-    size_t len = (size_t)str.len < buf_size - 1 ? (size_t)str.len : buf_size - 1;
-    memcpy(buf, str.data, len);
-    buf[len] = '\0';
-    return buf;
+static inline const char *gray_cstr(GrayString string, char *buffer, size_t buffer_size) {
+    size_t length = (size_t)string.len < buffer_size - 1 ? (size_t)string.len : buffer_size - 1;
+    memcpy(buffer, string.data, length);
+    buffer[length] = '\0';
+    return buffer;
 }
 
 /* String comparison */
@@ -197,13 +224,17 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
  * code via gray_panic_code() — which has no location of its own — still
  * reports the .gray file and line, the same as a language-level panic. NULL
  * before the first statement of a program runs. */
+#if !defined(__TINYC__)
 extern _Thread_local const char *gray_panic_call_file;
+#endif
+#if !defined(__TINYC__)
 extern _Thread_local int gray_panic_call_line;
+#endif
 
-void gray_panic_code(const char *code, const char *fmt, ...)
+void gray_panic_code(const char *code, const char *format, ...)
     __attribute__((format(printf, 2, 3), noreturn));
 
-void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...)
+void gray_panic_code_at(const char *file, int line, const char *code, const char *format, ...)
     __attribute__((format(printf, 4, 5), noreturn));
 
 /* --- Test-runner failure hook (see runtime/test.c) ---
@@ -215,17 +246,17 @@ extern bool gray_test_active;
 extern jmp_buf gray_test_env;
 
 _Noreturn void gray_test_vfail(const char *code, const char *file, int line,
-                               const char *fmt, va_list args);
+                               const char *format, va_list arguments);
 _Noreturn void gray_test_fail(const char *code, const char *file, int line,
-                              const char *fmt, ...)
+                              const char *format, ...)
     __attribute__((format(printf, 4, 5)));
 
 /* Nil-check a pointer and return it, so a checked dereference stays an
  * lvalue: `((T*)gray_ptr_check(ptr, f, l))->field` can be assigned, indexed,
  * or have its address taken, unlike a statement-expression wrapper. */
-static inline void *gray_ptr_check(void *ptr, const char *file, int line) {
-    if (!ptr) gray_panic_code_at(file, line, "P0080", "nil pointer dereference");
-    return ptr;
+static inline void *gray_ptr_check(void *allocation, const char *file, int line) {
+    if (!allocation) gray_panic_code_at(file, line, "P0080", "nil pointer dereference");
+    return allocation;
 }
 
 /* Arena-liveness check for a @mem pointer, composable the same way as
@@ -235,12 +266,12 @@ static inline void *gray_ptr_check(void *ptr, const char *file, int line) {
  * produced the pointer — see is_stable_arena_expr in codegen.c. Catches a
  * use-after-destroy/reset the compile-time pointer checker couldn't trace
  * (an arena reached other than by a plain parameter name — STANDARD 11.7). */
-static inline void *gray_mem_check_live(GrayArena *arena, void *ptr, const char *file, int line) {
-    if (arena && arena->destroyed) {
+static inline void *gray_mem_check_live(GrayArena *arena, void *allocation, const char *file, int line) {
+    if (arena && arena->is_destroyed) {
         gray_panic_code_at(file, line, "P0117",
             "dereferenced a pointer into an arena that has been destroyed or reset");
     }
-    return ptr;
+    return allocation;
 }
 
 /* --- Stack depth guard --- */
@@ -274,46 +305,86 @@ _Noreturn void gray_arith_panic_uadd(const char *file, int line);
 _Noreturn void gray_arith_panic_usub(const char *file, int line);
 _Noreturn void gray_arith_panic_umul(const char *file, int line);
 
+/* Marks a branch the program cannot reach. TinyCC has no __builtin_unreachable. */
+#if !defined(__TINYC__)
+#define GRAY_UNREACHABLE() __builtin_unreachable()
+#else
+#define GRAY_UNREACHABLE() abort()
+#endif
+
+/* Overflow-detecting arithmetic: store the wrapped result in *result and return
+ * whether the mathematical result did not fit. GCC and Clang provide it as a
+ * builtin; TinyCC defines __GNUC__ without implementing it, so it gets a range
+ * check with identical results. */
+#if !defined(__TINYC__)
+#define gray_add_overflows_i64(left, right, result) __builtin_add_overflow((left), (right), (result))
+#define gray_sub_overflows_i64(left, right, result) __builtin_sub_overflow((left), (right), (result))
+#define gray_mul_overflows_i64(left, right, result) __builtin_mul_overflow((left), (right), (result))
+#define gray_add_overflows_u64(left, right, result) __builtin_add_overflow((left), (right), (result))
+#define gray_mul_overflows_u64(left, right, result) __builtin_mul_overflow((left), (right), (result))
+#else
+static inline bool gray_add_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left + (uint64_t)right);
+    return (right > 0 && left > INT64_MAX - right) || (right < 0 && left < INT64_MIN - right);
+}
+
+static inline bool gray_sub_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left - (uint64_t)right);
+    return (right < 0 && left > INT64_MAX + right) || (right > 0 && left < INT64_MIN + right);
+}
+
+static inline bool gray_mul_overflows_i64(int64_t left, int64_t right, int64_t *result) {
+    *result = (int64_t)((uint64_t)left * (uint64_t)right);
+    if (left == 0 || right == 0) return false;
+    if (left == -1) return right == INT64_MIN;
+    if (right == -1) return left == INT64_MIN;
+    if (left > 0) return right > 0 ? left > INT64_MAX / right : right < INT64_MIN / left;
+    return right > 0 ? left < INT64_MIN / right : left < INT64_MAX / right;
+}
+
+static inline bool gray_add_overflows_u64(uint64_t left, uint64_t right, uint64_t *result) {
+    *result = left + right;
+    return *result < left;
+}
+
+static inline bool gray_mul_overflows_u64(uint64_t left, uint64_t right, uint64_t *result) {
+    *result = left * right;
+    return left != 0 && *result / left != right;
+}
+#endif
+
 static inline int64_t gray_add_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_add_overflow(left, right, &result))
+    if (gray_add_overflows_i64(left, right, &result))
         gray_arith_panic_add(file, line);
     return result;
 }
 
 static inline int64_t gray_sub_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_sub_overflow(left, right, &result))
+    if (gray_sub_overflows_i64(left, right, &result))
         gray_arith_panic_sub(file, line);
     return result;
 }
 
 static inline int64_t gray_mul_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
-    if (__builtin_mul_overflow(left, right, &result))
+    if (gray_mul_overflows_i64(left, right, &result))
         gray_arith_panic_mul(file, line);
     return result;
 }
 
 static inline int64_t gray_neg_check(int64_t value, const char *file, int line) {
     int64_t result;
-    if (__builtin_sub_overflow((int64_t)0, value, &result))
+    if (gray_sub_overflows_i64((int64_t)0, value, &result))
         gray_arith_panic_neg(file, line);
     return result;
-}
-
-static inline int64_t gray_inc_check(int64_t value, const char *file, int line) {
-    return gray_add_check(value, 1, file, line);
-}
-
-static inline int64_t gray_dec_check(int64_t value, const char *file, int line) {
-    return gray_sub_check(value, 1, file, line);
 }
 
 /* Overflow-checked unsigned integer arithmetic */
 static inline uint64_t gray_uadd_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
-    if (__builtin_add_overflow(left, right, &result))
+    if (gray_add_overflows_u64(left, right, &result))
         gray_arith_panic_uadd(file, line);
     return result;
 }
@@ -326,92 +397,92 @@ static inline uint64_t gray_usub_check(uint64_t left, uint64_t right, const char
 
 static inline uint64_t gray_umul_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
-    if (__builtin_mul_overflow(left, right, &result))
+    if (gray_mul_overflows_u64(left, right, &result))
         gray_arith_panic_umul(file, line);
     return result;
 }
 
 /* Sized signed integer overflow checks (i8, i16, i32) */
-static inline int64_t gray_sized_add_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_add_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left + right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0011", "%s addition result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_sub_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_sub_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left - right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0012", "%s subtraction result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_mul_check(int64_t left, int64_t right, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_mul_check(int64_t left, int64_t right, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left * right;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0013", "%s multiplication result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-static inline int64_t gray_sized_neg_check(int64_t value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_sized_neg_check(int64_t value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = -value;
-    if (result < min_val || result > max_val)
+    if (result < minimum_value || result > maximum_value)
         gray_panic_code_at(file, line, "P0014", "%s negation result is too large; value exceeds the range of this type", type_name);
     return result;
 }
 
-/* Sized unsigned integer overflow checks (u8, u16, u32, byte).
- * Operands are int64_t so that signed operands (e.g. byte + int) are
+/* Sized unsigned integer overflow checks (u8, u16, u32).
+ * Operands are int64_t so that signed operands (e.g. u8 + i64) are
  * handled correctly: a negative right-hand side must fire P0016, not
  * silently wrap to a large uint64 and trigger the wrong P0015 path. */
-static inline uint64_t gray_usized_add_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_add_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left + right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s addition result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0015", "%s addition result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
-static inline uint64_t gray_usized_sub_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_sub_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left - right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s subtraction result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0015", "%s subtraction result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
-static inline uint64_t gray_usized_mul_check(int64_t left, int64_t right, uint64_t max_val,
+static inline uint64_t gray_usized_mul_check(int64_t left, int64_t right, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     int64_t result = left * right;
     if (result < 0)
         gray_panic_code_at(file, line, "P0016", "%s multiplication result is negative, but this unsigned type cannot hold negative values", type_name);
-    if ((uint64_t)result > max_val)
+    if ((uint64_t)result > maximum_value)
         gray_panic_code_at(file, line, "P0017", "%s multiplication result is too large; value exceeds the range of this unsigned type", type_name);
     return (uint64_t)result;
 }
 
 /* Safe narrowing cast with overflow check */
-static inline int64_t gray_cast_check(int64_t value, int64_t min_val, int64_t max_val,
+static inline int64_t gray_cast_check(int64_t value, int64_t minimum_value, int64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value < min_val || value > max_val)
+    if (value < minimum_value || value > maximum_value)
         gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %lld is outside the valid range (%lld to %lld)",
-            type_name, (long long)value, (long long)min_val, (long long)max_val);
+            type_name, (long long)value, (long long)minimum_value, (long long)maximum_value);
     return value;
 }
 
-static inline uint64_t gray_ucast_check(int64_t value, uint64_t max_val,
+static inline uint64_t gray_ucast_check(int64_t value, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
-    if (value < 0 || (uint64_t)value > max_val)
+    if (value < 0 || (uint64_t)value > maximum_value)
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %lld is outside the valid range (0 to %llu)",
-            type_name, (long long)value, (unsigned long long)max_val);
+            type_name, (long long)value, (unsigned long long)maximum_value);
     return (uint64_t)value;
 }
 
@@ -435,26 +506,65 @@ static inline int64_t gray_enum_cast_check(int64_t value, const int64_t *variant
 }
 
 /* Safe uint64 → int64 conversion: panics if value exceeds INT64_MAX */
-static inline int64_t gray_uint_to_int_check(uint64_t value, const char *file, int line) {
+static inline int64_t gray_u64_to_i64_check(uint64_t value, const char *file, int line) {
     if (value > (uint64_t)9223372036854775807LL)
-        gray_panic_code_at(file, line, "P0018", "cast to int failed; value %llu is outside the valid range (-9223372036854775808 to 9223372036854775807)",
+        gray_panic_code_at(file, line, "P0018", "cast to i64 failed; value %llu is outside the valid range (-9223372036854775808 to 9223372036854775807)",
             (unsigned long long)value);
     return (int64_t)value;
 }
 
-/* Safe float-to-int conversion with overflow check */
-static inline int64_t gray_float_to_int(double value, const char *file, int line) {
-    if (value > 9.223372036854775e+18 || value < -9.223372036854775e+18 ||
-        value != value /* NaN */)
-        gray_panic_code_at(file, line, "P0020", "cannot convert float to int; the value is too large, too small, or NaN");
+/* Narrowing casts from a u64 or floating-point source. gray_cast_check/gray_ucast_check
+ * take an int64_t, so a u64 at or above 2^63 would turn negative and a floating-point value
+ * outside the int64 range (or NaN) would be undefined behavior before the
+ * range check ever ran; these check the source value as it is. */
+static inline int64_t gray_cast_check_u64(uint64_t value, int64_t minimum_value, int64_t maximum_value,
+    const char *type_name, const char *file, int line) {
+    if (value > (uint64_t)maximum_value)
+        gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %llu is outside the valid range (%lld to %lld)",
+            type_name, (unsigned long long)value, (long long)minimum_value, (long long)maximum_value);
     return (int64_t)value;
 }
 
-/* Safe float-to-uint conversion with range check */
-static inline uint64_t gray_float_to_uint(double value, const char *file, int line) {
+static inline uint64_t gray_ucast_check_u64(uint64_t value, uint64_t maximum_value,
+    const char *type_name, const char *file, int line) {
+    if (value > maximum_value)
+        gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %llu is outside the valid range (0 to %llu)",
+            type_name, (unsigned long long)value, (unsigned long long)maximum_value);
+    return value;
+}
+
+/* A floating-point source truncates toward zero, so it fits when it lies strictly
+ * between min - 1 and max + 1 (exact doubles for every sub-64-bit width).
+ * NaN fails both comparisons and is reported as "value nan". */
+static inline int64_t gray_cast_check_f64(double value, int64_t minimum_value, int64_t maximum_value,
+    const char *type_name, const char *file, int line) {
+    if (!(value > (double)minimum_value - 1.0 && value < (double)maximum_value + 1.0))
+        gray_panic_code_at(file, line, "P0018", "cast to %s failed; value %.17g is outside the valid range (%lld to %lld)",
+            type_name, value, (long long)minimum_value, (long long)maximum_value);
+    return (int64_t)value;
+}
+
+static inline uint64_t gray_ucast_check_f64(double value, uint64_t maximum_value,
+    const char *type_name, const char *file, int line) {
+    if (!(value > -1.0 && value < (double)maximum_value + 1.0))
+        gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %.17g is outside the valid range (0 to %llu)",
+            type_name, value, (unsigned long long)maximum_value);
+    return (uint64_t)value;
+}
+
+/* Safe f64-to-i64 conversion with overflow check */
+static inline int64_t gray_f64_to_i64(double value, const char *file, int line) {
+    if (value > 9.223372036854775e+18 || value < -9.223372036854775e+18 ||
+        value != value /* NaN */)
+        gray_panic_code_at(file, line, "P0020", "cannot convert f64 to i64; the value is too large, too small, or NaN");
+    return (int64_t)value;
+}
+
+/* Safe f64-to-u64 conversion with range check */
+static inline uint64_t gray_f64_to_u64(double value, const char *file, int line) {
     /* 1.8446744073709552e+19 == 2^64 exactly as a double; any value >= it overflows uint64 */
     if (value < 0.0 || value >= 1.8446744073709552e+19 || value != value /* NaN */)
-        gray_panic_code_at(file, line, "P0091", "cannot convert float to uint; the value is negative, too large, or NaN");
+        gray_panic_code_at(file, line, "P0091", "cannot convert f64 to u64; the value is negative, too large, or NaN");
     return (uint64_t)value;
 }
 
@@ -464,15 +574,15 @@ static inline uint64_t gray_float_to_uint(double value, const char *file, int li
 struct GrayArray_tag;
 struct GrayMap_tag;
 
-typedef struct { int64_t v0; GrayError *v1; } GrayResult_int;
+typedef struct { int64_t v0; GrayError *v1; } GrayResult_i64;
 typedef struct { void *v0; GrayError *v1; } GrayResult_ptr;
 
 /* Wrap a bool-returning call into a GrayResult_bool.
  * Usage: GRAY_RESULT_WRAP_BOOL(arena, some_call(...), code, error_message); */
-#define GRAY_RESULT_WRAP_BOOL(arena, call, code, err_msg) \
-    do { GrayResult_bool _r; _r.v0 = (call); \
-         if (_r.v0) { _r.v1 = NULL; } \
-         else { _r.v1 = gray_error_new((arena), (code), (err_msg)); } \
-         return _r; } while (0)
+#define GRAY_RESULT_WRAP_BOOL(arena, call, code, error_message) \
+    do { GrayResult_bool gray_macro_result_; gray_macro_result_.v0 = (call); \
+         if (gray_macro_result_.v0) { gray_macro_result_.v1 = NULL; } \
+         else { gray_macro_result_.v1 = gray_error_new((arena), (code), (error_message)); } \
+         return gray_macro_result_; } while (0)
 
 #endif

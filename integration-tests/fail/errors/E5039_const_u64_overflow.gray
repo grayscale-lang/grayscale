@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5039 - constant expression overflows type 'u64'
+ * Expected: a u64 const above the i64 range is folded at full width, so
+ * doubling it overflows u64
+ */
+
+const C u64 = 9223372036854775808
+const D u64 = C + C
+
+do main() {
+    println(D)
+}
+// expect-error: E5039
+// expect-error-count: 1

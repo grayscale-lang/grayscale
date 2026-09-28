@@ -3,7 +3,7 @@
  * Expected: error about missing '=' after '_'
  */
 
-do foo() -> int {
+do foo() -> i64 {
     return 1
 }
 

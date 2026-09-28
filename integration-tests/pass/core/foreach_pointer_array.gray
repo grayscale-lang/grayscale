@@ -4,17 +4,17 @@
  */
 
 const Node struct {
-    value int
+    value i64
 }
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: for_each over [^Node], sum values
     mut n1 = new(Node)
@@ -25,7 +25,7 @@ do main() {
     n3^.value = 30
 
     mut nodes [^Node] = {n1, n2, n3}
-    mut sum int = 0
+    mut sum i64 = 0
     for_each node in nodes {
         sum = sum + node^.value
     }
@@ -46,7 +46,7 @@ do main() {
     p2^.y = 4
 
     mut points [^Point] = {p1, p2}
-    mut total int = 0
+    mut total i64 = 0
     for_each pt in points {
         total = total + pt^.x + pt^.y
     }
@@ -59,7 +59,7 @@ do main() {
     }
 
     // Test 3: for_each with index over pointer array
-    mut idx_sum int = 0
+    mut idx_sum i64 = 0
     for_each i, node in nodes {
         idx_sum = idx_sum + i
     }

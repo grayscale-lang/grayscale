@@ -7,10 +7,10 @@
  */
 
 do main() {
-    mut p ^int = nil
+    mut p ^i64 = nil
     if true {
-        mut s int = 42
-        mut tmp ^int = addr(s)
+        mut s i64 = 42
+        mut tmp ^i64 = addr(s)
         p = tmp
     }
     println(p^)

@@ -9,12 +9,12 @@
 
 do main() {
     println("=== Map copy() Deep Copy Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- mutation of copy does not affect original (string→int) --
-    mut orig map[string:int] = {"a": 1, "b": 2, "c": 3}
-    mut dup map[string:int] = copy(orig)
+    // -- mutation of copy does not affect original (string→i64) --
+    mut orig map[string:i64] = {"a": 1, "b": 2, "c": 3}
+    mut dup map[string:i64] = copy(orig)
     dup["a"] = 99
     dup["d"] = 4
     if orig["a"] == 1 && "d" !in orig && len(orig) == 3 {
@@ -44,21 +44,21 @@ do main() {
         failed += 1
     }
 
-    // -- different key type (int→string) --
-    mut nums map[int:string] = {1: "one", 2: "two", 3: "three"}
-    mut nums_copy map[int:string] = copy(nums)
+    // -- different key type (i64→string) --
+    mut nums map[i64:string] = {1: "one", 2: "two", 3: "three"}
+    mut nums_copy map[i64:string] = copy(nums)
     nums_copy[1] = "uno"
     if nums[1] == "one" && nums_copy[1] == "uno" {
-        println("  [PASS] int-keyed map copy() independence")
+        println("  [PASS] i64-keyed map copy() independence")
         passed += 1
     } otherwise {
-        println("  [FAIL] int-keyed map copy() independence")
+        println("  [FAIL] i64-keyed map copy() independence")
         failed += 1
     }
 
     // -- empty map copy --
-    mut empty map[string:int] = {:}
-    mut empty_copy map[string:int] = copy(empty)
+    mut empty map[string:i64] = {:}
+    mut empty_copy map[string:i64] = copy(empty)
     empty_copy["x"] = 1
     if len(empty) == 0 && len(empty_copy) == 1 {
         println("  [PASS] empty map copy() independence")

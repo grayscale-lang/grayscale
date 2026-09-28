@@ -5,9 +5,9 @@
 
 import @arrays
 
-do bad_reduce(x int) -> int { return x }
+do bad_reduce(x i64) -> i64 { return x }
 
 do main() {
-    mut nums [int] = {1, 2, 3}
-    mut result int = arrays.reduce(nums, 0, ()bad_reduce)
+    mut nums [i64] = {1, 2, 3}
+    mut result i64 = arrays.reduce(nums, 0, ()bad_reduce)
 }

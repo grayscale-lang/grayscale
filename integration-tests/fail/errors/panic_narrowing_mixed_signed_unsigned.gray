@@ -1,6 +1,0 @@
-do main() {
-    mut a i8 = -30
-    mut b u8 = 10
-    mut c u8 = a + b
-    println(c)
-}

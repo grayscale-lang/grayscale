@@ -6,21 +6,21 @@
  */
 
 const Box struct {
-    v uint
+    v u64
 }
 
-do take_u(u uint) -> uint {
+do take_u(u u64) -> u64 {
     return u
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut s int = 7
+    mut s i64 = 7
 
     // call argument: signed -> unsigned needs the cast
-    mut a uint = take_u(cast(s, uint))
+    mut a u64 = take_u(cast(s, u64))
     if a == 7 {
         passed += 1
     } otherwise {
@@ -29,7 +29,7 @@ do main() {
     }
 
     // array element
-    mut arr [uint] = {cast(s, uint)}
+    mut arr [u64] = {cast(s, u64)}
     if arr[0] == 7 {
         passed += 1
     } otherwise {
@@ -38,7 +38,7 @@ do main() {
     }
 
     // struct field
-    mut b Box = Box{ v: cast(s, uint) }
+    mut b Box = Box{ v: cast(s, u64) }
     if b.v == 7 {
         passed += 1
     } otherwise {
@@ -47,8 +47,8 @@ do main() {
     }
 
     // map literal value + map value assignment
-    mut m map[string:uint] = {"a": cast(s, uint)}
-    m["b"] = cast(s, uint)
+    mut m map[string:u64] = {"a": cast(s, u64)}
+    m["b"] = cast(s, u64)
     if m["a"] == 7 && m["b"] == 7 {
         passed += 1
     } otherwise {
@@ -57,11 +57,11 @@ do main() {
     }
 
     // unsigned -> signed also needs the cast, in every position
-    mut u uint = 42
-    mut back int = cast(u, int)
-    mut arr2 [int] = {cast(u, int)}
-    mut m2 map[string:int] = {"a": cast(u, int)}
-    m2["b"] = cast(u, int)
+    mut u u64 = 42
+    mut back i64 = cast(u, i64)
+    mut arr2 [i64] = {cast(u, i64)}
+    mut m2 map[string:i64] = {"a": cast(u, i64)}
+    m2["b"] = cast(u, i64)
     if back == 42 && arr2[0] == 42 && m2["a"] == 42 && m2["b"] == 42 {
         passed += 1
     } otherwise {
@@ -70,8 +70,8 @@ do main() {
     }
 
     // a value-preserving unsigned -> wider-signed widening stays implicit
-    mut by byte = 200
-    mut widened int = by
+    mut by u8 = 200
+    mut widened i64 = by
     mut wide i128 = u
     if widened == 200 && wide == i128(42) {
         passed += 1

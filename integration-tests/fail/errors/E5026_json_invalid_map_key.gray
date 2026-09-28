@@ -8,7 +8,7 @@
 import @json
 
 do main() {
-    mut m map[int:string] = {1: "one", 2: "two"}
+    mut m map[i64:string] = {1: "one", 2: "two"}
     mut result string = json.encode(m)
     println(result)
 }

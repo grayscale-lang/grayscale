@@ -3,9 +3,9 @@
  */
 
 const Box struct {
-    v int
+    v i64
 
-    private do secret(a int) -> int {
+    private do secret(a i64) -> i64 {
         return a * 2
     }
 }

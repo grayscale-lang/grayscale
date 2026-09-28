@@ -11,42 +11,42 @@ const Color enum {
     BLUE
 }
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     // Primitives
-    mut i int = 42
-    mut f float = 3.14
+    mut i i64 = 42
+    mut f f64 = 3.14
     mut s string = "hello"
     mut b bool = true
 
-    assert(type_of(i) == "int", "int variable should return 'int'")
-    assert(type_of(f) == "float", "float variable should return 'float'")
+    assert(type_of(i) == "i64", "i64 variable should return 'i64'")
+    assert(type_of(f) == "f64", "f64 variable should return 'f64'")
     assert(type_of(s) == "string", "string variable should return 'string'")
     assert(type_of(b) == "bool", "bool variable should return 'bool'")
     assert(type_of(nil) == "nil", "nil should return 'nil'")
 
     // Literals
-    assert(type_of(42) == "int", "int literal should return 'int'")
-    assert(type_of(3.14) == "float", "float literal should return 'float'")
+    assert(type_of(42) == "i64", "i64 literal should return 'i64'")
+    assert(type_of(3.14) == "f64", "float literal should return 'f64'")
     assert(type_of("test") == "string", "string literal should return 'string'")
     assert(type_of(true) == "bool", "bool literal should return 'bool'")
 
     // Arrays with declared type
-    mut arr [int] = {1, 2, 3}
-    assert(type_of(arr) == "[int]", "array should return '[int]'")
+    mut arr [i64] = {1, 2, 3}
+    assert(type_of(arr) == "[i64]", "array should return '[i64]'")
 
     mut strArr [string] = {"a", "b"}
     assert(type_of(strArr) == "[string]", "string array should return '[string]'")
 
     // Maps with declared type
-    mut m map[string:int] = {"a": 1}
-    assert(type_of(m) == "map[string:int]", "map should return 'map[string:int]'")
+    mut m map[string:i64] = {"a": 1}
+    assert(type_of(m) == "map[string:i64]", "map should return 'map[string:i64]'")
 
-    mut m2 map[int:string] = {1: "one"}
-    assert(type_of(m2) == "map[int:string]", "map should return 'map[int:string]'")
+    mut m2 map[i64:string] = {1: "one"}
+    assert(type_of(m2) == "map[i64:string]", "map should return 'map[i64:string]'")
 
     // Enums
     mut c Color = Color.RED
@@ -59,27 +59,27 @@ do main() {
     assert(type_of(Point{x: 1, y: 2}) == "Point", "struct literal should return struct name")
 
     // Range
-    assert(type_of(range(0, 5)) == "Range<int>", "range should return 'Range<int>'")
+    assert(type_of(range(0, 5)) == "Range<i64>", "range should return 'Range<i64>'")
 
     // Function returns
-    assert(type_of(returnsInt()) == "int", "function returning int")
+    assert(type_of(returnsInt()) == "i64", "function returning i64")
     assert(type_of(returnsString()) == "string", "function returning string")
     assert(type_of(returnsBool()) == "bool", "function returning bool")
     assert(type_of(returnsStruct()) == "Point", "function returning struct")
 
     // Built-in returns
-    assert(type_of(len(arr)) == "int", "len() should return int")
+    assert(type_of(len(arr)) == "i64", "len() should return i64")
     assert(type_of(type_of(i)) == "string", "type_of() should return string")
     assert(type_of(string(42)) == "string", "string() should return string")
-    assert(type_of(int("42")) == "int", "int() should return int")
-    assert(type_of(float(42)) == "float", "float() should return float")
+    assert(type_of(cast("42", i64)) == "i64", "cast(x, i64) should return i64")
+    assert(type_of(cast(42, f64)) == "f64", "cast(x, f64) should return f64")
 
     // Expressions
-    assert(type_of(1 + 2) == "int", "arithmetic should return int")
+    assert(type_of(1 + 2) == "i64", "arithmetic should return i64")
     assert(type_of(1 < 2) == "bool", "comparison should return bool")
-    assert(type_of(arr[0]) == "int", "array index should return element type")
-    assert(type_of(m["a"]) == "int", "map index should return value type")
-    assert(type_of(p.x) == "int", "struct field should return field type")
+    assert(type_of(arr[0]) == "i64", "array index should return element type")
+    assert(type_of(m["a"]) == "i64", "map index should return value type")
+    assert(type_of(p.x) == "i64", "struct field should return field type")
 
     // Opaque stdlib types
     mut a = mem.arena(1024)
@@ -88,7 +88,7 @@ do main() {
     println("ALL TESTS PASSED")
 }
 
-do returnsInt() -> int { return 42 }
+do returnsInt() -> i64 { return 42 }
 do returnsString() -> string { return "hello" }
 do returnsBool() -> bool { return true }
 do returnsStruct() -> Point { return Point{x: 0, y: 0} }

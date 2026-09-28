@@ -6,19 +6,19 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Node struct {
-    value int
+    value i64
     next ^Node
 }
 
 do main() {
     println("=== Ref Assign to Pointer Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: ref to struct assigned to ^T pointer in declaration
     mut pt = Point{x: 5, y: 10}

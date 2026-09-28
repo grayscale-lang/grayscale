@@ -32,22 +32,22 @@ const Status enum {
 
 /* Task - main data structure */
 const Task struct {
-    id int
+    id i64
     title string
     description string
-    priority int
+    priority i64
     status string
-    created_at int
+    created_at i64
 }
 
 /* TaskStats - statistics summary */
 const TaskStats struct {
-    total int
-    completed int
-    in_progress int
-    blocked int
-    todo int
-    completion_rate float
+    total i64
+    completed i64
+    in_progress i64
+    blocked i64
+    todo i64
+    completion_rate f64
 }
 
 // ==================================================
@@ -55,8 +55,8 @@ const TaskStats struct {
 // ==================================================
 
 /* get_priority_name - Returns human-readable priority name */
-/* NOTE: Using int comparison - enum comparison in if not yet supported */
-do get_priority_name(priority int) -> string {
+/* NOTE: Using i64 comparison - enum comparison in if not yet supported */
+do get_priority_name(priority i64) -> string {
     if priority == 0 {
         return "Low"
     } or priority == 1 {

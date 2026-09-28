@@ -4,10 +4,10 @@
 // expect-error: E3137
 // expect-error-count: 1
 
-const MIN int = -9223372036854775808
-const NEG1 int = -1
+const MIN i64 = -9223372036854775808
+const NEG1 i64 = -1
 
 do main() {
-    mut x int = MIN / NEG1
+    mut x i64 = MIN / NEG1
     println("${x}")
 }

@@ -1,0 +1,104 @@
+/*
+ * arrays_unsigned_order_and_sum.gray - arrays functions order [u64] elements
+ * as unsigned, and get_sum / get_min / get_max return the element type.
+ *
+ * A [u64] element at or above 2^63 was read as a negative int64, so it sorted
+ * first, lost get_max, and summed to a negative number. get_sum / get_min /
+ * get_max were typed i64 for every integer array, so assigning the result to
+ * an unsigned or narrower variable was rejected.
+ */
+
+import @arrays
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    const MAX u64 = 18446744073709551615
+    const HALF u64 = 9223372036854775808
+
+    mut a [u64] = {1, 18446744073709551615}
+    mut a_max u64 = arrays.get_max(a)
+    mut a_min u64 = arrays.get_min(a)
+    if a_max == MAX && a_min == 1 && arrays.is_sorted(a) {
+        passed++
+    } otherwise {
+        println("FAIL: u64 get_max/get_min/is_sorted")
+        failed++
+    }
+
+    mut b [u64] = {5, 18446744073709551615, 1}
+    if arrays.min_index(b) == 2 && arrays.max_index(b) == 1 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 min_index/max_index")
+        failed++
+    }
+
+    arrays.sort_asc(b)
+    if b[0] == 1 && b[1] == 5 && b[2] == MAX {
+        passed++
+    } otherwise {
+        println("FAIL: u64 sort_asc")
+        failed++
+    }
+
+    arrays.sort_desc(b)
+    if b[0] == MAX && b[1] == 5 && b[2] == 1 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 sort_desc")
+        failed++
+    }
+
+    mut c [u64] = {1, 5, 9223372036854775808, 18446744073709551615}
+    if arrays.binary_search(c, MAX) == 3 && arrays.binary_search(c, HALF) == 2 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 binary_search")
+        failed++
+    }
+
+    mut d [u64] = {9223372036854775808, 1}
+    mut d_sum u64 = arrays.get_sum(d)
+    if d_sum == HALF + 1 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 get_sum")
+        failed++
+    }
+
+    mut e [u8] = {1, 2, 200}
+    mut e_sum u8 = arrays.get_sum(e)
+    mut e_min u8 = arrays.get_min(e)
+    mut e_max u8 = arrays.get_max(e)
+    if e_sum == 203 && e_min == 1 && e_max == 200 {
+        passed++
+    } otherwise {
+        println("FAIL: u8 get_sum/get_min/get_max")
+        failed++
+    }
+
+    mut f [u32] = {4000000000, 7}
+    mut f_max u32 = arrays.get_max(f)
+    if f_max == 4000000000 {
+        passed++
+    } otherwise {
+        println("FAIL: u32 get_max")
+        failed++
+    }
+
+    mut g [i16] = {-3, 7, 2}
+    mut g_sum i16 = arrays.get_sum(g)
+    mut g_min i16 = arrays.get_min(g)
+    if g_sum == 6 && g_min == -3 {
+        passed++
+    } otherwise {
+        println("FAIL: i16 get_sum/get_min")
+        failed++
+    }
+
+    println("arrays_unsigned_order_and_sum: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

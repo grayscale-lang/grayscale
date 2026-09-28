@@ -1,0 +1,49 @@
+/*
+ * arrays_element_kinds.gray - the arrays functions read and compare elements
+ * by the array's element type: sized integers, u64 above INT64_MAX, wide
+ * integers, f32 and strings all sort, search, sum and compare by value.
+ */
+import @arrays
+
+do check(label string, ok bool) -> i64 {
+    if ok { return 0 }
+    println("  [FAIL] ${label}")
+    return 1
+}
+
+do main() {
+    mut failed i64 = 0
+
+    mut a [u8] = {5, 3, 200, 1}
+    arrays.sort_asc(a)
+    failed += check("u8 sort", arrays.is_equal(a, {1, 3, 5, 200}))
+    failed += check("u8 contains", arrays.contains(a, 200))
+    failed += check("u8 index_of", arrays.index_of(a, 3) == 1)
+    failed += check("u8 get_max", arrays.get_max(a) == 200)
+    failed += check("u8 binary_search", arrays.binary_search(a, 5) == 2)
+
+    mut w [i128] = {5, -3, 9}
+    arrays.sort_desc(w)
+    failed += check("i128 sort", string(w[0]) == "9" && string(w[2]) == "-3")
+    failed += check("i128 sum", string(arrays.get_sum(w)) == "11")
+
+    mut u [u64] = {18446744073709551615, 1}
+    arrays.sort_asc(u)
+    failed += check("u64 sort by value", u[0] == 1)
+
+    mut f [f32] = {1.5, 0.25}
+    failed += check("f32 average", arrays.average(f) == 0.875)
+    failed += check("f32 is_sorted", !arrays.is_sorted(f))
+
+    mut s [string] = {"b", "a", "b"}
+    failed += check("string deduplicate", len(arrays.deduplicate(s)) == 2)
+    failed += check("string count", arrays.count(s, "b") == 2)
+    arrays.remove(s, "a")
+    failed += check("string remove", len(s) == 2)
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

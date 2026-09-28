@@ -3,7 +3,7 @@
 // The same attribute listed twice inside one #[...] container.
 
 #[test, test]
-do something() -> int {
+do something() -> i64 {
     return 1
 }
 

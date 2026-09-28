@@ -1,9 +1,9 @@
 const Pair struct {
-    a int
+    a i64
     b string
 }
 
 do main() {
     mut p = new(Pair)
-    p^.a = "not an int"
+    p^.a = "not an i64"
 }

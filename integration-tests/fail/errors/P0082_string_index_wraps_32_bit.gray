@@ -1,6 +1,6 @@
 /* Panic Test: P0082 - a string index whose low 32 bits are in range is still out of bounds */
 do main() {
     mut s string = "abc"
-    mut i int = 4294967297
+    mut i i64 = 4294967297
     println(s[i])
 }

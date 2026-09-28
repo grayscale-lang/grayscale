@@ -8,17 +8,17 @@
  */
 
 const Box struct {
-    tag int
-    do bump(self Box, &n int) { n = n + 100 }
+    tag i64
+    do bump(self Box, &n i64) { n = n + 100 }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     b = new(Box)
 
-    mut xs [int] = {1, 2, 3}
+    mut xs [i64] = {1, 2, 3}
     b.bump(xs[0])
     if xs[0] == 101 && xs[1] == 2 && xs[2] == 3 {
         passed += 1
@@ -27,9 +27,9 @@ do main() {
         failed += 1
     }
 
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     b.bump(m["a"])
-    mut mval int = m["a"]
+    mut mval i64 = m["a"]
     if mval == 101 {
         passed += 1
     } otherwise {

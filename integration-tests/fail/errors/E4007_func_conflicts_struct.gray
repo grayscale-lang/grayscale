@@ -4,11 +4,11 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do Point() -> int {
+do Point() -> i64 {
     return 0
 }
 

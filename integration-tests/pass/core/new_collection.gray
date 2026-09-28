@@ -7,37 +7,37 @@
 import @arrays
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: new([int]) → empty array with valid metadata
-    mut pa = new([int])
-    mut arr [int] = pa^
+    // Test 1: new([i64]) → empty array with valid metadata
+    mut pa = new([i64])
+    mut arr [i64] = pa^
     if len(arr) == 0 {
-        println("  [PASS] new([int]) is empty")
+        println("  [PASS] new([i64]) is empty")
         passed += 1
     } otherwise {
-        println("  [FAIL] new([int]): expected len 0, got ${len(arr)}")
+        println("  [FAIL] new([i64]): expected len 0, got ${len(arr)}")
         failed += 1
     }
 
-    // Test 2: append to array from new([int]) (proves elem_size is set)
+    // Test 2: append to array from new([i64]) (proves elem_size is set)
     arrays.append(arr, 10)
     arrays.append(arr, 20)
     if len(arr) == 2 {
-        println("  [PASS] new([int]) append works, len is 2")
+        println("  [PASS] new([i64]) append works, len is 2")
         passed += 1
     } otherwise {
-        println("  [FAIL] new([int]) append: expected len 2, got ${len(arr)}")
+        println("  [FAIL] new([i64]) append: expected len 2, got ${len(arr)}")
         failed += 1
     }
 
     // Test 3: values are correct after append
     if arr[0] == 10 {
-        println("  [PASS] new([int]) first element is 10")
+        println("  [PASS] new([i64]) first element is 10")
         passed += 1
     } otherwise {
-        println("  [FAIL] new([int]) first element: expected 10, got ${arr[0]}")
+        println("  [FAIL] new([i64]) first element: expected 10, got ${arr[0]}")
         failed += 1
     }
 
@@ -62,24 +62,24 @@ do main() {
         failed += 1
     }
 
-    // Test 6: new(map[string:int]) → empty map
-    mut pm = new(map[string:int])
-    mut m map[string:int] = pm^
+    // Test 6: new(map[string:i64]) → empty map
+    mut pm = new(map[string:i64])
+    mut m map[string:i64] = pm^
     if len(m) == 0 {
-        println("  [PASS] new(map[string:int]) is empty")
+        println("  [PASS] new(map[string:i64]) is empty")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(map[string:int]): expected len 0, got ${len(m)}")
+        println("  [FAIL] new(map[string:i64]): expected len 0, got ${len(m)}")
         failed += 1
     }
 
     // Test 7: insert into map (proves key_size/value_size are set)
     m["x"] = 42
     if m["x"] == 42 {
-        println("  [PASS] new(map[string:int]) insert works")
+        println("  [PASS] new(map[string:i64]) insert works")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(map[string:int]) insert: expected 42")
+        println("  [FAIL] new(map[string:i64]) insert: expected 42")
         failed += 1
     }
 

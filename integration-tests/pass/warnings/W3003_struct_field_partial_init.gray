@@ -4,7 +4,7 @@
  */
 
 const Buffer struct {
-    data [int, 5]
+    data [i64, 5]
 }
 
 do main() {

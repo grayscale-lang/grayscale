@@ -3,7 +3,7 @@
  * Expected: "'bool' is a built-in name and cannot be used as a parameter name"
  */
 
-do check(bool int) -> int {
+do check(bool i64) -> i64 {
     return bool
 }
 

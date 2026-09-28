@@ -5,30 +5,30 @@
 
 do main() {
     println("=== Cast Keyword Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: int to float
-    mut f float = cast(42, float)
+    // Test 1: i64 to f64
+    mut f f64 = cast(42, f64)
     if f == 42.0 {
-        println("  [PASS] cast(42, float) = 42.0")
+        println("  [PASS] cast(42, f64) = 42.0")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(42, float): expected 42.0, got ${f}")
+        println("  [FAIL] cast(42, f64): expected 42.0, got ${f}")
         failed += 1
     }
 
-    // Test 2: float to int (truncation)
-    mut i int = cast(3.7, int)
+    // Test 2: f64 to i64 (truncation)
+    mut i i64 = cast(3.7, i64)
     if i == 3 {
-        println("  [PASS] cast(3.7, int) = 3 (truncated)")
+        println("  [PASS] cast(3.7, i64) = 3 (truncated)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(3.7, int): expected 3, got ${i}")
+        println("  [FAIL] cast(3.7, i64): expected 3, got ${i}")
         failed += 1
     }
 
-    // Test 3: int to string
+    // Test 3: i64 to string
     mut s string = cast(123, string)
     if s == "123" {
         println("  [PASS] cast(123, string) = \"123\"")
@@ -38,7 +38,7 @@ do main() {
         failed += 1
     }
 
-    // Test 4: int to u8 (sized type)
+    // Test 4: i64 to u8 (sized type)
     mut small u8 = cast(255, u8)
     if small == 255 {
         println("  [PASS] cast(255, u8) = 255")
@@ -48,7 +48,7 @@ do main() {
         failed += 1
     }
 
-    // Test 5: int to i16 (signed sized)
+    // Test 5: i64 to i16 (signed sized)
     mut med i16 = cast(-100, i16)
     if med == -100 {
         println("  [PASS] cast(-100, i16) = -100")
@@ -58,14 +58,14 @@ do main() {
         failed += 1
     }
 
-    // Test 6: Array cast - [int] to [u8]
-    mut ints [int] = {1, 2, 3}
+    // Test 6: Array cast - [i64] to [u8]
+    mut ints [i64] = {1, 2, 3}
     mut byte_arr [u8] = cast(ints, [u8])
     if len(byte_arr) == 3 {
-        println("  [PASS] cast([int] to [u8]) preserves length 3")
+        println("  [PASS] cast([i64] to [u8]) preserves length 3")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast([int] to [u8]): expected length 3, got ${len(byte_arr)}")
+        println("  [FAIL] cast([i64] to [u8]): expected length 3, got ${len(byte_arr)}")
         failed += 1
     }
 

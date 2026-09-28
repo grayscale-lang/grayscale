@@ -1,0 +1,4 @@
+/* Error Test: P0091 - cast of negative f64 to u64 panics at runtime */
+do main() {
+    println(cast(-1.0, u64))
+}

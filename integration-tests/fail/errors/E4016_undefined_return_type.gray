@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4016 - undefined-return-type
+ * Expected: "undefined return type"
+ */
+// expect-error: E4016
+// expect-error-count: 1
+
+do getData() -> UnknownType {  // Unknown return type
+    return "data"
+}
+
+do main() {
+    mut x = getData()
+}

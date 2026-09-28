@@ -1,8 +1,0 @@
-/*
- * Error Test: E8002 - bit_not on float
- * Expected: E8002 — 'bit_not' can only be used with integers
- */
-do main() {
-    mut x float = 3.14
-    mut z = bit_not x
-}

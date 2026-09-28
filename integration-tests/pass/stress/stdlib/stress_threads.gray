@@ -4,7 +4,7 @@
 
 import @threads
 
-mut thread_result int = 0
+mut thread_result i64 = 0
 
 do worker() {
     thread_result = 42
@@ -12,8 +12,8 @@ do worker() {
 
 do main() {
     println("=== Stress: @threads ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // spawn and join
     mut t = threads.spawn(()worker)

@@ -10,12 +10,12 @@
 
 import @arrays
 
-const N int = 4
+const N i64 = 4
 
 const Widget struct {
-    items   [int, 3]
+    items   [i64, 3]
     tags    [string, 2]
-    samples [int, N]
+    samples [i64, N]
 }
 
 const Wrapper struct {
@@ -23,12 +23,12 @@ const Wrapper struct {
 }
 
 const WithDefault struct {
-    data [int, 3] = {1, 2}
+    data [i64, 3] = {1, 2}
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Full init
     const w1 Widget = Widget{items: {1, 2, 3}, tags: {"a", "b"}, samples: {10, 20, 30, 40}}

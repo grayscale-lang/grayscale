@@ -1,0 +1,10 @@
+/*
+ * Error Test: E7015 - len() on an i64 value
+ *
+ * len() now whitelists only string/array/map
+ * receivers and rejects primitives with a type-named error.
+ */
+
+do main() {
+    println(len(42))
+}

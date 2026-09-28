@@ -4,7 +4,7 @@
  */
 
 const Shape struct {
-    sides int
+    sides i64
 }
 
 const Shape enum {

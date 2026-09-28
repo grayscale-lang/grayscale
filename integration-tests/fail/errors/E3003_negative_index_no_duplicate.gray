@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut a [int] = {10, 20, 30}
+    mut a [i64] = {10, 20, 30}
     println("${a[-1]}")
 }

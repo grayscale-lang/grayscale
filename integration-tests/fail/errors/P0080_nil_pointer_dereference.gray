@@ -1,11 +1,11 @@
 /* Panic Test: P0080 - nil pointer dereference */
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     mut p ^Point = nil
-    mut x int = p^.x
+    mut x i64 = p^.x
     println(x)
 }

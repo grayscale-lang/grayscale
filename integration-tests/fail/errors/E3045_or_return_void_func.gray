@@ -7,7 +7,7 @@ do do_nothing() {
     return
 }
 
-do main() -> (int, Error) {
+do main() -> (i64, Error) {
     mut v = do_nothing() or_return
     return 0, nil
 }

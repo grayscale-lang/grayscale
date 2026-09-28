@@ -7,10 +7,10 @@ import @http
 import @strings
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
-    // Build a body larger than the old 8192-byte request buffer
+    // Build a body larger than the old 8192-u8 request buffer
     // 300 * 36 = 10800 bytes — well above the old 8KB limit
     mut chunk = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     mut body = strings.repeat(chunk, 300)

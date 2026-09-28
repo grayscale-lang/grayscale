@@ -6,8 +6,8 @@
 import @regex
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // empty input: zero-width pattern matches once
     mut r1, _ = regex.find_all("a*", "")

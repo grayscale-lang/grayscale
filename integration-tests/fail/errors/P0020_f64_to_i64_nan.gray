@@ -1,0 +1,6 @@
+/* Panic Test: P0020 - cannot convert f64 to i64; value too large */
+do main() {
+    mut x f64 = 1.0e308
+    mut y i64 = cast(x, i64)
+    println(y)
+}

@@ -1,10 +1,11 @@
 /*
- * Error Test: E8003 - trig-out-of-range
+ * Error Test: P0068 - trig-out-of-range
  * Expected: "out of range" or "trigonometric"
  */
 
 import @math
 
 do main() {
-    mut x float = math.asin(2.0)  // asin only accepts -1 to 1
+    mut value f64 = 2.0
+    mut x f64 = math.asin(value)  // asin only accepts -1 to 1
 }

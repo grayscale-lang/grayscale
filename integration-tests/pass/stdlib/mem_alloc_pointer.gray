@@ -5,31 +5,31 @@
 import @mem
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a Arena = mem.arena(4096)
 
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     if p^ == 42 {
-        println("  [PASS] int")
+        println("  [PASS] i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] int: got ${p^}")
+        println("  [FAIL] i64: got ${p^}")
         failed += 1
     }
 
-    mut f ^float = mem.alloc(a, 3.5)
+    mut f ^f64 = mem.alloc(a, 3.5)
     if f^ == 3.5 {
-        println("  [PASS] float")
+        println("  [PASS] f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] float: got ${f^}")
+        println("  [FAIL] f64: got ${f^}")
         failed += 1
     }
 
@@ -51,7 +51,7 @@ do main() {
         failed += 1
     }
 
-    mut arr ^[int] = mem.alloc(a, {1, 2, 3})
+    mut arr ^[i64] = mem.alloc(a, {1, 2, 3})
     if arr^[0] == 1 && arr^[2] == 3 {
         println("  [PASS] array")
         passed += 1
@@ -78,8 +78,8 @@ do main() {
         failed += 1
     }
 
-    if type_of(p) == "^int" {
-        println("  [PASS] type_of is ^int")
+    if type_of(p) == "^i64" {
+        println("  [PASS] type_of is ^i64")
         passed += 1
     } otherwise {
         println("  [FAIL] type_of: got '${type_of(p)}'")

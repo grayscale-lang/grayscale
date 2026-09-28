@@ -12,11 +12,11 @@ const Direction enum {
 
 do main() {
     println("=== Stress: When Statements ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // when on int with default
-    mut x int = 3
+    // when on i64 with default
+    mut x i64 = 3
     mut r1 string = ""
     when x {
         is 1 { r1 = "one" }
@@ -25,12 +25,12 @@ do main() {
         default { r1 = "other" }
     }
     if r1 == "three" {
-        println("  [PASS] when int match")
+        println("  [PASS] when i64 match")
         passed += 1
-    } otherwise { println("  [FAIL] when int") failed += 1 }
+    } otherwise { println("  [FAIL] when i64") failed += 1 }
 
     // when default case
-    mut y int = 99
+    mut y i64 = 99
     mut r2 string = ""
     when y {
         is 1 { r2 = "one" }
@@ -42,7 +42,7 @@ do main() {
     } otherwise { println("  [FAIL] when default") failed += 1 }
 
     // when with multiple values per is
-    mut z int = 5
+    mut z i64 = 5
     mut r3 string = ""
     when z {
         is 1, 2, 3 { r3 = "low" }
@@ -82,7 +82,7 @@ do main() {
     } otherwise { println("  [FAIL] when char") failed += 1 }
 
     // when inside loop with break
-    mut found int = -1
+    mut found i64 = -1
     for i in range(0, 10) {
         when i {
             is 7 {

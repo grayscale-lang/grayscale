@@ -1,11 +1,11 @@
 /*
  * Test: bitwise operators on sized integer types (u8, u16, i16, i32) and
- * uint. Complements bitwise_operators.gray, which covers int and byte.
+ * u64. Complements bitwise_operators.gray, which covers i64 and u8.
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Shift left on u16, result stored back into u16.
     mut a u16 = 0x00FF
@@ -37,13 +37,13 @@ do main() {
         failed += 1
     }
 
-    // Shift on uint stays wide.
-    mut u uint = 3
-    mut us uint = u bit_shift_left 20
+    // Shift on u64 stays wide.
+    mut u u64 = 3
+    mut us u64 = u bit_shift_left 20
     if us == 3145728 {
         passed += 1
     } otherwise {
-        println("[FAIL] uint bit_shift_left: ${us}")
+        println("[FAIL] u64 bit_shift_left: ${us}")
         failed += 1
     }
 
@@ -71,7 +71,7 @@ do main() {
     }
 
     // Variable shift amount.
-    mut n int = 5
+    mut n i64 = 5
     mut shifted u16 = a bit_shift_left n
     if shifted == 0x1FE0 {
         passed += 1

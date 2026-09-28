@@ -6,14 +6,14 @@
  */
 
 
-do get_value() -> (result int) {
-    mut result int = 99
+do get_value() -> (result i64) {
+    mut result i64 = 99
     return result
 }
 
-do get_pair() -> (name string, age int) {
+do get_pair() -> (name string, age i64) {
     mut name string = "Bob"
-    mut age int = 25
+    mut age i64 = 25
     return name, age
 }
 
@@ -24,11 +24,11 @@ do get_proper() -> (name string) {
 
 do main() {
     println("=== Named Return Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: single named return — value is correct
-    mut v int = get_value()
+    mut v i64 = get_value()
     if v == 99 {
         println("  [PASS] named return produces correct value")
         passed += 1
@@ -38,7 +38,7 @@ do main() {
     }
 
     // Test 2: multi-return with named vars — values correct
-    mut n string, a int = get_pair()
+    mut n string, a i64 = get_pair()
     if n == "Bob" && a == 25 {
         println("  [PASS] multi named return correct")
         passed += 1

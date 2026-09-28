@@ -1,0 +1,7 @@
+import @atomic
+
+do main() {
+    mut f f64 = 1.5
+    atomic.store(addr(f), 1)
+    println(f)
+}

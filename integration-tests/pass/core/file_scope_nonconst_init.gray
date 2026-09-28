@@ -14,20 +14,20 @@
 
 import @arrays
 
-const STOP int = -1
-mut mstop int = -2
+const STOP i64 = -1
+mut mstop i64 = -2
 
 const Bag struct {
-    items [int]
-    index map[string:int]
+    items [i64]
+    index map[string:i64]
 }
 
 mut bag Bag = Bag{}
 mut bag2 Bag
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if STOP == -1 {
         println("  [PASS] negative const global")

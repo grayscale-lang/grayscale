@@ -16,17 +16,17 @@
 
 typedef struct {
     const char *input;
-    int input_len;
+    int input_length;
     int position;
     int read_position;
-    char ch;
+    char current_character;
     int line;
     int column;
     const char *file;
     Arena *arena;   /* For allocating token literals */
-    bool unterminated_string;
+    bool has_unterminated_string;
     const char *error_code; /* Set by lexer on error (E1003, E1004, etc.) */
-    const char *error_msg;  /* Human-readable error message */
+    const char *error_message; /* Human-readable error message */
 } Lexer;
 
 Lexer *lexer_create(Arena *arena, const char *input, const char *file);

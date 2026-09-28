@@ -1,0 +1,46 @@
+/*
+ * fmt_printf_nul_byte.gray - a \0 in a printf format string is written as a
+ * NUL byte; it does not end the format string or drop the values after it.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut after_nul string = fmt.sprintf("a\0b %d", {1})
+    if after_nul == "a\0b 1" && len(after_nul) == 5 {
+        println("  [PASS] text and values after \\0 are kept")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] text and values after \\0 are kept: length ${len(after_nul)}")
+        failed += 1
+    }
+
+    mut between string = fmt.sprintf("%d\0%s\x00%c|", {7, "x", 'é'})
+    if between == "7\0x\0é|" {
+        println("  [PASS] NUL bytes between directives keep every value in place")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] NUL bytes between directives keep every value in place: length ${len(between)}")
+        failed += 1
+    }
+
+    mut values [i64] = {4, 5}
+    mut from_variable string = fmt.sprintf("%d\0%d", values)
+    if from_variable == "4\x005" {
+        println("  [PASS] a NUL byte between directives over an array variable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] a NUL byte between directives over an array variable: length ${len(from_variable)}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

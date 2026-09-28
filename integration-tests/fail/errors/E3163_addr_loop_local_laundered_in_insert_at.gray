@@ -11,10 +11,10 @@
 import @arrays
 
 do main() {
-    mut ptrs [^int] = {}
+    mut ptrs [^i64] = {}
     if true {
-        mut inner int = 3
-        mut t ^int = addr(inner)
+        mut inner i64 = 3
+        mut t ^i64 = addr(inner)
         arrays.insert_at(ptrs, 0, t)
     }
     println(ptrs[0]^)

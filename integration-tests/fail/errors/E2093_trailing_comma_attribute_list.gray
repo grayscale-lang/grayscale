@@ -3,7 +3,7 @@
 // A trailing comma before ']' in a #[...] attribute list.
 
 #[test,]
-do something() -> int {
+do something() -> i64 {
     return 1
 }
 

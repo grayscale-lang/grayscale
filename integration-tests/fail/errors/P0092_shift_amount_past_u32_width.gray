@@ -1,0 +1,5 @@
+/* Panic Test: P0092 - shift amount at or above a u32 operand's 32-bit width */
+do main() {
+    mut u u32 = 1
+    println(u bit_shift_left 33)
+}

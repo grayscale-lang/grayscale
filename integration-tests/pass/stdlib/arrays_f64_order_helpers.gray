@@ -1,0 +1,49 @@
+/*
+ * arrays_f64_order_helpers.gray
+ * sort, is_sorted, binary_search, and min/max index compare [f64] elements
+ * as floats, so negative values order correctly.
+ */
+
+import @arrays
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut values [f64] = {2.5, -1.5, 0.5, -3.0}
+    arrays.sort_asc(values)
+    if values[0] == -3.0 && values[1] == -1.5 && values[2] == 0.5 && values[3] == 2.5 {
+        println("  [PASS] sort_asc [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sort_asc [f64]: ${values}")
+        failed += 1
+    }
+
+    if arrays.is_sorted(values) {
+        println("  [PASS] is_sorted [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_sorted [f64]")
+        failed += 1
+    }
+
+    if arrays.binary_search(values, -1.5) == 1 {
+        println("  [PASS] binary_search [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] binary_search [f64]: ${arrays.binary_search(values, -1.5)}")
+        failed += 1
+    }
+
+    mut mixed [f64] = {1.0, -2.0, 3.0}
+    if arrays.min_index(mixed) == 1 && arrays.max_index(mixed) == 2 {
+        println("  [PASS] min_index / max_index [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] min_index / max_index [f64]: ${arrays.min_index(mixed)} ${arrays.max_index(mixed)}")
+        failed += 1
+    }
+
+    if failed > 0 { println("SOME TESTS FAILED") }
+}

@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3043 - cannot cast [string] to [i64]
+ * Expected: E3043 "cannot cast" error
+ */
+
+do main() {
+    mut words [string] = {"one", "two", "three"}
+    mut nums [i64] = cast(words, [i64])
+}

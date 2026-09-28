@@ -10,7 +10,7 @@ const Holder struct {
     f lib.ID
 }
 
-do takes(p lib.ID) -> int {
+do takes(p lib.ID) -> i64 {
     return 1
 }
 

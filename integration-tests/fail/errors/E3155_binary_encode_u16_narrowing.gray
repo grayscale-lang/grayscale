@@ -1,0 +1,8 @@
+/* Error Test: E3155 - a u32 value passed to encode_u16_le narrows to u16 */
+// expect-error: E3155
+import @binary
+
+do main() {
+    mut x u32 = 70000
+    println(binary.encode_u16_le(x))
+}
