@@ -450,6 +450,10 @@ typedef struct {
     LiteralValue *const_integer_values;
     int const_integer_count;
     int const_integer_capacity;
+    /* Open-addressing index over const_integer_names: each slot holds an
+     * entry index plus one, zero when empty. */
+    int *const_integer_slots;
+    int const_integer_slot_capacity;
 
     /* --test mode: building a test runner, so main() is not required and
      * #test functions are not flagged as unused. */

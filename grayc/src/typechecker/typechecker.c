@@ -5511,19 +5511,30 @@ static void literal_add(LiteralValue *total, const LiteralValue *left, const Lit
 
 static bool constant_fold(TypeChecker *checker, AstNode *node, LiteralValue *result);
 
+/* Index of the file-scope const integer `name`, or -1. */
+static int find_const_integer(TypeChecker *checker, const char *name) {
+    if (!checker->const_integer_slots) return -1;
+    uint32_t mask = (uint32_t)(checker->const_integer_slot_capacity - 1);
+    for (uint32_t slot = scope_string_hash(name) & mask; checker->const_integer_slots[slot];
+         slot = (slot + 1) & mask) {
+        int index = checker->const_integer_slots[slot] - 1;
+        if (strcmp(checker->const_integer_names[index], name) == 0) return index;
+    }
+    return -1;
+}
+
 /* One step of constant_fold: fold `node` from its folded operands. */
 static bool constant_fold_step(TypeChecker *checker, AstNode *node, LiteralValue *result) {
     if (!node) return false;
     switch (node->kind) {
     case NODE_LABEL:
         if (!checker) return false;
-        for (int i = 0; i < checker->const_integer_count; i++) {
-            if (strcmp(checker->const_integer_names[i], node->data.label.value) == 0) {
-                *result = checker->const_integer_values[i];
-                return true;
-            }
+        {
+            int const_index = find_const_integer(checker, node->data.label.value);
+            if (const_index < 0) return false;
+            *result = checker->const_integer_values[const_index];
+            return true;
         }
-        return false;
     case NODE_INTEGER_LITERAL:
         literal_set_u64(result, (uint64_t)node->data.integer_literal.value);
         if (node->data.integer_literal.is_above_u64_maximum) {
@@ -6107,6 +6118,13 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
     return type;
 }
 
+static void const_integer_slot_insert(TypeChecker *checker, int index) {
+    uint32_t mask = (uint32_t)(checker->const_integer_slot_capacity - 1);
+    uint32_t slot = scope_string_hash(checker->const_integer_names[index]) & mask;
+    while (checker->const_integer_slots[slot]) slot = (slot + 1) & mask;
+    checker->const_integer_slots[slot] = index + 1;
+}
+
 /* Register a file-scope const integer value for later constant folding. */
 static void typechecker_register_const_integer(TypeChecker *checker, const char *name, LiteralValue value) {
     if (checker->const_integer_count >= checker->const_integer_capacity) {
@@ -6119,6 +6137,16 @@ static void typechecker_register_const_integer(TypeChecker *checker, const char 
     checker->const_integer_names[checker->const_integer_count] = name;
     checker->const_integer_values[checker->const_integer_count] = value;
     checker->const_integer_count++;
+    if ((size_t)checker->const_integer_count * 2 > (size_t)checker->const_integer_slot_capacity) {
+        free(checker->const_integer_slots);
+        int slot_capacity = checker->const_integer_slot_capacity ? checker->const_integer_slot_capacity * 2 : 16;
+        checker->const_integer_slots = xcalloc((size_t)slot_capacity, sizeof(int));
+        checker->const_integer_slot_capacity = slot_capacity;
+        for (int index = 0; index < checker->const_integer_count; index++)
+            const_integer_slot_insert(checker, index);
+    } else {
+        const_integer_slot_insert(checker, checker->const_integer_count - 1);
+    }
 }
 
 /* Resolve a non-numeric array size identifier in a fixed-size array type
@@ -6169,22 +6197,15 @@ static void typechecker_resolve_array_size_text(TypeChecker *checker,
     }
 
     /* Look up the identifier in the const integer table. */
-    bool found = false;
-    LiteralValue resolved;
-    for (int i = 0; i < checker->const_integer_count; i++) {
-        if (strcmp(checker->const_integer_names[i], size_text) == 0) {
-            resolved = checker->const_integer_values[i];
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
+    int const_index = find_const_integer(checker, size_text);
+    if (const_index < 0) {
         char *message = typechecker_format(checker,
             "'%s' is not a compile-time integer constant; array size must be a const integer value",
             size_text);
         diagnostic_error_message(checker->diagnostics, "E3125", message, file, line, column, 0);
         return;
     }
+    LiteralValue resolved = checker->const_integer_values[const_index];
     const char *resolved_text = literal_text(checker, &resolved);
     if (resolved.is_negative || magnitude_is_zero(resolved.magnitude)) {
         char *message = typechecker_format(checker,
@@ -19478,6 +19499,7 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->const_integer_names);
     free(checker->const_integer_values);
+    free(checker->const_integer_slots);
     free(checker->pending_literals);
 
     free(checker->type_name_cache_names);
