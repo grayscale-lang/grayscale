@@ -1,0 +1,55 @@
+/*
+ * map_rvalue_to_http_and_json.gray
+ * A map literal or a call result is accepted by the http functions and by
+ * json.pretty_print, the same as a map held in a variable.
+ */
+
+import @http
+import @json
+
+do headers() -> map[string:string] {
+    return {"Accept": "*/*"}
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut literal_pretty string = json.pretty_print({"k": "v"}, 2)
+    if literal_pretty == "{\n  \"k\": \"v\"\n}" {
+        println("  [PASS] json.pretty_print with a map literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] json.pretty_print with a map literal: ${literal_pretty}")
+        failed += 1
+    }
+
+    mut call_pretty string = json.pretty_print(headers(), 2)
+    if call_pretty == "{\n  \"Accept\": \"*/*\"\n}" {
+        println("  [PASS] json.pretty_print with a call result")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] json.pretty_print with a call result: ${call_pretty}")
+        failed += 1
+    }
+
+    mut _literal_response, literal_error = http.get("http://127.0.0.1:1", {"Accept": "*/*"})
+    if literal_error != nil {
+        println("  [PASS] http.get with a map literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] http.get with a map literal: no error from a closed port")
+        failed += 1
+    }
+
+    mut _call_response, call_error = http.get("http://127.0.0.1:1", headers())
+    if call_error != nil {
+        println("  [PASS] http.get with a call result")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] http.get with a call result: no error from a closed port")
+        failed += 1
+    }
+
+    if failed > 0 { println("SOME TESTS FAILED") }
+}

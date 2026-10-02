@@ -6868,8 +6868,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
     if (strcmp(function_name, "get") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_get%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
@@ -6878,8 +6878,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
@@ -6888,24 +6888,24 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "delete") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_delete%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "head") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_head%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
@@ -6914,8 +6914,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
@@ -7309,8 +7309,8 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
         return true;
     }
     if (strcmp(function_name_text, "pretty_print") == 0) {
-        emit(codegen, "gray_json_pretty_map(gray_default_arena, &");
-        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, "gray_json_pretty_map(gray_default_arena, ");
+        emit_address_of(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
