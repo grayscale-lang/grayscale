@@ -15626,26 +15626,6 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
                 typechecker_error_at(checker, "E5049", node, message);
             }
         }
-        /* pointer depth mismatch (e.g. returning ^^i64
-         * from a function declared -> ^i64). Both sides are
-         * TYPE_KIND_POINTER so the kind check above passes, but the
-         * element_type strings differ ("i64" vs "^i64"). */
-        if (return_type->kind == TYPE_KIND_POINTER && expected->kind == TYPE_KIND_POINTER &&
-            return_type->element_type && expected->element_type &&
-            strcmp(return_type->element_type, expected->element_type) != 0) {
-            /* Build human-readable pointer type strings (strip module prefix) */
-            const char *expected_inner_name = struct_display_name(checker, expected->element_type);
-            if (expected_inner_name == expected->element_type) expected_inner_name = enum_display_name(checker, expected->element_type);
-            const char *got_inner = struct_display_name(checker, return_type->element_type);
-            if (got_inner == return_type->element_type) got_inner = enum_display_name(checker, return_type->element_type);
-            char expected_text[TYPE_NAME_MAX], actual_text[TYPE_NAME_MAX];
-            snprintf(expected_text, sizeof(expected_text), "^%s", expected_inner_name);
-            snprintf(actual_text, sizeof(actual_text), "^%s", got_inner);
-            char *message = typechecker_format(checker,
-                "return type mismatch: expected '%s', got '%s'",
-                expected_text, actual_text);
-            typechecker_error_at(checker, "E5049", node, message);
-        }
         /* Non-primary return slots. Everything above inspects values[0]
          * only; without this a `return 0, NetErr.DNS_FAIL` into a
          * `-> (i64, DbErr)` slot passed unchecked and leaked a C type
