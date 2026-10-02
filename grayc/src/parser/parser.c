@@ -2523,6 +2523,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     next_token(parser); /* skip 'struct' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
     next_token(parser); /* skip { */
+    while (current_token_is(parser, TOKEN_SEMICOLON)) next_token(parser);
 
     int previous_field_line = -1;
     bool field_separated = false;
@@ -2822,6 +2823,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     next_token(parser); /* skip 'enum' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
     next_token(parser); /* skip { */
+    while (current_token_is(parser, TOKEN_SEMICOLON)) next_token(parser);
 
     int previous_variant_line = -1;
     bool variant_separated = false;
