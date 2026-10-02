@@ -3933,7 +3933,31 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         }
         char source_value[32];
         snprintf(source_value, sizeof(source_value), "_cv%d", unique_id);
-        if (array_maximum) {
+        if (is_wide_integer_type_name(destination_element_type)) {
+            /* Into a wide integer: a wide source is range-checked, a float is
+             * truncated and range-checked, and any other scalar is widened. */
+            GrayType *source_element = type_from_name(source_element_type);
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = ", destination_c_type, unique_id, unique_id);
+            if (is_wide_integer_type_name(source_element_type)) {
+                if (strcmp(source_element_type, destination_element_type) == 0)
+                    emit_formatted(codegen, "_cv%d; ", unique_id);
+                else
+                    emit_formatted(codegen, "gray_cast_%s_to_%s(_cv%d, \"%s\", %d); ",
+                        source_element_type, destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (is_source_floating_point) {
+                emit_formatted(codegen, "gray_f64_to_%s((double)_cv%d, \"%s\", %d); ",
+                    destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (destination_element_type[0] == 'u' && source_element->kind == TYPE_KIND_SIGNED_INTEGER) {
+                emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)_cv%d, \"%s\", %d); ",
+                    destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (source_element->kind == TYPE_KIND_UNSIGNED_INTEGER) {
+                emit_formatted(codegen, "%s_from_u64((uint64_t)_cv%d); ",
+                    wide_integer_prefix(destination_element_type), unique_id);
+            } else {
+                emit_formatted(codegen, "%s_from_i64((int64_t)_cv%d); ",
+                    wide_integer_prefix(destination_element_type), unique_id);
+            }
+        } else if (array_maximum) {
             /* Narrowing to a sized integer: range-check the source as it is. */
             emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)", destination_c_type, unique_id, unique_id, destination_c_type);
             emit_range_checked_narrowing(codegen, type_from_name(source_element_type), NULL, source_value,

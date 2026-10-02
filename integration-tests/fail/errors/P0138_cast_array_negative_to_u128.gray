@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0138 - a negative element cannot become a u128 in an array cast
+ */
+
+do main() {
+    mut values [i8] = {1, -2}
+    println(cast(values, [u128]))
+}

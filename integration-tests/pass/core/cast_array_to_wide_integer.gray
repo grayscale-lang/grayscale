@@ -1,0 +1,41 @@
+/*
+ * cast_array_to_wide_integer.gray - an array cast whose element type is a
+ * wide integer converts every element.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut wide [i128] = {5, 2}
+    mut converted [u256] = cast(wide, [u256])
+    if len(converted) == 2 && converted[0] == 5 && converted[1] == 2 {
+        passed++
+    } otherwise {
+        println("FAIL: [i128] to [u256]")
+        failed++
+    }
+
+    mut bytes [i8] = {1, 2}
+    mut from_bytes [u128] = cast(bytes, [u128])
+    if len(from_bytes) == 2 && from_bytes[1] == 2 {
+        passed++
+    } otherwise {
+        println("FAIL: [i8] to [u128]")
+        failed++
+    }
+
+    mut floats [f64] = {1.9, 2.0}
+    mut from_floats [i128] = cast(floats, [i128])
+    if len(from_floats) == 2 && from_floats[0] == 1 && from_floats[1] == 2 {
+        passed++
+    } otherwise {
+        println("FAIL: [f64] to [i128]")
+        failed++
+    }
+
+    println("cast_array_to_wide_integer: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}
