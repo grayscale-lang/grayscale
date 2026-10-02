@@ -13,6 +13,7 @@
 #include "strconv.h"
 #include "builtins.h"
 #include "../runtime/bigint.h"
+#include <math.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -787,7 +788,17 @@ void gray_json_field_decode(GrayString text, int32_t kind, void *output, const c
     case GRAY_ELEM_U16: *(uint16_t *)output = (uint16_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT16_MAX, "u16", file, line); break;
     case GRAY_ELEM_U32: *(uint32_t *)output = (uint32_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT32_MAX, "u32", file, line); break;
     case GRAY_ELEM_U64: *(uint64_t *)output = gray_strconv_to_u64(text, 10); break;
-    case GRAY_ELEM_F32: *(float *)output  = (float)gray_strconv_to_f64(text); break;
+    case GRAY_ELEM_F32: {
+        double parsed = gray_strconv_to_f64(text);
+        float narrowed = (float)parsed;
+        /* Overflow to infinity and underflow to zero both lose the value. */
+        if (isinf(narrowed) || (narrowed == 0.0f && parsed != 0.0)) {
+            gray_panic_code_at(file, line, "P0136", "cannot convert '%.*s' to f32; value is outside its range",
+                (int)text.len, text.data);
+        }
+        *(float *)output = narrowed;
+        break;
+    }
     case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_f64(text); break;
     case GRAY_ELEM_I128: *(gray_i128 *)output = gray_builtin_string_to_i128(text, file, line); break;
     case GRAY_ELEM_U128: *(gray_u128 *)output = gray_builtin_string_to_u128(text, file, line); break;

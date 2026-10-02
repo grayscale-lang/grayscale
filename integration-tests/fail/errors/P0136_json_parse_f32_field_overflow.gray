@@ -1,0 +1,15 @@
+/*
+ * Panic Test: P0136 - json.parse of a number above the range of an f32 field
+ */
+
+import @json
+
+#json
+const Holder struct {
+    value f32
+}
+
+do main() {
+    mut holder Holder = json.parse("{\"value\": 1e50}")
+    println(json.stringify(holder))
+}
