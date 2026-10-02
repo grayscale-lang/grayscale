@@ -3957,6 +3957,24 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "%s_from_i64((int64_t)_cv%d); ",
                     wide_integer_prefix(destination_element_type), unique_id);
             }
+        } else if (is_wide_integer_type_name(source_element_type)) {
+            /* Out of a wide integer: range-checked extraction to the element type. */
+            const char *source_prefix = wide_integer_prefix(source_element_type);
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = ", destination_c_type, unique_id, unique_id);
+            if (is_destination_floating_point) {
+                emit_formatted(codegen, "(%s)%s_to_f64(_cv%d); ", destination_c_type, source_prefix, unique_id);
+            } else if (array_maximum) {
+                emit_formatted(codegen, "(%s)%s(%s_to_%s(_cv%d, \"%s\", %d), ", destination_c_type,
+                    is_array_unsigned ? "gray_ucast_check_u64" : "gray_cast_check", source_prefix,
+                    is_array_unsigned ? "u64" : "i64", unique_id, codegen->file, node->token.line);
+                emit_sized_bounds_arguments(codegen, array_minimum, array_maximum, is_array_unsigned,
+                                            destination_element_type, node->token.line);
+                emit(codegen, "); ");
+            } else {
+                emit_formatted(codegen, "(%s)%s_to_%s(_cv%d, \"%s\", %d); ", destination_c_type, source_prefix,
+                    strcmp(destination_element_type, "u64") == 0 ? "u64" : "i64", unique_id,
+                    codegen->file, node->token.line);
+            }
         } else if (array_maximum) {
             /* Narrowing to a sized integer: range-check the source as it is. */
             emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)", destination_c_type, unique_id, unique_id, destination_c_type);
