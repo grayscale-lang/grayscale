@@ -1,0 +1,15 @@
+/*
+ * Error Test: server.add_route takes a func(HttpRequest) -> HttpResponse handler
+ */
+// expect-error: E3066
+// expect-error-count: 1
+
+import @server
+
+do home() {
+}
+
+do main() {
+    mut router Router = server.add_router()
+    server.add_route(router, "GET", "/", ()home)
+}

@@ -3046,6 +3046,8 @@ typedef enum {
      * an argument is checked as that type. EXPECTED_ARGUMENT_NUMBER takes any number. */
     EXPECTED_ARGUMENT_STRING, EXPECTED_ARGUMENT_I64, EXPECTED_ARGUMENT_U64, EXPECTED_ARGUMENT_F64, EXPECTED_ARGUMENT_BOOL, EXPECTED_ARGUMENT_ARRAY, EXPECTED_ARGUMENT_MAP, EXPECTED_ARGUMENT_ANY, EXPECTED_ARGUMENT_NUMBER, EXPECTED_ARGUMENT_CHAR, EXPECTED_ARGUMENT_CHANNEL,
     EXPECTED_ARGUMENT_BUILDER, EXPECTED_ARGUMENT_UUID, EXPECTED_ARGUMENT_U8_ARRAY, EXPECTED_ARGUMENT_I64_POINTER,
+    EXPECTED_ARGUMENT_MUTEX, EXPECTED_ARGUMENT_THREAD, EXPECTED_ARGUMENT_SPINLOCK, EXPECTED_ARGUMENT_ARENA,
+    EXPECTED_ARGUMENT_DATABASE, EXPECTED_ARGUMENT_ROUTER, EXPECTED_ARGUMENT_POINTER,
     /* A value stored into or compared with the array in argument 0: checked
      * as that array's element type. */
     EXPECTED_ARGUMENT_ELEMENT_OF_FIRST,
@@ -3083,6 +3085,13 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
                              actual->name && strcmp(actual->name, "Builder") == 0;
     case EXPECTED_ARGUMENT_UUID:    return actual->kind == TYPE_KIND_STRUCT &&
                              actual->name && strcmp(actual->name, "UUID") == 0;
+    case EXPECTED_ARGUMENT_MUTEX:      return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Mutex") == 0;
+    case EXPECTED_ARGUMENT_THREAD:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Thread") == 0;
+    case EXPECTED_ARGUMENT_SPINLOCK:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "SpinLock") == 0;
+    case EXPECTED_ARGUMENT_ARENA:      return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Arena") == 0;
+    case EXPECTED_ARGUMENT_DATABASE:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Database") == 0;
+    case EXPECTED_ARGUMENT_ROUTER:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Router") == 0;
+    case EXPECTED_ARGUMENT_POINTER:  return actual->kind == TYPE_KIND_POINTER;
     case EXPECTED_ARGUMENT_U8_ARRAY: return actual->kind == TYPE_KIND_ARRAY && actual->element_type &&
                              strcmp(actual->element_type, "u8") == 0;
     /* The atomic operations read and write exactly 8 bytes as an int64. */
@@ -3118,6 +3127,13 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_BUILDER: return "Builder";
     case EXPECTED_ARGUMENT_UUID:    return "UUID";
     case EXPECTED_ARGUMENT_U8_ARRAY: return "[u8]";
+    case EXPECTED_ARGUMENT_MUTEX:    return "Mutex";
+    case EXPECTED_ARGUMENT_THREAD:   return "Thread";
+    case EXPECTED_ARGUMENT_SPINLOCK: return "SpinLock";
+    case EXPECTED_ARGUMENT_ARENA:    return "Arena";
+    case EXPECTED_ARGUMENT_DATABASE: return "Database";
+    case EXPECTED_ARGUMENT_ROUTER:   return "Router";
+    case EXPECTED_ARGUMENT_POINTER:  return "a pointer";
     case EXPECTED_ARGUMENT_I64_POINTER: return "^i64";
     case EXPECTED_ARGUMENT_TYPE:   return "a type name";
     case EXPECTED_ARGUMENT_ELEMENT_OF_FIRST: return "an element of the array";
@@ -3215,11 +3231,11 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"atomic", "fence",            0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"atomic", "load",             1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
     {"atomic", "or",               2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "spin_lock",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"atomic", "spin_trylock",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"atomic", "spin_unlock",      1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"atomic", "spin_lock",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
+    {"atomic", "spin_trylock",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "bool"},
+    {"atomic", "spin_unlock",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "spinlock",         0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"SpinLock"},
-    {"atomic", "spinlock_destroy", 1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"atomic", "spinlock_destroy", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "store",            2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"void"},
     {"atomic", "sub",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
     {"atomic", "xor",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
@@ -3472,13 +3488,13 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     /* mem */
     {"mem", "alloc",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},NULL},
     {"mem", "arena",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Arena"},
-    {"mem", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "fill",     3, 3, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"mem", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "void"},
+    {"mem", "fill",     3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_I64}}, "void"},
     {"mem", "init",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_TYPE}},NULL},
-    {"mem", "raw_copy", 3, 3, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "reset",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "usage",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
-    {"mem", "zero",     2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"mem", "raw_copy", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_POINTER}, {2, EXPECTED_ARGUMENT_I64}}, "void"},
+    {"mem", "reset",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "void"},
+    {"mem", "usage",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "i64"},
+    {"mem", "zero",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
     /* net */
     {"net", "accept",      1, 1, true,  FALLIBLE_TYPE_STRUCT_SOCKET,   0, {{0}},"Socket"},
     {"net", "close",       1, 1, false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
@@ -3540,17 +3556,17 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"runtime", "uptime",       0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "f64"},
     {"runtime", "version",      0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "string"},
     /* server */
-    {"server", "add_middleware", 2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"server", "add_route",  4, 4, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"server", "add_middleware", 2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ROUTER}}, "void"},
+    {"server", "add_route",  4, 4, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "add_router", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Router"},
-    {"server", "cors",       2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"server", "cors",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "html",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     {"server", "json",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
-    {"server", "listen",     2, 3, false, FALLIBLE_TYPE_NONE, 2, {{1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"server", "listen",     2, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "redirect",   2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     {"server", "text",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     /* sqlite */
-    {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
+    {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            1, {{0, EXPECTED_ARGUMENT_DATABASE}}, "void"},
     {"sqlite", "exec",         2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_BOOL,            0, {{0}},"bool"},
     {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FALLIBLE_TYPE_STRUCT_DATABASE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "Database"},
@@ -3630,17 +3646,17 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"strings", "trim_right",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"strings", "truncate",      3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* sync */
-    {"sync", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"sync", "lock",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"sync", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
+    {"sync", "lock",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
     {"sync", "mutex",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Mutex"},
-    {"sync", "try_lock", 1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"sync", "unlock",   1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"sync", "try_lock", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "bool"},
+    {"sync", "unlock",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
     /* threads */
-    {"threads", "detach",       1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"threads", "detach",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "void"},
     {"threads", "get_id",       0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
-    {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"threads", "sleep",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "bool"},
+    {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "void"},
+    {"threads", "sleep",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "void"},
     {"threads", "spawn",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "spawn_arg",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "thread_count", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
@@ -3895,6 +3911,29 @@ static void typechecker_check_io_read_lines_limit(TypeChecker *checker, const ch
 }
 
 static void typechecker_check_binary_encode_argument(TypeChecker *checker, const char *function_name, AstNode *node);
+
+/* A function-typed stdlib argument must have exactly the signature the
+ * function stores and calls it with: E3066 for another function signature,
+ * E5026 for a value that is not a function at all. */
+static void check_function_argument_signature(TypeChecker *checker, AstNode *argument, const char *module_name,
+    const char *function_name, int argument_number, const char *expected_signature)
+{
+    GrayType *argument_type = resolve_expression(checker, argument);
+    if (!argument_type || argument_type->kind == TYPE_KIND_UNKNOWN) return;
+    if (argument_type->kind != TYPE_KIND_FUNCTION) {
+        typechecker_error_at(checker, "E5026", argument, typechecker_format(checker,
+            "'%s.%s()' expects %s as argument %d, got '%s'",
+            module_name, function_name, expected_signature, argument_number, type_display_name(checker, argument_type)));
+        return;
+    }
+    if (argument_type->name && strcmp(argument_type->name, "func") != 0 &&
+        strcmp(argument_type->name, expected_signature) != 0) {
+        typechecker_error_at(checker, "E3066", argument, typechecker_format(checker,
+            "argument %d of '%s.%s': expected %s, got %s",
+            argument_number, module_name, function_name, expected_signature, type_display_name(checker, argument_type)));
+    }
+}
+
 
 static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const char *module_name,
     const char *function_name, AstNode *node)
@@ -7477,17 +7516,17 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             else {
-                GrayType *function_type = resolve_expression(checker, first_argument_node);
-                const char *expected_signature = strcmp(member_function_name, "spawn") == 0 ? "func()" : "func(i64)";
-                if (function_type && function_type->kind == TYPE_KIND_FUNCTION && function_type->name &&
-                    strcmp(function_type->name, "func") != 0 &&
-                    strcmp(function_type->name, expected_signature) != 0) {
-                    char *message = typechecker_format(checker,
-                        "argument 1 of 'threads.%s': expected %s, got %s",
-                        member_function_name, expected_signature, type_display_name(checker, function_type));
-                    typechecker_error_at(checker, "E3066", first_argument_node, message);
-                }
+                check_function_argument_signature(checker, first_argument_node, "threads", member_function_name, 1,
+                    strcmp(member_function_name, "spawn") == 0 ? "func()" : "func(i64)");
             }
+        }
+    } else if (strcmp(module_name, "server") == 0) {
+        if (strcmp(member_function_name, "add_route") == 0 && node->data.call.argument_count == 4) {
+            check_function_argument_signature(checker, node->data.call.arguments[3], "server", member_function_name, 4,
+                "func(HttpRequest)->HttpResponse");
+        } else if (strcmp(member_function_name, "add_middleware") == 0 && node->data.call.argument_count == 2) {
+            check_function_argument_signature(checker, node->data.call.arguments[1], "server", member_function_name, 2,
+                "func(^HttpRequest,^HttpResponse)");
         }
     } else if (strcmp(module_name, "net") == 0) {
         /* E5026: functions that take a socket/listener as first arg */

@@ -1,0 +1,15 @@
+/*
+ * Error Test: server.add_route takes a Router
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @server
+
+do home(req HttpRequest) -> HttpResponse {
+    return server.text(200, "ok")
+}
+
+do main() {
+    server.add_route(1, "GET", "/", ()home)
+}
