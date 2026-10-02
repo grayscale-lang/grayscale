@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - maps.merge takes a second map of the first map's type
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @maps
+
+do main() {
+    mut counts map[string:i64] = {"a": 1}
+    mut names map[string:string] = {"a": "x"}
+    println(maps.merge(counts, names))
+}

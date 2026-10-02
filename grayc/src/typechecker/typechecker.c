@@ -185,6 +185,7 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
 static GrayType *resolve_untyped(TypeChecker *checker, AstNode *node);
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
 static bool literal_entry_mismatches(TypeChecker *checker, GrayType *expected, GrayType *actual);
+static bool map_types_match(GrayType *declared, GrayType *value_type);
 
 /* Forward declarations — fixed-size array helpers, defined near the pointer
  * checker but needed earlier by the mutating-array-call guard. */
@@ -3050,6 +3051,10 @@ typedef enum {
     EXPECTED_ARGUMENT_ELEMENT_OF_FIRST,
     /* A second array of argument 0's type. */
     EXPECTED_ARGUMENT_SAME_AS_FIRST,
+    /* A key or value looked up in or stored into the map in argument 0:
+     * checked as that map's key or value type. */
+    EXPECTED_ARGUMENT_KEY_OF_FIRST,
+    EXPECTED_ARGUMENT_VALUE_OF_FIRST,
     /* One of the numbers math.min/max/clamp combine: every such argument is
      * checked as their common type (as a binary operator would type them). */
     EXPECTED_ARGUMENT_COMMON_NUMBER,
@@ -3088,7 +3093,9 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_TYPE:   return true;
     /* Checked against the type derived from the other arguments. */
     case EXPECTED_ARGUMENT_ELEMENT_OF_FIRST:
-    case EXPECTED_ARGUMENT_SAME_AS_FIRST: return true;
+    case EXPECTED_ARGUMENT_SAME_AS_FIRST:
+    case EXPECTED_ARGUMENT_KEY_OF_FIRST:
+    case EXPECTED_ARGUMENT_VALUE_OF_FIRST: return true;
     case EXPECTED_ARGUMENT_COMMON_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
                                    actual->kind == TYPE_KIND_FLOATING_POINT;
     }
@@ -3115,6 +3122,8 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_TYPE:   return "a type name";
     case EXPECTED_ARGUMENT_ELEMENT_OF_FIRST: return "an element of the array";
     case EXPECTED_ARGUMENT_SAME_AS_FIRST: return "an array of the same type";
+    case EXPECTED_ARGUMENT_KEY_OF_FIRST: return "a key of the map";
+    case EXPECTED_ARGUMENT_VALUE_OF_FIRST: return "a value of the map";
     case EXPECTED_ARGUMENT_COMMON_NUMBER: return "number";
     }
     return "unknown";
@@ -3399,15 +3408,15 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"json", "stringify",    1, 1, false, FALLIBLE_TYPE_NONE,       0, {{0}},"string"},
     /* maps */
     {"maps", "clear",          1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "void"},
-    {"maps", "contains_value", 2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
+    {"maps", "contains_value", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_VALUE_OF_FIRST}}, "bool"},
     {"maps", "get_keys",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "get_or_default", 3, 3, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
+    {"maps", "get_or_default", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}, {2, EXPECTED_ARGUMENT_VALUE_OF_FIRST}}, NULL},
     {"maps", "get_values",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "has_key",        2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
+    {"maps", "has_key",        2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}}, "bool"},
     {"maps", "is_empty",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
     {"maps", "is_equal",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_MAP}}, "bool"},
-    {"maps", "merge",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "remove_key",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "void"},
+    {"maps", "merge",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_SAME_AS_FIRST}}, NULL},
+    {"maps", "remove_key",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}}, "void"},
     /* math */
     {"math", "abs",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "$0"},
     {"math", "acos",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
@@ -3744,6 +3753,17 @@ static GrayType *array_element_type(TypeChecker *checker, GrayType *type) {
         ? typechecker_type_from_name(checker, type->element_type) : &TYPE_UNKNOWN;
 }
 
+/* The key or value type of map type `type`, or unknown. */
+static GrayType *map_key_type(TypeChecker *checker, GrayType *type) {
+    return type && type->kind == TYPE_KIND_MAP && type->key_type
+        ? typechecker_type_from_name(checker, type->key_type) : &TYPE_UNKNOWN;
+}
+
+static GrayType *map_value_type(TypeChecker *checker, GrayType *type) {
+    return type && type->kind == TYPE_KIND_MAP && type->value_type
+        ? typechecker_type_from_name(checker, type->value_type) : &TYPE_UNKNOWN;
+}
+
 /* The return type a registry entry gives the call `node`, deriving it from
  * the arguments where the entry says to (see StdlibFunctionMetadata.return_type). */
 static GrayType *resolve_return_type(TypeChecker *checker, const StdlibFunctionMetadata *metadata, AstNode *node) {
@@ -3918,6 +3938,8 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
                 else if (kind == EXPECTED_ARGUMENT_U8_ARRAY) slot = type_array("u8");
                 else if (kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST) slot = array_element_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) slot = stdlib_first_argument_type(checker, node);
+                else if (kind == EXPECTED_ARGUMENT_KEY_OF_FIRST) slot = map_key_type(checker, stdlib_first_argument_type(checker, node));
+                else if (kind == EXPECTED_ARGUMENT_VALUE_OF_FIRST) slot = map_value_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_COMMON_NUMBER) {
                     slot = stdlib_common_number_type(checker, metadata, node);
                     if (!slot) {
@@ -3929,8 +3951,11 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
             }
             AstNode *argument = node->data.call.arguments[argument_index];
             GrayType *argument_type = slot ? check_expression_as(checker, argument, slot) : resolve_expression(checker, argument);
-            if ((kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST || kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) && slot &&
-                literal_entry_mismatches(checker, slot, argument_type)) {
+            if ((kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST || kind == EXPECTED_ARGUMENT_SAME_AS_FIRST ||
+                 kind == EXPECTED_ARGUMENT_KEY_OF_FIRST || kind == EXPECTED_ARGUMENT_VALUE_OF_FIRST) && slot &&
+                (literal_entry_mismatches(checker, slot, argument_type) ||
+                 (slot->kind == TYPE_KIND_MAP && argument_type && argument_type->kind == TYPE_KIND_MAP &&
+                  !map_types_match(slot, argument_type)))) {
                 typechecker_error_at(checker, "E5026", argument, typechecker_format(checker,
                     "'%s.%s()' expects '%s' as argument %d, got '%s'",
                     module_name, function_name, type_display_name(checker, slot), argument_index + 1, type_display_name(checker, argument_type)));

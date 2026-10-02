@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5026 - maps.get_or_default takes a key of the map's key type
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @maps
+
+do main() {
+    mut counts map[string:i64] = {"a": 1}
+    println(maps.get_or_default(counts, 5, 1))
+}
