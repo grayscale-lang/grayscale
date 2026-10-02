@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3066 - threads.spawn requires a func() reference
+ */
+// expect-error: E3066
+// expect-error-count: 1
+
+import @threads
+
+do worker(n i64) {
+    println(n)
+}
+
+do main() {
+    mut t Thread = threads.spawn(()worker)
+    threads.join(t)
+}

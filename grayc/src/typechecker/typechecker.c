@@ -7451,6 +7451,18 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     "'threads.spawn()' requires a function reference; use '()func_name' or 'ref(func_name)'",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            else {
+                GrayType *function_type = resolve_expression(checker, first_argument_node);
+                const char *expected_signature = strcmp(member_function_name, "spawn") == 0 ? "func()" : "func(i64)";
+                if (function_type && function_type->kind == TYPE_KIND_FUNCTION && function_type->name &&
+                    strcmp(function_type->name, "func") != 0 &&
+                    strcmp(function_type->name, expected_signature) != 0) {
+                    char *message = typechecker_format(checker,
+                        "argument 1 of 'threads.%s': expected %s, got %s",
+                        member_function_name, expected_signature, type_display_name(checker, function_type));
+                    typechecker_error_at(checker, "E3066", first_argument_node, message);
+                }
+            }
         }
     } else if (strcmp(module_name, "net") == 0) {
         /* E5026: functions that take a socket/listener as first arg */
