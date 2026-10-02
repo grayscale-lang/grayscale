@@ -3992,6 +3992,11 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         emit(codegen, "gray_f64_to_u64((double)(");
         emit_expression(codegen, value);
         emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+    } else if (value_kind == TYPE_KIND_STRING && is_wide_integer_type_name(target)) {
+        /* string → wide integer: parsed and range-checked at runtime */
+        emit_formatted(codegen, "gray_builtin_string_to_%s(", target);
+        emit_expression(codegen, value);
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
     } else if (value_kind == TYPE_KIND_STRING) {
         /* string → numeric (targets other than i64/f64 handled above):
          * parse to int64/double first, then apply narrowing check */

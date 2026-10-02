@@ -506,7 +506,8 @@
     GRAY_PANIC("P0132", "server",     "server: response header contains CR or LF — HTTP header injection is not allowed") \
     GRAY_PANIC("P0133", "random",     "random.choice called on an empty array") \
     GRAY_PANIC("P0134", "random",     "random.rand_i64, rand_f64 or rand_char called with an empty range; min must be less than max") \
-    GRAY_PANIC("P0135", "json",       "json.parse: field '%s' expects %s, but the JSON value is %s")
+    GRAY_PANIC("P0135", "json",       "json.parse: field '%s' expects %s, but the JSON value is %s") \
+    GRAY_PANIC("P0136", "runtime",    "cannot convert '%s' to %s; value is outside its range")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0084 - a string that is not a number cannot become a wide integer
+ */
+
+do main() {
+    mut text string = "12x"
+    println(cast(text, i256))
+}

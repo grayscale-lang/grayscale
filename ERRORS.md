@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 479 codes** (335 errors, 17 warnings, 127 panics)
+**Total: 480 codes** (335 errors, 17 warnings, 128 panics)
 
 ---
 
@@ -506,6 +506,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0133` | random | random.choice called on an empty array |
 | `P0134` | random | random.rand_i64, rand_f64 or rand_char called with an empty range; min must be less than max |
 | `P0135` | json | json.parse: field '%s' expects %s, but the JSON value is %s |
+| `P0136` | runtime | cannot convert '%s' to %s; value is outside its range |
 
 ---
 
@@ -530,4 +531,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-02 19:49:39 UTC*
+*Generated on 2026-10-02 20:12:39 UTC*

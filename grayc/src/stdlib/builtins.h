@@ -14,6 +14,7 @@
 #include "../runtime/runtime.h"
 #include "../runtime/array.h"
 #include "../runtime/map.h"
+#include "../runtime/bigint.h"
 
 /*@man println
  *@sig println([value T])
@@ -454,6 +455,10 @@ GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 /* from_string — internal runtime overloads */
 int64_t gray_builtin_string_to_i64(GrayString string);
 double gray_builtin_string_to_f64(GrayString string);
+gray_i128 gray_builtin_string_to_i128(GrayString string, const char *file, int line);
+gray_u128 gray_builtin_string_to_u128(GrayString string, const char *file, int line);
+gray_i256 gray_builtin_string_to_i256(GrayString string, const char *file, int line);
+gray_u256 gray_builtin_string_to_u256(GrayString string, const char *file, int line);
 
 /* format a floating-point value for interpolation */
 GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size);

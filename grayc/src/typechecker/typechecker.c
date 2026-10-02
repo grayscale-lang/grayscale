@@ -12973,8 +12973,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 allowed = true;
             /* String -> number: parsed at runtime, panicking on bad input */
             if (source_type->kind == TYPE_KIND_STRING &&
-                (destination_type->kind == TYPE_KIND_SIGNED_INTEGER || destination_type->kind == TYPE_KIND_UNSIGNED_INTEGER || destination_type->kind == TYPE_KIND_FLOATING_POINT) &&
-                !is_wide_integer_type_name(destination_type->name))
+                (destination_type->kind == TYPE_KIND_SIGNED_INTEGER || destination_type->kind == TYPE_KIND_UNSIGNED_INTEGER || destination_type->kind == TYPE_KIND_FLOATING_POINT))
                 allowed = true;
             /* A string-backed enum is a GrayString at runtime, not an
              * integer, so the integer-backed rules below do not apply to it. */
