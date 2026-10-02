@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.11.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.11.0...grayscale-v0.11.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **codegen:** accept a map literal or call result in http functions and json.pretty_print ([#2904](https://github.com/grayscale-lang/grayscale/issues/2904)) ([78d48a6](https://github.com/grayscale-lang/grayscale/commit/78d48a6f7750a0c7946a13f45b2cb639b0789eba))
+* **codegen:** cast a wide integer to f32 or f64 without the i64 range check ([#2903](https://github.com/grayscale-lang/grayscale/issues/2903)) ([7585d49](https://github.com/grayscale-lang/grayscale/commit/7585d492ee954955c87263c1507a68c7c7f47413))
+* **codegen:** cast between every pair of wide integer types and range-check the value ([#2919](https://github.com/grayscale-lang/grayscale/issues/2919)) ([8726d24](https://github.com/grayscale-lang/grayscale/commit/8726d24b02b3dde51ffbc97455dc3863e252663a))
+* **codegen:** convert each element when an array is cast out of a wide integer element type ([14628bf](https://github.com/grayscale-lang/grayscale/commit/14628bf7d5fdc23303a4df01a6fdfd71b56589e3))
+* **codegen:** convert each element when an array is cast to a wide integer element type ([#2920](https://github.com/grayscale-lang/grayscale/issues/2920)) ([069f247](https://github.com/grayscale-lang/grayscale/commit/069f247ea7aa8a02250e422f20162e58fe91a2ad))
+* **codegen:** format a negative i8, i16 or i32 at its own width for %x, %X and %o ([#2908](https://github.com/grayscale-lang/grayscale/issues/2908)) ([f1c01e8](https://github.com/grayscale-lang/grayscale/commit/f1c01e89aec48b0bff2f3b8847b4c9161c269c91))
+* **codegen:** panic when a negative signed scalar is cast to u128 or u256 ([#2918](https://github.com/grayscale-lang/grayscale/issues/2918)) ([ee0d386](https://github.com/grayscale-lang/grayscale/commit/ee0d3868a4f394bc5939b368790a5d5cb1b99a4c))
+* **codegen:** range-check a float cast to a wide integer ([#2902](https://github.com/grayscale-lang/grayscale/issues/2902)) ([96d0d1c](https://github.com/grayscale-lang/grayscale/commit/96d0d1c6b4d14d5870073fea1e52c9dea3a1d502))
+* **json:** panic when json.parse gets a value of the wrong JSON type for a field ([#2911](https://github.com/grayscale-lang/grayscale/issues/2911)) ([df03ce3](https://github.com/grayscale-lang/grayscale/commit/df03ce3a133942837712744fe171f665842a6001))
+* **json:** panic when json.parse reads a number outside the range of an f32 field ([#2910](https://github.com/grayscale-lang/grayscale/issues/2910)) ([55cfc96](https://github.com/grayscale-lang/grayscale/commit/55cfc96ef9c2d103605a6866f0f0e181af157d27))
+* **json:** panic when json.parse reads a number outside the range of an i128, u128, i256 or u256 field ([#2909](https://github.com/grayscale-lang/grayscale/issues/2909)) ([b47c2c3](https://github.com/grayscale-lang/grayscale/commit/b47c2c379c193741f957df1700168fa2f3f6e2cd))
+* **parser:** accept a bare return followed by a semicolon ([#2899](https://github.com/grayscale-lang/grayscale/issues/2899)) ([e75087a](https://github.com/grayscale-lang/grayscale/commit/e75087abddfa9794458afe90dd1d536234e7e7bf))
+* **parser:** accept a leading ';' after '{' in struct and enum bodies ([#2907](https://github.com/grayscale-lang/grayscale/issues/2907)) ([e91c387](https://github.com/grayscale-lang/grayscale/commit/e91c3871486c7f38140d9f918e458061a11fcde4))
+* **random:** panic when rand_i64, rand_f64 or rand_char get an empty range ([#2906](https://github.com/grayscale-lang/grayscale/issues/2906)) ([1c286a7](https://github.com/grayscale-lang/grayscale/commit/1c286a783f21f1f4dcc26bffa16ae73f36437c01))
+* **random:** panic with a dedicated code when choice gets an empty array ([#2905](https://github.com/grayscale-lang/grayscale/issues/2905)) ([9ae2e02](https://github.com/grayscale-lang/grayscale/commit/9ae2e02836d5cfca37e36177656a19e1ace620cc))
+* **runtime:** panic instead of clamping when a string cast to i64 or u64 is out of range ([0020699](https://github.com/grayscale-lang/grayscale/commit/00206992b848dd6068c53569345288a271e3e72e))
+* **typechecker:** allow cast from string to i128, u128, i256 and u256 ([#2921](https://github.com/grayscale-lang/grayscale/issues/2921)) ([32675f2](https://github.com/grayscale-lang/grayscale/commit/32675f210a849cae0863fb1f1db9722015cfa377))
+* **typechecker:** check the function signature passed to threads spawn and spawn_arg ([#2889](https://github.com/grayscale-lang/grayscale/issues/2889)) ([2587ebc](https://github.com/grayscale-lang/grayscale/commit/2587ebc9bfce341e60048d53b198b66ecd595ff2))
+* **typechecker:** check the handle, pointer and number arguments of the sync, threads, atomic, mem, sqlite and server functions ([#2916](https://github.com/grayscale-lang/grayscale/issues/2916)) ([181c7f4](https://github.com/grayscale-lang/grayscale/commit/181c7f440bb79cc1827015af792043316bc9ea12))
+* **typechecker:** check the key, value and map arguments of the maps functions ([#2915](https://github.com/grayscale-lang/grayscale/issues/2915)) ([85ead06](https://github.com/grayscale-lang/grayscale/commit/85ead06243ab3180a97bccd43fd252f7265791bd))
+* **typechecker:** convert a wide integer stored into a floating-point slot ([#2901](https://github.com/grayscale-lang/grayscale/issues/2901)) ([51a0b44](https://github.com/grayscale-lang/grayscale/commit/51a0b4462a19fc97f79550564d11d755d316b1bf))
+* **typechecker:** report a pointer-depth return mismatch once ([#2896](https://github.com/grayscale-lang/grayscale/issues/2896)) ([734bf67](https://github.com/grayscale-lang/grayscale/commit/734bf67ce32dc5c7672000d8307d107b48ec7513))
+* **typechecker:** report E4016 for an undefined tagged enum payload type ([#2853](https://github.com/grayscale-lang/grayscale/issues/2853)) ([2e0f0d7](https://github.com/grayscale-lang/grayscale/commit/2e0f0d7d0e187f9ff53b56260cbf8f4168ec9ee3))
+* **typechecker:** report E4031 for a variable, constant, struct or enum name that two using modules both declare ([#2798](https://github.com/grayscale-lang/grayscale/issues/2798)) ([9c796c4](https://github.com/grayscale-lang/grayscale/commit/9c796c4e5d5209f948f1ac97feacdd4e17cf429f))
+* **typechecker:** require [u8] for the binary decode functions ([#2913](https://github.com/grayscale-lang/grayscale/issues/2913)) ([ac738ad](https://github.com/grayscale-lang/grayscale/commit/ac738adcc44f6480f87e7741dcbf7f52313ac9ad))
+* **typechecker:** type a literal as the wide integer binary encode functions take ([#2914](https://github.com/grayscale-lang/grayscale/issues/2914)) ([68a6a8b](https://github.com/grayscale-lang/grayscale/commit/68a6a8ba4952374f281ec3169c7742bbd87585a1))
+
 ## [0.11.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.10.0...grayscale-v0.11.0) (2026-09-28)
 
 
