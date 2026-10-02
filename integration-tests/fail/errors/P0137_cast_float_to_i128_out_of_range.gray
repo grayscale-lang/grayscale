@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0137 - a float above the range of the wide integer
+ */
+
+do main() {
+    mut value f64 = 3.5e38
+    println(cast(value, i128))
+}

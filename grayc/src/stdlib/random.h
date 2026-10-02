@@ -18,7 +18,7 @@
  *@module random
  *@group Generation
  *@sig rand_f64() -> f64  |  rand_f64(min f64, max f64) -> f64
- *@desc Returns a random f64. With no arguments returns a value from 0.0 up to but not including 1.0. With two arguments returns a value from min up to but not including max.
+ *@desc Returns a random f64. With no arguments returns a value from 0.0 up to but not including 1.0. With two arguments returns a value from min up to but not including max; panics if min is not less than max.
  *@example
  *   import @random
  *   mut f f64 = random.rand_f64()
@@ -30,7 +30,7 @@
  *@module random
  *@group Generation
  *@sig rand_i64(min i64, max i64) -> i64
- *@desc Returns a random integer from min up to but not including max.
+ *@desc Returns a random integer from min up to but not including max. Panics if min is not less than max.
  *@example
  *   import @random
  *   mut n i64 = random.rand_i64(10, 50)
@@ -63,7 +63,7 @@
  *@module random
  *@group Generation
  *@sig rand_char() -> char  |  rand_char(min char, max char) -> char
- *@desc Returns a random character. With no arguments returns a random printable ASCII character. With two arguments returns a character from min up to but not including max.
+ *@desc Returns a random character. With no arguments returns a random printable ASCII character. With two arguments returns a character from min up to but not including max; panics if min is not less than max.
  *@example
  *   import @random
  *   mut c char = random.rand_char()
@@ -137,6 +137,7 @@ double gray_random_f64_range(double minimum, double maximum);
 double gray_random_f64_unit(void);
 int64_t gray_random_i64_range(int64_t minimum, int64_t maximum);
 int64_t gray_random_i64_max(int64_t maximum);
+int32_t gray_random_choice_index(int32_t length, const char *file, int line);
 bool gray_random_bool(void);
 uint8_t gray_random_u8(void);
 int32_t gray_random_char(void);

@@ -1,0 +1,18 @@
+/*
+ * Error Test: E4031 - two `import and use` user modules both declare a
+ * variable, constant, struct and enum of the same name, so each unqualified
+ * use is ambiguous. Expected: one E4031 per use.
+ */
+
+// expect-error: E4031
+// expect-error-count: 4
+
+import and use "./first.gray"
+import and use "./second.gray"
+
+do main() {
+    state = 5
+    println(LIMIT)
+    mut point Point = Point{x: 1}
+    println(Mode.A)
+}

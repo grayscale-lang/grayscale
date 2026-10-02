@@ -1,0 +1,12 @@
+/*
+ * Error Test: mem.zero takes a pointer, not an i64
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @mem
+
+do main() {
+    mut x i64 = 5
+    mem.zero(x, 8)
+}

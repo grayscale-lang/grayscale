@@ -1,0 +1,48 @@
+/*
+ * cast_wide_integer_array_to_scalar_array.gray - an array cast out of a wide
+ * integer element type converts every element.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut wide [i128] = {5, -2}
+    mut signed [i64] = cast(wide, [i64])
+    if len(signed) == 2 && signed[0] == 5 && signed[1] == -2 {
+        passed++
+    } otherwise {
+        println("FAIL: [i128] to [i64]")
+        failed++
+    }
+
+    mut small [i8] = cast(wide, [i8])
+    if len(small) == 2 && small[1] == -2 {
+        passed++
+    } otherwise {
+        println("FAIL: [i128] to [i8]")
+        failed++
+    }
+
+    mut floats [f64] = cast(wide, [f64])
+    if len(floats) == 2 && floats[0] == 5.0 && floats[1] == -2.0 {
+        passed++
+    } otherwise {
+        println("FAIL: [i128] to [f64]")
+        failed++
+    }
+
+    mut unsigned [u256] = {7, 300}
+    mut narrowed [u16] = cast(unsigned, [u16])
+    if len(narrowed) == 2 && narrowed[1] == 300 {
+        passed++
+    } otherwise {
+        println("FAIL: [u256] to [u16]")
+        failed++
+    }
+
+    println("cast_wide_integer_array_to_scalar_array: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

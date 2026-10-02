@@ -503,7 +503,13 @@
     GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s") \
     GRAY_PANIC("P0130", "runtime",    "array capacity overflow") \
     GRAY_PANIC("P0131", "bounds",     "fixed-size array field needs exactly %d elements, but the assigned array has %d") \
-    GRAY_PANIC("P0132", "server",     "server: response header contains CR or LF — HTTP header injection is not allowed")
+    GRAY_PANIC("P0132", "server",     "server: response header contains CR or LF — HTTP header injection is not allowed") \
+    GRAY_PANIC("P0133", "random",     "random.choice called on an empty array") \
+    GRAY_PANIC("P0134", "random",     "random.rand_i64, rand_f64 or rand_char called with an empty range; min must be less than max") \
+    GRAY_PANIC("P0135", "json",       "json.parse: field '%s' expects %s, but the JSON value is %s") \
+    GRAY_PANIC("P0136", "runtime",    "cannot convert '%s' to %s; value is outside its range") \
+    GRAY_PANIC("P0137", "arithmetic", "cannot convert a float to %s; the value is out of range, or NaN") \
+    GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

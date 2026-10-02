@@ -94,6 +94,11 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
 /* json.decode(text) — parse JSON string to map */
 GrayMap gray_json_decode(GrayArena *arena, GrayString text);
 
+/* json.parse field decoding: like gray_json_decode, and *quoted receives the
+ * keys whose JSON value was a quoted string. */
+GrayMap gray_json_decode_fields(GrayArena *arena, GrayString text, GrayMap *quoted);
+void gray_json_check_field_quoting(GrayMap *quoted, GrayString key, bool expects_string, const char *expected, const char *file, int line);
+
 /*@man parse
  *@module json
  *@group Decoding

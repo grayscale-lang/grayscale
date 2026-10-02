@@ -3,7 +3,7 @@
 
 <p align="center">
   <h1 align="center">The Grayscale Programming Language</h1>
-  <p align="center"><em>Grayscale is a programming language for software that's simple to write and safe to run.</em>
+  <p align="center"><em>Simple to write. safe to run.</em>
 </p>
 
 

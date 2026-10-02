@@ -1,0 +1,23 @@
+/*
+ * cast_signed_scalar_to_unsigned_wide.gray - a non-negative signed scalar
+ * casts to u128 and u256 unchanged.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut small i8 = 5
+    mut large i64 = 9223372036854775807
+    if cast(small, u128) == 5 && cast(large, u256) == 9223372036854775807 {
+        passed++
+    } otherwise {
+        println("FAIL: non-negative signed scalar")
+        failed++
+    }
+
+    println("cast_signed_scalar_to_unsigned_wide: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

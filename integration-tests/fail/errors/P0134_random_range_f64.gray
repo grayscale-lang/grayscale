@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0134 - random range with min not less than max */
+import @random
+
+do main() {
+    println(random.rand_f64(2.0, 1.0))
+}

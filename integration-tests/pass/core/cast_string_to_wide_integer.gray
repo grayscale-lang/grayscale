@@ -1,0 +1,54 @@
+/*
+ * cast_string_to_wide_integer.gray - a string cast to i128, u128, i256 or
+ * u256 is parsed at runtime across the type's whole range.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut u128_max u128 = cast("340282366920938463463374607431768211455", u128)
+    if u128_max == 340282366920938463463374607431768211455 {
+        passed++
+    } otherwise {
+        println("FAIL: u128 maximum")
+        failed++
+    }
+
+    mut i128_min i128 = cast("-170141183460469231731687303715884105728", i128)
+    if i128_min == -170141183460469231731687303715884105728 {
+        passed++
+    } otherwise {
+        println("FAIL: i128 minimum")
+        failed++
+    }
+
+    mut u256_max u256 = cast("115792089237316195423570985008687907853269984665640564039457584007913129639935", u256)
+    if u256_max == 115792089237316195423570985008687907853269984665640564039457584007913129639935 {
+        passed++
+    } otherwise {
+        println("FAIL: u256 maximum")
+        failed++
+    }
+
+    mut i256_min i256 = cast("-57896044618658097711785492504343953926634992332820282019728792003956564819968", i256)
+    if i256_min == -57896044618658097711785492504343953926634992332820282019728792003956564819968 {
+        passed++
+    } otherwise {
+        println("FAIL: i256 minimum")
+        failed++
+    }
+
+    mut small i128 = cast("-12345", i128)
+    if small == -12345 {
+        passed++
+    } otherwise {
+        println("FAIL: small negative i128")
+        failed++
+    }
+
+    println("cast_string_to_wide_integer: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

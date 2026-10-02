@@ -1,0 +1,55 @@
+/*
+ * cast_between_wide_integers.gray - cast between every pair of wide integer
+ * types keeps an in-range value.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a i128 = 7
+    mut b u128 = 7
+    mut c i256 = 7
+    mut d u256 = 7
+
+    if cast(a, u128) == 7 && cast(a, i256) == 7 && cast(a, u256) == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: from i128")
+        failed++
+    }
+
+    if cast(b, i128) == 7 && cast(b, i256) == 7 && cast(b, u256) == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: from u128")
+        failed++
+    }
+
+    if cast(c, i128) == 7 && cast(c, u128) == 7 && cast(c, u256) == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: from i256")
+        failed++
+    }
+
+    if cast(d, i128) == 7 && cast(d, u128) == 7 && cast(d, i256) == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: from u256")
+        failed++
+    }
+
+    mut negative i256 = -7
+    if cast(negative, i128) == -7 {
+        passed++
+    } otherwise {
+        println("FAIL: negative i256 to i128")
+        failed++
+    }
+
+    println("cast_between_wide_integers: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

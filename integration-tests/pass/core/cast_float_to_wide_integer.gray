@@ -1,0 +1,54 @@
+/*
+ * cast_float_to_wide_integer.gray - cast from f32 or f64 to a wide integer
+ * truncates toward zero and keeps the full value.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut large f64 = 1.0e30
+    if cast(large, i128) == 1000000000000000019884624838656 {
+        passed++
+    } otherwise {
+        println("FAIL: 1.0e30 to i128")
+        failed++
+    }
+
+    mut negative f64 = -1.0e30
+    if cast(negative, i128) == -1000000000000000019884624838656 {
+        passed++
+    } otherwise {
+        println("FAIL: -1.0e30 to i128")
+        failed++
+    }
+
+    mut fraction f64 = -123456.9
+    if cast(fraction, i256) == -123456 {
+        passed++
+    } otherwise {
+        println("FAIL: fraction to i256")
+        failed++
+    }
+
+    mut single f32 = 3.9
+    if cast(single, u128) == 3 {
+        passed++
+    } otherwise {
+        println("FAIL: f32 to u128")
+        failed++
+    }
+
+    mut minimum f64 = -170141183460469231731687303715884105728.0
+    if cast(minimum, i128) == -170141183460469231731687303715884105728 {
+        passed++
+    } otherwise {
+        println("FAIL: i128 minimum")
+        failed++
+    }
+
+    println("cast_float_to_wide_integer: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

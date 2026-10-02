@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0138 - a negative wide integer cannot become an unsigned one
+ */
+
+do main() {
+    mut value i128 = -1
+    println(cast(value, u128))
+}

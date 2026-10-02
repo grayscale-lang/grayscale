@@ -1841,7 +1841,8 @@ static AstNode *parse_return_statement(Parser *parser) {
     AstNode **values = arena_allocate(parser->arena, sizeof(AstNode *) * capacity);
 
     /* Check if there's a value to return (peek, don't consume) */
-    if (!peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_END_OF_FILE)) {
+    if (!peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_SEMICOLON) &&
+        !peek_token_is(parser, TOKEN_END_OF_FILE)) {
         next_token(parser);
         values[count++] = parse_expression(parser, PRECEDENCE_LOWEST);
 
@@ -2523,6 +2524,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     next_token(parser); /* skip 'struct' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
     next_token(parser); /* skip { */
+    while (current_token_is(parser, TOKEN_SEMICOLON)) next_token(parser);
 
     int previous_field_line = -1;
     bool field_separated = false;
@@ -2822,6 +2824,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     next_token(parser); /* skip 'enum' keyword */
     if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
     next_token(parser); /* skip { */
+    while (current_token_is(parser, TOKEN_SEMICOLON)) next_token(parser);
 
     int previous_variant_line = -1;
     bool variant_separated = false;

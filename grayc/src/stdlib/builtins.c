@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <time.h>
 
@@ -300,10 +301,116 @@ int64_t gray_builtin_string_to_i64(GrayString string) {
     memcpy(buffer, string.data, (size_t)length);
     buffer[length] = '\0';
     char *end_cursor = NULL;
+    errno = 0;
     int64_t result = strtoll(buffer, &end_cursor, 10);
     if (end_cursor == buffer || (*end_cursor != '\0' && *end_cursor != ' ')) {
         gray_panic_code("P0084", "cannot convert '%s' to i64", buffer);
     }
+    if (errno == ERANGE) {
+        gray_panic_code("P0136", "cannot convert '%s' to i64; value is outside its range", buffer);
+    }
+    return result;
+}
+
+uint64_t gray_builtin_string_to_u64(GrayString string) {
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    int length = string.len < (int32_t)sizeof(buffer) - 1 ? string.len : (int32_t)sizeof(buffer) - 1;
+    memcpy(buffer, string.data, (size_t)length);
+    buffer[length] = '\0';
+    const char *cursor = buffer;
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n') cursor++;
+    bool is_negative = *cursor == '-';
+    const char *digits = is_negative ? cursor + 1 : cursor;
+    if (is_negative && (*digits < '0' || *digits > '9')) {
+        gray_panic_code("P0084", "cannot convert '%s' to u64", buffer);
+    }
+    char *end_cursor = NULL;
+    errno = 0;
+    uint64_t result = strtoull(digits, &end_cursor, 10);
+    if (end_cursor == digits || (*end_cursor != '\0' && *end_cursor != ' ')) {
+        gray_panic_code("P0084", "cannot convert '%s' to u64", buffer);
+    }
+    if (errno == ERANGE || (is_negative && result != 0)) {
+        gray_panic_code("P0136", "cannot convert '%s' to u64; value is outside its range", buffer);
+    }
+    return result;
+}
+
+/* Parse a decimal string into a wide integer of `bits` width. Out is the
+ * two's-complement value as 64-bit words, least significant first. */
+static void string_to_wide_integer(GrayString string, const char *type_name, int bits, bool is_signed,
+                                   const char *file, int line, uint64_t out[4]) {
+    char buffer[128];
+    int length = string.len < (int32_t)sizeof(buffer) - 1 ? string.len : (int32_t)sizeof(buffer) - 1;
+    memcpy(buffer, string.data, (size_t)length);
+    buffer[length] = '\0';
+    const char *cursor = buffer;
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n') cursor++;
+    bool is_negative = false;
+    if (*cursor == '-' || *cursor == '+') { is_negative = *cursor == '-'; cursor++; }
+    if (*cursor < '0' || *cursor > '9') gray_panic_code("P0084", "cannot convert '%s' to %s", buffer, type_name);
+    uint32_t limbs[8] = {0};
+    bool overflow = false;
+    for (; *cursor >= '0' && *cursor <= '9'; cursor++) {
+        uint64_t carry = (uint64_t)(*cursor - '0');
+        for (int i = 0; i < 8; i++) {
+            uint64_t product = (uint64_t)limbs[i] * 10 + carry;
+            limbs[i] = (uint32_t)product;
+            carry = product >> 32;
+        }
+        if (carry) overflow = true;
+    }
+    while (*cursor == ' ') cursor++;
+    if (*cursor != '\0') gray_panic_code("P0084", "cannot convert '%s' to %s", buffer, type_name);
+
+    bool is_zero = true;
+    for (int i = 0; i < 8; i++) if (limbs[i]) is_zero = false;
+    /* The magnitude must fit below the sign bit, or equal 2^(bits-1) when negative. */
+    int value_bits = is_signed ? bits - 1 : bits;
+    bool above_range = overflow;
+    for (int bit = value_bits; bit < 256 && !above_range; bit++)
+        if (limbs[bit / 32] & ((uint32_t)1 << (bit % 32))) above_range = true;
+    if (above_range && is_signed && is_negative && !overflow) {
+        above_range = false;
+        for (int bit = 0; bit < 256; bit++) {
+            bool is_set = (limbs[bit / 32] & ((uint32_t)1 << (bit % 32))) != 0;
+            if (is_set != (bit == value_bits)) { above_range = true; break; }
+        }
+    }
+    if (above_range || (!is_signed && is_negative && !is_zero)) {
+        gray_panic_code_at(file, line, "P0136", "cannot convert '%s' to %s; value is outside its range", buffer, type_name);
+    }
+    for (int i = 0; i < 4; i++) out[i] = (uint64_t)limbs[2 * i] | ((uint64_t)limbs[2 * i + 1] << 32);
+    if (is_negative) {
+        uint64_t carry = 1;
+        for (int i = 0; i < 4; i++) {
+            out[i] = ~out[i] + carry;
+            carry = carry && out[i] == 0;
+        }
+    }
+}
+
+gray_i128 gray_builtin_string_to_i128(GrayString string, const char *file, int line) {
+    uint64_t words[4];
+    string_to_wide_integer(string, "i128", 128, true, file, line, words);
+    return (gray_i128){words[0], (int64_t)words[1]};
+}
+
+gray_u128 gray_builtin_string_to_u128(GrayString string, const char *file, int line) {
+    uint64_t words[4];
+    string_to_wide_integer(string, "u128", 128, false, file, line, words);
+    return (gray_u128){words[0], words[1]};
+}
+
+gray_i256 gray_builtin_string_to_i256(GrayString string, const char *file, int line) {
+    gray_i256 result;
+    string_to_wide_integer(string, "i256", 256, true, file, line, result.w);
+    return result;
+}
+
+gray_u256 gray_builtin_string_to_u256(GrayString string, const char *file, int line) {
+    gray_u256 result;
+    string_to_wide_integer(string, "u256", 256, false, file, line, result.w);
     return result;
 }
 

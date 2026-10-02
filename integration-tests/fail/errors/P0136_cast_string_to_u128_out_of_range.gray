@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0136 - a string above the range of the wide integer
+ */
+
+do main() {
+    mut text string = "340282366920938463463374607431768211456"
+    println(cast(text, u128))
+}

@@ -1,0 +1,11 @@
+/*
+ * Error Test: sync.lock takes a Mutex
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @sync
+
+do main() {
+    sync.lock("s")
+}

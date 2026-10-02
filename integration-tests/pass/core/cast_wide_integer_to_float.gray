@@ -1,0 +1,46 @@
+/*
+ * cast_wide_integer_to_float.gray - a wide integer outside the i64 range
+ * casts to f32 and f64 instead of panicking.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut signed i128 = 1
+    mut unsigned u128 = 1
+    mut big u256 = 1
+    mut negative i128 = -1
+    for i in range(0, 70) {
+        signed *= 2
+        unsigned *= 2
+        negative *= 2
+    }
+    for i in range(0, 200) { big *= 2 }
+
+    if cast(unsigned, f64) == 1180591620717411303424.0 && cast(unsigned, f32) > 1.0e21 {
+        passed++
+    } otherwise {
+        println("FAIL: u128 to float")
+        failed++
+    }
+
+    if cast(signed, f64) == 1180591620717411303424.0 && cast(negative, f64) == -1180591620717411303424.0 {
+        passed++
+    } otherwise {
+        println("FAIL: i128 to float")
+        failed++
+    }
+
+    if cast(big, f64) > 1.0e60 && cast(big, f64) < 2.0e60 {
+        passed++
+    } otherwise {
+        println("FAIL: u256 to f64")
+        failed++
+    }
+
+    println("cast_wide_integer_to_float: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -1,0 +1,21 @@
+/*
+ * cast_string_to_u64_maximum.gray - a string above the i64 maximum casts to u64.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut big u64 = cast("18446744073709551615", u64)
+    if big == 18446744073709551615 {
+        passed++
+    } otherwise {
+        println("FAIL: u64 maximum")
+        failed++
+    }
+
+    println("cast_string_to_u64_maximum: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

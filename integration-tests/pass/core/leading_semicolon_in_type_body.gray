@@ -1,0 +1,33 @@
+/*
+ * leading_semicolon_in_type_body.gray
+ * A ';' right after the '{' of a struct or enum body is a separator like any
+ * other, so the first member may follow it on the same line.
+ */
+
+const Point struct { ; x i64; y i64 }
+const Color enum { ; RED; GREEN }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut p Point = Point{x: 3, y: 4}
+    if p.x == 3 && p.y == 4 {
+        println("  [PASS] struct body with leading ';'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct body with leading ';': ${p.x} ${p.y}")
+        failed += 1
+    }
+
+    mut c Color = Color.GREEN
+    if c == Color.GREEN && c != Color.RED {
+        println("  [PASS] enum body with leading ';'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum body with leading ';'")
+        failed += 1
+    }
+
+    if failed > 0 { println("SOME TESTS FAILED") }
+}

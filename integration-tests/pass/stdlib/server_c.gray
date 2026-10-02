@@ -6,8 +6,8 @@
 
 import @server
 
-do handler() {
-    // placeholder handler
+do handler(req HttpRequest) -> HttpResponse {
+    return server.text(200, "ok")
 }
 
 do main() {

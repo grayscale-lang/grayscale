@@ -2228,6 +2228,9 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
     /* Determine element type; try wide integer detection first, then type table */
     const char *wide_integer_element = resolve_wide_integer_type(codegen, node->data.array_value.elements[0]);
     GrayType *element_type_for_copy = type_table_get(codegen->type_table, node->data.array_value.elements[0]);
+    /* A wide integer converted to a floating-point entry stores as that float. */
+    if (node->data.array_value.elements[0]->widen_to && !wide_integer_element)
+        element_type_for_copy = type_from_name(node->data.array_value.elements[0]->widen_to);
     if (!wide_integer_element && element_type_for_copy && element_type_for_copy->name && is_wide_integer_type_name(element_type_for_copy->name))
         wide_integer_element = element_type_for_copy->name;
     /* Also check var decl context for wide integer element type — either a bare
@@ -3930,7 +3933,49 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         }
         char source_value[32];
         snprintf(source_value, sizeof(source_value), "_cv%d", unique_id);
-        if (array_maximum) {
+        if (is_wide_integer_type_name(destination_element_type)) {
+            /* Into a wide integer: a wide source is range-checked, a float is
+             * truncated and range-checked, and any other scalar is widened. */
+            GrayType *source_element = type_from_name(source_element_type);
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = ", destination_c_type, unique_id, unique_id);
+            if (is_wide_integer_type_name(source_element_type)) {
+                if (strcmp(source_element_type, destination_element_type) == 0)
+                    emit_formatted(codegen, "_cv%d; ", unique_id);
+                else
+                    emit_formatted(codegen, "gray_cast_%s_to_%s(_cv%d, \"%s\", %d); ",
+                        source_element_type, destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (is_source_floating_point) {
+                emit_formatted(codegen, "gray_f64_to_%s((double)_cv%d, \"%s\", %d); ",
+                    destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (destination_element_type[0] == 'u' && source_element->kind == TYPE_KIND_SIGNED_INTEGER) {
+                emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)_cv%d, \"%s\", %d); ",
+                    destination_element_type, unique_id, codegen->file, node->token.line);
+            } else if (source_element->kind == TYPE_KIND_UNSIGNED_INTEGER) {
+                emit_formatted(codegen, "%s_from_u64((uint64_t)_cv%d); ",
+                    wide_integer_prefix(destination_element_type), unique_id);
+            } else {
+                emit_formatted(codegen, "%s_from_i64((int64_t)_cv%d); ",
+                    wide_integer_prefix(destination_element_type), unique_id);
+            }
+        } else if (is_wide_integer_type_name(source_element_type)) {
+            /* Out of a wide integer: range-checked extraction to the element type. */
+            const char *source_prefix = wide_integer_prefix(source_element_type);
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = ", destination_c_type, unique_id, unique_id);
+            if (is_destination_floating_point) {
+                emit_formatted(codegen, "(%s)%s_to_f64(_cv%d); ", destination_c_type, source_prefix, unique_id);
+            } else if (array_maximum) {
+                emit_formatted(codegen, "(%s)%s(%s_to_%s(_cv%d, \"%s\", %d), ", destination_c_type,
+                    is_array_unsigned ? "gray_ucast_check_u64" : "gray_cast_check", source_prefix,
+                    is_array_unsigned ? "u64" : "i64", unique_id, codegen->file, node->token.line);
+                emit_sized_bounds_arguments(codegen, array_minimum, array_maximum, is_array_unsigned,
+                                            destination_element_type, node->token.line);
+                emit(codegen, "); ");
+            } else {
+                emit_formatted(codegen, "(%s)%s_to_%s(_cv%d, \"%s\", %d); ", destination_c_type, source_prefix,
+                    strcmp(destination_element_type, "u64") == 0 ? "u64" : "i64", unique_id,
+                    codegen->file, node->token.line);
+            }
+        } else if (array_maximum) {
             /* Narrowing to a sized integer: range-check the source as it is. */
             emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)", destination_c_type, unique_id, unique_id, destination_c_type);
             emit_range_checked_narrowing(codegen, type_from_name(source_element_type), NULL, source_value,
@@ -3992,11 +4037,16 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         emit(codegen, "gray_f64_to_u64((double)(");
         emit_expression(codegen, value);
         emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+    } else if (value_kind == TYPE_KIND_STRING && is_wide_integer_type_name(target)) {
+        /* string → wide integer: parsed and range-checked at runtime */
+        emit_formatted(codegen, "gray_builtin_string_to_%s(", target);
+        emit_expression(codegen, value);
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
     } else if (value_kind == TYPE_KIND_STRING) {
         /* string → numeric (targets other than i64/f64 handled above):
          * parse to int64/double first, then apply narrowing check */
         if (strcmp(target, "u64") == 0) {
-            emit(codegen, "(uint64_t)gray_builtin_string_to_i64(");
+            emit(codegen, "gray_builtin_string_to_u64(");
             emit_expression(codegen, value);
             emit(codegen, ")");
         } else if (strcmp(target, "f32") == 0) {
@@ -4029,9 +4079,27 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         const char *source_wide_integer = (value_type && value_type->name && is_wide_integer_type_name(value_type->name))
             ? value_type->name : resolve_wide_integer_type(codegen, value);
         if (is_target_wide_integer || source_wide_integer) {
-            if (is_target_wide_integer && !source_wide_integer) {
+            if (is_target_wide_integer && !source_wide_integer && value_kind == TYPE_KIND_FLOATING_POINT) {
+                /* float → wide: truncated, range-checked at runtime */
+                emit_formatted(codegen, "gray_f64_to_%s((double)(", target);
+                emit_expression(codegen, value);
+                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+            } else if (is_target_wide_integer && !source_wide_integer && target[0] == 'u' &&
+                       value_kind == TYPE_KIND_SIGNED_INTEGER) {
+                /* signed scalar → unsigned wide: a negative value panics */
+                emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)(", target);
+                emit_expression(codegen, value);
+                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+            } else if (is_target_wide_integer && !source_wide_integer) {
                 /* scalar → wide: use from_i64 / from_u64 */
                 emit_scalar_to_wide_integer(codegen, target, value, value_type);
+            } else if (!is_target_wide_integer && source_wide_integer &&
+                       (strcmp(target, "f32") == 0 || strcmp(target, "f64") == 0)) {
+                /* wide → float: any wide value is representable as a float */
+                emit_formatted(codegen, "(%s)%s_to_f64(", strcmp(target, "f32") == 0 ? "float" : "double",
+                    wide_integer_prefix(source_wide_integer));
+                emit_expression(codegen, value);
+                emit(codegen, ")");
             } else if (!is_target_wide_integer && source_wide_integer) {
                 /* wide → scalar: range-checked extraction to int64/uint64,
                  * with additional narrow-range check for sub-64-bit targets */
@@ -4064,21 +4132,14 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
                 }
             } else {
-                /* wide → wide: use cross-type constructors */
-                if (strcmp(source_wide_integer, "i128") == 0 && strcmp(target, "u128") == 0)
-                    { emit(codegen, "gray_u128_from_i128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u128") == 0 && strcmp(target, "i128") == 0)
-                    { emit(codegen, "gray_i128_from_u128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "i128") == 0 && strcmp(target, "i256") == 0)
-                    { emit(codegen, "gray_i256_from_i128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u128") == 0 && strcmp(target, "u256") == 0)
-                    { emit(codegen, "gray_u256_from_u128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "i256") == 0 && strcmp(target, "i128") == 0)
-                    { emit(codegen, "gray_i128_from_i256("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u256") == 0 && strcmp(target, "u128") == 0)
-                    { emit(codegen, "gray_u128_from_u256("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else
-                    { emit_expression(codegen, value); } /* same-type no-op */
+                /* wide → wide: range-checked, the value is kept */
+                if (strcmp(source_wide_integer, target) == 0) {
+                    emit_expression(codegen, value); /* same-type no-op */
+                } else {
+                    emit_formatted(codegen, "gray_cast_%s_to_%s(", source_wide_integer, target);
+                    emit_expression(codegen, value);
+                    emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+                }
             }
             return;
         }
@@ -4414,7 +4475,12 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         const char *target = node->widen_to;
         node->widen_to = NULL;
         const char *source_wide = resolve_wide_integer_type(codegen, node);
-        if (source_wide) {
+        if (strcmp(target, "f64") == 0 || strcmp(target, "f32") == 0) {
+            emit_formatted(codegen, "(%s)%s_to_f64(", strcmp(target, "f32") == 0 ? "float" : "double",
+                           wide_integer_prefix(source_wide));
+            emit_expression(codegen, node);
+            emit(codegen, ")");
+        } else if (source_wide) {
             emit_formatted(codegen, "%s_from_%s(", wide_integer_prefix(target), source_wide);
             emit_expression(codegen, node);
             emit(codegen, ")");
@@ -5034,6 +5100,15 @@ static void emit_format_value(CodeGen *codegen, GrayType *value_type, FormatDire
     } else if (value_type && value_type->kind == TYPE_KIND_BOOL) {
         emit_format_operand(codegen, value, element_read);
         emit(codegen, " ? \"true\" : \"false\"");
+    } else if (value_type && value_type->kind == TYPE_KIND_SIGNED_INTEGER && value_type->name &&
+               (specifier == 'x' || specifier == 'X' || specifier == 'o') &&
+               (strcmp(value_type->name, "i8") == 0 || strcmp(value_type->name, "i16") == 0 ||
+                strcmp(value_type->name, "i32") == 0)) {
+        /* Hex and octal show a negative value's two's-complement bits at the
+         * type's own width, not sign-extended to 64 bits. */
+        emit_formatted(codegen, "(unsigned long long)(uint%s_t)(", value_type->name + 1);
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, ")");
     } else if (value_type && value_type->kind == TYPE_KIND_SIGNED_INTEGER) {
         /* The directive may have been upgraded to %lld (a 64-bit read),
          * but an integer literal emits as C `int`. Cast so the vararg
@@ -6868,8 +6943,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
     if (strcmp(function_name, "get") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_get%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
@@ -6878,8 +6953,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
@@ -6888,24 +6963,24 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "delete") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_delete%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "head") == 0 && node->data.call.argument_count == 2) {
         emit_formatted(codegen, "gray_http_head%s(gray_default_arena, ", suffix);
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[1]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
         return true;
     }
@@ -6914,8 +6989,8 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *function
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.arguments[2]);
+        emit(codegen, ", ");
+        emit_address_of(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }
@@ -7309,8 +7384,8 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
         return true;
     }
     if (strcmp(function_name_text, "pretty_print") == 0) {
-        emit(codegen, "gray_json_pretty_map(gray_default_arena, &");
-        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, "gray_json_pretty_map(gray_default_arena, ");
+        emit_address_of(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
@@ -7468,15 +7543,15 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
             }
         }
         if (expression_is_assignable(node->data.call.arguments[0])) {
-            emit(codegen, "({ int32_t _ri = gray_random_i64_max(");
+            emit(codegen, "({ int32_t _ri = gray_random_choice_index(");
             emit_expression(codegen, node->data.call.arguments[0]);
-            emit_formatted(codegen, ".len); *(%s *)gray_array_get_ptr(&", c_element_type);
+            emit_formatted(codegen, ".len, \"%s\", %d); *(%s *)gray_array_get_ptr(&", codegen->file, node->token.line, c_element_type);
             emit_expression(codegen, node->data.call.arguments[0]);
             emit_formatted(codegen, ", _ri, \"%s\", %d); })", codegen->file, node->token.line);
         } else {
             emit(codegen, "({ __auto_type _ra = ");
             emit_expression(codegen, node->data.call.arguments[0]);
-            emit_formatted(codegen, "; int32_t _ri = gray_random_i64_max(_ra.len); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", c_element_type, codegen->file, node->token.line);
+            emit_formatted(codegen, "; int32_t _ri = gray_random_choice_index(_ra.len, \"%s\", %d); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", codegen->file, node->token.line, c_element_type, codegen->file, node->token.line);
         }
         return true;
     }
@@ -13845,7 +13920,8 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
         /* --- parse: JSON string → struct --- */
         emit_formatted(codegen, "static GrayStruct_%s gray_json_parse_%s(GrayArena *arena, GrayString text) {\n", struct_name, struct_name);
         emit_formatted(codegen, "    GrayStruct_%s _r = {0};\n", struct_name);
-        emit_formatted(codegen, "    GrayMap _m = gray_json_decode(arena, text);\n");
+        emit_formatted(codegen, "    GrayMap _q;\n");
+        emit_formatted(codegen, "    GrayMap _m = gray_json_decode_fields(arena, text, &_q);\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &statement->data.struct_declaration.fields[j];
             /* A `` `json:"Name"` `` tag maps the field under that JSON key
@@ -13854,16 +13930,19 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             const char *json_key = field->json_tag ? field->json_tag : field->name;
             if (strcmp(field->type_name, "string") == 0) {
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, true, \"a string\", \"%s\", %d); _r.%s = *(GrayString *)_v; } }\n",
+                    codegen->file, statement->token.line, sanitize_name(field->name));
             } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
                 /* A number field of any sized type decodes at that type. */
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(%s), &_r.%s, \"%s\", %d); }\n",
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a number\", \"%s\", %d); gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(%s), &_r.%s, \"%s\", %d); } }\n",
+                    codegen->file, statement->token.line,
                     gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name),
                     codegen->file, statement->token.line);
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a bool\", \"%s\", %d); GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n",
+                    codegen->file, statement->token.line, sanitize_name(field->name));
             } else {
                 /* Enum field: serialized by backing type. Tagged enums are
                  * rejected on #json structs at typecheck time (E3173), so

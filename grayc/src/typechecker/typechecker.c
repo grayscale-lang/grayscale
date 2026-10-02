@@ -185,6 +185,7 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
 static GrayType *resolve_untyped(TypeChecker *checker, AstNode *node);
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
 static bool literal_entry_mismatches(TypeChecker *checker, GrayType *expected, GrayType *actual);
+static bool map_types_match(GrayType *declared, GrayType *value_type);
 
 /* Forward declarations — fixed-size array helpers, defined near the pointer
  * checker but needed earlier by the mutating-array-call guard. */
@@ -3045,11 +3046,20 @@ typedef enum {
      * an argument is checked as that type. EXPECTED_ARGUMENT_NUMBER takes any number. */
     EXPECTED_ARGUMENT_STRING, EXPECTED_ARGUMENT_I64, EXPECTED_ARGUMENT_U64, EXPECTED_ARGUMENT_F64, EXPECTED_ARGUMENT_BOOL, EXPECTED_ARGUMENT_ARRAY, EXPECTED_ARGUMENT_MAP, EXPECTED_ARGUMENT_ANY, EXPECTED_ARGUMENT_NUMBER, EXPECTED_ARGUMENT_CHAR, EXPECTED_ARGUMENT_CHANNEL,
     EXPECTED_ARGUMENT_BUILDER, EXPECTED_ARGUMENT_UUID, EXPECTED_ARGUMENT_U8_ARRAY, EXPECTED_ARGUMENT_I64_POINTER,
+    /* A number the function reads as an f64: any number is accepted and is
+     * converted to f64. */
+    EXPECTED_ARGUMENT_F64_NUMBER,
+    EXPECTED_ARGUMENT_MUTEX, EXPECTED_ARGUMENT_THREAD, EXPECTED_ARGUMENT_SPINLOCK, EXPECTED_ARGUMENT_ARENA,
+    EXPECTED_ARGUMENT_DATABASE, EXPECTED_ARGUMENT_ROUTER, EXPECTED_ARGUMENT_POINTER,
     /* A value stored into or compared with the array in argument 0: checked
      * as that array's element type. */
     EXPECTED_ARGUMENT_ELEMENT_OF_FIRST,
     /* A second array of argument 0's type. */
     EXPECTED_ARGUMENT_SAME_AS_FIRST,
+    /* A key or value looked up in or stored into the map in argument 0:
+     * checked as that map's key or value type. */
+    EXPECTED_ARGUMENT_KEY_OF_FIRST,
+    EXPECTED_ARGUMENT_VALUE_OF_FIRST,
     /* One of the numbers math.min/max/clamp combine: every such argument is
      * checked as their common type (as a binary operator would type them). */
     EXPECTED_ARGUMENT_COMMON_NUMBER,
@@ -3069,7 +3079,8 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_ARRAY:  return actual->kind == TYPE_KIND_ARRAY;
     case EXPECTED_ARGUMENT_MAP:    return actual->kind == TYPE_KIND_MAP;
     case EXPECTED_ARGUMENT_ANY:    return true;
-    case EXPECTED_ARGUMENT_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
+    case EXPECTED_ARGUMENT_NUMBER:
+    case EXPECTED_ARGUMENT_F64_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
                             actual->kind == TYPE_KIND_FLOATING_POINT;
     case EXPECTED_ARGUMENT_CHAR:   return actual->kind == TYPE_KIND_CHAR;
     case EXPECTED_ARGUMENT_CHANNEL: return actual->kind == TYPE_KIND_STRUCT &&
@@ -3078,6 +3089,13 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
                              actual->name && strcmp(actual->name, "Builder") == 0;
     case EXPECTED_ARGUMENT_UUID:    return actual->kind == TYPE_KIND_STRUCT &&
                              actual->name && strcmp(actual->name, "UUID") == 0;
+    case EXPECTED_ARGUMENT_MUTEX:      return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Mutex") == 0;
+    case EXPECTED_ARGUMENT_THREAD:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Thread") == 0;
+    case EXPECTED_ARGUMENT_SPINLOCK:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "SpinLock") == 0;
+    case EXPECTED_ARGUMENT_ARENA:      return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Arena") == 0;
+    case EXPECTED_ARGUMENT_DATABASE:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Database") == 0;
+    case EXPECTED_ARGUMENT_ROUTER:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Router") == 0;
+    case EXPECTED_ARGUMENT_POINTER:  return actual->kind == TYPE_KIND_POINTER;
     case EXPECTED_ARGUMENT_U8_ARRAY: return actual->kind == TYPE_KIND_ARRAY && actual->element_type &&
                              strcmp(actual->element_type, "u8") == 0;
     /* The atomic operations read and write exactly 8 bytes as an int64. */
@@ -3088,7 +3106,9 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_TYPE:   return true;
     /* Checked against the type derived from the other arguments. */
     case EXPECTED_ARGUMENT_ELEMENT_OF_FIRST:
-    case EXPECTED_ARGUMENT_SAME_AS_FIRST: return true;
+    case EXPECTED_ARGUMENT_SAME_AS_FIRST:
+    case EXPECTED_ARGUMENT_KEY_OF_FIRST:
+    case EXPECTED_ARGUMENT_VALUE_OF_FIRST: return true;
     case EXPECTED_ARGUMENT_COMMON_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
                                    actual->kind == TYPE_KIND_FLOATING_POINT;
     }
@@ -3105,16 +3125,26 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_ARRAY:  return "array";
     case EXPECTED_ARGUMENT_MAP:    return "map";
     case EXPECTED_ARGUMENT_ANY:    return "any";
-    case EXPECTED_ARGUMENT_NUMBER: return "number";
+    case EXPECTED_ARGUMENT_NUMBER:
+    case EXPECTED_ARGUMENT_F64_NUMBER: return "number";
     case EXPECTED_ARGUMENT_CHAR:   return "char";
     case EXPECTED_ARGUMENT_CHANNEL: return "Channel";
     case EXPECTED_ARGUMENT_BUILDER: return "Builder";
     case EXPECTED_ARGUMENT_UUID:    return "UUID";
     case EXPECTED_ARGUMENT_U8_ARRAY: return "[u8]";
+    case EXPECTED_ARGUMENT_MUTEX:    return "Mutex";
+    case EXPECTED_ARGUMENT_THREAD:   return "Thread";
+    case EXPECTED_ARGUMENT_SPINLOCK: return "SpinLock";
+    case EXPECTED_ARGUMENT_ARENA:    return "Arena";
+    case EXPECTED_ARGUMENT_DATABASE: return "Database";
+    case EXPECTED_ARGUMENT_ROUTER:   return "Router";
+    case EXPECTED_ARGUMENT_POINTER:  return "a pointer";
     case EXPECTED_ARGUMENT_I64_POINTER: return "^i64";
     case EXPECTED_ARGUMENT_TYPE:   return "a type name";
     case EXPECTED_ARGUMENT_ELEMENT_OF_FIRST: return "an element of the array";
     case EXPECTED_ARGUMENT_SAME_AS_FIRST: return "an array of the same type";
+    case EXPECTED_ARGUMENT_KEY_OF_FIRST: return "a key of the map";
+    case EXPECTED_ARGUMENT_VALUE_OF_FIRST: return "a value of the map";
     case EXPECTED_ARGUMENT_COMMON_NUMBER: return "number";
     }
     return "unknown";
@@ -3206,41 +3236,41 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"atomic", "fence",            0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"atomic", "load",             1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
     {"atomic", "or",               2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "spin_lock",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"atomic", "spin_trylock",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"atomic", "spin_unlock",      1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"atomic", "spin_lock",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
+    {"atomic", "spin_trylock",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "bool"},
+    {"atomic", "spin_unlock",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "spinlock",         0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"SpinLock"},
-    {"atomic", "spinlock_destroy", 1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"atomic", "spinlock_destroy", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "store",            2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"void"},
     {"atomic", "sub",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
     {"atomic", "xor",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
     /* binary */
-    {"binary", "decode_f32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "f32"},
-    {"binary", "decode_f32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "f32"},
-    {"binary", "decode_f64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "f64"},
-    {"binary", "decode_f64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "f64"},
-    {"binary", "decode_i128_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i128"},
-    {"binary", "decode_i128_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i128"},
-    {"binary", "decode_i16_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i16"},
-    {"binary", "decode_i16_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i16"},
-    {"binary", "decode_i256_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i256"},
-    {"binary", "decode_i256_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i256"},
-    {"binary", "decode_i32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i32"},
-    {"binary", "decode_i32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i32"},
-    {"binary", "decode_i64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i64"},
-    {"binary", "decode_i64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i64"},
-    {"binary", "decode_i8",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "i8"},
-    {"binary", "decode_u128_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u128"},
-    {"binary", "decode_u128_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u128"},
-    {"binary", "decode_u16_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u16"},
-    {"binary", "decode_u16_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u16"},
-    {"binary", "decode_u256_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u256"},
-    {"binary", "decode_u256_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u256"},
-    {"binary", "decode_u32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u32"},
-    {"binary", "decode_u32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u32"},
-    {"binary", "decode_u64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u64"},
-    {"binary", "decode_u64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u64"},
-    {"binary", "decode_u8",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "u8"},
+    {"binary", "decode_f32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f32"},
+    {"binary", "decode_f32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f32"},
+    {"binary", "decode_f64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f64"},
+    {"binary", "decode_f64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f64"},
+    {"binary", "decode_i128_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i128"},
+    {"binary", "decode_i128_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i128"},
+    {"binary", "decode_i16_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i16"},
+    {"binary", "decode_i16_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i16"},
+    {"binary", "decode_i256_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i256"},
+    {"binary", "decode_i256_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i256"},
+    {"binary", "decode_i32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i32"},
+    {"binary", "decode_i32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i32"},
+    {"binary", "decode_i64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i64"},
+    {"binary", "decode_i64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i64"},
+    {"binary", "decode_i8",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "i8"},
+    {"binary", "decode_u128_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u128"},
+    {"binary", "decode_u128_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u128"},
+    {"binary", "decode_u16_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u16"},
+    {"binary", "decode_u16_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u16"},
+    {"binary", "decode_u256_be", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u256"},
+    {"binary", "decode_u256_le", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u256"},
+    {"binary", "decode_u32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u32"},
+    {"binary", "decode_u32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u32"},
+    {"binary", "decode_u64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u64"},
+    {"binary", "decode_u64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u64"},
+    {"binary", "decode_u8",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "u8"},
     {"binary", "encode_f32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "[u8]"},
     {"binary", "encode_f32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "[u8]"},
     {"binary", "encode_f64_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "[u8]"},
@@ -3399,77 +3429,77 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"json", "stringify",    1, 1, false, FALLIBLE_TYPE_NONE,       0, {{0}},"string"},
     /* maps */
     {"maps", "clear",          1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "void"},
-    {"maps", "contains_value", 2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
+    {"maps", "contains_value", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_VALUE_OF_FIRST}}, "bool"},
     {"maps", "get_keys",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "get_or_default", 3, 3, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
+    {"maps", "get_or_default", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}, {2, EXPECTED_ARGUMENT_VALUE_OF_FIRST}}, NULL},
     {"maps", "get_values",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "has_key",        2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
+    {"maps", "has_key",        2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}}, "bool"},
     {"maps", "is_empty",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "bool"},
     {"maps", "is_equal",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_MAP}}, "bool"},
-    {"maps", "merge",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_MAP}}, NULL},
-    {"maps", "remove_key",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MAP}}, "void"},
+    {"maps", "merge",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_SAME_AS_FIRST}}, NULL},
+    {"maps", "remove_key",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}}, "void"},
     /* math */
     {"math", "abs",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "$0"},
-    {"math", "acos",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "approx_equal", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "asin",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "atan",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "atan2",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cbrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "ceil",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "acos",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "approx_equal", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "asin",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "atan",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "atan2",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cbrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "ceil",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "clamp",       3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}, {2, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
-    {"math", "copysign",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cos",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cosh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "deg_to_rad",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "distance",    4, 4, false, FALLIBLE_TYPE_NONE, 4, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}, {3, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "exp",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "exp2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "copysign",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cos",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cosh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "deg_to_rad",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "distance",    4, 4, false, FALLIBLE_TYPE_NONE, 4, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}, {3, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "exp",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "exp2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "factorial",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "floor",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "fma",         3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "floor",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "fma",         3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "gcd",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "hypot",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "hypot",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "is_even",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
-    {"math", "is_finite",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "is_infinite", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "is_nan",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
+    {"math", "is_finite",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "is_infinite", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "is_nan",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
     {"math", "is_odd",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "is_power_of_two", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "is_prime",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "lcm",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "lerp",        3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log10",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log_base",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "lerp",        3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log10",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log_base",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "max",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
     {"math", "min",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
-    {"math", "mod",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "modf",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "mod",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "modf",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "neg",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "$0"},
     {"math", "next_power_of_two", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "pow",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "rad_to_deg",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "remap",       5, 5, false, FALLIBLE_TYPE_NONE, 5, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}, {3, EXPECTED_ARGUMENT_NUMBER}, {4, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "round",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "pow",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "rad_to_deg",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "remap",       5, 5, false, FALLIBLE_TYPE_NONE, 5, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}, {3, EXPECTED_ARGUMENT_F64_NUMBER}, {4, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "round",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "sign",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "i64"},
-    {"math", "sin",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "sinh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "sqrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "tan",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "tanh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "trunc",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "sin",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "sinh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "sqrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "tan",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "tanh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "trunc",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     /* mem */
     {"mem", "alloc",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},NULL},
     {"mem", "arena",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Arena"},
-    {"mem", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "fill",     3, 3, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"mem", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "void"},
+    {"mem", "fill",     3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_I64}}, "void"},
     {"mem", "init",     2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_TYPE}},NULL},
-    {"mem", "raw_copy", 3, 3, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "reset",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"mem", "usage",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
-    {"mem", "zero",     2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"mem", "raw_copy", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_POINTER}, {2, EXPECTED_ARGUMENT_I64}}, "void"},
+    {"mem", "reset",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "void"},
+    {"mem", "usage",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARENA}}, "i64"},
+    {"mem", "zero",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_POINTER}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
     /* net */
     {"net", "accept",      1, 1, true,  FALLIBLE_TYPE_STRUCT_SOCKET,   0, {{0}},"Socket"},
     {"net", "close",       1, 1, false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
@@ -3531,17 +3561,17 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"runtime", "uptime",       0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "f64"},
     {"runtime", "version",      0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}}, "string"},
     /* server */
-    {"server", "add_middleware", 2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"server", "add_route",  4, 4, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"server", "add_middleware", 2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ROUTER}}, "void"},
+    {"server", "add_route",  4, 4, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "add_router", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Router"},
-    {"server", "cors",       2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"server", "cors",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "html",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     {"server", "json",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
-    {"server", "listen",     2, 3, false, FALLIBLE_TYPE_NONE, 2, {{1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
+    {"server", "listen",     2, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_ROUTER}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"server", "redirect",   2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     {"server", "text",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     /* sqlite */
-    {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            0, {{0}},"void"},
+    {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            1, {{0, EXPECTED_ARGUMENT_DATABASE}}, "void"},
     {"sqlite", "exec",         2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_BOOL,            0, {{0}},"bool"},
     {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FALLIBLE_TYPE_STRUCT_DATABASE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "Database"},
@@ -3621,17 +3651,17 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"strings", "trim_right",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"strings", "truncate",      3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* sync */
-    {"sync", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"sync", "lock",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"sync", "destroy",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
+    {"sync", "lock",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
     {"sync", "mutex",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Mutex"},
-    {"sync", "try_lock", 1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"sync", "unlock",   1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"sync", "try_lock", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "bool"},
+    {"sync", "unlock",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_MUTEX}}, "void"},
     /* threads */
-    {"threads", "detach",       1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"threads", "detach",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "void"},
     {"threads", "get_id",       0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
-    {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"bool"},
-    {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
-    {"threads", "sleep",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
+    {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "bool"},
+    {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "void"},
+    {"threads", "sleep",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "void"},
     {"threads", "spawn",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "spawn_arg",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
     {"threads", "thread_count", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
@@ -3742,6 +3772,17 @@ static GrayType *stdlib_first_argument_type(TypeChecker *checker, AstNode *node)
 static GrayType *array_element_type(TypeChecker *checker, GrayType *type) {
     return type && type->kind == TYPE_KIND_ARRAY && type->element_type
         ? typechecker_type_from_name(checker, type->element_type) : &TYPE_UNKNOWN;
+}
+
+/* The key or value type of map type `type`, or unknown. */
+static GrayType *map_key_type(TypeChecker *checker, GrayType *type) {
+    return type && type->kind == TYPE_KIND_MAP && type->key_type
+        ? typechecker_type_from_name(checker, type->key_type) : &TYPE_UNKNOWN;
+}
+
+static GrayType *map_value_type(TypeChecker *checker, GrayType *type) {
+    return type && type->kind == TYPE_KIND_MAP && type->value_type
+        ? typechecker_type_from_name(checker, type->value_type) : &TYPE_UNKNOWN;
 }
 
 /* The return type a registry entry gives the call `node`, deriving it from
@@ -3876,6 +3917,29 @@ static void typechecker_check_io_read_lines_limit(TypeChecker *checker, const ch
 
 static void typechecker_check_binary_encode_argument(TypeChecker *checker, const char *function_name, AstNode *node);
 
+/* A function-typed stdlib argument must have exactly the signature the
+ * function stores and calls it with: E3066 for another function signature,
+ * E5026 for a value that is not a function at all. */
+static void check_function_argument_signature(TypeChecker *checker, AstNode *argument, const char *module_name,
+    const char *function_name, int argument_number, const char *expected_signature)
+{
+    GrayType *argument_type = resolve_expression(checker, argument);
+    if (!argument_type || argument_type->kind == TYPE_KIND_UNKNOWN) return;
+    if (argument_type->kind != TYPE_KIND_FUNCTION) {
+        typechecker_error_at(checker, "E5026", argument, typechecker_format(checker,
+            "'%s.%s()' expects %s as argument %d, got '%s'",
+            module_name, function_name, expected_signature, argument_number, type_display_name(checker, argument_type)));
+        return;
+    }
+    if (argument_type->name && strcmp(argument_type->name, "func") != 0 &&
+        strcmp(argument_type->name, expected_signature) != 0) {
+        typechecker_error_at(checker, "E3066", argument, typechecker_format(checker,
+            "argument %d of '%s.%s': expected %s, got %s",
+            argument_number, module_name, function_name, expected_signature, type_display_name(checker, argument_type)));
+    }
+}
+
+
 static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const char *module_name,
     const char *function_name, AstNode *node)
 {
@@ -3914,10 +3978,12 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
             if (!encoder_value) {
                 if (kind == EXPECTED_ARGUMENT_I64) slot = &TYPE_I64;
                 else if (kind == EXPECTED_ARGUMENT_U64) slot = &TYPE_U64;
-                else if (kind == EXPECTED_ARGUMENT_F64) slot = &TYPE_F64;
+                else if (kind == EXPECTED_ARGUMENT_F64 || kind == EXPECTED_ARGUMENT_F64_NUMBER) slot = &TYPE_F64;
                 else if (kind == EXPECTED_ARGUMENT_U8_ARRAY) slot = type_array("u8");
                 else if (kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST) slot = array_element_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) slot = stdlib_first_argument_type(checker, node);
+                else if (kind == EXPECTED_ARGUMENT_KEY_OF_FIRST) slot = map_key_type(checker, stdlib_first_argument_type(checker, node));
+                else if (kind == EXPECTED_ARGUMENT_VALUE_OF_FIRST) slot = map_value_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_COMMON_NUMBER) {
                     slot = stdlib_common_number_type(checker, metadata, node);
                     if (!slot) {
@@ -3929,8 +3995,11 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
             }
             AstNode *argument = node->data.call.arguments[argument_index];
             GrayType *argument_type = slot ? check_expression_as(checker, argument, slot) : resolve_expression(checker, argument);
-            if ((kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST || kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) && slot &&
-                literal_entry_mismatches(checker, slot, argument_type)) {
+            if ((kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST || kind == EXPECTED_ARGUMENT_SAME_AS_FIRST ||
+                 kind == EXPECTED_ARGUMENT_KEY_OF_FIRST || kind == EXPECTED_ARGUMENT_VALUE_OF_FIRST) && slot &&
+                (literal_entry_mismatches(checker, slot, argument_type) ||
+                 (slot->kind == TYPE_KIND_MAP && argument_type && argument_type->kind == TYPE_KIND_MAP &&
+                  !map_types_match(slot, argument_type)))) {
                 typechecker_error_at(checker, "E5026", argument, typechecker_format(checker,
                     "'%s.%s()' expects '%s' as argument %d, got '%s'",
                     module_name, function_name, type_display_name(checker, slot), argument_index + 1, type_display_name(checker, argument_type)));
@@ -4730,6 +4799,20 @@ static DeclarationEntry *checker_resolve_entry(TypeChecker *checker, const char 
 static DeclarationEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
                                            const char *written) {
     DeclarationEntry *entry = checker_resolve_entry(checker, written);
+    /* E4031: two in-scope `using` modules declare this bare name, so the pick
+     * was import order. The first match is still returned so the reference
+     * does not also report as undefined. */
+    if (entry && node && checker->modules && !strchr(written, '.')) {
+        ResolveScope scope = checker_scope(checker);
+        const char *second_module = NULL;
+        module_resolve_unqualified(checker->modules, &scope, written, &second_module);
+        if (second_module) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E4031",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                written, entry->module_name, second_module, entry->module_name, written);
+            mark_import_used(checker, second_module);
+        }
+    }
     if (entry && node) node->resolved_declaration = entry;
     return entry;
 }
@@ -6108,6 +6191,10 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
         if (conversion == CONVERSION_WIDEN && is_wide_integer_type_name(target->name) &&
             !checker->should_suppress_type_table_writes)
             value->widen_to = target->name;
+        /* Likewise a wide integer stored into a floating-point slot. */
+        if (conversion == CONVERSION_WIDEN && target->kind == TYPE_KIND_FLOATING_POINT &&
+            is_wide_integer_type_name(type->name) && !checker->should_suppress_type_table_writes)
+            value->widen_to = target->name;
         if (conversion == CONVERSION_NARROW) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3155", NODE_FILE(checker, value),
                 value->token.line, value->token.column, 0, type->name, target->name, target->name);
@@ -6334,7 +6421,8 @@ static void typechecker_check_const_domain(TypeChecker *checker, const char *mod
  * type T. The 128/256-bit encoders take their wide type through their own
  * path. */
 static void typechecker_check_binary_encode_argument(TypeChecker *checker, const char *function_name, AstNode *node) {
-    static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64" };
+    static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64",
+                                           "i128", "u128", "i256", "u256" };
     if (strncmp(function_name, "encode_", 7) != 0 || node->data.call.argument_count != 1) return;
     const char *type_start = function_name + 7;
     size_t type_length = strcspn(type_start, "_");
@@ -7451,6 +7539,18 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     "'threads.spawn()' requires a function reference; use '()func_name' or 'ref(func_name)'",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            else {
+                check_function_argument_signature(checker, first_argument_node, "threads", member_function_name, 1,
+                    strcmp(member_function_name, "spawn") == 0 ? "func()" : "func(i64)");
+            }
+        }
+    } else if (strcmp(module_name, "server") == 0) {
+        if (strcmp(member_function_name, "add_route") == 0 && node->data.call.argument_count == 4) {
+            check_function_argument_signature(checker, node->data.call.arguments[3], "server", member_function_name, 4,
+                "func(HttpRequest)->HttpResponse");
+        } else if (strcmp(member_function_name, "add_middleware") == 0 && node->data.call.argument_count == 2) {
+            check_function_argument_signature(checker, node->data.call.arguments[1], "server", member_function_name, 2,
+                "func(^HttpRequest,^HttpResponse)");
         }
     } else if (strcmp(module_name, "net") == 0) {
         /* E5026: functions that take a socket/listener as first arg */
@@ -11381,6 +11481,8 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         /* Check if it's an enum access: Color.RED (also via type alias) */
         const char *resolved_object = resolve_type_alias(checker, object_name);
         if (is_enum_name(checker, resolved_object)) {
+            if (strcmp(object_name, resolved_object) == 0)
+                checker_cache_resolution(checker, object, object_name);
             /* Rewrite the label to the resolved enum name for codegen */
             object->data.label.value = resolved_object;
             warn_if_enum_deprecated(checker, node, find_enum_index(checker, resolved_object));
@@ -12897,8 +12999,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 allowed = true;
             /* String -> number: parsed at runtime, panicking on bad input */
             if (source_type->kind == TYPE_KIND_STRING &&
-                (destination_type->kind == TYPE_KIND_SIGNED_INTEGER || destination_type->kind == TYPE_KIND_UNSIGNED_INTEGER || destination_type->kind == TYPE_KIND_FLOATING_POINT) &&
-                !is_wide_integer_type_name(destination_type->name))
+                (destination_type->kind == TYPE_KIND_SIGNED_INTEGER || destination_type->kind == TYPE_KIND_UNSIGNED_INTEGER || destination_type->kind == TYPE_KIND_FLOATING_POINT))
                 allowed = true;
             /* A string-backed enum is a GrayString at runtime, not an
              * integer, so the integer-backed rules below do not apply to it. */
@@ -15626,26 +15727,6 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
                 typechecker_error_at(checker, "E5049", node, message);
             }
         }
-        /* pointer depth mismatch (e.g. returning ^^i64
-         * from a function declared -> ^i64). Both sides are
-         * TYPE_KIND_POINTER so the kind check above passes, but the
-         * element_type strings differ ("i64" vs "^i64"). */
-        if (return_type->kind == TYPE_KIND_POINTER && expected->kind == TYPE_KIND_POINTER &&
-            return_type->element_type && expected->element_type &&
-            strcmp(return_type->element_type, expected->element_type) != 0) {
-            /* Build human-readable pointer type strings (strip module prefix) */
-            const char *expected_inner_name = struct_display_name(checker, expected->element_type);
-            if (expected_inner_name == expected->element_type) expected_inner_name = enum_display_name(checker, expected->element_type);
-            const char *got_inner = struct_display_name(checker, return_type->element_type);
-            if (got_inner == return_type->element_type) got_inner = enum_display_name(checker, return_type->element_type);
-            char expected_text[TYPE_NAME_MAX], actual_text[TYPE_NAME_MAX];
-            snprintf(expected_text, sizeof(expected_text), "^%s", expected_inner_name);
-            snprintf(actual_text, sizeof(actual_text), "^%s", got_inner);
-            char *message = typechecker_format(checker,
-                "return type mismatch: expected '%s', got '%s'",
-                expected_text, actual_text);
-            typechecker_error_at(checker, "E5049", node, message);
-        }
         /* Non-primary return slots. Everything above inspects values[0]
          * only; without this a `return 0, NetErr.DNS_FAIL` into a
          * `-> (i64, DbErr)` slot passed unchecked and leaked a C type
@@ -17959,6 +18040,15 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         }
         /* E3099: enum name collides with a stdlib opaque type */
         check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
+        /* E4016: a tagged variant's payload type must name a type, at any depth */
+        for (int variant_index = 0; variant_index < node->data.enum_declaration.value_count; variant_index++) {
+            EnumValue *variant = &node->data.enum_declaration.values[variant_index];
+            for (int payload_index = 0; payload_index < variant->payload_count; payload_index++) {
+                char leaf[MESSAGE_BUFFER_SIZE];
+                const char *undefined = undefined_type_leaf(checker, variant->payload_types[payload_index], leaf, sizeof(leaf));
+                if (undefined) typechecker_error_undefined_type(checker, node, unqualified_display_name(undefined));
+            }
+        }
         break;
 
     case NODE_ALIAS_DECLARATION:

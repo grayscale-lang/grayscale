@@ -1,0 +1,15 @@
+/*
+ * Panic Test: P0136 - json.parse of a number above the range of a u128 field
+ */
+
+import @json
+
+#json
+const Holder struct {
+    value u128
+}
+
+do main() {
+    mut holder Holder = json.parse("{\"value\": 340282366920938463463374607431768211456}")
+    println(holder.value)
+}

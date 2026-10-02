@@ -1,0 +1,77 @@
+/*
+ * wide_integer_to_float_slots.gray - an i128, u128, i256 or u256 value stored
+ * into a floating-point slot converts to that float.
+ */
+
+import @math
+
+do take(value f64) -> f64 {
+    return value
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut wide i128 = 4
+    mut declared f64 = wide
+    if declared == 4.0 {
+        passed++
+    } otherwise {
+        println("FAIL: declaration")
+        failed++
+    }
+
+    declared += wide
+    if declared == 8.0 {
+        passed++
+    } otherwise {
+        println("FAIL: compound assignment")
+        failed++
+    }
+
+    if take(wide) == 4.0 {
+        passed++
+    } otherwise {
+        println("FAIL: function argument")
+        failed++
+    }
+
+    mut entries [f64] = {wide, 2}
+    if entries[0] == 4.0 && entries[1] == 2.0 {
+        passed++
+    } otherwise {
+        println("FAIL: array literal entry")
+        failed++
+    }
+
+    if math.sqrt(wide) == 2.0 {
+        passed++
+    } otherwise {
+        println("FAIL: math.sqrt")
+        failed++
+    }
+
+    mut negative i256 = -3
+    mut single f32 = negative
+    if single == -3.0 {
+        passed++
+    } otherwise {
+        println("FAIL: negative i256 into f32")
+        failed++
+    }
+
+    mut minimum i128 = -170141183460469231731687303715884105728
+    mut minimum_float f64 = minimum
+    if minimum_float == -170141183460469231731687303715884105728.0 {
+        passed++
+    } otherwise {
+        println("FAIL: i128 minimum")
+        failed++
+    }
+
+    println("wide_integer_to_float_slots: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

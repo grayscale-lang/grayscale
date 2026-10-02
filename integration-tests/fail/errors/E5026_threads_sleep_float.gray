@@ -1,0 +1,12 @@
+/*
+ * Error Test: threads.sleep takes an i64, not an f64
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @threads
+
+do main() {
+    mut ms f64 = 10.5
+    threads.sleep(ms)
+}

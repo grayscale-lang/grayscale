@@ -11,7 +11,9 @@
 
 #include "json.h"
 #include "strconv.h"
+#include "builtins.h"
 #include "../runtime/bigint.h"
+#include <math.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -452,8 +454,12 @@ static GrayString parse_json_value_as_string(GrayArena *arena, const char **curs
     return gray_string_new(arena, start, (int32_t)(*cursor - start));
 }
 
-GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
+/* Decodes an object into a map of value text. When `quoted` is non-NULL it
+ * receives the keys whose JSON value was a quoted string, since the value
+ * text alone cannot tell "7" from 7. */
+static GrayMap json_decode_object(GrayArena *arena, GrayString text, GrayMap *quoted) {
     GrayMap map = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
+    if (quoted) *quoted = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 8, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
     const char *cursor = text.data;
     const char *end_cursor = cursor + text.len;
     skip_whitespace(&cursor, end_cursor);
@@ -469,13 +475,34 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
         GrayString key = parse_json_string(arena, &cursor, end_cursor);
         skip_whitespace(&cursor, end_cursor);
         if (cursor < end_cursor && *cursor == ':') cursor++;
+        skip_whitespace(&cursor, end_cursor);
+        bool value_is_quoted = cursor < end_cursor && *cursor == '"';
         GrayString value = parse_json_value_as_string(arena, &cursor, end_cursor);
         GRAY_MAP_SET(arena, &map, &key, &value);
+        if (quoted && value_is_quoted) {
+            GrayString marker = gray_string_lit("");
+            GRAY_MAP_SET(arena, quoted, &key, &marker);
+        }
 
         skip_whitespace(&cursor, end_cursor);
         if (cursor < end_cursor && *cursor == ',') cursor++;
     }
     return map;
+}
+
+GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
+    return json_decode_object(arena, text, NULL);
+}
+
+GrayMap gray_json_decode_fields(GrayArena *arena, GrayString text, GrayMap *quoted) {
+    return json_decode_object(arena, text, quoted);
+}
+
+void gray_json_check_field_quoting(GrayMap *quoted, GrayString key, bool expects_string, const char *expected, const char *file, int line) {
+    bool is_string = gray_map_get(quoted, &key) != NULL;
+    if (is_string == expects_string) return;
+    gray_panic_code_at(file, line, "P0135", "json.parse: field '%.*s' expects %s, but the JSON value is %s",
+        (int)key.len, key.data, expected, is_string ? "a string" : "not a string");
 }
 
 /* --- Validator ---
@@ -761,20 +788,22 @@ void gray_json_field_decode(GrayString text, int32_t kind, void *output, const c
     case GRAY_ELEM_U16: *(uint16_t *)output = (uint16_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT16_MAX, "u16", file, line); break;
     case GRAY_ELEM_U32: *(uint32_t *)output = (uint32_t)gray_ucast_check_u64(gray_strconv_to_u64(text, 10), UINT32_MAX, "u32", file, line); break;
     case GRAY_ELEM_U64: *(uint64_t *)output = gray_strconv_to_u64(text, 10); break;
-    case GRAY_ELEM_F32: *(float *)output  = (float)gray_strconv_to_f64(text); break;
-    case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_f64(text); break;
-    case GRAY_ELEM_I128: case GRAY_ELEM_U128: case GRAY_ELEM_I256: case GRAY_ELEM_U256: {
-        /* The wide parsers read a NUL-terminated decimal. */
-        char digits[96];
-        int32_t length = text.len < (int32_t)sizeof(digits) - 1 ? text.len : (int32_t)sizeof(digits) - 1;
-        memcpy(digits, text.data, (size_t)length);
-        digits[length] = '\0';
-        if (kind == GRAY_ELEM_I128) *(gray_i128 *)output = gray_i128_from_decimal(digits);
-        else if (kind == GRAY_ELEM_U128) *(gray_u128 *)output = gray_u128_from_decimal(digits);
-        else if (kind == GRAY_ELEM_I256) *(gray_i256 *)output = gray_i256_from_decimal(digits);
-        else *(gray_u256 *)output = gray_u256_from_decimal(digits);
+    case GRAY_ELEM_F32: {
+        double parsed = gray_strconv_to_f64(text);
+        float narrowed = (float)parsed;
+        /* Overflow to infinity and underflow to zero both lose the value. */
+        if (isinf(narrowed) || (narrowed == 0.0f && parsed != 0.0)) {
+            gray_panic_code_at(file, line, "P0136", "cannot convert '%.*s' to f32; value is outside its range",
+                (int)text.len, text.data);
+        }
+        *(float *)output = narrowed;
         break;
     }
+    case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_f64(text); break;
+    case GRAY_ELEM_I128: *(gray_i128 *)output = gray_builtin_string_to_i128(text, file, line); break;
+    case GRAY_ELEM_U128: *(gray_u128 *)output = gray_builtin_string_to_u128(text, file, line); break;
+    case GRAY_ELEM_I256: *(gray_i256 *)output = gray_builtin_string_to_i256(text, file, line); break;
+    case GRAY_ELEM_U256: *(gray_u256 *)output = gray_builtin_string_to_u256(text, file, line); break;
     default: break;
     }
 }

@@ -672,6 +672,237 @@ static inline gray_i256 gray_i256_from_decimal(const char *text) {
     return is_negative ? gray_i256_neg(result) : result;
 }
 
+/* A wide integer as a double: each 64-bit word scaled by its place value. */
+static inline double gray_u128_to_f64(gray_u128 value) {
+    return (double)value.high * 18446744073709551616.0 + (double)value.low;
+}
+
+static inline double gray_i128_to_f64(gray_i128 value) {
+    if (value.high >= 0) return (double)value.high * 18446744073709551616.0 + (double)value.low;
+    gray_i128 negated = gray_i128_neg(value);
+    gray_u128 magnitude = {negated.low, (uint64_t)negated.high};
+    return -gray_u128_to_f64(magnitude);
+}
+
+static inline double gray_u256_to_f64(gray_u256 value) {
+    double result = 0.0;
+    for (int i = 3; i >= 0; i--) result = result * 18446744073709551616.0 + (double)value.w[i];
+    return result;
+}
+
+static inline double gray_i256_to_f64(gray_i256 value) {
+    if ((int64_t)value.w[3] >= 0) {
+        gray_u256 magnitude;
+        memcpy(&magnitude, &value, sizeof(magnitude));
+        return gray_u256_to_f64(magnitude);
+    }
+    gray_i256 negated = gray_i256_neg(value);
+    gray_u256 magnitude;
+    memcpy(&magnitude, &negated, sizeof(magnitude));
+    return -gray_u256_to_f64(magnitude);
+}
+
+/* A float as a wide integer of `bits` width, truncated toward zero. Out
+ * receives the two's-complement value as 64-bit words, least significant
+ * first. NaN and a value outside the type's range panic. */
+static inline void gray_f64_to_wide_words(double value, const char *type_name, int bits, bool is_signed,
+                                          const char *file, int line, uint64_t out[4]) {
+    static const double scales[4] = {1.0, 18446744073709551616.0,
+        340282366920938463463374607431768211456.0,
+        6277101735386680763835789423207666416102355444464034512896.0};
+    bool is_negative = value < 0.0;
+    double magnitude = is_negative ? -value : value;
+    /* 2^(bits-1) for a signed type, 2^bits for an unsigned one. */
+    double limit;
+    if (bits == 128)
+        limit = is_signed ? 170141183460469231731687303715884105728.0 : 340282366920938463463374607431768211456.0;
+    else
+        limit = is_signed ? 57896044618658097711785492504343953926634992332820282019728792003956564819968.0
+                          : 115792089237316195423570985008687907853269984665640564039457584007913129639936.0;
+    /* A negative value truncates toward zero, so an unsigned type still takes -0.5. */
+    bool out_of_range = value != value ||
+        (is_negative ? (is_signed ? magnitude > limit : magnitude >= 1.0) : magnitude >= limit);
+    if (out_of_range)
+        gray_panic_code_at(file, line, "P0137", "cannot convert a float to %s; the value is out of range, or NaN", type_name);
+    if (magnitude < 9.2e18) magnitude = (double)(int64_t)magnitude;
+    for (int i = 3; i >= 0; i--) {
+        double quotient = magnitude / scales[i];
+        uint64_t word = quotient >= 1.0 ? (uint64_t)quotient : 0;
+        out[i] = word;
+        magnitude -= (double)word * scales[i];
+    }
+    if (is_negative) {
+        uint64_t carry = 1;
+        for (int i = 0; i < 4; i++) {
+            out[i] = ~out[i] + carry;
+            carry = carry && out[i] == 0;
+        }
+    }
+}
+
+static inline gray_i128 gray_f64_to_i128(double value, const char *file, int line) {
+    uint64_t words[4];
+    gray_f64_to_wide_words(value, "i128", 128, true, file, line, words);
+    gray_i128 result = {words[0], (int64_t)words[1]};
+    return result;
+}
+
+static inline gray_u128 gray_f64_to_u128(double value, const char *file, int line) {
+    uint64_t words[4];
+    gray_f64_to_wide_words(value, "u128", 128, false, file, line, words);
+    gray_u128 result = {words[0], words[1]};
+    return result;
+}
+
+static inline gray_i256 gray_f64_to_i256(double value, const char *file, int line) {
+    gray_i256 result;
+    gray_f64_to_wide_words(value, "i256", 256, true, file, line, result.w);
+    return result;
+}
+
+static inline gray_u256 gray_f64_to_u256(double value, const char *file, int line) {
+    gray_u256 result;
+    gray_f64_to_wide_words(value, "u256", 256, false, file, line, result.w);
+    return result;
+}
+
+/* A cast between wide integer types keeps the value: it panics when the
+ * value is outside the destination's range. Words are two's complement, least
+ * significant first, sign-extended to 256 bits for the check. */
+static inline void gray_wide_cast_words(const uint64_t *source, int source_words, bool source_signed,
+                                        int destination_bits, bool destination_signed,
+                                        const char *source_name, const char *destination_name,
+                                        const char *file, int line, uint64_t out[4]) {
+    bool is_negative = source_signed && (int64_t)source[source_words - 1] < 0;
+    uint64_t fill = is_negative ? ~(uint64_t)0 : 0;
+    for (int i = 0; i < 4; i++) out[i] = i < source_words ? source[i] : fill;
+    /* The sign bit of the destination, and every bit above it, must agree with the sign. */
+    int first_checked_bit = destination_signed ? destination_bits - 1 : destination_bits;
+    bool is_in_range = !is_negative || destination_signed;
+    for (int bit = first_checked_bit; bit < 256 && is_in_range; bit++) {
+        bool is_set = (out[bit / 64] >> (bit % 64)) & 1;
+        if (is_set != is_negative) is_in_range = false;
+    }
+    if (!is_in_range)
+        gray_panic_code_at(file, line, "P0138", "cast from %s to %s failed; the value is outside the range of %s",
+                           source_name, destination_name, destination_name);
+}
+
+static inline gray_u128 gray_cast_i128_to_u128(gray_i128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, (uint64_t)value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, true, 128, false, "i128", "u128", file, line, words);
+    gray_u128 result = {words[0], words[1]};
+    return result;
+}
+
+static inline gray_i256 gray_cast_i128_to_i256(gray_i128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, (uint64_t)value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, true, 256, true, "i128", "i256", file, line, words);
+    gray_i256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+static inline gray_u256 gray_cast_i128_to_u256(gray_i128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, (uint64_t)value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, true, 256, false, "i128", "u256", file, line, words);
+    gray_u256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+static inline gray_i128 gray_cast_u128_to_i128(gray_u128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, false, 128, true, "u128", "i128", file, line, words);
+    gray_i128 result = {words[0], (int64_t)words[1]};
+    return result;
+}
+
+static inline gray_i256 gray_cast_u128_to_i256(gray_u128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, false, 256, true, "u128", "i256", file, line, words);
+    gray_i256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+static inline gray_u256 gray_cast_u128_to_u256(gray_u128 value, const char *file, int line) {
+    uint64_t source[2] = {value.low, value.high};
+    uint64_t words[4];
+    gray_wide_cast_words(source, 2, false, 256, false, "u128", "u256", file, line, words);
+    gray_u256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+static inline gray_i128 gray_cast_i256_to_i128(gray_i256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, true, 128, true, "i256", "i128", file, line, words);
+    gray_i128 result = {words[0], (int64_t)words[1]};
+    return result;
+}
+
+static inline gray_u128 gray_cast_i256_to_u128(gray_i256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, true, 128, false, "i256", "u128", file, line, words);
+    gray_u128 result = {words[0], words[1]};
+    return result;
+}
+
+static inline gray_u256 gray_cast_i256_to_u256(gray_i256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, true, 256, false, "i256", "u256", file, line, words);
+    gray_u256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+static inline gray_i128 gray_cast_u256_to_i128(gray_u256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, false, 128, true, "u256", "i128", file, line, words);
+    gray_i128 result = {words[0], (int64_t)words[1]};
+    return result;
+}
+
+static inline gray_u128 gray_cast_u256_to_u128(gray_u256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, false, 128, false, "u256", "u128", file, line, words);
+    gray_u128 result = {words[0], words[1]};
+    return result;
+}
+
+static inline gray_i256 gray_cast_u256_to_i256(gray_u256 value, const char *file, int line) {
+    const uint64_t *source = value.w;
+    uint64_t words[4];
+    gray_wide_cast_words(source, 4, false, 256, true, "u256", "i256", file, line, words);
+    gray_i256 result;
+    memcpy(result.w, words, sizeof(result.w));
+    return result;
+}
+
+/* A signed scalar cast to an unsigned wide integer: a negative value panics. */
+static inline gray_u128 gray_cast_i64_to_u128(int64_t value, const char *file, int line) {
+    if (value < 0)
+        gray_panic_code_at(file, line, "P0138", "cast from i64 to u128 failed; the value is outside the range of u128");
+    return gray_u128_from_u64((uint64_t)value);
+}
+
+static inline gray_u256 gray_cast_i64_to_u256(int64_t value, const char *file, int line) {
+    if (value < 0)
+        gray_panic_code_at(file, line, "P0138", "cast from i64 to u256 failed; the value is outside the range of u256");
+    return gray_u256_from_u64((uint64_t)value);
+}
+
 /* --- Overflow-Checked Arithmetic --- */
 
 static inline gray_i128 gray_i128_add_checked(gray_i128 left, gray_i128 right, const char *file, int line) {

@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0019 - an element of a wide integer array above the range of u8
+ */
+
+do main() {
+    mut values [i128] = {5, 300}
+    println(cast(values, [u8]))
+}

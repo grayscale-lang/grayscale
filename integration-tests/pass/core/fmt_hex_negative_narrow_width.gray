@@ -1,0 +1,50 @@
+/*
+ * fmt_hex_negative_narrow_width.gray - %x, %X and %o show a negative i8, i16
+ * or i32 at the width of its type.
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a i8 = -1
+    mut b i16 = -2
+    mut c i32 = -1
+    mut d i64 = -1
+
+    if fmt.sprintf("%x %x %x", {a, b, c}) == "ff fffe ffffffff" {
+        passed++
+    } otherwise {
+        println("FAIL: %x at type width")
+        failed++
+    }
+
+    if fmt.sprintf("%#X %o", {a, b}) == "0XFF 177776" {
+        passed++
+    } otherwise {
+        println("FAIL: %#X and %o at type width")
+        failed++
+    }
+
+    if fmt.sprintf("%x", {d}) == "ffffffffffffffff" {
+        passed++
+    } otherwise {
+        println("FAIL: i64 keeps 64 bits")
+        failed++
+    }
+
+    mut values [i8] = {-1, 5}
+    if fmt.sprintf("%x %x", values) == "ff 5" {
+        passed++
+    } otherwise {
+        println("FAIL: array argument")
+        failed++
+    }
+
+    println("fmt_hex_negative_narrow_width: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

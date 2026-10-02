@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3066 - threads.spawn_arg requires a func(i64) reference
+ */
+// expect-error: E3066
+// expect-error-count: 1
+
+import @threads
+
+do named(s string) {
+    println(s)
+}
+
+do main() {
+    mut t Thread = threads.spawn_arg(()named, 7)
+    threads.join(t)
+}

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3036 - maps.get_or_default checks its default against the map's value type
+ */
+// expect-error: E3036
+// expect-error-count: 1
+
+import @maps
+
+do main() {
+    mut small map[string:u8] = {"a": 1}
+    println(maps.get_or_default(small, "z", 300))
+}
