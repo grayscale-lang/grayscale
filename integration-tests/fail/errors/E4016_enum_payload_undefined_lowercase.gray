@@ -1,0 +1,18 @@
+/*
+ * Error Test: E4016 - a tagged enum payload names a type that does not exist
+ */
+// expect-error: E4016
+// expect-error-count: 1
+
+const Shape enum {
+    Circle(float)
+    Point
+}
+
+do main() {
+    mut shape Shape = Shape.Point
+    when shape {
+        is Shape.Point { println("point") }
+        default { println("other") }
+    }
+}

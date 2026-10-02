@@ -18014,6 +18014,15 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         }
         /* E3099: enum name collides with a stdlib opaque type */
         check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
+        /* E4016: a tagged variant's payload type must name a type, at any depth */
+        for (int variant_index = 0; variant_index < node->data.enum_declaration.value_count; variant_index++) {
+            EnumValue *variant = &node->data.enum_declaration.values[variant_index];
+            for (int payload_index = 0; payload_index < variant->payload_count; payload_index++) {
+                char leaf[MESSAGE_BUFFER_SIZE];
+                const char *undefined = undefined_type_leaf(checker, variant->payload_types[payload_index], leaf, sizeof(leaf));
+                if (undefined) typechecker_error_undefined_type(checker, node, unqualified_display_name(undefined));
+            }
+        }
         break;
 
     case NODE_ALIAS_DECLARATION:
