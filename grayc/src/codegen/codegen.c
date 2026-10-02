@@ -13845,7 +13845,8 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
         /* --- parse: JSON string → struct --- */
         emit_formatted(codegen, "static GrayStruct_%s gray_json_parse_%s(GrayArena *arena, GrayString text) {\n", struct_name, struct_name);
         emit_formatted(codegen, "    GrayStruct_%s _r = {0};\n", struct_name);
-        emit_formatted(codegen, "    GrayMap _m = gray_json_decode(arena, text);\n");
+        emit_formatted(codegen, "    GrayMap _q;\n");
+        emit_formatted(codegen, "    GrayMap _m = gray_json_decode_fields(arena, text, &_q);\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &statement->data.struct_declaration.fields[j];
             /* A `` `json:"Name"` `` tag maps the field under that JSON key
@@ -13854,16 +13855,19 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             const char *json_key = field->json_tag ? field->json_tag : field->name;
             if (strcmp(field->type_name, "string") == 0) {
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, true, \"a string\", \"%s\", %d); _r.%s = *(GrayString *)_v; } }\n",
+                    codegen->file, statement->token.line, sanitize_name(field->name));
             } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
                 /* A number field of any sized type decodes at that type. */
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(%s), &_r.%s, \"%s\", %d); }\n",
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a number\", \"%s\", %d); gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(%s), &_r.%s, \"%s\", %d); } }\n",
+                    codegen->file, statement->token.line,
                     gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name),
                     codegen->file, statement->token.line);
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a bool\", \"%s\", %d); GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n",
+                    codegen->file, statement->token.line, sanitize_name(field->name));
             } else {
                 /* Enum field: serialized by backing type. Tagged enums are
                  * rejected on #json structs at typecheck time (E3173), so

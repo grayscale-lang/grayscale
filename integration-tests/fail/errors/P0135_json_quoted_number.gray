@@ -1,0 +1,11 @@
+// expect-contains: .gray:
+/* Panic Test: P0135 - json.parse of a quoted number into a number field */
+import @json
+
+#json
+const P struct { v i8 }
+
+do main() {
+    mut p P = json.parse("{\"v\": \"7\"}")
+    println(p.v)
+}
