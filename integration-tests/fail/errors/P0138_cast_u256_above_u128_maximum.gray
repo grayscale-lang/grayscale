@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0138 - a u256 above the u128 maximum cannot become a u128
+ */
+
+do main() {
+    mut value u256 = 340282366920938463463374607431768211456
+    println(cast(value, u128))
+}

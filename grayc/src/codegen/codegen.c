@@ -4077,21 +4077,14 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
                 }
             } else {
-                /* wide → wide: use cross-type constructors */
-                if (strcmp(source_wide_integer, "i128") == 0 && strcmp(target, "u128") == 0)
-                    { emit(codegen, "gray_u128_from_i128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u128") == 0 && strcmp(target, "i128") == 0)
-                    { emit(codegen, "gray_i128_from_u128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "i128") == 0 && strcmp(target, "i256") == 0)
-                    { emit(codegen, "gray_i256_from_i128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u128") == 0 && strcmp(target, "u256") == 0)
-                    { emit(codegen, "gray_u256_from_u128("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "i256") == 0 && strcmp(target, "i128") == 0)
-                    { emit(codegen, "gray_i128_from_i256("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else if (strcmp(source_wide_integer, "u256") == 0 && strcmp(target, "u128") == 0)
-                    { emit(codegen, "gray_u128_from_u256("); emit_expression(codegen, value); emit(codegen, ")"); }
-                else
-                    { emit_expression(codegen, value); } /* same-type no-op */
+                /* wide → wide: range-checked, the value is kept */
+                if (strcmp(source_wide_integer, target) == 0) {
+                    emit_expression(codegen, value); /* same-type no-op */
+                } else {
+                    emit_formatted(codegen, "gray_cast_%s_to_%s(", source_wide_integer, target);
+                    emit_expression(codegen, value);
+                    emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+                }
             }
             return;
         }
