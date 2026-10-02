@@ -702,6 +702,70 @@ static inline double gray_i256_to_f64(gray_i256 value) {
     return -gray_u256_to_f64(magnitude);
 }
 
+/* A float as a wide integer of `bits` width, truncated toward zero. Out
+ * receives the two's-complement value as 64-bit words, least significant
+ * first. NaN and a value outside the type's range panic. */
+static inline void gray_f64_to_wide_words(double value, const char *type_name, int bits, bool is_signed,
+                                          const char *file, int line, uint64_t out[4]) {
+    static const double scales[4] = {1.0, 18446744073709551616.0,
+        340282366920938463463374607431768211456.0,
+        6277101735386680763835789423207666416102355444464034512896.0};
+    bool is_negative = value < 0.0;
+    double magnitude = is_negative ? -value : value;
+    /* 2^(bits-1) for a signed type, 2^bits for an unsigned one. */
+    double limit;
+    if (bits == 128)
+        limit = is_signed ? 170141183460469231731687303715884105728.0 : 340282366920938463463374607431768211456.0;
+    else
+        limit = is_signed ? 57896044618658097711785492504343953926634992332820282019728792003956564819968.0
+                          : 115792089237316195423570985008687907853269984665640564039457584007913129639936.0;
+    /* A negative value truncates toward zero, so an unsigned type still takes -0.5. */
+    bool out_of_range = value != value ||
+        (is_negative ? (is_signed ? magnitude > limit : magnitude >= 1.0) : magnitude >= limit);
+    if (out_of_range)
+        gray_panic_code_at(file, line, "P0137", "cannot convert a float to %s; the value is out of range, or NaN", type_name);
+    if (magnitude < 9.2e18) magnitude = (double)(int64_t)magnitude;
+    for (int i = 3; i >= 0; i--) {
+        double quotient = magnitude / scales[i];
+        uint64_t word = quotient >= 1.0 ? (uint64_t)quotient : 0;
+        out[i] = word;
+        magnitude -= (double)word * scales[i];
+    }
+    if (is_negative) {
+        uint64_t carry = 1;
+        for (int i = 0; i < 4; i++) {
+            out[i] = ~out[i] + carry;
+            carry = carry && out[i] == 0;
+        }
+    }
+}
+
+static inline gray_i128 gray_f64_to_i128(double value, const char *file, int line) {
+    uint64_t words[4];
+    gray_f64_to_wide_words(value, "i128", 128, true, file, line, words);
+    gray_i128 result = {words[0], (int64_t)words[1]};
+    return result;
+}
+
+static inline gray_u128 gray_f64_to_u128(double value, const char *file, int line) {
+    uint64_t words[4];
+    gray_f64_to_wide_words(value, "u128", 128, false, file, line, words);
+    gray_u128 result = {words[0], words[1]};
+    return result;
+}
+
+static inline gray_i256 gray_f64_to_i256(double value, const char *file, int line) {
+    gray_i256 result;
+    gray_f64_to_wide_words(value, "i256", 256, true, file, line, result.w);
+    return result;
+}
+
+static inline gray_u256 gray_f64_to_u256(double value, const char *file, int line) {
+    gray_u256 result;
+    gray_f64_to_wide_words(value, "u256", 256, false, file, line, result.w);
+    return result;
+}
+
 /* --- Overflow-Checked Arithmetic --- */
 
 static inline gray_i128 gray_i128_add_checked(gray_i128 left, gray_i128 right, const char *file, int line) {

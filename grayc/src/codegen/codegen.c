@@ -4037,7 +4037,12 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         const char *source_wide_integer = (value_type && value_type->name && is_wide_integer_type_name(value_type->name))
             ? value_type->name : resolve_wide_integer_type(codegen, value);
         if (is_target_wide_integer || source_wide_integer) {
-            if (is_target_wide_integer && !source_wide_integer) {
+            if (is_target_wide_integer && !source_wide_integer && value_kind == TYPE_KIND_FLOATING_POINT) {
+                /* float → wide: truncated, range-checked at runtime */
+                emit_formatted(codegen, "gray_f64_to_%s((double)(", target);
+                emit_expression(codegen, value);
+                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+            } else if (is_target_wide_integer && !source_wide_integer) {
                 /* scalar → wide: use from_i64 / from_u64 */
                 emit_scalar_to_wide_integer(codegen, target, value, value_type);
             } else if (!is_target_wide_integer && source_wide_integer) {
