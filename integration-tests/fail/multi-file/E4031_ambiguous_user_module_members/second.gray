@@ -1,0 +1,6 @@
+mut state i64 = 100
+const LIMIT i64 = 20
+const Point struct {
+    x i64
+}
+const Mode enum { A }

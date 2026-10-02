@@ -4799,6 +4799,20 @@ static DeclarationEntry *checker_resolve_entry(TypeChecker *checker, const char 
 static DeclarationEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
                                            const char *written) {
     DeclarationEntry *entry = checker_resolve_entry(checker, written);
+    /* E4031: two in-scope `using` modules declare this bare name, so the pick
+     * was import order. The first match is still returned so the reference
+     * does not also report as undefined. */
+    if (entry && node && checker->modules && !strchr(written, '.')) {
+        ResolveScope scope = checker_scope(checker);
+        const char *second_module = NULL;
+        module_resolve_unqualified(checker->modules, &scope, written, &second_module);
+        if (second_module) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E4031",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                written, entry->module_name, second_module, entry->module_name, written);
+            mark_import_used(checker, second_module);
+        }
+    }
     if (entry && node) node->resolved_declaration = entry;
     return entry;
 }
@@ -11467,6 +11481,8 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         /* Check if it's an enum access: Color.RED (also via type alias) */
         const char *resolved_object = resolve_type_alias(checker, object_name);
         if (is_enum_name(checker, resolved_object)) {
+            if (strcmp(object_name, resolved_object) == 0)
+                checker_cache_resolution(checker, object, object_name);
             /* Rewrite the label to the resolved enum name for codegen */
             object->data.label.value = resolved_object;
             warn_if_enum_deprecated(checker, node, find_enum_index(checker, resolved_object));
