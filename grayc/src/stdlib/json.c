@@ -11,6 +11,7 @@
 
 #include "json.h"
 #include "strconv.h"
+#include "builtins.h"
 #include "../runtime/bigint.h"
 #include <string.h>
 #include <stdio.h>
@@ -788,18 +789,10 @@ void gray_json_field_decode(GrayString text, int32_t kind, void *output, const c
     case GRAY_ELEM_U64: *(uint64_t *)output = gray_strconv_to_u64(text, 10); break;
     case GRAY_ELEM_F32: *(float *)output  = (float)gray_strconv_to_f64(text); break;
     case GRAY_ELEM_F64: *(double *)output = gray_strconv_to_f64(text); break;
-    case GRAY_ELEM_I128: case GRAY_ELEM_U128: case GRAY_ELEM_I256: case GRAY_ELEM_U256: {
-        /* The wide parsers read a NUL-terminated decimal. */
-        char digits[96];
-        int32_t length = text.len < (int32_t)sizeof(digits) - 1 ? text.len : (int32_t)sizeof(digits) - 1;
-        memcpy(digits, text.data, (size_t)length);
-        digits[length] = '\0';
-        if (kind == GRAY_ELEM_I128) *(gray_i128 *)output = gray_i128_from_decimal(digits);
-        else if (kind == GRAY_ELEM_U128) *(gray_u128 *)output = gray_u128_from_decimal(digits);
-        else if (kind == GRAY_ELEM_I256) *(gray_i256 *)output = gray_i256_from_decimal(digits);
-        else *(gray_u256 *)output = gray_u256_from_decimal(digits);
-        break;
-    }
+    case GRAY_ELEM_I128: *(gray_i128 *)output = gray_builtin_string_to_i128(text, file, line); break;
+    case GRAY_ELEM_U128: *(gray_u128 *)output = gray_builtin_string_to_u128(text, file, line); break;
+    case GRAY_ELEM_I256: *(gray_i256 *)output = gray_builtin_string_to_i256(text, file, line); break;
+    case GRAY_ELEM_U256: *(gray_u256 *)output = gray_builtin_string_to_u256(text, file, line); break;
     default: break;
     }
 }
