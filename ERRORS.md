@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 477 codes** (335 errors, 17 warnings, 125 panics)
+**Total: 478 codes** (335 errors, 17 warnings, 126 panics)
 
 ---
 
@@ -504,6 +504,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0131` | bounds | fixed-size array field needs exactly %d elements, but the assigned array has %d |
 | `P0132` | server | server: response header contains CR or LF — HTTP header injection is not allowed |
 | `P0133` | random | random.choice called on an empty array |
+| `P0134` | random | random.rand_i64, rand_f64 or rand_char called with an empty range; min must be less than max |
 
 ---
 
@@ -528,4 +529,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-02 00:19:13 UTC*
+*Generated on 2026-10-02 00:26:28 UTC*

@@ -63,6 +63,8 @@ double gray_random_f64_unit(void) {
 }
 
 double gray_random_f64_range(double minimum, double maximum) {
+    if (!(minimum < maximum))
+        gray_panic_code("P0134", "random.rand_f64: range [%g, %g) is empty; min must be less than max", minimum, maximum);
     return minimum + gray_random_f64_unit() * (maximum - minimum);
 }
 
@@ -111,8 +113,9 @@ int32_t gray_random_choice_index(int32_t length, const char *file, int line) {
 }
 
 int64_t gray_random_i64_range(int64_t minimum, int64_t maximum) {
+    if (minimum >= maximum)
+        gray_panic_code("P0134", "random.rand_i64: range [%lld, %lld) is empty; min must be less than max", (long long)minimum, (long long)maximum);
     ensure_seed();
-    if (minimum >= maximum) return minimum;
     return minimum + (int64_t)(rand64() % (uint64_t)(maximum - minimum));
 }
 
@@ -132,8 +135,9 @@ int32_t gray_random_char(void) {
 }
 
 int32_t gray_random_char_range(int32_t minimum, int32_t maximum) {
+    if (minimum >= maximum)
+        gray_panic_code("P0134", "random.rand_char: range [%d, %d) is empty; min must be less than max", (int)minimum, (int)maximum);
     ensure_seed();
-    if (minimum >= maximum) return minimum;
     return minimum + (int32_t)(rand() % (maximum - minimum));
 }
 

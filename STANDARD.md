@@ -3780,12 +3780,12 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `rand_f64` | `() -> f64` | Random f64 [0.0, 1.0) |
-| `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max) |
-| `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max) |
+| `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max); panics (`P0134`) if `min` is not less than `max` |
+| `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max); panics (`P0134`) if `min` is not less than `max` |
 | `rand_bool` | `() -> bool` | Random boolean |
 | `rand_u8` | `() -> u8` | Random u8 [0, 255] |
 | `rand_char` | `() -> char` | Random printable char |
-| `rand_char` | `(min char, max char) -> char` | Random char in range |
+| `rand_char` | `(min char, max char) -> char` | Random char [min, max); panics (`P0134`) if `min` is not less than `max` |
 | `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
 | `choice` | `(arr [T]) -> T` | Random element from array |
 | `shuffle` | `(arr [T]) -> [T]` | Return shuffled copy |
