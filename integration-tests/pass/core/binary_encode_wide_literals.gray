@@ -1,0 +1,46 @@
+/*
+ * binary_encode_wide_literals.gray - a literal beyond the i64 range takes the
+ * wide encoder's own type.
+ */
+
+import @binary
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut all_ff [u8] = binary.encode_u128_le(340282366920938463463374607431768211455)
+    mut is_all_ff bool = len(all_ff) == 16
+    for i in range(0, len(all_ff)) {
+        if all_ff[i] != 255 {
+            is_all_ff = false
+        }
+    }
+    if is_all_ff {
+        passed++
+    } otherwise {
+        println("FAIL: encode_u128_le maximum")
+        failed++
+    }
+
+    mut minimum [u8] = binary.encode_i128_be(-170141183460469231731687303715884105728)
+    if len(minimum) == 16 && minimum[0] == 128 && minimum[15] == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: encode_i128_be minimum")
+        failed++
+    }
+
+    mut wide [u8] = binary.encode_u256_le(115792089237316195423570985008687907853269984665640564039457584007913129639935)
+    if len(wide) == 32 && wide[31] == 255 {
+        passed++
+    } otherwise {
+        println("FAIL: encode_u256_le maximum")
+        failed++
+    }
+
+    println("binary_encode_wide_literals: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

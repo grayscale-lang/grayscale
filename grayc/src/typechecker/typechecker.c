@@ -6398,7 +6398,8 @@ static void typechecker_check_const_domain(TypeChecker *checker, const char *mod
  * type T. The 128/256-bit encoders take their wide type through their own
  * path. */
 static void typechecker_check_binary_encode_argument(TypeChecker *checker, const char *function_name, AstNode *node) {
-    static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64" };
+    static const char *const value_types[] = { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64",
+                                           "i128", "u128", "i256", "u256" };
     if (strncmp(function_name, "encode_", 7) != 0 || node->data.call.argument_count != 1) return;
     const char *type_start = function_name + 7;
     size_t type_length = strcspn(type_start, "_");

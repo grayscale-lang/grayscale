@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3036 - a literal above the u128 range passed to binary.encode_u128_le
+ */
+// expect-error: E3036
+// expect-error-count: 1
+
+import @binary
+
+do main() {
+    println(binary.encode_u128_le(340282366920938463463374607431768211456))
+}
