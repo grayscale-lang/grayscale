@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0138 - a negative signed scalar cannot become a u128
+ */
+
+do main() {
+    mut value i8 = -1
+    println(cast(value, u128))
+}

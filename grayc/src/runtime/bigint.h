@@ -890,6 +890,19 @@ static inline gray_i256 gray_cast_u256_to_i256(gray_u256 value, const char *file
     return result;
 }
 
+/* A signed scalar cast to an unsigned wide integer: a negative value panics. */
+static inline gray_u128 gray_cast_i64_to_u128(int64_t value, const char *file, int line) {
+    if (value < 0)
+        gray_panic_code_at(file, line, "P0138", "cast from i64 to u128 failed; the value is outside the range of u128");
+    return gray_u128_from_u64((uint64_t)value);
+}
+
+static inline gray_u256 gray_cast_i64_to_u256(int64_t value, const char *file, int line) {
+    if (value < 0)
+        gray_panic_code_at(file, line, "P0138", "cast from i64 to u256 failed; the value is outside the range of u256");
+    return gray_u256_from_u64((uint64_t)value);
+}
+
 /* --- Overflow-Checked Arithmetic --- */
 
 static inline gray_i128 gray_i128_add_checked(gray_i128 left, gray_i128 right, const char *file, int line) {

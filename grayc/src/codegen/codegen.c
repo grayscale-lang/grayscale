@@ -4042,6 +4042,12 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "gray_f64_to_%s((double)(", target);
                 emit_expression(codegen, value);
                 emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+            } else if (is_target_wide_integer && !source_wide_integer && target[0] == 'u' &&
+                       value_kind == TYPE_KIND_SIGNED_INTEGER) {
+                /* signed scalar → unsigned wide: a negative value panics */
+                emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)(", target);
+                emit_expression(codegen, value);
+                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
             } else if (is_target_wide_integer && !source_wide_integer) {
                 /* scalar → wide: use from_i64 / from_u64 */
                 emit_scalar_to_wide_integer(codegen, target, value, value_type);
