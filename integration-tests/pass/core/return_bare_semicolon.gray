@@ -1,0 +1,34 @@
+/*
+ * return_bare_semicolon.gray - a bare return may be followed by `;`.
+ */
+
+mut visits i64 = 0
+
+do early(n i64) {
+    if n > 0 { return; }
+    visits++
+}
+
+do last() {
+    visits += 10;
+    return;
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    early(1); early(-1); last()
+
+    if visits == 11 {
+        passed++
+    } otherwise {
+        println("FAIL: bare return with semicolon")
+        failed++
+    }
+
+    println("return_bare_semicolon: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

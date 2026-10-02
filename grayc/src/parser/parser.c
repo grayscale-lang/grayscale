@@ -1841,7 +1841,8 @@ static AstNode *parse_return_statement(Parser *parser) {
     AstNode **values = arena_allocate(parser->arena, sizeof(AstNode *) * capacity);
 
     /* Check if there's a value to return (peek, don't consume) */
-    if (!peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_END_OF_FILE)) {
+    if (!peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_SEMICOLON) &&
+        !peek_token_is(parser, TOKEN_END_OF_FILE)) {
         next_token(parser);
         values[count++] = parse_expression(parser, PRECEDENCE_LOWEST);
 
