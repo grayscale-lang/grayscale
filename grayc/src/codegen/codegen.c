@@ -4093,6 +4093,13 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
             } else if (is_target_wide_integer && !source_wide_integer) {
                 /* scalar → wide: use from_i64 / from_u64 */
                 emit_scalar_to_wide_integer(codegen, target, value, value_type);
+            } else if (!is_target_wide_integer && source_wide_integer &&
+                       (strcmp(target, "f32") == 0 || strcmp(target, "f64") == 0)) {
+                /* wide → float: any wide value is representable as a float */
+                emit_formatted(codegen, "(%s)%s_to_f64(", strcmp(target, "f32") == 0 ? "float" : "double",
+                    wide_integer_prefix(source_wide_integer));
+                emit_expression(codegen, value);
+                emit(codegen, ")");
             } else if (!is_target_wide_integer && source_wide_integer) {
                 /* wide → scalar: range-checked extraction to int64/uint64,
                  * with additional narrow-range check for sub-64-bit targets */
