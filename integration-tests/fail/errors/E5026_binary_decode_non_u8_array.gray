@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5026 - binary.decode_u16_be takes [u8], not [i64]
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @binary
+
+do main() {
+    mut bytes [i64] = {300, 2}
+    println(binary.decode_u16_be(bytes))
+}

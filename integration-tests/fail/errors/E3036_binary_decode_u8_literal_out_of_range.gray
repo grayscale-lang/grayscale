@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3036 - an array literal passed to binary.decode_u8 is checked against u8
+ */
+// expect-error: E3036
+// expect-error-count: 1
+
+import @binary
+
+do main() {
+    println(binary.decode_u8({300}))
+}
