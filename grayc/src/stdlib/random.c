@@ -105,6 +105,11 @@ int64_t gray_random_i64_max(int64_t maximum) {
     return (int64_t)(rand64() % (uint64_t)maximum);
 }
 
+int32_t gray_random_choice_index(int32_t length, const char *file, int line) {
+    if (length == 0) gray_panic_code_at(file, line, "P0133", "random.choice called on an empty array");
+    return (int32_t)gray_random_i64_max(length);
+}
+
 int64_t gray_random_i64_range(int64_t minimum, int64_t maximum) {
     ensure_seed();
     if (minimum >= maximum) return minimum;

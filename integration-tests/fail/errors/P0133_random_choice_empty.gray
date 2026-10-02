@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0133 - random.choice on an empty array */
+import @random
+
+do main() {
+    mut empty [i64] = {}
+    println(random.choice(empty))
+}

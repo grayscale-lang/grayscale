@@ -7468,15 +7468,15 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *functi
             }
         }
         if (expression_is_assignable(node->data.call.arguments[0])) {
-            emit(codegen, "({ int32_t _ri = gray_random_i64_max(");
+            emit(codegen, "({ int32_t _ri = gray_random_choice_index(");
             emit_expression(codegen, node->data.call.arguments[0]);
-            emit_formatted(codegen, ".len); *(%s *)gray_array_get_ptr(&", c_element_type);
+            emit_formatted(codegen, ".len, \"%s\", %d); *(%s *)gray_array_get_ptr(&", codegen->file, node->token.line, c_element_type);
             emit_expression(codegen, node->data.call.arguments[0]);
             emit_formatted(codegen, ", _ri, \"%s\", %d); })", codegen->file, node->token.line);
         } else {
             emit(codegen, "({ __auto_type _ra = ");
             emit_expression(codegen, node->data.call.arguments[0]);
-            emit_formatted(codegen, "; int32_t _ri = gray_random_i64_max(_ra.len); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", c_element_type, codegen->file, node->token.line);
+            emit_formatted(codegen, "; int32_t _ri = gray_random_choice_index(_ra.len, \"%s\", %d); *(%s *)gray_array_get_ptr(&_ra, _ri, \"%s\", %d); })", codegen->file, node->token.line, c_element_type, codegen->file, node->token.line);
         }
         return true;
     }

@@ -137,6 +137,7 @@ double gray_random_f64_range(double minimum, double maximum);
 double gray_random_f64_unit(void);
 int64_t gray_random_i64_range(int64_t minimum, int64_t maximum);
 int64_t gray_random_i64_max(int64_t maximum);
+int32_t gray_random_choice_index(int32_t length, const char *file, int line);
 bool gray_random_bool(void);
 uint8_t gray_random_u8(void);
 int32_t gray_random_char(void);
