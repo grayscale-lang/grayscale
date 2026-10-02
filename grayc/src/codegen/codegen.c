@@ -5100,6 +5100,15 @@ static void emit_format_value(CodeGen *codegen, GrayType *value_type, FormatDire
     } else if (value_type && value_type->kind == TYPE_KIND_BOOL) {
         emit_format_operand(codegen, value, element_read);
         emit(codegen, " ? \"true\" : \"false\"");
+    } else if (value_type && value_type->kind == TYPE_KIND_SIGNED_INTEGER && value_type->name &&
+               (specifier == 'x' || specifier == 'X' || specifier == 'o') &&
+               (strcmp(value_type->name, "i8") == 0 || strcmp(value_type->name, "i16") == 0 ||
+                strcmp(value_type->name, "i32") == 0)) {
+        /* Hex and octal show a negative value's two's-complement bits at the
+         * type's own width, not sign-extended to 64 bits. */
+        emit_formatted(codegen, "(unsigned long long)(uint%s_t)(", value_type->name + 1);
+        emit_format_operand(codegen, value, element_read);
+        emit(codegen, ")");
     } else if (value_type && value_type->kind == TYPE_KIND_SIGNED_INTEGER) {
         /* The directive may have been upgraded to %lld (a 64-bit read),
          * but an integer literal emits as C `int`. Cast so the vararg
