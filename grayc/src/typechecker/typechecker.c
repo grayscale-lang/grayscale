@@ -3046,6 +3046,9 @@ typedef enum {
      * an argument is checked as that type. EXPECTED_ARGUMENT_NUMBER takes any number. */
     EXPECTED_ARGUMENT_STRING, EXPECTED_ARGUMENT_I64, EXPECTED_ARGUMENT_U64, EXPECTED_ARGUMENT_F64, EXPECTED_ARGUMENT_BOOL, EXPECTED_ARGUMENT_ARRAY, EXPECTED_ARGUMENT_MAP, EXPECTED_ARGUMENT_ANY, EXPECTED_ARGUMENT_NUMBER, EXPECTED_ARGUMENT_CHAR, EXPECTED_ARGUMENT_CHANNEL,
     EXPECTED_ARGUMENT_BUILDER, EXPECTED_ARGUMENT_UUID, EXPECTED_ARGUMENT_U8_ARRAY, EXPECTED_ARGUMENT_I64_POINTER,
+    /* A number the function reads as an f64: any number is accepted and is
+     * converted to f64. */
+    EXPECTED_ARGUMENT_F64_NUMBER,
     EXPECTED_ARGUMENT_MUTEX, EXPECTED_ARGUMENT_THREAD, EXPECTED_ARGUMENT_SPINLOCK, EXPECTED_ARGUMENT_ARENA,
     EXPECTED_ARGUMENT_DATABASE, EXPECTED_ARGUMENT_ROUTER, EXPECTED_ARGUMENT_POINTER,
     /* A value stored into or compared with the array in argument 0: checked
@@ -3076,7 +3079,8 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_ARRAY:  return actual->kind == TYPE_KIND_ARRAY;
     case EXPECTED_ARGUMENT_MAP:    return actual->kind == TYPE_KIND_MAP;
     case EXPECTED_ARGUMENT_ANY:    return true;
-    case EXPECTED_ARGUMENT_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
+    case EXPECTED_ARGUMENT_NUMBER:
+    case EXPECTED_ARGUMENT_F64_NUMBER: return actual->kind == TYPE_KIND_SIGNED_INTEGER || actual->kind == TYPE_KIND_UNSIGNED_INTEGER ||
                             actual->kind == TYPE_KIND_FLOATING_POINT;
     case EXPECTED_ARGUMENT_CHAR:   return actual->kind == TYPE_KIND_CHAR;
     case EXPECTED_ARGUMENT_CHANNEL: return actual->kind == TYPE_KIND_STRUCT &&
@@ -3121,7 +3125,8 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_ARRAY:  return "array";
     case EXPECTED_ARGUMENT_MAP:    return "map";
     case EXPECTED_ARGUMENT_ANY:    return "any";
-    case EXPECTED_ARGUMENT_NUMBER: return "number";
+    case EXPECTED_ARGUMENT_NUMBER:
+    case EXPECTED_ARGUMENT_F64_NUMBER: return "number";
     case EXPECTED_ARGUMENT_CHAR:   return "char";
     case EXPECTED_ARGUMENT_CHANNEL: return "Channel";
     case EXPECTED_ARGUMENT_BUILDER: return "Builder";
@@ -3435,56 +3440,56 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"maps", "remove_key",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_MAP}, {1, EXPECTED_ARGUMENT_KEY_OF_FIRST}}, "void"},
     /* math */
     {"math", "abs",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "$0"},
-    {"math", "acos",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "approx_equal", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "asin",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "atan",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "atan2",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cbrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "ceil",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "acos",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "approx_equal", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "asin",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "atan",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "atan2",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cbrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "ceil",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "clamp",       3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}, {2, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
-    {"math", "copysign",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cos",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "cosh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "deg_to_rad",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "distance",    4, 4, false, FALLIBLE_TYPE_NONE, 4, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}, {3, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "exp",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "exp2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "copysign",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cos",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "cosh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "deg_to_rad",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "distance",    4, 4, false, FALLIBLE_TYPE_NONE, 4, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}, {3, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "exp",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "exp2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "factorial",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "floor",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "fma",         3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "floor",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "fma",         3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "gcd",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "hypot",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "hypot",       2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "is_even",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
-    {"math", "is_finite",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "is_infinite", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
-    {"math", "is_nan",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "bool"},
+    {"math", "is_finite",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "is_infinite", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
+    {"math", "is_nan",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "bool"},
     {"math", "is_odd",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "is_power_of_two", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "is_prime",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"math", "lcm",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "lerp",        3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log10",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "log_base",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "lerp",        3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log10",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log2",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "log_base",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "max",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
     {"math", "min",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_COMMON_NUMBER}, {1, EXPECTED_ARGUMENT_COMMON_NUMBER}}, "$common"},
-    {"math", "mod",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "modf",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "mod",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "modf",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "neg",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "$0"},
     {"math", "next_power_of_two", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "i64"},
-    {"math", "pow",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "rad_to_deg",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "remap",       5, 5, false, FALLIBLE_TYPE_NONE, 5, {{0, EXPECTED_ARGUMENT_NUMBER}, {1, EXPECTED_ARGUMENT_NUMBER}, {2, EXPECTED_ARGUMENT_NUMBER}, {3, EXPECTED_ARGUMENT_NUMBER}, {4, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "round",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "pow",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "rad_to_deg",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "remap",       5, 5, false, FALLIBLE_TYPE_NONE, 5, {{0, EXPECTED_ARGUMENT_F64_NUMBER}, {1, EXPECTED_ARGUMENT_F64_NUMBER}, {2, EXPECTED_ARGUMENT_F64_NUMBER}, {3, EXPECTED_ARGUMENT_F64_NUMBER}, {4, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "round",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     {"math", "sign",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "i64"},
-    {"math", "sin",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "sinh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "sqrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "tan",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "tanh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
-    {"math", "trunc",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_NUMBER}}, "f64"},
+    {"math", "sin",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "sinh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "sqrt",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "tan",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "tanh",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
+    {"math", "trunc",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_F64_NUMBER}}, "f64"},
     /* mem */
     {"mem", "alloc",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},NULL},
     {"mem", "arena",    1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Arena"},
@@ -3973,7 +3978,7 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
             if (!encoder_value) {
                 if (kind == EXPECTED_ARGUMENT_I64) slot = &TYPE_I64;
                 else if (kind == EXPECTED_ARGUMENT_U64) slot = &TYPE_U64;
-                else if (kind == EXPECTED_ARGUMENT_F64) slot = &TYPE_F64;
+                else if (kind == EXPECTED_ARGUMENT_F64 || kind == EXPECTED_ARGUMENT_F64_NUMBER) slot = &TYPE_F64;
                 else if (kind == EXPECTED_ARGUMENT_U8_ARRAY) slot = type_array("u8");
                 else if (kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST) slot = array_element_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) slot = stdlib_first_argument_type(checker, node);
@@ -6171,6 +6176,10 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
          * value widened into one. */
         if (conversion == CONVERSION_WIDEN && is_wide_integer_type_name(target->name) &&
             !checker->should_suppress_type_table_writes)
+            value->widen_to = target->name;
+        /* Likewise a wide integer stored into a floating-point slot. */
+        if (conversion == CONVERSION_WIDEN && target->kind == TYPE_KIND_FLOATING_POINT &&
+            is_wide_integer_type_name(type->name) && !checker->should_suppress_type_table_writes)
             value->widen_to = target->name;
         if (conversion == CONVERSION_NARROW) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3155", NODE_FILE(checker, value),

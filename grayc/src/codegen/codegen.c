@@ -2228,6 +2228,9 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
     /* Determine element type; try wide integer detection first, then type table */
     const char *wide_integer_element = resolve_wide_integer_type(codegen, node->data.array_value.elements[0]);
     GrayType *element_type_for_copy = type_table_get(codegen->type_table, node->data.array_value.elements[0]);
+    /* A wide integer converted to a floating-point entry stores as that float. */
+    if (node->data.array_value.elements[0]->widen_to && !wide_integer_element)
+        element_type_for_copy = type_from_name(node->data.array_value.elements[0]->widen_to);
     if (!wide_integer_element && element_type_for_copy && element_type_for_copy->name && is_wide_integer_type_name(element_type_for_copy->name))
         wide_integer_element = element_type_for_copy->name;
     /* Also check var decl context for wide integer element type — either a bare
@@ -4419,7 +4422,12 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         const char *target = node->widen_to;
         node->widen_to = NULL;
         const char *source_wide = resolve_wide_integer_type(codegen, node);
-        if (source_wide) {
+        if (strcmp(target, "f64") == 0 || strcmp(target, "f32") == 0) {
+            emit_formatted(codegen, "(%s)%s_to_f64(", strcmp(target, "f32") == 0 ? "float" : "double",
+                           wide_integer_prefix(source_wide));
+            emit_expression(codegen, node);
+            emit(codegen, ")");
+        } else if (source_wide) {
             emit_formatted(codegen, "%s_from_%s(", wide_integer_prefix(target), source_wide);
             emit_expression(codegen, node);
             emit(codegen, ")");

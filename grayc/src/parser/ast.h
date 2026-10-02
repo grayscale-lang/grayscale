@@ -165,7 +165,8 @@ struct AstNode {
     const char *folded_literal;
 
     /* Set by the type checker on a value it implicitly widens into a wide
-     * integer type (i128, u128, i256, u256): that type's name. Codegen
+     * integer type (i128, u128, i256, u256), or on a wide integer it stores
+     * into a floating-point slot (f32, f64): that type's name. Codegen
      * converts the value to it wherever the value is emitted. NULL when the
      * value is stored at its own type. */
     const char *widen_to;

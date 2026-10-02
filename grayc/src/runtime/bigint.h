@@ -672,6 +672,36 @@ static inline gray_i256 gray_i256_from_decimal(const char *text) {
     return is_negative ? gray_i256_neg(result) : result;
 }
 
+/* A wide integer as a double: each 64-bit word scaled by its place value. */
+static inline double gray_u128_to_f64(gray_u128 value) {
+    return (double)value.high * 18446744073709551616.0 + (double)value.low;
+}
+
+static inline double gray_i128_to_f64(gray_i128 value) {
+    if (value.high >= 0) return (double)value.high * 18446744073709551616.0 + (double)value.low;
+    gray_i128 negated = gray_i128_neg(value);
+    gray_u128 magnitude = {negated.low, (uint64_t)negated.high};
+    return -gray_u128_to_f64(magnitude);
+}
+
+static inline double gray_u256_to_f64(gray_u256 value) {
+    double result = 0.0;
+    for (int i = 3; i >= 0; i--) result = result * 18446744073709551616.0 + (double)value.w[i];
+    return result;
+}
+
+static inline double gray_i256_to_f64(gray_i256 value) {
+    if ((int64_t)value.w[3] >= 0) {
+        gray_u256 magnitude;
+        memcpy(&magnitude, &value, sizeof(magnitude));
+        return gray_u256_to_f64(magnitude);
+    }
+    gray_i256 negated = gray_i256_neg(value);
+    gray_u256 magnitude;
+    memcpy(&magnitude, &negated, sizeof(magnitude));
+    return -gray_u256_to_f64(magnitude);
+}
+
 /* --- Overflow-Checked Arithmetic --- */
 
 static inline gray_i128 gray_i128_add_checked(gray_i128 left, gray_i128 right, const char *file, int line) {
