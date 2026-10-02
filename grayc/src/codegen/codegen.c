@@ -4001,7 +4001,7 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         /* string → numeric (targets other than i64/f64 handled above):
          * parse to int64/double first, then apply narrowing check */
         if (strcmp(target, "u64") == 0) {
-            emit(codegen, "(uint64_t)gray_builtin_string_to_i64(");
+            emit(codegen, "gray_builtin_string_to_u64(");
             emit_expression(codegen, value);
             emit(codegen, ")");
         } else if (strcmp(target, "f32") == 0) {

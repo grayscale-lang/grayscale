@@ -454,6 +454,7 @@ GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
 int64_t gray_builtin_string_to_i64(GrayString string);
+uint64_t gray_builtin_string_to_u64(GrayString string);
 double gray_builtin_string_to_f64(GrayString string);
 gray_i128 gray_builtin_string_to_i128(GrayString string, const char *file, int line);
 gray_u128 gray_builtin_string_to_u128(GrayString string, const char *file, int line);

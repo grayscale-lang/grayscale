@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0136 - a string above the range of i64 must not saturate
+ */
+
+do main() {
+    mut text string = "9223372036854775808"
+    println(cast(text, i64))
+}

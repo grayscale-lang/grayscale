@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <inttypes.h>
 #include <time.h>
 
@@ -300,9 +301,37 @@ int64_t gray_builtin_string_to_i64(GrayString string) {
     memcpy(buffer, string.data, (size_t)length);
     buffer[length] = '\0';
     char *end_cursor = NULL;
+    errno = 0;
     int64_t result = strtoll(buffer, &end_cursor, 10);
     if (end_cursor == buffer || (*end_cursor != '\0' && *end_cursor != ' ')) {
         gray_panic_code("P0084", "cannot convert '%s' to i64", buffer);
+    }
+    if (errno == ERANGE) {
+        gray_panic_code("P0136", "cannot convert '%s' to i64; value is outside its range", buffer);
+    }
+    return result;
+}
+
+uint64_t gray_builtin_string_to_u64(GrayString string) {
+    char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
+    int length = string.len < (int32_t)sizeof(buffer) - 1 ? string.len : (int32_t)sizeof(buffer) - 1;
+    memcpy(buffer, string.data, (size_t)length);
+    buffer[length] = '\0';
+    const char *cursor = buffer;
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n') cursor++;
+    bool is_negative = *cursor == '-';
+    const char *digits = is_negative ? cursor + 1 : cursor;
+    if (is_negative && (*digits < '0' || *digits > '9')) {
+        gray_panic_code("P0084", "cannot convert '%s' to u64", buffer);
+    }
+    char *end_cursor = NULL;
+    errno = 0;
+    uint64_t result = strtoull(digits, &end_cursor, 10);
+    if (end_cursor == digits || (*end_cursor != '\0' && *end_cursor != ' ')) {
+        gray_panic_code("P0084", "cannot convert '%s' to u64", buffer);
+    }
+    if (errno == ERANGE || (is_negative && result != 0)) {
+        gray_panic_code("P0136", "cannot convert '%s' to u64; value is outside its range", buffer);
     }
     return result;
 }

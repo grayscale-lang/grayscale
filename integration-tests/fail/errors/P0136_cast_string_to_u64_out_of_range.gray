@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0136 - a string above the range of u64
+ */
+
+do main() {
+    mut text string = "18446744073709551616"
+    println(cast(text, u64))
+}
