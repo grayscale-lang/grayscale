@@ -4470,6 +4470,17 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit_folded_literal(codegen, node);
         return;
     }
+    if (node->copies_into_literal && node_type) {
+        /* A constant or by-value parameter embedded in a literal: copy it so a
+         * write through the literal cannot reach the original. */
+        const char *value_type_name = type_name(node_type);
+        if (type_shares_storage(codegen, value_type_name)) {
+            node->copies_into_literal = false;
+            emit_composite_operand(codegen, value_type_name, node);
+            node->copies_into_literal = true;
+            return;
+        }
+    }
     if (node->widen_to) {
         /* A value the type checker widens into a wide integer type. */
         const char *target = node->widen_to;

@@ -171,6 +171,11 @@ struct AstNode {
      * value is stored at its own type. */
     const char *widen_to;
 
+    /* Set by the type checker on a value embedded in a struct, array or map
+     * literal whose root is a constant or a by-value parameter: codegen copies
+     * it into the literal rather than sharing its storage. */
+    bool copies_into_literal;
+
     union {
         /* NODE_LABEL */
         struct {

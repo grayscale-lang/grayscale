@@ -1312,6 +1312,7 @@ static unsigned long long returns_parameter_address_of(TypeChecker *checker, Fun
 static void ensure_escape_summary(TypeChecker *checker, FunctionSignature *function_signature);
 static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
 static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target);
+static void mark_immutable_literal_source(TypeChecker *checker, AstNode *element);
 static AstNode *target_root_module_reference(TypeChecker *checker, AstNode *target);
 static bool report_write_to_module_variable(TypeChecker *checker, AstNode *report_node, AstNode *place);
 static void report_write_to_module_constant(TypeChecker *checker, AstNode *report_node,
@@ -4130,6 +4131,19 @@ static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target) {
     return root ? checker_lookup_symbol(checker, root) : NULL;
 }
 
+/* A literal that embeds an existing value shares its backing storage, so a
+ * write through the literal would reach a value that is immutable by name: a
+ * constant, or a parameter passed by value. Flag such an element so codegen
+ * copies it into the literal. */
+static void mark_immutable_literal_source(TypeChecker *checker, AstNode *element) {
+    if (element->kind != NODE_LABEL && element->kind != NODE_MEMBER_EXPRESSION &&
+        element->kind != NODE_INDEX_EXPRESSION) return;
+    Symbol *symbol = target_root_symbol(checker, element);
+    if (!symbol || symbol->is_mutable) return;
+    if (symbol->type && symbol->type->kind == TYPE_KIND_POINTER) return;
+    element->copies_into_literal = true;
+}
+
 /* The name a root symbol is reported under: `lib.X` for a module member. */
 static const char *target_root_display(TypeChecker *checker, AstNode *target) {
     AstNode *reference = target_root_module_reference(checker, target);
@@ -6083,6 +6097,7 @@ static GrayType *check_array_literal_as(TypeChecker *checker, AstNode *node, Gra
         GrayType *entry_type = check_expression_as(checker, element, element_type);
         check_fixed_array_element_size(checker, target->element_type, element);
         reject_multi_return_in_single_position(checker, element);
+        mark_immutable_literal_source(checker, element);
         if (literal_entry_mismatches(checker, element_type, entry_type)) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3053", NODE_FILE(checker, element),
                 element->token.line, element->token.column, 0,
@@ -6107,6 +6122,7 @@ static GrayType *check_map_literal_as(TypeChecker *checker, AstNode *node, GrayT
         reject_void_in_context(checker, value_node, checked_value_type, "map value");
         reject_multi_return_in_single_position(checker, key_node);
         reject_multi_return_in_single_position(checker, value_node);
+        mark_immutable_literal_source(checker, value_node);
         if (literal_entry_mismatches(checker, key_type, checked_key_type)) {
             char *message = typechecker_format(checker,
                 "type mismatch in map literal key; expected '%s', got '%s'",
@@ -12791,6 +12807,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        for (int i = 0; i < node->data.array_value.count; i++)
+            mark_immutable_literal_source(checker, node->data.array_value.elements[i]);
         checker->expected_type = saved_array_expected_type;
         break;
     }
@@ -12862,6 +12880,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             resolved_type->key_type = strdup(saved_map_expected->key_type);
             resolved_type->value_type = strdup(saved_map_expected->value_type);
         }
+        for (int i = 0; i < node->data.map_value.count; i++)
+            mark_immutable_literal_source(checker, node->data.map_value.values[i]);
         result = resolved_type;
         checker->expected_type = saved_map_expected;
         break;
@@ -12869,6 +12889,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
 
     case NODE_STRUCT_VALUE:
         result = resolve_struct_value(checker, node);
+        for (int i = 0; i < node->data.struct_value.count; i++)
+            mark_immutable_literal_source(checker, node->data.struct_value.field_values[i]);
         break;
 
     case NODE_RANGE_EXPRESSION: {

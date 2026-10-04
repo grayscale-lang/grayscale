@@ -4871,7 +4871,7 @@ box.items[0] = 99
 println(arr[0])                  // 99 - box.items aliases arr
 ```
 
-The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
+The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). A `const` value or a by-value parameter is never aliased this way: a literal that embeds one copies it, so a write through the literal cannot reach the constant or the caller's variable. This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
 
 ### 11.3 Deep Copy
 
