@@ -1,0 +1,58 @@
+/*
+ * io_write_reports_failed_flush.gray - a write whose data never reaches the
+ * file (the flush at close fails) returns false with a non-nil Error. The
+ * test re-runs itself under a 512-byte file size limit so every write is cut
+ * off at close, on any platform with a POSIX shell.
+ */
+
+import @io
+import @os
+import @strings
+import @arrays
+
+const CHILD_ENV string = "GRAY_TEST_FLUSH_CHILD"
+const CHILD_FILE string = "io_write_reports_failed_flush.tmp"
+
+// Runs in the size-limited process: exits 0 only if all four writes failed.
+do run_child() {
+    mut content string = strings.repeat("a", 2000)
+    mut bytes [u8] = {}
+    for i in range(0, 2000) {
+        arrays.append(bytes, 97)
+    }
+    mut reported_failure i64 = 0
+
+    mut ok1, err1 = io.write_file(CHILD_FILE, content)
+    if !ok1 && err1 != nil { reported_failure += 1 }
+    mut ok2, err2 = io.append_file(CHILD_FILE, content)
+    if !ok2 && err2 != nil { reported_failure += 1 }
+    mut ok3, err3 = io.write_bytes(CHILD_FILE, bytes)
+    if !ok3 && err3 != nil { reported_failure += 1 }
+    mut ok4, err4 = io.append_bytes(CHILD_FILE, bytes)
+    if !ok4 && err4 != nil { reported_failure += 1 }
+
+    mut _, _ = io.delete_file(CHILD_FILE)
+    if reported_failure == 4 {
+        exit(0)
+    }
+    exit(1)
+}
+
+do main() {
+    mut _, found = os.lookup_env(CHILD_ENV)
+    if found {
+        run_child()
+    }
+
+    println("=== IO Write Failed Flush Test ===")
+    mut script string = "trap '' XFSZ; ulimit -f 1; ${CHILD_ENV}=1 exec \"$0\""
+    mut code, _, _, ran = os.exec("sh", {"-c", script, os.args()[0]})
+    if ran && code == 0 {
+        println("  [PASS] write_file, append_file, write_bytes, append_bytes report failed flush")
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("  [FAIL] a write reported success after a failed flush (exit ${code})")
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
