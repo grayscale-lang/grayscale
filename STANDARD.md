@@ -3171,7 +3171,7 @@ do main() {
 }
 ```
 
-The pointer is only valid while the string is alive.
+The pointer addresses a NUL-terminated copy that lives for the rest of the program, so it stays valid after the string, loop iteration, or function that created it is gone; writing through it does not change the string.
 
 **Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
 
@@ -3289,7 +3289,7 @@ running the child so output is not reordered.
 | `to_char` | `(s string, index i64) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `cast(c, i64)` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> i64` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
 | `from_c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
-| `to_c_string` | `(s string) -> ^u8` | Return a string's NUL-terminated buffer as a raw C pointer, for storing in an extern struct field or a `^u8` variable (for C interop) |
+| `to_c_string` | `(s string) -> ^u8` | Return a NUL-terminated copy of a string as a raw C pointer that lives for the rest of the program, for storing in an extern struct field or a `^u8` variable (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
 | `system` | `(command string) -> i64` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 

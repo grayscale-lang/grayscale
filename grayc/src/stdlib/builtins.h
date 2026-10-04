@@ -373,7 +373,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
 
 /*@man to_c_string
  *@sig to_c_string(s string) -> ^u8
- *@desc Returns the string's NUL-terminated buffer as a raw C pointer, for storing in an extern struct field or a ^u8 variable. The pointer is only valid while the string is alive.
+ *@desc Returns a NUL-terminated copy of the string as a raw C pointer, for storing in an extern struct field or a ^u8 variable. The copy lives for the rest of the program, so the pointer stays valid after the string, the loop iteration, or the function that created it is gone; writing through it does not change the string.
  *@example
  *   extern import "mylib.h"
  *   mut name ^u8 = to_c_string("grayscale")

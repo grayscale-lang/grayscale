@@ -6182,11 +6182,13 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
         return true;
     }
 
-    /* to_c_string(s); the string's NUL-terminated buffer as a C pointer */
+    /* to_c_string(s); a NUL-terminated copy of the string on the heap arena,
+     * which no loop iteration or function return reclaims, so the pointer
+     * stays valid wherever it is stored. */
     if (strcmp(function_name, "to_c_string") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "((uint8_t *)(");
+        emit(codegen, "({ GrayString _cs = ");
         emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ").data)");
+        emit(codegen, "; (uint8_t *)gray_string_new(gray_heap_arena, _cs.data, _cs.len).data; })");
         return true;
     }
 
