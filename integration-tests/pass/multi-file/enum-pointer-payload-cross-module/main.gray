@@ -1,0 +1,41 @@
+/*
+ * main.gray - a tagged enum variant whose payload is a pointer to, a value of,
+ * or an array of a type declared in the enum's module can be constructed from
+ * another module.
+ */
+
+import "./tree"
+
+do main() {
+    println("=== Enum Payload Types Across Modules Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    n = new(tree.Node)
+    x = new(tree.Expr)
+    mut nodes [tree.Node] = {tree.Node{v: 1}}
+
+    a = tree.Expr.Wrap(n)
+    b = tree.Expr.Neg(x)
+    c = tree.Expr.Own(tree.Node{v: 7})
+    d = tree.Expr.Many(nodes)
+    e = tree.Expr.Lit(3)
+
+    if type_of(a) == "Expr" && type_of(b) == "Expr" && type_of(c) == "Expr" &&
+       type_of(d) == "Expr" && type_of(e) == "Expr" {
+        println("  [PASS] pointer, value, and array payloads construct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] a payload variant did not construct")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

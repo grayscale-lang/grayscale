@@ -18907,6 +18907,11 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
         bool has_tagged = statement->data.enum_declaration.is_tagged;
         const char ***payload_types = NULL;
         int *payload_counts = NULL;
+        /* Payload types are written in the enum's own module; resolve them
+         * there, so a constructor call from another module sees the same
+         * registry spelling the declaration does. */
+        const char *saved_payload_file = checker->current_check_file;
+        checker->current_check_file = statement->token.file;
         if (variant_count > 0) {
             payload_types = arena_allocate(checker->arena, sizeof(const char **) * variant_count);
             payload_counts = arena_allocate(checker->arena, sizeof(int) * variant_count);
@@ -18916,13 +18921,14 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
                 if (enum_value->payload_count > 0) {
                     payload_types[j] = arena_allocate(checker->arena, sizeof(const char *) * enum_value->payload_count);
                     for (int index = 0; index < enum_value->payload_count; index++) {
-                        payload_types[j][index] = enum_value->payload_types[index];
+                        payload_types[j][index] = checker_resolve_type_name(checker, enum_value->payload_types[index]);
                     }
                 } else {
                     payload_types[j] = NULL;
                 }
             }
         }
+        checker->current_check_file = saved_payload_file;
         /* E3111: string enum with payloads */
         if (is_string && has_tagged) {
             diagnostic_error_code(checker->diagnostics, "E3111", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0);
