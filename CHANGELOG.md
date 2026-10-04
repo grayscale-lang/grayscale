@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.11.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.11.1...grayscale-v0.11.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **codegen:** copying an array field into a mut local and writing it back exhausts the arena ([#2928](https://github.com/grayscale-lang/grayscale/issues/2928)) ([934544c](https://github.com/grayscale-lang/grayscale/commit/934544c5d79911cc6f4dbee0b41bcea7afc327eb))
+* **codegen:** literal built from a const value or by-value parameter aliases it ([#2912](https://github.com/grayscale-lang/grayscale/issues/2912)) ([88f4fb9](https://github.com/grayscale-lang/grayscale/commit/88f4fb9b90eb0a8f8952f6f9e83578c5fb3cc13f))
+* **codegen:** tagged enum payload bindings from an imported module get an unqualified type ([#2930](https://github.com/grayscale-lang/grayscale/issues/2930)) ([aca3745](https://github.com/grayscale-lang/grayscale/commit/aca3745e2fcd33c084f3a20f0d84a8cba5e658da))
+* **codegen:** to_c_string returns a program-lifetime copy instead of a pointer into a reclaimable arena ([#2721](https://github.com/grayscale-lang/grayscale/issues/2721)) ([d498875](https://github.com/grayscale-lang/grayscale/commit/d4988754f817d9e9a559d1cb24ff29b1368e1692))
+* **csv:** parse drops the trailing empty field of a row ([#2792](https://github.com/grayscale-lang/grayscale/issues/2792)) ([8e3b9b1](https://github.com/grayscale-lang/grayscale/commit/8e3b9b1097374b7138cc3d1dc46a47ed18843766))
+* **io:** write functions report success when the data never reached the file ([#2831](https://github.com/grayscale-lang/grayscale/issues/2831)) ([61592a8](https://github.com/grayscale-lang/grayscale/commit/61592a894755428aad664e8bd4c02d78e905a865))
+* **parser:** return swallows the statement on the next line as its return value ([#2926](https://github.com/grayscale-lang/grayscale/issues/2926)) ([41b00c9](https://github.com/grayscale-lang/grayscale/commit/41b00c9f716813df7ff16efbec3b71bc1e66420d))
+* **typechecker:** #json struct fields accept nested #json structs and arrays ([#2759](https://github.com/grayscale-lang/grayscale/issues/2759)) ([7a86492](https://github.com/grayscale-lang/grayscale/commit/7a86492fc11a173ad2f83e2eb67516fadddc14d5))
+* **typechecker:** for_each with both positions discarded warns its collection is unused ([#2927](https://github.com/grayscale-lang/grayscale/issues/2927)) ([e6f590c](https://github.com/grayscale-lang/grayscale/commit/e6f590c8c389a1505dd8d671cb766a4f27173477))
+* **typechecker:** mixed number types in a stdlib call report E5057 once ([7b26ff8](https://github.com/grayscale-lang/grayscale/commit/7b26ff831cd07e7486a04b91068d7f5ad69e0a11))
+* **typechecker:** move diagnostic messages into error_codes.h ([#2890](https://github.com/grayscale-lang/grayscale/issues/2890)) ([26f2184](https://github.com/grayscale-lang/grayscale/commit/26f21844c1825e73a67da3b862a840347f10125e))
+* **typechecker:** tagged enum variant with a pointer payload cannot be constructed from another module ([#2929](https://github.com/grayscale-lang/grayscale/issues/2929)) ([49e1034](https://github.com/grayscale-lang/grayscale/commit/49e1034f2156da93bfbfee8f2de7c871fd565d2a))
+
 ## [0.11.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.11.0...grayscale-v0.11.1) (2026-10-02)
 
 
