@@ -26,7 +26,7 @@
  *@module fmt
  *@group Output
  *@sig printf(format string, args [T])
- *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char). Pass one array element per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. The elements of an array literal may differ in type, e.g. {name, 30}; an array variable's element type must suit every directive, and the program panics if it has fewer elements than directives. Composite types are rejected.
+ *@desc Prints a formatted string to stdout. Uses C-style format directives: %d and %i (signed integer i8 to i256, or char), %u (unsigned integer u8 to u256), %x, %X and %o (any integer), %f, %e, %E, %g and %G (f32 or f64), %s (string), %b (bool), %c (char, or a signed integer up to i64). Pass one array element per format directive, of a type that directive accepts; an unsigned integer needs %u, not %d. The elements of an array literal may differ in type, e.g. {name, 30}; an array variable's element type must suit every directive, and the program panics if it has fewer elements than directives. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.printf("hello %s, you are %d years old\n", {"alice", 30})
@@ -188,7 +188,7 @@ GrayString gray_fmt_f64_to_fixed(GrayArena *arena, double value, int64_t decimal
  *@module fmt
  *@group Number Formatting
  *@sig f64_to_scientific(f f64) -> string
- *@desc Returns f formatted in scientific notation (e.g. "3.14e+00").
+ *@desc Returns f formatted in scientific notation (e.g. "3.140000e+00").
  *@example
  *   import @fmt
  *   println(fmt.f64_to_scientific(0.000123))

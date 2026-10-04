@@ -3225,9 +3225,9 @@ Built-in functions are always available without importing any module.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `println` | `(value T)` | Print value with newline. Accepts any type. |
+| `println` | `(value T = "")` | Print value with newline. Accepts any type. |
 | `print` | `(value T)` | Print value without newline. Accepts any type. |
-| `eprintln` | `(value T)` | Print to stderr with newline. Accepts any type. |
+| `eprintln` | `(value T = "")` | Print to stderr with newline. Accepts any type. |
 | `eprint` | `(value T)` | Print to stderr without newline. Accepts any type. |
 | `flush` | `()` | Flush buffered stdout so partial-line output appears immediately. |
 
@@ -3268,7 +3268,7 @@ running the child so output is not reordered.
 | `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code i64)` | Exit program with code |
-| `range` | `(start i64, end i64, step i64 = 1) -> Range` | Create integer range; `step` defaults to 1 |
+| `range` | `(start i64, end i64, step i64 = 1)` | Create integer range; `step` defaults to 1. Only valid as the source of a `for` loop; `Range` cannot be written as a type. The loop variable is `i64`, or the widest wide integer type among the bounds |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
 | `to_char` | `(s string, index i64) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `cast(c, i64)` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> i64` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
@@ -3544,14 +3544,14 @@ plain (immutable) parameter is a compile error (E5007).
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `builder` | `() -> Builder` | Create an empty builder |
-| `builder_reserve` | `(b Builder, n i64) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
-| `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
-| `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
-| `builder_append_bytes` | `(b Builder, data [u8]) -> void` | Append every byte of `data` |
-| `builder_append_i64` | `(b Builder, n i64) -> void` | Append the decimal text of `n` |
-| `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
+| `builder_reserve` | `(&b Builder, n i64) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
+| `builder_append` | `(&b Builder, s string) -> void` | Append the bytes of `s` |
+| `builder_append_char` | `(&b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
+| `builder_append_bytes` | `(&b Builder, data [u8]) -> void` | Append every byte of `data` |
+| `builder_append_i64` | `(&b Builder, n i64) -> void` | Append the decimal text of `n` |
+| `builder_append_line` | `(&b Builder, s string) -> void` | Append `s` followed by a newline |
 | `builder_len` | `(b Builder) -> i64` | Bytes accumulated so far |
-| `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
+| `builder_clear` | `(&b Builder) -> void` | Reset length to zero, keeping capacity |
 | `build` | `(b Builder) -> string` | Copy the accumulated bytes into a new string; the builder stays usable |
 
 ```grayscale
@@ -4217,7 +4217,7 @@ An HTTP server module with dynamic handlers and path parameters.
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
 | `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
-| `listen` | `(router Router, port i64, [host string])` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
+| `listen` | `(router Router, port i64, host string = "0.0.0.0")` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
 | `add_middleware` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
@@ -4450,16 +4450,16 @@ Format strings use C-style `%` specifiers:
 
 | Specifier | Type | Description |
 |-----------|------|-------------|
-| `%d`, `%i` | `i64` | Signed decimal integer |
-| `%u` | `u64` | Unsigned decimal integer |
-| `%f` | `f64` | Decimal floating-point |
-| `%e` | `f64` | Scientific notation |
-| `%g` | `f64` | Shorter of `%f` or `%e` |
+| `%d`, `%i` | signed integer or `char` | Signed decimal integer |
+| `%u` | unsigned integer | Unsigned decimal integer |
+| `%f` | `f32` / `f64` | Decimal floating-point |
+| `%e`, `%E` | `f32` / `f64` | Scientific notation (lowercase / uppercase) |
+| `%g`, `%G` | `f32` / `f64` | Shorter of `%f` or `%e` (lowercase / uppercase) |
 | `%s` | `string` | String |
-| `%c` | `char` | Single character, printed as its UTF-8 encoding |
+| `%c` | `char` or signed integer up to `i64` | Single character, printed as its UTF-8 encoding |
 | `%b` | `bool` | `true` / `false` |
-| `%x`, `%X` | `i64` / `u64` | Hexadecimal (lowercase / uppercase) |
-| `%o` | `i64` / `u64` | Octal |
+| `%x`, `%X` | any integer | Hexadecimal (lowercase / uppercase) |
+| `%o` | any integer | Octal |
 | `%%` | — | Literal `%` |
 
 Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf conventions, limited to the ones each conversion gives a meaning to:
@@ -4499,9 +4499,9 @@ fmt.printfln("%d-%02d-%02d", parts)           // "2026-09-28"
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `i64_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
-| `i64_to_binary` | `(n i64) -> string` | Format integer as binary |
-| `i64_to_octal` | `(n i64) -> string` | Format integer as octal |
+| `i64_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix); a negative `n` is formatted as its 64-bit two's-complement bits |
+| `i64_to_binary` | `(n i64) -> string` | Format integer as binary; a negative `n` is formatted as its 64-bit two's-complement bits |
+| `i64_to_octal` | `(n i64) -> string` | Format integer as octal; a negative `n` is formatted as its 64-bit two's-complement bits |
 | `f64_to_fixed` | `(f f64, decimals i64) -> string` | Format f64 with fixed decimal places |
 | `f64_to_scientific` | `(f f64) -> string` | Format f64 in scientific notation |
 | `format_number` | `(n i64) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |

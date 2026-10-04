@@ -17,7 +17,7 @@
 #include "../runtime/bigint.h"
 
 /*@man println
- *@sig println([value T])
+ *@sig println(value T = "")
  *@desc Prints any value to stdout followed by a newline. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   println("hello, world")
@@ -61,7 +61,7 @@ void gray_builtin_print_addr(uintptr_t value);
 void gray_builtin_flush(void);
 
 /*@man eprintln
- *@sig eprintln([value T])
+ *@sig eprintln(value T = "")
  *@desc Prints any value to stderr followed by a newline. Supports all types: string, i64, u64, f64, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   eprintln("error: something went wrong")
@@ -237,7 +237,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@sig i256(value T) -> i256
  *@desc 256-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
- *   mut an i256 = i256(0)
+ *   mut a i256 = i256(0)
  *@end
  */
 
@@ -355,7 +355,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
 
 /*@man range
  *@sig range(start i64, end i64, step i64 = 1) -> Range<i64>
- *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime.
+ *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime. range() is only valid as the source of a for loop; Range cannot be written as a type and the result cannot be stored. The loop variable is an i64, or the widest of i128, u128, i256 and u256 among the bounds.
  *@example
  *   for i in range(0, 5) { println(i) }
  *   for i in range(0, 10, 2) { println(i) }
