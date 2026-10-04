@@ -169,7 +169,7 @@
     GRAY_ERROR("E3080", "types", "function must return named variable '%s', not a different expression") \
     GRAY_ERROR("E3081", "types", "function '%s' used as a statement without being called; did you mean '%s()'?") \
     GRAY_ERROR("E3082", "types", "wildcard type '?' cannot be used in named return value '%s'; use an unnamed return instead (e.g. -> (?, i64))") \
-    GRAY_ERROR("E3083", "types", "'c_string()' requires a raw C pointer; '%s' is not a pointer type. 'c_string()' is only valid with values from C interop ('extern import \"header.h\"')") \
+    GRAY_ERROR("E3083", "types", "'from_c_string()' requires a raw C pointer; '%s' is not a pointer type. 'from_c_string()' is only valid with values from C interop ('extern import \"header.h\"')") \
     GRAY_ERROR("E3084", "types", "'type_of()' expects a value, not a type name '%s'; use 'type_of(instance)' instead") \
     GRAY_ERROR("E3085", "types", "'in' operator type mismatch: cannot check if '%s' is in '%s'") \
     GRAY_ERROR("E3086", "types", "'fmt.%s' format string must be a string literal; use string interpolation for dynamic values") \
@@ -253,7 +253,7 @@
     GRAY_ERROR("E3165", "safety", "'%s' points into arena '%s', whose memory was released by 'mem.reset()'") \
     GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
-    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here") \
+    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'from_c_string()', before using it here") \
     GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used") \
     GRAY_ERROR("E3170", "types", "malformed #json field tag '%s' on '%s.%s'; expected exactly `json:\"Name\"`") \
     GRAY_ERROR("E3171", "types", "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s") \

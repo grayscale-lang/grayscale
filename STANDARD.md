@@ -3148,16 +3148,30 @@ do main() {
 
 **Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Integer and float literals are `i64` and `f64`, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
 
-**String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
+**String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `from_c_string()` builtin:
 
 ```gray
 extern import "stdlib.h"
 
 do main() {
-    mut home string = c_string(extern.getenv("HOME"))
+    mut home string = from_c_string(extern.getenv("HOME"))
     println(home)
 }
 ```
+
+To obtain a Grayscale string's `char*` explicitly, for example to store it in an extern struct field or a `^u8` variable, use `to_c_string()`:
+
+```gray
+extern import "string.h"
+
+do main() {
+    mut name ^u8 = to_c_string("grayscale")
+    mut length i64 = extern.strlen(name)
+    println(length)   // 9
+}
+```
+
+The pointer is only valid while the string is alive.
 
 **Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
 
@@ -3165,7 +3179,7 @@ do main() {
 
 - as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `u8`, or a pointer
 - as an argument to **another `extern.` call**
-- through **`c_string()`**, which converts a C `char*` to a Grayscale `string`
+- through **`from_c_string()`**, which converts a C `char*` to a Grayscale `string`
 - as the value of a **`cast()`** to one of the annotation-eligible types above
 
 ```gray
@@ -3176,7 +3190,7 @@ do main() {
     mut x f64 = extern.sqrt(2.0)             // annotated declaration
     println(x)                                 // prints 1.4142135623730951
 
-    mut home string = c_string(extern.getenv("HOME"))   // text: via c_string()
+    mut home string = from_c_string(extern.getenv("HOME"))   // text: via from_c_string()
     println(home)
 }
 ```
@@ -3274,7 +3288,8 @@ running the child so output is not reordered.
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
 | `to_char` | `(s string, index i64) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `cast(c, i64)` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> i64` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
-| `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
+| `from_c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
+| `to_c_string` | `(s string) -> ^u8` | Return a string's NUL-terminated buffer as a raw C pointer, for storing in an extern struct field or a `^u8` variable (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
 | `system` | `(command string) -> i64` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 

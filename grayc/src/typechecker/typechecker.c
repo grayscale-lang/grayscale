@@ -4334,13 +4334,13 @@ static void typechecker_mark_type_module_used(TypeChecker *checker, const char *
 
 static bool typechecker_is_builtin(const char *name) {
     static const char *const builtins[] = {
-        "addr", "assert", "bool", "c_string", "cast",
+        "addr", "assert", "bool", "cast",
         "char", "char_count", "copy", "embed", "eprint", "eprintln",
-        "error", "exit", "f32", "f64", "fields", "flush", "here",
+        "error", "exit", "f32", "f64", "fields", "flush", "from_c_string", "here",
         "i128", "i16", "i256", "i32", "i64", "i8",
         "input", "len", "new", "panic", "print", "println",
         "range", "raw", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
-        "string", "system", "to_char", "type_of",
+        "string", "system", "to_c_string", "to_char", "type_of",
         "u128", "u16", "u256", "u32", "u64", "u8",
     };
     return string_set_contains(builtins, (int)(sizeof(builtins)/sizeof(builtins[0])), name);
@@ -5264,7 +5264,7 @@ static bool is_integer_kind(TypeKind kind) {
  * the number families, bool, char, and any pointer. A C function result
  * annotated with one of these is the user asserting the C return type
  * (STANDARD.md 8.6). string / array / map / struct / enum have no such direct
- * form — string goes through c_string(), aggregates through individual fields. */
+ * form — string goes through from_c_string(), aggregates through individual fields. */
 static bool c_function_result_fits(GrayType *type) {
     if (!type) return false;
     if (type->name && (strcmp(type->name, "i128") == 0 || strcmp(type->name, "i256") == 0 ||
@@ -9054,9 +9054,9 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
         }
         result = &TYPE_I64;
-    } else if (strcmp(function_name, "c_string") == 0) {
+    } else if (strcmp(function_name, "from_c_string") == 0) {
         if (node->data.call.argument_count != 1) {
-            typechecker_error_arity(checker, node, "c_string", "1", node->data.call.argument_count);
+            typechecker_error_arity(checker, node, "from_c_string", "1", node->data.call.argument_count);
             result = &TYPE_STRING;
             return result;
         }
@@ -9083,6 +9083,16 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
         }
         result = &TYPE_STRING;
+    } else if (strcmp(function_name, "to_c_string") == 0) {
+        if (node->data.call.argument_count != 1) {
+            typechecker_error_arity(checker, node, "to_c_string", "1", node->data.call.argument_count);
+        } else {
+            GrayType *first_argument_value_type = resolve_expression(checker, node->data.call.arguments[0]);
+            if (first_argument_value_type->kind != TYPE_KIND_STRING) {
+                typechecker_error_argument_type(checker, node, 1, "to_c_string", "a string", type_name(first_argument_value_type));
+            }
+        }
+        result = type_pointer("u8");
     } else if (strcmp(function_name, "input") == 0) {
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "here") == 0) {
@@ -14156,12 +14166,12 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
             /* The single place a C function result may meet a declared type:
              * the annotation is the user asserting the C return type
              * (STANDARD.md 8.6). Allowed only when C can hand that type back
-             * directly; string routes through c_string(), aggregates through
+             * directly; string routes through from_c_string(), aggregates through
              * individual fields. */
             if (!c_function_result_fits(declared)) {
                 diagnostic_error_code_formatted_help(checker->diagnostics, "E3001",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "convert it with c_string() for text, or read individual fields",
+                    "convert it with from_c_string() for text, or read individual fields",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
             } else {
                 extern_call_assert_type(checker, node->data.variable_declaration.value, declared, false);

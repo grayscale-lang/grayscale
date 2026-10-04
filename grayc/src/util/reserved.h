@@ -64,7 +64,6 @@ static inline bool is_reserved_type_name(const char *name) {
 static const char *const gray_builtin_function_names[] = {
     "addr",
     "assert",
-    "c_string",
     "cast",
     "char_count",
     "copy",
@@ -75,6 +74,7 @@ static const char *const gray_builtin_function_names[] = {
     "exit",
     "fields",
     "flush",
+    "from_c_string",
     "here",
     "input",
     "len",
@@ -90,6 +90,7 @@ static const char *const gray_builtin_function_names[] = {
     "sleep_ns",
     "sleep_s",
     "system",
+    "to_c_string",
     "to_char",
     "type_of",
 };

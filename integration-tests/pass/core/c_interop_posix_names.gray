@@ -15,7 +15,7 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    mut resolved string = c_string(extern.realpath(".", nil))
+    mut resolved string = from_c_string(extern.realpath(".", nil))
     if len(resolved) > 0 {
         println("  [PASS] realpath resolved the current directory")
         passed += 1
@@ -33,7 +33,7 @@ do main() {
         failed += 1
     }
 
-    mut dup string = c_string(extern.strdup("copied"))
+    mut dup string = from_c_string(extern.strdup("copied"))
     if dup == "copied" {
         println("  [PASS] strdup round-tripped")
         passed += 1

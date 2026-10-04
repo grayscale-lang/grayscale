@@ -1,7 +1,7 @@
 /*
- * c_string_null_safety.gray - c_string() handles NULL without crashing.
+ * from_c_string_null_safety.gray - from_c_string() handles NULL without crashing.
  *
- * c_string used to lower to gray_string_lit(ptr) which calls strlen()
+ * from_c_string used to lower to gray_string_lit(ptr) which calls strlen()
  * with no NULL check. The fix routes it through gray_c_string_dup,
  * which returns "" for NULL.
  *
@@ -13,14 +13,14 @@
 extern import "stdlib.h"
 
 do main() {
-    println("=== c_string NULL Safety Test ===")
+    println("=== from_c_string NULL Safety Test ===")
     mut passed i64 = 0
     mut failed i64 = 0
 
     mut ptr = extern.getenv("GRAY_TEST_DEFINITELY_NOT_SET_VAR_8729")
-    mut s string = c_string(ptr)
+    mut s string = from_c_string(ptr)
     if s == "" {
-        println("  [PASS] c_string(NULL) returns empty string")
+        println("  [PASS] from_c_string(NULL) returns empty string")
         passed += 1
     } otherwise {
         println("  [FAIL] expected '', got '${s}'")

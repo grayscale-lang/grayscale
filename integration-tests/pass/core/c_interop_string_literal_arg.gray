@@ -25,7 +25,7 @@ do main() {
     }
 
     // strstr: literal needle found inside a literal haystack
-    mut hit string = c_string(extern.strstr("abcdefXYZ", "XYZ"))
+    mut hit string = from_c_string(extern.strstr("abcdefXYZ", "XYZ"))
     if hit == "XYZ" {
         passed += 1
     } otherwise {

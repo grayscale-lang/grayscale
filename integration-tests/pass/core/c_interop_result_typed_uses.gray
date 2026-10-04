@@ -2,7 +2,7 @@
  * c_interop_result_typed_uses.gray - the ways an extern. C call result or
  * constant may be consumed. Its type is known only to the C compiler, so it is
  * valid only in a type-annotated declaration, as an argument to another extern.
- * call, through c_string(), or through cast(). Every other position is a
+ * call, through from_c_string(), or through cast(). Every other position is a
  * compile error (covered by the fail/ suite).
  */
 
@@ -44,15 +44,15 @@ do main() {
     extern.free(copied)
     passed += 1
 
-    // through c_string(), inline and via an intermediate variable
-    mut env_inline string = c_string(extern.getenv("GRAY_UNSET_VAR_55123"))
+    // through from_c_string(), inline and via an intermediate variable
+    mut env_inline string = from_c_string(extern.getenv("GRAY_UNSET_VAR_55123"))
     mut raw_env = extern.getenv("GRAY_UNSET_VAR_55123")
-    mut env_var string = c_string(raw_env)
+    mut env_var string = from_c_string(raw_env)
     if env_inline == "" && env_var == "" {
         passed += 1
     } otherwise {
         failed += 1
-        println("  [FAIL] c_string() paths")
+        println("  [FAIL] from_c_string() paths")
     }
 
     // through cast()

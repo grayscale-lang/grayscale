@@ -6172,13 +6172,21 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
     }
 
     /* char_count(str); return Unicode codepoint count */
-    /* c_string(ptr); convert C char* to Grayscale string. Copies onto the
+    /* from_c_string(ptr); convert C char* to Grayscale string. Copies onto the
      * arena so the result is safe to use even after the C-side buffer
      * is freed or overwritten. NULL maps to "" instead of crashing. */
-    if (strcmp(function_name, "c_string") == 0 && node->data.call.argument_count == 1) {
+    if (strcmp(function_name, "from_c_string") == 0 && node->data.call.argument_count == 1) {
         emit(codegen, "gray_c_string_dup(gray_default_arena, (const char *)");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
+        return true;
+    }
+
+    /* to_c_string(s); the string's NUL-terminated buffer as a C pointer */
+    if (strcmp(function_name, "to_c_string") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "((uint8_t *)(");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, ").data)");
         return true;
     }
 

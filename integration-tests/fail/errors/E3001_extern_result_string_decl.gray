@@ -1,6 +1,6 @@
 /*
  * Error Test: E3001 - an extern. C call result cannot initialise a string
- * declaration directly; it must be converted with c_string(). A direct
+ * declaration directly; it must be converted with from_c_string(). A direct
  * assignment silently compiles to a zero-length string.
  */
 // expect-error: E3001

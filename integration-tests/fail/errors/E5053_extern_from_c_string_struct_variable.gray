@@ -1,5 +1,5 @@
 /*
- * Error Test: E5053 - c_string() of a variable inferred from an
+ * Error Test: E5053 - from_c_string() of a variable inferred from an
  * extern.func() call whose real C return type is the struct div_t.
  */
 // expect-error: E5053
@@ -9,5 +9,5 @@ extern import "stdlib.h"
 
 do main() {
     mut d = extern.div(7, 2)
-    println(c_string(d))
+    println(from_c_string(d))
 }

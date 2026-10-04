@@ -1481,9 +1481,9 @@ static void test_error_E2067_empty_struct(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3083_c_string_non_pointer(void) {
+static void test_error_E3083_from_c_string_non_pointer(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut msg = c_string(\"hello\") }");
+        "do main() { mut msg = from_c_string(\"hello\") }");
     ASSERT(has_error_code(diagnostics, "E3083"));
     diagnostic_destroy(diagnostics);
 }
@@ -2984,7 +2984,7 @@ int main(void) {
     RUN_TEST(test_error_E3082_wildcard_named_return);
     RUN_TEST(test_error_E4008_main_with_params);
     RUN_TEST(test_error_E5025_invalid_assign_target);
-    RUN_TEST(test_error_E3083_c_string_non_pointer);
+    RUN_TEST(test_error_E3083_from_c_string_non_pointer);
 
     /* Batch 2: 84 untested E3xxx error codes (#2098) */
     RUN_TEST(test_error_E3050_array_no_type_annotation);

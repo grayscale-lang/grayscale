@@ -1,0 +1,31 @@
+// Test: to_c_string() yields a C pointer usable as a ^u8 variable and by extern calls
+extern import "string.h"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut c_text ^u8 = to_c_string("grayscale")
+    mut back string = from_c_string(c_text)
+    if back == "grayscale" {
+        println("  [PASS] round trip through ^u8")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round trip: got '${back}'")
+        failed += 1
+    }
+
+    mut length i64 = extern.strlen(c_text)
+    if length == 9 {
+        println("  [PASS] extern call reads the pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strlen: got ${length}")
+        failed += 1
+    }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+}

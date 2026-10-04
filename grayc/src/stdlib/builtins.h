@@ -362,12 +362,21 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@end
  */
 
-/*@man c_string
- *@sig c_string(ptr ^u8) -> string
+/*@man from_c_string
+ *@sig from_c_string(ptr ^u8) -> string
  *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (extern import "header.h").
  *@example
  *   extern import "mylib.h"
- *   mut s string = c_string(mylib_get_name())
+ *   mut s string = from_c_string(mylib_get_name())
+ *@end
+ */
+
+/*@man to_c_string
+ *@sig to_c_string(s string) -> ^u8
+ *@desc Returns the string's NUL-terminated buffer as a raw C pointer, for storing in an extern struct field or a ^u8 variable. The pointer is only valid while the string is alive.
+ *@example
+ *   extern import "mylib.h"
+ *   mut name ^u8 = to_c_string("grayscale")
  *@end
  */
 
