@@ -150,6 +150,8 @@ GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *map, int64_t indent_s
 /* json array splitting: returns an GrayArray of GrayString, each being one
  * top-level JSON element from a JSON array string like "[{...},{...}]". */
 GrayArray gray_json_split_array(GrayArena *arena, GrayString text);
+GrayString gray_json_encode_array_wide_integer(GrayArena *arena, GrayArray *array);
+GrayString gray_json_unquote(GrayArena *arena, GrayString text);
 
 /* A #json struct's number field, of element kind `kind`: decode its JSON
  * text into *out at that type, panicking on a malformed value or one out of

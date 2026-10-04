@@ -2258,6 +2258,8 @@ do main() {
 
 A JSON value that names no variant of the field's enum is a `json.parse()` failure (`P0129`), the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is rejected on a `#json` struct at compile time (E3173).
 
+A `#json` struct field may be a number type, `string`, `bool`, an enum, another `#json` struct, or an array of a number type, `string`, `bool`, or `#json` struct. Any other field type (a non-`#json` struct, an array of arrays, a map) is rejected at compile time (E3140).
+
 **Rules:**
 
 - Without a tag, a field's JSON key must match the struct field name exactly.

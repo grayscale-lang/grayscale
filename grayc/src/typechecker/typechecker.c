@@ -6652,6 +6652,17 @@ static bool struct_name_has_json_attribute(TypeChecker *checker, const char *str
     return struct_declaration && struct_declaration->data.struct_declaration.is_json;
 }
 
+/* True when a #json struct field of this type can be marshaled: a number,
+ * string or bool, a #json struct, or an array of one of those. */
+static bool json_field_type_supported(TypeChecker *checker, const char *type_name) {
+    GrayType *type = type_from_name(type_name);
+    if (type->kind == TYPE_KIND_ARRAY) {
+        return type->element_type && !strchr(type->element_type, '[') && json_field_type_supported(checker, type->element_type);
+    }
+    return type_kind_is_number(type->kind) || strcmp(type_name, "string") == 0 || strcmp(type_name, "bool") == 0 ||
+           (type->kind == TYPE_KIND_STRUCT && struct_name_has_json_attribute(checker, type->name));
+}
+
 /* True when `t` is a #json struct, an array of one, or a map — the only
  * target/argument shapes json.parse()/json.stringify() can process. A map
  * target/argument goes through the dedicated map-based fallback
@@ -17218,8 +17229,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
              * field is allowed (serialized by backing type, see the E3173
              * check above for the tagged-enum exception). */
             if (field_type_name && strncmp(field_type_name, "func", 4) != 0 &&
-                !type_kind_is_number(type_from_name(field_type_name)->kind) &&
-                strcmp(field_type_name, "string") != 0 && strcmp(field_type_name, "bool") != 0 &&
+                !json_field_type_supported(checker, field_type_name) &&
                 !is_enum_name(checker, field_type_name)) {
                 diagnostic_error_code_formatted(checker->diagnostics, "E3140",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,

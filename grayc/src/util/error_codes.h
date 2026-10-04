@@ -225,7 +225,7 @@
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
     GRAY_ERROR("E3138", "types", "float literal overflows f64; max magnitude is 1.7976931348623157e308") \
     GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
-    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be a number type, string, bool, or enum") \
+    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be a number type, string, bool, enum, #json struct, or an array of a number type, string, bool, or #json struct") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
     GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
     GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64") \

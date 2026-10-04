@@ -13923,7 +13923,42 @@ static void emit_json_key_lookup(CodeGen *codegen, const char *json_key) {
     emit(codegen, "\"); void *_v = gray_map_get(&_m, &_k);\n");
 }
 
+/* True for a #json field that is an array or a nested #json struct: its JSON
+ * text is produced by a helper call instead of an inline scalar write. */
+static bool json_field_is_composite(CodeGen *codegen, const StructField *field) {
+    if (strcmp(field->type_name, "string") == 0 || strcmp(field->type_name, "bool") == 0) return false;
+    GrayType *field_type = type_from_name(field->type_name);
+    if (type_kind_is_number(field_type->kind)) return false;
+    return !codegen_is_enum(codegen, codegen_resolve_type(codegen, field->type_name));
+}
+
+/* Emit the statement that decodes the array element text _es into _e. */
+static void emit_json_element_decode(CodeGen *codegen, const char *element_type_name, int line) {
+    const char *resolved_element_type = codegen_resolve_type(codegen, element_type_name);
+    if (strcmp(element_type_name, "string") == 0) {
+        emit(codegen, "            _e = gray_json_unquote(arena, _es);\n");
+    } else if (strcmp(element_type_name, "bool") == 0) {
+        emit(codegen, "            _e = (_es.len == 4 && memcmp(_es.data, \"true\", 4) == 0);\n");
+    } else if (type_kind_is_number(type_from_name(element_type_name)->kind)) {
+        emit_formatted(codegen, "            gray_json_field_decode(_es, GRAY_ELEM_KIND_OF(%s), &_e, \"%s\", %d);\n",
+            gray_type_to_c_codegen(codegen, element_type_name), codegen->file, line);
+    } else {
+        emit_formatted(codegen, "            _e = gray_json_parse_%s(arena, _es);\n", resolved_element_type);
+    }
+}
+
 static void codegen_emit_json_helpers(CodeGen *codegen) {
+    /* Forward declarations: a #json struct may hold a #json struct or array
+     * declared after it. */
+    for (int i = 0; i < codegen->struct_declaration_count; i++) {
+        AstNode *statement = codegen->struct_declarations[i];
+        if (!statement->data.struct_declaration.is_json) continue;
+        const char *struct_name = statement->data.struct_declaration.name;
+        emit_formatted(codegen, "static GrayStruct_%s gray_json_parse_%s(GrayArena *arena, GrayString text);\n", struct_name, struct_name);
+        emit_formatted(codegen, "static GrayString gray_json_stringify_%s(GrayArena *arena, GrayStruct_%s _s);\n", struct_name, struct_name);
+        emit_formatted(codegen, "static GrayArray gray_json_parse_array_%s(GrayArena *arena, GrayString text);\n", struct_name);
+        emit_formatted(codegen, "static GrayString gray_json_stringify_array_%s(GrayArena *arena, GrayArray _arr);\n", struct_name);
+    }
     /* emit JSON parse/stringify helpers for #json structs. Each
      * #json struct gets two static functions:
      *   - gray_json_parse_<Name>(arena, json_string) → GrayStruct_<Name>
@@ -13967,7 +14002,23 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
                  * rejected on #json structs at typecheck time (E3173), so
                  * only plain integer-backed and string-backed enums reach here. */
                 const char *resolved_field_type = codegen_resolve_type(codegen, field->type_name);
-                if (codegen_is_enum(codegen, resolved_field_type) && !codegen_enum_is_tagged(codegen, resolved_field_type)) {
+                if (json_field_is_composite(codegen, field)) {
+                    GrayType *composite_type = type_from_name(field->type_name);
+                    emit_json_key_lookup(codegen, json_key);
+                    if (composite_type->kind == TYPE_KIND_ARRAY) {
+                        const char *element_c_type = gray_type_to_c_codegen(codegen, composite_type->element_type);
+                        emit(codegen, "      if (_v) { GrayArray _ea = gray_json_split_array(arena, *(GrayString *)_v);\n");
+                        emit_formatted(codegen, "        _r.%s = GRAY_ARRAY_NEW_OF(arena, %s, _ea.len > 0 ? _ea.len : 4);\n", sanitize_name(field->name), element_c_type);
+                        emit(codegen, "        for (int32_t _i = 0; _i < _ea.len; _i++) {\n");
+                        emit(codegen, "            GrayString _es = *(GrayString *)((char *)_ea.data + (size_t)_i * (size_t)_ea.elem_size);\n");
+                        emit_formatted(codegen, "            %s _e = {0};\n", element_c_type);
+                        emit_json_element_decode(codegen, composite_type->element_type, statement->token.line);
+                        emit_formatted(codegen, "            gray_array_push(arena, &_r.%s, &_e, __FILE__, __LINE__);\n        } } }\n", sanitize_name(field->name));
+                    } else {
+                        emit_formatted(codegen, "      if (_v) { _r.%s = gray_json_parse_%s(arena, *(GrayString *)_v); } }\n",
+                            sanitize_name(field->name), resolved_field_type);
+                    }
+                } else if (codegen_is_enum(codegen, resolved_field_type) && !codegen_enum_is_tagged(codegen, resolved_field_type)) {
                     int enum_index = codegen_enum_index(codegen, resolved_field_type);
                     AstNode *field_enum_declaration = codegen->enum_declarations[enum_index];
                     const char *enum_display_name = field_enum_declaration->data.enum_declaration.original_name
@@ -14037,6 +14088,30 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             bool is_string_enum = codegen_is_enum(codegen, resolved_field_type) && codegen_enum_is_string(codegen, resolved_field_type);
             if (strcmp(field->type_name, "string") == 0 || is_string_enum) {
                 emit_formatted(codegen, "    _need += json_escaped_len(_s.%s);\n", sanitize_name(field->name));
+            } else if (json_field_is_composite(codegen, field)) {
+                GrayType *composite_type = type_from_name(field->type_name);
+                if (composite_type->kind == TYPE_KIND_ARRAY) {
+                    GrayType *element_type = type_from_name(composite_type->element_type);
+                    if (element_type->kind == TYPE_KIND_STRUCT) {
+                        emit_formatted(codegen, "    GrayString _nt%d = gray_json_stringify_array_%s(arena, _s.%s);\n",
+                            j, codegen_resolve_type(codegen, composite_type->element_type), sanitize_name(field->name));
+                    } else {
+                        const char *encode_function = "gray_json_encode_array_signed_integer";
+                        if (is_wide_integer_type_name(composite_type->element_type)) encode_function = "gray_json_encode_array_wide_integer";
+                        else switch (json_prim_class(composite_type->element_type)) {
+                        case 'u': encode_function = "gray_json_encode_array_unsigned_integer"; break;
+                        case 'f': encode_function = "gray_json_encode_array_floating_point"; break;
+                        case 'b': encode_function = "gray_json_encode_array_bool"; break;
+                        case 'S': encode_function = "gray_json_encode_array_string"; break;
+                        default: break;
+                        }
+                        emit_formatted(codegen, "    GrayString _nt%d = %s(arena, &_s.%s);\n", j, encode_function, sanitize_name(field->name));
+                    }
+                } else {
+                    emit_formatted(codegen, "    GrayString _nt%d = gray_json_stringify_%s(arena, _s.%s);\n",
+                        j, codegen_resolve_type(codegen, field->type_name), sanitize_name(field->name));
+                }
+                emit_formatted(codegen, "    _need += (size_t)_nt%d.len;\n", j);
             } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
                 /* A number field of any sized type is rendered at that type. */
                 emit_formatted(codegen, "    GrayString _nt%d = gray_json_number_text(arena, GRAY_ELEM_KIND_OF(%s), &_s.%s);\n",
@@ -14069,7 +14144,7 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             } else if (is_number_enum) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%lld\", (long long)_s.%s);\n",
                     sanitize_name(field->name));
-            } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
+            } else if (type_kind_is_number(type_from_name(field->type_name)->kind) || json_field_is_composite(codegen, field)) {
                 emit_formatted(codegen, "    memcpy(_buf + _pos, _nt%d.data, (size_t)_nt%d.len); _pos += _nt%d.len;\n", j, j, j);
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_formatted(codegen, "    { const char *_bv = _s.%s ? \"true\" : \"false\"; int _bl = _s.%s ? 4 : 5;\n",
