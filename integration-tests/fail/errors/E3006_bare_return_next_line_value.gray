@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3006 - return with its value on the next line
+ * Expected: "missing return value; function expects a return value"
+ *
+ * The value must start on the same line as `return`; the next line is a
+ * separate statement.
+ */
+
+do compute() -> i64 {
+    return 7
+}
+
+do pick() -> i64 {
+    return
+    compute()
+}
+
+do main() {
+    println(pick())
+}

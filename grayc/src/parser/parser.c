@@ -1840,9 +1840,11 @@ static AstNode *parse_return_statement(Parser *parser) {
     int count = 0;
     AstNode **values = arena_allocate(parser->arena, sizeof(AstNode *) * capacity);
 
-    /* Check if there's a value to return (peek, don't consume) */
+    /* A value follows only on the same line as `return` (peek, don't consume);
+     * a statement on the next line is a separate statement. */
     if (!peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_SEMICOLON) &&
-        !peek_token_is(parser, TOKEN_END_OF_FILE)) {
+        !peek_token_is(parser, TOKEN_END_OF_FILE) &&
+        parser->peek_token.line == parser->current_token.line) {
         next_token(parser);
         values[count++] = parse_expression(parser, PRECEDENCE_LOWEST);
 
