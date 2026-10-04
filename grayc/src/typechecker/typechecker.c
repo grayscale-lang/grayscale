@@ -16693,6 +16693,7 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
         if (index_name_text && strcmp(index_name_text, "_") == 0 && variable_name && strcmp(variable_name, "_") == 0) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3123", NODE_FILE(checker, node),
                 node->token.line, node->token.column, 0);
+            resolve_expression(checker, node->data.for_each.collection);
             checker->current_scope = outer;
             scope_destroy(loop_scope);
             return;
