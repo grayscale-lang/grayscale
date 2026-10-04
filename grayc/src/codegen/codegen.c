@@ -12978,9 +12978,16 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                             int limit = pattern->data.when_pattern.binding_count < enum_value->payload_count
                                 ? pattern->data.when_pattern.binding_count : enum_value->payload_count;
                             for (int binding_index = 0; binding_index < limit; binding_index++) {
+                                /* The payload type is written in the enum's own
+                                 * module, so resolve it there. */
+                                const char *saved_when_module = codegen->current_module;
+                                const char *saved_when_file = codegen->current_file;
+                                codegen_enter_node(codegen, declaration);
+                                const char *binding_c_type = gray_type_to_c_codegen(codegen, enum_value->payload_types[binding_index]);
+                                codegen->current_module = saved_when_module;
+                                codegen->current_file = saved_when_file;
                                 emit_indent(codegen);
-                                emit_formatted(codegen, "%s %s = ",
-                                    gray_type_to_c_codegen(codegen, enum_value->payload_types[binding_index]),
+                                emit_formatted(codegen, "%s %s = ", binding_c_type,
                                     pattern->data.when_pattern.bindings[binding_index]);
                                 emit(codegen, when_temporary);
                                 emit_formatted(codegen, ".data.%s._%d;\n", variant_name, binding_index);

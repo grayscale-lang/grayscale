@@ -1,0 +1,22 @@
+/*
+ * tree.gray - a tagged enum whose payloads name types declared in this module.
+ */
+
+const Node struct {
+    v i64
+}
+
+const Op enum { ADD; SUB }
+
+const Expr enum {
+    Lit(i64)
+    Wrap(^Node)
+    Own(Node)
+    Bin(Op, i64)
+}
+
+do make() -> Expr {
+    n = new(Node)
+    n^.v = 7
+    return Expr.Wrap(n)
+}

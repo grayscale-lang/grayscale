@@ -1,0 +1,79 @@
+/*
+ * main.gray - a when pattern that binds a payload of an imported tagged enum
+ * gives the binding the payload's real type: a pointer, a struct, or an enum.
+ */
+
+import "./tree"
+
+do take(n ^tree.Node) -> i64 {
+    return n^.v
+}
+
+do main() {
+    println("=== Enum Payload Binding Across Modules Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut pointer_value i64 = 0
+    mut wrapped = tree.make()
+    when wrapped {
+        is tree.Expr.Wrap(n) { pointer_value = take(n) }
+        default { pointer_value = -1 }
+    }
+    if pointer_value == 7 {
+        println("  [PASS] pointer payload binding passes to a function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pointer payload binding: ${pointer_value}")
+        failed += 1
+    }
+
+    mut struct_value i64 = 0
+    mut owned = tree.Expr.Own(tree.Node{v: 9})
+    when owned {
+        is tree.Expr.Own(node) { struct_value = node.v }
+        default { struct_value = -1 }
+    }
+    if struct_value == 9 {
+        println("  [PASS] struct payload binding reads its field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct payload binding: ${struct_value}")
+        failed += 1
+    }
+
+    mut selector string = ""
+    mut qualified string = ""
+    mut combined = tree.Expr.Bin(tree.Op.ADD, 1)
+    when combined {
+        is tree.Expr.Bin(op, count) {
+            when op {
+                is .ADD { selector = "add" }
+                is .SUB { selector = "sub" }
+                default { selector = "other" }
+            }
+            when op {
+                is tree.Op.ADD { qualified = "add" }
+                is tree.Op.SUB { qualified = "sub" }
+                default { qualified = "other" }
+            }
+        }
+        default { selector = "other" }
+    }
+    if selector == "add" && qualified == "add" {
+        println("  [PASS] enum payload binding matches by .VARIANT and by qualified name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum payload binding: '${selector}' '${qualified}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
