@@ -2,6 +2,7 @@
  * Error Test: E5057 - math.max arguments must share one number type
  */
 // expect-error: E5057
+// expect-error-count: 1
 
 import @math
 

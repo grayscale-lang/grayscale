@@ -3925,6 +3925,7 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
     const StdlibFunctionMetadata *metadata = find_stdlib_metadata(module_name, function_name);
     if (!metadata || metadata->argument_type_count == 0) return;
 
+    bool was_common_number_reported = false;
     for (int i = 0; i < metadata->argument_type_count; i++) {
         int argument_index = metadata->argument_types[i].index;
         if (argument_index < node->data.call.argument_count) {
@@ -3960,10 +3961,12 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
                 else if (kind == EXPECTED_ARGUMENT_COMMON_NUMBER) {
                     slot = stdlib_common_number_type(checker, metadata, node);
                     if (!slot) {
-                        diagnostic_error_code_formatted_help(checker->diagnostics, "E5057",
-                            NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                            "convert one with cast()",
-                            module_name, function_name);
+                        if (!was_common_number_reported)
+                            diagnostic_error_code_formatted_help(checker->diagnostics, "E5057",
+                                NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
+                                "convert one with cast()",
+                                module_name, function_name);
+                        was_common_number_reported = true;
                         slot = &TYPE_UNKNOWN;
                     }
                 }
