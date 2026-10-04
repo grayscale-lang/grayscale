@@ -47,17 +47,17 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map);
 
 /* json.encode(array) — convert typed arrays to JSON. The signed/unsigned/floating-point
  * encoders read each slot at its real width (u8, i16, f32, ...). */
-GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array);
-GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array);
-GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_unsigned_integer(GrayArena *arena, GrayArray *array);
+GrayString gray_json_encode_array_floating_point(GrayArena *arena, GrayArray *array);
 GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *array);
 GrayString gray_json_encode_string(GrayArena *arena, GrayString string);
 GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *array);
 
 /* json.encode(map) — convert typed maps to JSON */
-GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map);
-GrayString gray_json_encode_map_uint(GrayArena *arena, GrayMap *map);
-GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_signed_integer(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_unsigned_integer(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_floating_point(GrayArena *arena, GrayMap *map);
 GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
 
 /*@man stringify

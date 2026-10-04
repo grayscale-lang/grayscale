@@ -2049,7 +2049,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ") ? gray_string_lit(\"true\") : gray_string_lit(\"false\")");
                 break;
             case TYPE_KIND_FLOATING_POINT:
-                emit(codegen, "gray_builtin_format_float(gray_default_arena, ");
+                emit(codegen, "gray_builtin_format_floating_point(gray_default_arena, ");
                 emit_expression(codegen, part);
                 emit_formatted(codegen, ", %d)", floating_point_bit_size(part_type ? part_type->name : NULL));
                 break;
@@ -4678,7 +4678,7 @@ static AstNode *unwrap_reference_argument(AstNode *argument) {
     return argument;
 }
 
-/* The print builtin suffix for `arg`; for "_float", `*float_bits` is set to
+/* The print builtin suffix for `arg`; for "_floating_point", `*float_bits` is set to
  * the bit size the value prints at. */
 static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int *floating_point_bits) {
     *floating_point_bits = 64;
@@ -4701,7 +4701,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
                     case TYPE_KIND_STRING:  return "_str";
                     case TYPE_KIND_FLOATING_POINT:
                         *floating_point_bits = floating_point_bit_size(wildcard_type->name);
-                        return "_float";
+                        return "_floating_point";
                     case TYPE_KIND_BOOL:    return "_bool";
                     case TYPE_KIND_CHAR:    return "_char";
                     case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
@@ -4718,7 +4718,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
         case TYPE_KIND_STRING:  return "_str";
         case TYPE_KIND_FLOATING_POINT:
             *floating_point_bits = floating_point_bit_size(type->name);
-            return "_float";
+            return "_floating_point";
         case TYPE_KIND_BOOL:    return "_bool";
         case TYPE_KIND_CHAR:    return "_char";
         case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
@@ -4729,7 +4729,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
         }
     }
     if (argument->kind == NODE_STRING_VALUE || argument->kind == NODE_INTERPOLATED_STRING) return "_str";
-    if (argument->kind == NODE_FLOATING_POINT_LITERAL) return "_float";
+    if (argument->kind == NODE_FLOATING_POINT_LITERAL) return "_floating_point";
     if (argument->kind == NODE_BOOL_VALUE) return "_bool";
     if (argument->kind == NODE_CHAR_VALUE) return "_char";
     /* For call expressions, check the return type of the called function */
@@ -4784,7 +4784,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
                                 if (strcmp(return_type_spelling, "string") == 0) return "_str";
                                 if (strcmp(return_type_spelling, "f32") == 0 || strcmp(return_type_spelling, "f64") == 0) {
                                     *floating_point_bits = floating_point_bit_size(return_type_spelling);
-                                    return "_float";
+                                    return "_floating_point";
                                 }
                                 if (strcmp(return_type_spelling, "bool") == 0) return "_bool";
                                 if (strcmp(return_type_spelling, "char") == 0) return "_char";
@@ -4837,7 +4837,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *argument) {
         emit(codegen, ")");
     } else {
         if (argument_type && argument_type->kind == TYPE_KIND_FLOATING_POINT)
-            emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
+            emit(codegen, "gray_builtin_to_string_floating_point(gray_default_arena, ");
         else if (argument_type && argument_type->kind == TYPE_KIND_BOOL)
             emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
         else if (argument_type && argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER)
@@ -5269,7 +5269,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
         break;
     case TYPE_KIND_FLOATING_POINT:
         emit_indent(codegen);
-        emit_formatted(codegen, "{ GrayString _fs = gray_builtin_format_float(gray_default_arena, %s, %d); "
+        emit_formatted(codegen, "{ GrayString _fs = gray_builtin_format_floating_point(gray_default_arena, %s, %d); "
             "gray_out_printf(%s, \"%%.*s\", (int)_fs.len, _fs.data); }\n",
             c_expression, floating_point_bit_size(type->name), stream);
         break;
@@ -5625,7 +5625,7 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
             const char *suffix = resolve_print_suffix(codegen, argument, &floating_point_bits);
             emit_formatted(codegen, "gray_builtin_%s%s(", variant, suffix);
             emit_expression(codegen, argument);
-            if (strcmp(suffix, "_float") == 0) emit_formatted(codegen, ", %d", floating_point_bits);
+            if (strcmp(suffix, "_floating_point") == 0) emit_formatted(codegen, ", %d", floating_point_bits);
             emit(codegen, ")");
         }
     }
@@ -7271,9 +7271,9 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
         if (argument_type && argument_type->kind == TYPE_KIND_MAP) {
             const char *function_name = "gray_json_encode_map";
             switch (json_prim_class(argument_type->value_type)) {
-            case 's': function_name = "gray_json_encode_map_int"; break;
-            case 'u': function_name = "gray_json_encode_map_uint"; break;
-            case 'f': function_name = "gray_json_encode_map_float"; break;
+            case 's': function_name = "gray_json_encode_map_signed_integer"; break;
+            case 'u': function_name = "gray_json_encode_map_unsigned_integer"; break;
+            case 'f': function_name = "gray_json_encode_map_floating_point"; break;
             case 'b': function_name = "gray_json_encode_map_bool"; break;
             default:  function_name = "gray_json_encode_map"; break; /* string */
             }
@@ -7281,14 +7281,14 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
             emit_expression(codegen, argument);
             emit_formatted(codegen, "; %s(gray_default_arena, &_jm); })", function_name);
         } else if (argument_type && argument_type->kind == TYPE_KIND_ARRAY) {
-            const char *function_name = "gray_json_encode_array_int";
+            const char *function_name = "gray_json_encode_array_signed_integer";
             switch (json_prim_class(argument_type->element_type)) {
-            case 's': function_name = "gray_json_encode_array_int"; break;
-            case 'u': function_name = "gray_json_encode_array_uint"; break;
-            case 'f': function_name = "gray_json_encode_array_float"; break;
+            case 's': function_name = "gray_json_encode_array_signed_integer"; break;
+            case 'u': function_name = "gray_json_encode_array_unsigned_integer"; break;
+            case 'f': function_name = "gray_json_encode_array_floating_point"; break;
             case 'b': function_name = "gray_json_encode_array_bool"; break;
             case 'S': function_name = "gray_json_encode_array_string"; break;
-            default:  function_name = "gray_json_encode_array_int"; break;
+            default:  function_name = "gray_json_encode_array_signed_integer"; break;
             }
             emit(codegen, "({ GrayArray _ja = ");
             emit_expression(codegen, argument);

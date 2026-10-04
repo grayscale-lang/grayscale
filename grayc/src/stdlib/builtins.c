@@ -93,7 +93,7 @@ static void print_core_u64(uint64_t value, FILE *stream, bool newline) {
 
 static void print_core_float(double value, int bit_size, FILE *stream, bool newline) {
     char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
-    gray_fmt_shortest_float(buffer, sizeof(buffer), value, bit_size);
+    gray_fmt_shortest_floating_point(buffer, sizeof(buffer), value, bit_size);
     fprintf(stream, "%s", buffer);
     if (newline) fputc('\n', stream);
 }
@@ -130,10 +130,10 @@ PRINT_FAMILY(addr,  uintptr_t)
 
 /* A floating-point value also carries its bit size (32 or 64) so it prints at its own
  * precision. */
-void gray_builtin_println_float(double value, int bit_size)  { print_core_float(value, bit_size, stdout, true);  }
-void gray_builtin_print_float(double value, int bit_size)    { print_core_float(value, bit_size, stdout, false); }
-void gray_builtin_eprintln_float(double value, int bit_size) { print_core_float(value, bit_size, stderr, true);  }
-void gray_builtin_eprint_float(double value, int bit_size)   { print_core_float(value, bit_size, stderr, false); }
+void gray_builtin_println_floating_point(double value, int bit_size)  { print_core_float(value, bit_size, stdout, true);  }
+void gray_builtin_print_floating_point(double value, int bit_size)    { print_core_float(value, bit_size, stdout, false); }
+void gray_builtin_eprintln_floating_point(double value, int bit_size) { print_core_float(value, bit_size, stderr, true);  }
+void gray_builtin_eprint_floating_point(double value, int bit_size)   { print_core_float(value, bit_size, stderr, false); }
 
 #undef PRINT_FAMILY
 
@@ -279,14 +279,14 @@ GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value) {
     return gray_strconv_from_u64(arena, value);
 }
 
-GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size) {
+GrayString gray_builtin_to_string_floating_point(GrayArena *arena, double value, int bit_size) {
     char buffer[GRAY_FLOATING_POINT_STRING_BUFFER_SIZE];
-    int length = gray_fmt_shortest_float(buffer, sizeof(buffer), value, bit_size);
+    int length = gray_fmt_shortest_floating_point(buffer, sizeof(buffer), value, bit_size);
     return gray_string_new(arena, buffer, length);
 }
 
-GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size) {
-    return gray_builtin_to_string_float(arena, value, bit_size);
+GrayString gray_builtin_format_floating_point(GrayArena *arena, double value, int bit_size) {
+    return gray_builtin_to_string_floating_point(arena, value, bit_size);
 }
 
 GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value) {
@@ -431,7 +431,7 @@ double gray_builtin_string_to_f64(GrayString string) {
 
 /* A floating-point element in its shortest round-trip form at its own width. */
 static void format_float_element(char *output, size_t out_size, const void *element, int32_t element_kind) {
-    gray_fmt_shortest_float(output, out_size, gray_elem_to_double(element_kind, element),
+    gray_fmt_shortest_floating_point(output, out_size, gray_elem_to_double(element_kind, element),
         element_kind == GRAY_ELEM_F32 ? 32 : 64);
 }
 

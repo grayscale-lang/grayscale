@@ -187,7 +187,7 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map) {
 
 /* --- Array Encoders --- */
 
-GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *array) {
     /* 21 chars max per int64 + comma, plus brackets + nul */
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
@@ -206,7 +206,7 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array) {
     return (GrayString){ buffer, (int32_t)position };
 }
 
-GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_unsigned_integer(GrayArena *arena, GrayArray *array) {
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
     int position = 0;
@@ -223,7 +223,7 @@ GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array) {
     return (GrayString){ buffer, (int32_t)position };
 }
 
-GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_floating_point(GrayArena *arena, GrayArray *array) {
     /* 24 chars max per %g double + comma, plus brackets + nul */
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 25 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
@@ -298,15 +298,15 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *array) {
 
 /* --- Typed Map Encoders --- */
 
-GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_signed_integer(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_INT);
 }
 
-GrayString gray_json_encode_map_uint(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_unsigned_integer(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_UINT);
 }
 
-GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_floating_point(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_FLOAT);
 }
 

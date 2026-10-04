@@ -29,7 +29,7 @@
 void gray_builtin_println_str(GrayString string);
 void gray_builtin_println_i64(int64_t value);
 void gray_builtin_println_u64(uint64_t value);
-void gray_builtin_println_float(double value, int bit_size);
+void gray_builtin_println_floating_point(double value, int bit_size);
 void gray_builtin_println_bool(bool value);
 void gray_builtin_println_char(int32_t codepoint);
 void gray_builtin_println_addr(uintptr_t value);
@@ -45,7 +45,7 @@ void gray_builtin_println_addr(uintptr_t value);
 void gray_builtin_print_str(GrayString string);
 void gray_builtin_print_i64(int64_t value);
 void gray_builtin_print_u64(uint64_t value);
-void gray_builtin_print_float(double value, int bit_size);
+void gray_builtin_print_floating_point(double value, int bit_size);
 void gray_builtin_print_bool(bool value);
 void gray_builtin_print_char(int32_t codepoint);
 void gray_builtin_print_addr(uintptr_t value);
@@ -74,7 +74,7 @@ void gray_builtin_flush(void);
 void gray_builtin_eprintln_str(GrayString string);
 void gray_builtin_eprintln_i64(int64_t value);
 void gray_builtin_eprintln_u64(uint64_t value);
-void gray_builtin_eprintln_float(double value, int bit_size);
+void gray_builtin_eprintln_floating_point(double value, int bit_size);
 void gray_builtin_eprintln_bool(bool value);
 void gray_builtin_eprintln_char(int32_t codepoint);
 void gray_builtin_eprintln_addr(uintptr_t value);
@@ -92,7 +92,7 @@ void gray_builtin_eprintln_addr(uintptr_t value);
 void gray_builtin_eprint_str(GrayString string);
 void gray_builtin_eprint_i64(int64_t value);
 void gray_builtin_eprint_u64(uint64_t value);
-void gray_builtin_eprint_float(double value, int bit_size);
+void gray_builtin_eprint_floating_point(double value, int bit_size);
 void gray_builtin_eprint_bool(bool value);
 void gray_builtin_eprint_char(int32_t codepoint);
 void gray_builtin_eprint_addr(uintptr_t value);
@@ -449,7 +449,7 @@ int64_t gray_builtin_system(GrayString command);
 /* to_string — internal runtime overloads, not user-callable by name */
 GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value);
 GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value);
-GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size);
+GrayString gray_builtin_to_string_floating_point(GrayArena *arena, double value, int bit_size);
 GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
@@ -462,7 +462,7 @@ gray_i256 gray_builtin_string_to_i256(GrayString string, const char *file, int l
 gray_u256 gray_builtin_string_to_u256(GrayString string, const char *file, int line);
 
 /* format a floating-point value for interpolation */
-GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size);
+GrayString gray_builtin_format_floating_point(GrayArena *arena, double value, int bit_size);
 
 /* composite to_string */
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *array, int element_kind);
