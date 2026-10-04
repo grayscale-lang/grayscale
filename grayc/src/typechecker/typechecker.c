@@ -13618,6 +13618,261 @@ static void check_no_nested_ensure(TypeChecker *checker, AstNode *node, bool nes
     }
 }
 
+/* ---- Copy elision for the read-modify-write idiom on an array place ----
+ *
+ *     mut xs [T] = h^.items
+ *     arrays.append(xs, v)
+ *     h^.items = xs
+ *
+ * Copying the array into `xs` and storing it back leaves the old array behind
+ * in the arena on every pass. When nothing between the copy and the store can
+ * observe or write the place, and `xs` is dead after the store, sharing the
+ * storage is indistinguishable from copying it. */
+
+/* The label at the root of a member / index / dereference chain. */
+static AstNode *place_root_label(AstNode *place) {
+    while (place) {
+        switch (place->kind) {
+        case NODE_LABEL: return place;
+        case NODE_MEMBER_EXPRESSION: place = place->data.member.object; break;
+        case NODE_INDEX_EXPRESSION: place = place->data.index_expression.left; break;
+        case NODE_POSTFIX_EXPRESSION:
+            if (place->data.postfix.operator != TOKEN_CARET) return NULL;
+            place = place->data.postfix.left;
+            break;
+        default: return NULL;
+        }
+    }
+    return NULL;
+}
+
+/* A place with no side effects: names, fields, dereferences, and indexes by a
+ * literal or a name. */
+static bool place_is_pure(AstNode *place) {
+    if (!place) return false;
+    switch (place->kind) {
+    case NODE_LABEL: return true;
+    case NODE_MEMBER_EXPRESSION: return place_is_pure(place->data.member.object);
+    case NODE_INDEX_EXPRESSION: {
+        AstNode *index = place->data.index_expression.index;
+        return index && (index->kind == NODE_INTEGER_LITERAL || index->kind == NODE_LABEL) &&
+               place_is_pure(place->data.index_expression.left);
+    }
+    case NODE_POSTFIX_EXPRESSION:
+        return place->data.postfix.operator == TOKEN_CARET && place_is_pure(place->data.postfix.left);
+    default: return false;
+    }
+}
+
+static bool places_equal(AstNode *left, AstNode *right) {
+    if (!left || !right || left->kind != right->kind) return false;
+    switch (left->kind) {
+    case NODE_LABEL: return strcmp(left->data.label.value, right->data.label.value) == 0;
+    case NODE_INTEGER_LITERAL: return left->data.integer_literal.value == right->data.integer_literal.value;
+    case NODE_MEMBER_EXPRESSION:
+        return strcmp(left->data.member.member, right->data.member.member) == 0 &&
+               places_equal(left->data.member.object, right->data.member.object);
+    case NODE_INDEX_EXPRESSION:
+        return places_equal(left->data.index_expression.left, right->data.index_expression.left) &&
+               places_equal(left->data.index_expression.index, right->data.index_expression.index);
+    case NODE_POSTFIX_EXPRESSION:
+        return left->data.postfix.operator == right->data.postfix.operator &&
+               places_equal(left->data.postfix.left, right->data.postfix.left);
+    default: return false;
+    }
+}
+
+/* Does `node` mention `name`? Kinds this does not know count as a mention. */
+static bool expression_mentions(AstNode *node, const char *name) {
+    if (!node) return false;
+    switch (node->kind) {
+    case NODE_LABEL: return strcmp(node->data.label.value, name) == 0;
+    case NODE_INTEGER_LITERAL: case NODE_FLOATING_POINT_LITERAL: case NODE_STRING_VALUE:
+    case NODE_CHAR_VALUE: case NODE_BOOL_VALUE: case NODE_NIL_VALUE:
+        return false;
+    case NODE_INTERPOLATED_STRING:
+        for (int i = 0; i < node->data.interpolated_string.part_count; i++)
+            if (expression_mentions(node->data.interpolated_string.parts[i], name)) return true;
+        return false;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < node->data.array_value.count; i++)
+            if (expression_mentions(node->data.array_value.elements[i], name)) return true;
+        return false;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < node->data.map_value.count; i++)
+            if (expression_mentions(node->data.map_value.keys[i], name) ||
+                expression_mentions(node->data.map_value.values[i], name)) return true;
+        return false;
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < node->data.struct_value.count; i++)
+            if (expression_mentions(node->data.struct_value.field_values[i], name)) return true;
+        return false;
+    case NODE_PREFIX_EXPRESSION: return expression_mentions(node->data.prefix.right, name);
+    case NODE_INFIX_EXPRESSION:
+        return expression_mentions(node->data.infix.left, name) || expression_mentions(node->data.infix.right, name);
+    case NODE_POSTFIX_EXPRESSION: return expression_mentions(node->data.postfix.left, name);
+    case NODE_INDEX_EXPRESSION:
+        return expression_mentions(node->data.index_expression.left, name) ||
+               expression_mentions(node->data.index_expression.index, name);
+    case NODE_MEMBER_EXPRESSION: return expression_mentions(node->data.member.object, name);
+    case NODE_CALL_EXPRESSION:
+        if (expression_mentions(node->data.call.function, name)) return true;
+        for (int i = 0; i < node->data.call.argument_count; i++)
+            if (expression_mentions(node->data.call.arguments[i], name)) return true;
+        return false;
+    default: return true;
+    }
+}
+
+static bool type_is_plain_scalar(GrayType *type) {
+    return type && (type->kind == TYPE_KIND_SIGNED_INTEGER || type->kind == TYPE_KIND_UNSIGNED_INTEGER ||
+                    type->kind == TYPE_KIND_FLOATING_POINT || type->kind == TYPE_KIND_BOOL ||
+                    type->kind == TYPE_KIND_CHAR || type->kind == TYPE_KIND_STRING ||
+                    type->kind == TYPE_KIND_LITERAL);
+}
+
+/* An expression between the copy and the store cannot reach the place: it
+ * reads only plain scalars, other than the place's root, and calls only
+ * standard-library functions and `len`, which touch nothing but their
+ * arguments. `array_name` may appear only as a call argument or an indexed
+ * base. */
+static bool expression_leaves_place_alone(TypeChecker *checker, AstNode *node,
+                                           const char *array_name, const char *root_name) {
+    if (!node) return true;
+    switch (node->kind) {
+    case NODE_LABEL:
+        if (strcmp(node->data.label.value, array_name) == 0 ||
+            strcmp(node->data.label.value, root_name) == 0) return false;
+        return type_is_plain_scalar(type_table_get(checker->type_table, node));
+    case NODE_INTEGER_LITERAL: case NODE_FLOATING_POINT_LITERAL: case NODE_STRING_VALUE:
+    case NODE_CHAR_VALUE: case NODE_BOOL_VALUE:
+        return true;
+    case NODE_INTERPOLATED_STRING:
+        for (int i = 0; i < node->data.interpolated_string.part_count; i++)
+            if (!expression_leaves_place_alone(checker, node->data.interpolated_string.parts[i], array_name, root_name))
+                return false;
+        return true;
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < node->data.struct_value.count; i++)
+            if (!expression_leaves_place_alone(checker, node->data.struct_value.field_values[i], array_name, root_name))
+                return false;
+        return true;
+    case NODE_PREFIX_EXPRESSION:
+        return expression_leaves_place_alone(checker, node->data.prefix.right, array_name, root_name);
+    case NODE_INFIX_EXPRESSION:
+        return expression_leaves_place_alone(checker, node->data.infix.left, array_name, root_name) &&
+               expression_leaves_place_alone(checker, node->data.infix.right, array_name, root_name);
+    case NODE_INDEX_EXPRESSION: {
+        AstNode *base = node->data.index_expression.left;
+        bool base_is_array = base->kind == NODE_LABEL && strcmp(base->data.label.value, array_name) == 0;
+        return base_is_array && type_is_plain_scalar(type_table_get(checker->type_table, node)) &&
+               expression_leaves_place_alone(checker, node->data.index_expression.index, array_name, root_name);
+    }
+    case NODE_CALL_EXPRESSION: {
+        AstNode *function = node->data.call.function;
+        bool is_standard_call = false;
+        if (function->kind == NODE_MEMBER_EXPRESSION && function->data.member.object->kind == NODE_LABEL) {
+            const char *module_name = function->data.member.object->data.label.value;
+            is_standard_call = !scope_lookup(checker->current_scope, module_name) &&
+                typechecker_is_imported_module(checker, module_name) &&
+                is_stdlib_module_name(typechecker_resolve_alias(checker, module_name));
+        } else if (function->kind == NODE_LABEL) {
+            is_standard_call = strcmp(function->data.label.value, "len") == 0;
+        }
+        if (!is_standard_call) return false;
+        for (int i = 0; i < node->data.call.argument_count; i++) {
+            AstNode *argument = node->data.call.arguments[i];
+            bool is_array_argument = argument->kind == NODE_LABEL && strcmp(argument->data.label.value, array_name) == 0;
+            if (!is_array_argument && !expression_leaves_place_alone(checker, argument, array_name, root_name))
+                return false;
+        }
+        return true;
+    }
+    default: return false;
+    }
+}
+
+/* Is `statement` straight-line code that leaves the place alone? */
+static bool statement_leaves_place_alone(TypeChecker *checker, AstNode *statement,
+                                          const char *array_name, const char *root_name) {
+    switch (statement->kind) {
+    case NODE_EXPRESSION_STATEMENT:
+        return expression_leaves_place_alone(checker, statement->data.expression_statement.expression, array_name, root_name);
+    case NODE_VARIABLE_DECLARATION:
+        return type_is_plain_scalar(type_table_get(checker->type_table, statement->data.variable_declaration.value)) &&
+               expression_leaves_place_alone(checker, statement->data.variable_declaration.value, array_name, root_name);
+    case NODE_ASSIGN_STATEMENT: {
+        AstNode *target = statement->data.assign.target;
+        bool target_is_scalar_local = target->kind == NODE_LABEL &&
+            strcmp(target->data.label.value, array_name) != 0 &&
+            strcmp(target->data.label.value, root_name) != 0 &&
+            type_is_plain_scalar(type_table_get(checker->type_table, target));
+        bool target_is_array_element = target->kind == NODE_INDEX_EXPRESSION &&
+            target->data.index_expression.left->kind == NODE_LABEL &&
+            strcmp(target->data.index_expression.left->data.label.value, array_name) == 0 &&
+            expression_leaves_place_alone(checker, target->data.index_expression.index, array_name, root_name);
+        return (target_is_scalar_local || target_is_array_element) &&
+               type_is_plain_scalar(type_table_get(checker->type_table, statement->data.assign.value)) &&
+               expression_leaves_place_alone(checker, statement->data.assign.value, array_name, root_name);
+    }
+    default: return false;
+    }
+}
+
+/* Is `statement` simple code that never mentions `array_name`? */
+static bool statement_ignores_array(AstNode *statement, const char *array_name) {
+    switch (statement->kind) {
+    case NODE_EXPRESSION_STATEMENT:
+        return !expression_mentions(statement->data.expression_statement.expression, array_name);
+    case NODE_VARIABLE_DECLARATION:
+        return !expression_mentions(statement->data.variable_declaration.value, array_name);
+    case NODE_ASSIGN_STATEMENT:
+        return !expression_mentions(statement->data.assign.target, array_name) &&
+               !expression_mentions(statement->data.assign.value, array_name);
+    case NODE_RETURN_STATEMENT:
+        for (int i = 0; i < statement->data.return_statement.count; i++)
+            if (expression_mentions(statement->data.return_statement.values[i], array_name)) return false;
+        return true;
+    default: return false;
+    }
+}
+
+/* Flag each `mut xs = place` in the block whose copy can be elided. */
+static void mark_elided_array_copies(TypeChecker *checker, AstNode *block) {
+    int count = block->data.block.count;
+    for (int start = 0; start < count; start++) {
+        AstNode *declaration = block->data.block.statements[start];
+        if (!declaration || declaration->kind != NODE_VARIABLE_DECLARATION ||
+            !declaration->data.variable_declaration.is_mutable ||
+            declaration->data.variable_declaration.is_synthetic) continue;
+        AstNode *place = declaration->data.variable_declaration.value;
+        if (!place || (place->kind != NODE_MEMBER_EXPRESSION && place->kind != NODE_INDEX_EXPRESSION)) continue;
+        GrayType *place_type = type_table_get(checker->type_table, place);
+        if (!place_type || place_type->kind != TYPE_KIND_ARRAY || !place_is_pure(place)) continue;
+        AstNode *root = place_root_label(place);
+        const char *array_name = declaration->data.variable_declaration.name;
+        if (!root || strcmp(root->data.label.value, array_name) == 0) continue;
+
+        for (int end = start + 1; end < count; end++) {
+            AstNode *statement = block->data.block.statements[end];
+            if (!statement) break;
+            if (statement->kind == NODE_ASSIGN_STATEMENT && statement->data.assign.operator == TOKEN_ASSIGN &&
+                places_equal(statement->data.assign.target, place)) {
+                AstNode *stored = statement->data.assign.value;
+                if (stored->kind != NODE_LABEL || strcmp(stored->data.label.value, array_name) != 0) break;
+                bool is_dead_after = true;
+                for (int after = end + 1; after < count; after++) {
+                    AstNode *later = block->data.block.statements[after];
+                    if (!later || !statement_ignores_array(later, array_name)) { is_dead_after = false; break; }
+                }
+                if (is_dead_after) declaration->data.variable_declaration.elides_copy = true;
+                break;
+            }
+            if (!statement_leaves_place_alone(checker, statement, array_name, root->data.label.value)) break;
+        }
+    }
+}
+
 static void check_block(TypeChecker *checker, AstNode *node) {
     if (!node || node->kind != NODE_BLOCK_STATEMENT) return;
     bool seen_return = false;
@@ -13632,6 +13887,7 @@ static void check_block(TypeChecker *checker, AstNode *node) {
             seen_return = true;
         }
     }
+    mark_elided_array_copies(checker, node);
     /* E3006: multi-var destructuring with fewer variables than return values.
      * Desugared blocks look like: _gray_tmpN = call(); a = _gray_tmpN.v0; b = _gray_tmpN.v1; ...
      * If variable_count < ret_count, trailing return values are silently lost. */

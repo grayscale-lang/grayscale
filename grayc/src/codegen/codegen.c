@@ -9870,7 +9870,8 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         node->data.variable_declaration.value->data.array_value.count == 0) {
         /* Empty array literal with type annotation; use correct elem size */
         emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
-    } else if (names_existing_storage(node->data.variable_declaration.value)) {
+    } else if (names_existing_storage(node->data.variable_declaration.value) &&
+               !node->data.variable_declaration.elides_copy) {
         /* Copy-by-default: deep copy when assigning from another variable,
          * a struct field, or a container element (e.g. `mut copy [i64] = s.field`).
          * Without this, member-expr sources share backing storage with the
