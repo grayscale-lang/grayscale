@@ -1,8 +1,0 @@
-/*
- * Error Test: E3002 - modulo-by-zero (literal at check time)
- * Expected: "modulo by zero"
- */
-
-do main() {
-    mut x = 10 % 0  // literal modulo by zero
-}

@@ -12,6 +12,8 @@
 //   6. E3019, E3036 and E3155 (signedness crossing, literal out of range,
 //      narrowing) are emitted only from check_expression_as in typechecker.c —
 //      the one function that applies the sized-type conversion rules
+//   7. typechecker.c never calls diagnostic_error_message or
+//      diagnostic_warning_message: its diagnostic text lives in the registry
 //
 // P-codes (runtime panics) are checked for (1) and (3) only: many are
 // emitted from headers (bigint.h, runtime.h) this script does not scan,
@@ -142,6 +144,7 @@ do main() {
     mut in_parser [string] = {}
     mut in_typechecker [string] = {}
     mut sized_rule_sites [string] = {}
+    mut custom_message_sites [string] = {}
 
     for_each entry in walked {
         mut path string = entry
@@ -166,6 +169,10 @@ do main() {
             mut opened string = defined_function(src)
             if opened != "" {
                 current_function = opened
+            }
+            if is_typechecker && (strings.contains(src, "diagnostic_error_message(") ||
+                    strings.contains(src, "diagnostic_warning_message(")) {
+                arrays.append(custom_message_sites, "${path} (${current_function})")
             }
             mut codes [string] = scan_line_codes(src)
             for_each code in codes {
@@ -240,6 +247,12 @@ do main() {
     for_each site in sized_rule_sites {
         arrays.append(violations,
             "${site}: E3019, E3036 and E3155 may only be emitted from check_expression_as")
+    }
+
+    // (7) a typechecker diagnostic that builds its own message text
+    for_each site in custom_message_sites {
+        arrays.append(violations,
+            "${site}: typechecker.c must emit registry messages, not diagnostic_error_message or diagnostic_warning_message")
     }
 
     // --- 4. Report ---------------------------------------------------------

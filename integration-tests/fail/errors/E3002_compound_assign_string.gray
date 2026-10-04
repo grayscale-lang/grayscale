@@ -1,9 +1,0 @@
-/*
- * Error Test: E3002 - compound-assign-string
- * Expected: "cannot use '-=' on string type"
- */
-
-do main() {
-    mut s string = "hello"
-    s -= "world"
-}

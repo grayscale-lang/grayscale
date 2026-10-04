@@ -1,8 +1,0 @@
-/*
- * Error Test: E3002 - incompatible-binary-types
- * Expected: "unknown operator"
- */
-
-do main() {
-    mut result = "hello" - 5  // Cannot subtract i64 from string
-}

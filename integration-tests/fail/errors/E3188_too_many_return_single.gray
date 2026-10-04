@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3188 - returning multiple values from single-return function
+ */
+// expect-error: E3188
+// expect-error-count: 1
+
+do add(a i64, b i64) -> i64 {
+    return a, b
+}
+
+do main() {
+    mut r i64 = add(1, 2)
+    println("${r}")
+}

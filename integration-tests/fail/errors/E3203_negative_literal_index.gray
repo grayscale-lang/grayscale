@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3203 - negative literal array index
+ * Expected: array index cannot be negative
+ */
+
+do main() {
+    mut arr [i64] = {1, 2, 3}
+    println(arr[-1])
+}

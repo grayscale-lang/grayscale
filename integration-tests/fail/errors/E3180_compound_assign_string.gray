@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3180 - compound-assign-string
+ * Expected: "cannot use '-=' on string type"
+ */
+
+do main() {
+    mut s string = "hello"
+    s -= "world"
+}

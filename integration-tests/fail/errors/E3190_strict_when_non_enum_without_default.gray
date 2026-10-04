@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3190 - #strict when on a non-enum value needs a default branch
+ */
+// expect-error: E3190
+// expect-error-count: 1
+
+do main() {
+    mut count i64 = 3
+    #strict
+    when count {
+        is 1 {
+            println("one")
+        }
+    }
+}

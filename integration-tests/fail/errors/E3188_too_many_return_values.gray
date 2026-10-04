@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3188 - return with too many values
+ */
+// expect-error: E3188
+// expect-error-count: 1
+
+do pair() -> (i64, i64) {
+    return 1, 2, 3
+}
+
+do main() {
+    mut a, b = pair()
+    println("${a} ${b}")
+}

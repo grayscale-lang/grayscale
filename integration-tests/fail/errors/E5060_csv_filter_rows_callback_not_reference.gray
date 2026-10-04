@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5060 - csv.filter_rows needs a function reference
+ */
+// expect-error: E5060
+// expect-error-count: 1
+
+import @csv
+
+do main() {
+    mut rows [[string]] = {{"a", "b"}}
+    mut kept [[string]] = csv.filter_rows(rows, 5)
+    println(len(kept))
+}

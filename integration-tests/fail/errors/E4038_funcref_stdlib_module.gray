@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4038 - func reference to stdlib module function
+ * Expected: E4019 error, compilation fails
+ */
+
+import @math
+
+do main() {
+    const f = ()math.sqrt
+}

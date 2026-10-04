@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3202 - struct value in string interpolation
+ *
+ * "${p}" where
+ * p is a struct used to fall through codegen's default %lld + (long
+ * long) cast and produce a raw clang diagnostic. Typechecker now
+ * rejects at the interpolation site with a hint pointing at
+ * per-field formatting.
+ */
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do main() {
+    mut p Point = Point{x: 3, y: 4}
+    println("point: ${p}")
+}

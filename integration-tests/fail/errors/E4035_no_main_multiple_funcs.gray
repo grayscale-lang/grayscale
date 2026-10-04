@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4035 - no main with multiple functions
+ * Expected: error points at last statement (not line 1)
+ * E4005 should point at the last function
+ */
+
+do foo() {
+    println("foo")
+}
+
+do bar() {
+    println("bar")
+}

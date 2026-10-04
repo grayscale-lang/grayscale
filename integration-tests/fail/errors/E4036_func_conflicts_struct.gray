@@ -1,0 +1,17 @@
+/*
+ * Error Test: E4036 - function name conflicts with struct type
+ * Expected: "function 'Point' conflicts with a type of the same name" error
+ */
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do Point() -> i64 {
+    return 0
+}
+
+do main() {
+    mut p = new(Point)
+}

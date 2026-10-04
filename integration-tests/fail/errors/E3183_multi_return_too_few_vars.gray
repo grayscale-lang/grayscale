@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3183 - too few variables for multi-return destructuring
+ */
+// expect-error: E3183
+// expect-error-count: 1
+
+do get_three() -> (i64, i64, i64) {
+    return 1, 2, 3
+}
+
+do main() {
+    mut a, b = get_three()
+}

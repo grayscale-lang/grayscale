@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3184 - returning a value from a void function
+ */
+// expect-error: E3184
+// expect-error-count: 1
+
+do helper() {
+    return 1
+}
+
+do main() {
+    helper()
+}

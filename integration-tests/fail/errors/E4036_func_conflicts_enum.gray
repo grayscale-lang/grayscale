@@ -1,0 +1,18 @@
+/*
+ * Error Test: E4036 - function name conflicts with enum type
+ * Expected: "function 'Color' conflicts with a type of the same name" error
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do Color() -> i64 {
+    return 0
+}
+
+do main() {
+    mut c = Color.RED
+}

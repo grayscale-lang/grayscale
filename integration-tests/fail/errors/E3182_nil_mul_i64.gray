@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3182 - nil used as operand of '*'
+ *
+ * the check covers every binary operator
+ * except '==' and '!=', so nil rejection should fire on '*' as
+ * well as '+'.
+ */
+
+do main() {
+    println(nil * 5)
+}

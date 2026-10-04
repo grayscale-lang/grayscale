@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3191 - Error has only the fields msg and code
+ */
+// expect-error: E3191
+// expect-error-count: 1
+
+do main() {
+    mut failure Error = error(ErrorCode.Unknown, "boom")
+    println(failure.detail)
+}
