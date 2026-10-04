@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5026 - to_c_string() requires a string argument
+ */
+
+// expect-error: E5026
+
+do main() {
+    mut c_text ^u8 = to_c_string(42)
+    println(c_text)
+}

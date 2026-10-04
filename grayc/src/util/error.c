@@ -185,6 +185,22 @@ void diagnostic_error_code_formatted_help(DiagnosticList *diagnostics, const cha
     va_end(arguments);
 }
 
+void diagnostic_warning_code_formatted(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int start_column, int end_column, ...) {
+    va_list arguments;
+    va_start(arguments, end_column);
+    emit_code_formatted(diagnostics, SEVERITY_WARNING, code, file, line, start_column, end_column, arguments);
+    va_end(arguments);
+}
+
+void diagnostic_warning_code_formatted_help(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int start_column, int end_column, const char *help, ...) {
+    va_list arguments;
+    va_start(arguments, help);
+    emit_code_formatted_help(diagnostics, SEVERITY_WARNING, code, file, line, start_column, end_column, help, arguments);
+    va_end(arguments);
+}
+
 void diagnostic_set_source(DiagnosticList *diagnostics, const char *file, const char *source) {
     /* Slot 0 is the primary entry-file slot. Source is caller-owned — never freed here. */
     DiagnosticSourceSlot *slot = &diagnostics->file_cache[0];

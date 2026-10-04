@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3140 - #json struct with an array-of-arrays field
+ */
+
+// expect-error: E3140
+
+import @json
+
+#json
+const S struct {
+    grid [[i64]]
+}
+
+do main() {
+    println("unreachable")
+}

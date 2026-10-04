@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3201 - division-by-zero (literal at check time)
+ * Expected: "division by zero"
+ */
+
+do main() {
+    mut x = 10 / 0  // literal division by zero
+}

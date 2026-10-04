@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3201 - modulo-by-zero
+ * Expected: "modulo" or "zero"
+ */
+
+do main() {
+    mut x i64 = 10 % 0  // modulo by zero
+}

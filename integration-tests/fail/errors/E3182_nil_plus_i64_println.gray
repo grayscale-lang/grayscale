@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3182 - nil used as operand of '+' inside println
+ *
+ * `println(nil + 1)` used to leak to clang
+ * with "void * vs int64_t". nil is now rejected at the infix
+ * expression layer before the result can propagate anywhere.
+ */
+
+do main() {
+    println(nil + 1)
+}

@@ -2258,6 +2258,8 @@ do main() {
 
 A JSON value that names no variant of the field's enum is a `json.parse()` failure (`P0129`), the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is rejected on a `#json` struct at compile time (E3173).
 
+A `#json` struct field may be a number type, `string`, `bool`, an enum, another `#json` struct, or an array of a number type, `string`, `bool`, or `#json` struct. Any other field type (a non-`#json` struct, an array of arrays, a map) is rejected at compile time (E3140).
+
 **Rules:**
 
 - Without a tag, a field's JSON key must match the struct field name exactly.
@@ -3146,16 +3148,30 @@ do main() {
 
 **Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Integer and float literals are `i64` and `f64`, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
 
-**String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
+**String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `from_c_string()` builtin:
 
 ```gray
 extern import "stdlib.h"
 
 do main() {
-    mut home string = c_string(extern.getenv("HOME"))
+    mut home string = from_c_string(extern.getenv("HOME"))
     println(home)
 }
 ```
+
+To obtain a Grayscale string's `char*` explicitly, for example to store it in an extern struct field or a `^u8` variable, use `to_c_string()`:
+
+```gray
+extern import "string.h"
+
+do main() {
+    mut name ^u8 = to_c_string("grayscale")
+    mut length i64 = extern.strlen(name)
+    println(length)   // 9
+}
+```
+
+The pointer addresses a NUL-terminated copy that lives for the rest of the program, so it stays valid after the string, loop iteration, or function that created it is gone; writing through it does not change the string.
 
 **Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
 
@@ -3163,7 +3179,7 @@ do main() {
 
 - as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `u8`, or a pointer
 - as an argument to **another `extern.` call**
-- through **`c_string()`**, which converts a C `char*` to a Grayscale `string`
+- through **`from_c_string()`**, which converts a C `char*` to a Grayscale `string`
 - as the value of a **`cast()`** to one of the annotation-eligible types above
 
 ```gray
@@ -3174,7 +3190,7 @@ do main() {
     mut x f64 = extern.sqrt(2.0)             // annotated declaration
     println(x)                                 // prints 1.4142135623730951
 
-    mut home string = c_string(extern.getenv("HOME"))   // text: via c_string()
+    mut home string = from_c_string(extern.getenv("HOME"))   // text: via from_c_string()
     println(home)
 }
 ```
@@ -3225,9 +3241,9 @@ Built-in functions are always available without importing any module.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `println` | `(value T)` | Print value with newline. Accepts any type. |
+| `println` | `(value T = "")` | Print value with newline. Accepts any type. |
 | `print` | `(value T)` | Print value without newline. Accepts any type. |
-| `eprintln` | `(value T)` | Print to stderr with newline. Accepts any type. |
+| `eprintln` | `(value T = "")` | Print to stderr with newline. Accepts any type. |
 | `eprint` | `(value T)` | Print to stderr without newline. Accepts any type. |
 | `flush` | `()` | Flush buffered stdout so partial-line output appears immediately. |
 
@@ -3268,11 +3284,12 @@ running the child so output is not reordered.
 | `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code i64)` | Exit program with code |
-| `range` | `(start i64, end i64, step i64 = 1) -> Range` | Create integer range; `step` defaults to 1 |
+| `range` | `(start i64, end i64, step i64 = 1)` | Create integer range; `step` defaults to 1. Only valid as the source of a `for` loop; `Range` cannot be written as a type. The loop variable is `i64`, or the widest wide integer type among the bounds |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
 | `to_char` | `(s string, index i64) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `cast(c, i64)` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> i64` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
-| `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
+| `from_c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
+| `to_c_string` | `(s string) -> ^u8` | Return a NUL-terminated copy of a string as a raw C pointer that lives for the rest of the program, for storing in an extern struct field or a `^u8` variable (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
 | `system` | `(command string) -> i64` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 
@@ -3544,14 +3561,14 @@ plain (immutable) parameter is a compile error (E5007).
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `builder` | `() -> Builder` | Create an empty builder |
-| `builder_reserve` | `(b Builder, n i64) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
-| `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
-| `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
-| `builder_append_bytes` | `(b Builder, data [u8]) -> void` | Append every byte of `data` |
-| `builder_append_i64` | `(b Builder, n i64) -> void` | Append the decimal text of `n` |
-| `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
+| `builder_reserve` | `(&b Builder, n i64) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
+| `builder_append` | `(&b Builder, s string) -> void` | Append the bytes of `s` |
+| `builder_append_char` | `(&b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
+| `builder_append_bytes` | `(&b Builder, data [u8]) -> void` | Append every byte of `data` |
+| `builder_append_i64` | `(&b Builder, n i64) -> void` | Append the decimal text of `n` |
+| `builder_append_line` | `(&b Builder, s string) -> void` | Append `s` followed by a newline |
 | `builder_len` | `(b Builder) -> i64` | Bytes accumulated so far |
-| `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
+| `builder_clear` | `(&b Builder) -> void` | Reset length to zero, keeping capacity |
 | `build` | `(b Builder) -> string` | Copy the accumulated bytes into a new string; the builder stays usable |
 
 ```grayscale
@@ -4217,7 +4234,7 @@ An HTTP server module with dynamic handlers and path parameters.
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
 | `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
-| `listen` | `(router Router, port i64, [host string])` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
+| `listen` | `(router Router, port i64, host string = "0.0.0.0")` | Start HTTP server on port, bound to host (default `"0.0.0.0"`); blocks until killed |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
 | `add_middleware` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
@@ -4450,16 +4467,16 @@ Format strings use C-style `%` specifiers:
 
 | Specifier | Type | Description |
 |-----------|------|-------------|
-| `%d`, `%i` | `i64` | Signed decimal integer |
-| `%u` | `u64` | Unsigned decimal integer |
-| `%f` | `f64` | Decimal floating-point |
-| `%e` | `f64` | Scientific notation |
-| `%g` | `f64` | Shorter of `%f` or `%e` |
+| `%d`, `%i` | signed integer or `char` | Signed decimal integer |
+| `%u` | unsigned integer | Unsigned decimal integer |
+| `%f` | `f32` / `f64` | Decimal floating-point |
+| `%e`, `%E` | `f32` / `f64` | Scientific notation (lowercase / uppercase) |
+| `%g`, `%G` | `f32` / `f64` | Shorter of `%f` or `%e` (lowercase / uppercase) |
 | `%s` | `string` | String |
-| `%c` | `char` | Single character, printed as its UTF-8 encoding |
+| `%c` | `char` or signed integer up to `i64` | Single character, printed as its UTF-8 encoding |
 | `%b` | `bool` | `true` / `false` |
-| `%x`, `%X` | `i64` / `u64` | Hexadecimal (lowercase / uppercase) |
-| `%o` | `i64` / `u64` | Octal |
+| `%x`, `%X` | any integer | Hexadecimal (lowercase / uppercase) |
+| `%o` | any integer | Octal |
 | `%%` | — | Literal `%` |
 
 Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf conventions, limited to the ones each conversion gives a meaning to:
@@ -4499,9 +4516,9 @@ fmt.printfln("%d-%02d-%02d", parts)           // "2026-09-28"
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `i64_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix) |
-| `i64_to_binary` | `(n i64) -> string` | Format integer as binary |
-| `i64_to_octal` | `(n i64) -> string` | Format integer as octal |
+| `i64_to_hex` | `(n i64) -> string` | Format integer as lowercase hexadecimal (no `0x` prefix); a negative `n` is formatted as its 64-bit two's-complement bits |
+| `i64_to_binary` | `(n i64) -> string` | Format integer as binary; a negative `n` is formatted as its 64-bit two's-complement bits |
+| `i64_to_octal` | `(n i64) -> string` | Format integer as octal; a negative `n` is formatted as its 64-bit two's-complement bits |
 | `f64_to_fixed` | `(f f64, decimals i64) -> string` | Format f64 with fixed decimal places |
 | `f64_to_scientific` | `(f f64) -> string` | Format f64 in scientific notation |
 | `format_number` | `(n i64) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
@@ -4871,7 +4888,7 @@ box.items[0] = 99
 println(arr[0])                  // 99 - box.items aliases arr
 ```
 
-The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
+The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). A `const` value or a by-value parameter is never aliased this way: a literal that embeds one copies it, so a write through the literal cannot reach the constant or the caller's variable. This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
 
 ### 11.3 Deep Copy
 

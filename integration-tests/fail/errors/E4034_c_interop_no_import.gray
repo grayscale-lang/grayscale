@@ -1,0 +1,8 @@
+/*
+ * Error Test: E4034 - extern.func() without C header import
+ * Expected: error requiring extern import "header.h"
+ */
+
+do main() {
+    extern.puts("no import")
+}

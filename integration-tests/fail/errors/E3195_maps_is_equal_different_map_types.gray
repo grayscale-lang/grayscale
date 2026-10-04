@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3195 - comparing maps whose key or value types differ
+ */
+// expect-error: E3195
+// expect-error-count: 1
+
+import @maps
+
+do main() {
+    mut left map[string:i64] = {"a": 1}
+    mut right map[string:string] = {"a": "x"}
+    mut same bool = maps.is_equal(left, right)
+    println(same)
+}

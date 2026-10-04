@@ -17,7 +17,7 @@
 #include "../runtime/bigint.h"
 
 /*@man println
- *@sig println([value T])
+ *@sig println(value T = "")
  *@desc Prints any value to stdout followed by a newline. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   println("hello, world")
@@ -29,7 +29,7 @@
 void gray_builtin_println_str(GrayString string);
 void gray_builtin_println_i64(int64_t value);
 void gray_builtin_println_u64(uint64_t value);
-void gray_builtin_println_float(double value, int bit_size);
+void gray_builtin_println_floating_point(double value, int bit_size);
 void gray_builtin_println_bool(bool value);
 void gray_builtin_println_char(int32_t codepoint);
 void gray_builtin_println_addr(uintptr_t value);
@@ -45,7 +45,7 @@ void gray_builtin_println_addr(uintptr_t value);
 void gray_builtin_print_str(GrayString string);
 void gray_builtin_print_i64(int64_t value);
 void gray_builtin_print_u64(uint64_t value);
-void gray_builtin_print_float(double value, int bit_size);
+void gray_builtin_print_floating_point(double value, int bit_size);
 void gray_builtin_print_bool(bool value);
 void gray_builtin_print_char(int32_t codepoint);
 void gray_builtin_print_addr(uintptr_t value);
@@ -61,7 +61,7 @@ void gray_builtin_print_addr(uintptr_t value);
 void gray_builtin_flush(void);
 
 /*@man eprintln
- *@sig eprintln([value T])
+ *@sig eprintln(value T = "")
  *@desc Prints any value to stderr followed by a newline. Supports all types: string, i64, u64, f64, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   eprintln("error: something went wrong")
@@ -74,7 +74,7 @@ void gray_builtin_flush(void);
 void gray_builtin_eprintln_str(GrayString string);
 void gray_builtin_eprintln_i64(int64_t value);
 void gray_builtin_eprintln_u64(uint64_t value);
-void gray_builtin_eprintln_float(double value, int bit_size);
+void gray_builtin_eprintln_floating_point(double value, int bit_size);
 void gray_builtin_eprintln_bool(bool value);
 void gray_builtin_eprintln_char(int32_t codepoint);
 void gray_builtin_eprintln_addr(uintptr_t value);
@@ -92,7 +92,7 @@ void gray_builtin_eprintln_addr(uintptr_t value);
 void gray_builtin_eprint_str(GrayString string);
 void gray_builtin_eprint_i64(int64_t value);
 void gray_builtin_eprint_u64(uint64_t value);
-void gray_builtin_eprint_float(double value, int bit_size);
+void gray_builtin_eprint_floating_point(double value, int bit_size);
 void gray_builtin_eprint_bool(bool value);
 void gray_builtin_eprint_char(int32_t codepoint);
 void gray_builtin_eprint_addr(uintptr_t value);
@@ -237,7 +237,7 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@sig i256(value T) -> i256
  *@desc 256-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
- *   mut an i256 = i256(0)
+ *   mut a i256 = i256(0)
  *@end
  */
 
@@ -355,19 +355,28 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
 
 /*@man range
  *@sig range(start i64, end i64, step i64 = 1) -> Range<i64>
- *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime.
+ *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime. range() is only valid as the source of a for loop; Range cannot be written as a type and the result cannot be stored. The loop variable is an i64, or the widest of i128, u128, i256 and u256 among the bounds.
  *@example
  *   for i in range(0, 5) { println(i) }
  *   for i in range(0, 10, 2) { println(i) }
  *@end
  */
 
-/*@man c_string
- *@sig c_string(ptr ^u8) -> string
+/*@man from_c_string
+ *@sig from_c_string(ptr ^u8) -> string
  *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (extern import "header.h").
  *@example
  *   extern import "mylib.h"
- *   mut s string = c_string(mylib_get_name())
+ *   mut s string = from_c_string(mylib_get_name())
+ *@end
+ */
+
+/*@man to_c_string
+ *@sig to_c_string(s string) -> ^u8
+ *@desc Returns a NUL-terminated copy of the string as a raw C pointer, for storing in an extern struct field or a ^u8 variable. The copy lives for the rest of the program, so the pointer stays valid after the string, the loop iteration, or the function that created it is gone; writing through it does not change the string.
+ *@example
+ *   extern import "mylib.h"
+ *   mut name ^u8 = to_c_string("grayscale")
  *@end
  */
 
@@ -449,7 +458,7 @@ int64_t gray_builtin_system(GrayString command);
 /* to_string — internal runtime overloads, not user-callable by name */
 GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value);
 GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value);
-GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size);
+GrayString gray_builtin_to_string_floating_point(GrayArena *arena, double value, int bit_size);
 GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
@@ -462,7 +471,7 @@ gray_i256 gray_builtin_string_to_i256(GrayString string, const char *file, int l
 gray_u256 gray_builtin_string_to_u256(GrayString string, const char *file, int line);
 
 /* format a floating-point value for interpolation */
-GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size);
+GrayString gray_builtin_format_floating_point(GrayArena *arena, double value, int bit_size);
 
 /* composite to_string */
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *array, int element_kind);

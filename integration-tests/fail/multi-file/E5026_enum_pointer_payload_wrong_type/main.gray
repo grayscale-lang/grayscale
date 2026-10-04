@@ -1,0 +1,8 @@
+import "./tree"
+
+do main() {
+    other = new(tree.Node)
+    // Neg takes a pointer to an Expr, not to a Node
+    bad = tree.Expr.Neg(other)
+    println(type_of(bad))
+}

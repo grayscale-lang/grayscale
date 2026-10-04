@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3186 - function call on non-struct return value
+ * Expected: "has no functions" or "has no fields"
+ */
+
+
+do get_num() -> i64 {
+    return 42
+}
+
+do main() {
+    mut x = get_num().something()
+}

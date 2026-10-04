@@ -465,6 +465,16 @@ GrayResult_i64 gray_io_file_size_result(GrayArena *arena, GrayString path) {
     return (GrayResult_i64){(int64_t)file_info.st_size, NULL};
 }
 
+/* Closes a file that was just written. A buffered write only reaches the disk
+ * (and can only fail) at fclose, so a failed close counts as a failed write.
+ * errno names the failure when this returns false. */
+static bool io_close_written(FILE *file, bool wrote_all) {
+    int write_errno = errno;
+    bool closed = fclose(file) == 0;
+    if (!wrote_all) errno = write_errno;
+    return wrote_all && closed;
+}
+
 bool gray_io_append_file(GrayString path, GrayString content) {
     validate_path(path);
     if (io_path_is_directory(path.data))
@@ -472,8 +482,7 @@ bool gray_io_append_file(GrayString path, GrayString content) {
     FILE *file = fopen(path.data, "ab");
     if (!file) return false;
     size_t written = fwrite(content.data, 1, (size_t)content.len, file);
-    fclose(file);
-    return written == (size_t)content.len;
+    return io_close_written(file, written == (size_t)content.len);
 }
 
 bool gray_io_append_bytes(GrayString path, GrayArray data) {
@@ -483,8 +492,7 @@ bool gray_io_append_bytes(GrayString path, GrayArray data) {
     FILE *file = fopen(path.data, "ab");
     if (!file) return false;
     size_t written = fwrite(data.data, 1, (size_t)data.len, file);
-    fclose(file);
-    return written == (size_t)data.len;
+    return io_close_written(file, written == (size_t)data.len);
 }
 
 bool gray_io_rename_file(GrayString old_path, GrayString new_path) {
@@ -513,8 +521,7 @@ bool gray_io_copy_file(GrayString source, GrayString destination) {
         if (fwrite(buffer, 1, bytes_read, output_file) != bytes_read) { is_valid = false; break; }
     }
     fclose(input_file);
-    fclose(output_file);
-    return is_valid;
+    return io_close_written(output_file, is_valid);
 }
 
 bool gray_io_move_file(GrayString source, GrayString destination) {
@@ -675,8 +682,12 @@ GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, Gra
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
         return result;
     }
-    fwrite(content.data, 1, (size_t)content.len, file);
-    fclose(file);
+    size_t written = fwrite(content.data, 1, (size_t)content.len, file);
+    if (!io_close_written(file, written == (size_t)content.len)) {
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
+        return result;
+    }
     result.v0 = true;
     result.v1 = NULL;
     return result;
@@ -861,8 +872,12 @@ GrayResult_bool gray_io_write_bytes_result(GrayArena *arena, GrayString path, Gr
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
         return result;
     }
-    fwrite(data.data, 1, (size_t)data.len, file);
-    fclose(file);
+    size_t written = fwrite(data.data, 1, (size_t)data.len, file);
+    if (!io_close_written(file, written == (size_t)data.len)) {
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
+        return result;
+    }
     result.v0 = true;
     result.v1 = NULL;
     return result;

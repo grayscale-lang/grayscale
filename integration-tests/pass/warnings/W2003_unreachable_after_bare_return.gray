@@ -1,0 +1,13 @@
+/*
+ * Warning Test: W2003 - statement on the line after a bare return
+ * Expected: warning about unreachable code; the statement is not a return value
+ */
+
+do after() {
+    return
+    println("dead")  // unreachable
+}
+
+do main() {
+    after()
+}

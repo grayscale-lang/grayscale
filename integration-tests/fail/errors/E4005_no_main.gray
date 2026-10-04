@@ -1,8 +1,0 @@
-/*
- * Error Test: E4005 - no-main-function
- * Expected: "must define a main() function"
- */
-
-do helper() {
-    println("I'm not main!")
-}

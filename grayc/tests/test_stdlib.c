@@ -1131,7 +1131,7 @@ static void test_json_encode_map_int_escaped_key(void) {
     GrayString k = gray_string_lit("a\"b");
     int64_t v = INT64_MIN; /* longest int64 output: -9223372036854775808 */
     gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
-    GrayString r = gray_json_encode_map_int(arena, &m);
+    GrayString r = gray_json_encode_map_signed_integer(arena, &m);
     ASSERT_GRAY_STR(r, "{\"a\\\"b\":-9223372036854775808}");
 }
 
@@ -1140,7 +1140,7 @@ static void test_json_encode_map_float_escaped_key(void) {
     GrayString k = gray_string_lit("k\ny");
     double v = 3.5;
     gray_map_set(arena, &m, &k, &v, __FILE__, __LINE__);
-    GrayString r = gray_json_encode_map_float(arena, &m);
+    GrayString r = gray_json_encode_map_floating_point(arena, &m);
     ASSERT_GRAY_STR(r, "{\"k\\ny\":3.5}");
 }
 
@@ -1157,13 +1157,13 @@ static void test_json_encode_map_bool_escaped_key(void) {
 
 static void test_json_encode_array_int(void) {
     GrayArray a = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
-    GrayString r = gray_json_encode_array_int(arena, &a);
+    GrayString r = gray_json_encode_array_signed_integer(arena, &a);
     ASSERT_GRAY_STR(r, "[1,2,3]");
 }
 
 static void test_json_encode_array_float(void) {
     GrayArray a = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.0, 3.25);
-    GrayString r = gray_json_encode_array_float(arena, &a);
+    GrayString r = gray_json_encode_array_floating_point(arena, &a);
     ASSERT_GRAY_STR(r, "[1.5,2,3.25]");
 }
 

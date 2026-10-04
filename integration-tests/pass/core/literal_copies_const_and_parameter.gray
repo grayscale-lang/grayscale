@@ -1,0 +1,138 @@
+/*
+ * literal_copies_const_and_parameter.gray - a struct, array, or map literal
+ * that embeds a const value or a by-value parameter copies it, so a write
+ * through the literal never reaches the original.
+ */
+
+const Items struct {
+    a [i64]
+}
+
+const Outer struct {
+    s Items
+}
+
+const Cfg struct {
+    names [string]
+}
+
+const DEFAULT Cfg = Cfg{names: {"a", "b"}}
+const FIXED [i64, 3] = {1, 2, 3}
+const FixedHolder struct {
+    a [i64, 3]
+}
+const SHARED Items = Items{a: {1, 2, 3}}
+
+do from_param_field(t [i64]) {
+    mut b Items = Items{a: t}
+    b.a[0] = 99
+}
+
+do from_param_array(s Items) {
+    mut xs [Items] = {s, s}
+    xs[0].a[0] = 99
+    xs[1].a[1] = 98
+}
+
+do from_param_map(s Items) {
+    mut m map[string:Items] = {"k": s}
+    m["k"].a[0] = 99
+}
+
+do from_param_nested(s Items) {
+    mut o Outer = Outer{s: s}
+    o.s.a[0] = 99
+}
+
+do main() {
+    println("=== Literal Copies Const And Parameter Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut c Cfg = Cfg{names: DEFAULT.names}
+    c.names[0] = "zzz"
+    if DEFAULT.names[0] == "a" {
+        println("  [PASS] struct literal from const struct field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const struct field was modified")
+        failed += 1
+    }
+
+    mut h FixedHolder = FixedHolder{a: FIXED}
+    h.a[0] = 9
+    if FIXED[0] == 1 {
+        println("  [PASS] struct literal from const fixed-size array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const fixed-size array was modified")
+        failed += 1
+    }
+
+    mut arr [i64] = {1, 2, 3}
+    from_param_field(arr)
+    if arr[0] == 1 {
+        println("  [PASS] struct literal from by-value parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] caller array was modified through struct literal")
+        failed += 1
+    }
+
+    mut source Items = Items{a: {1, 2, 3}}
+    from_param_array(source)
+    if source.a[0] == 1 && source.a[1] == 2 {
+        println("  [PASS] array literal from by-value parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] caller struct was modified through array literal")
+        failed += 1
+    }
+
+    from_param_map(source)
+    if source.a[0] == 1 {
+        println("  [PASS] map literal from by-value parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] caller struct was modified through map literal")
+        failed += 1
+    }
+
+    from_param_nested(source)
+    if source.a[0] == 1 {
+        println("  [PASS] nested struct literal from by-value parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] caller struct was modified through nested literal")
+        failed += 1
+    }
+
+    mut xs [Items] = {SHARED}
+    xs[0].a[0] = 99
+    if SHARED.a[0] == 1 {
+        println("  [PASS] array literal from const struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const struct was modified through array literal")
+        failed += 1
+    }
+
+    mut o Outer = Outer{s: SHARED}
+    o.s.a[0] = 99
+    if SHARED.a[0] == 1 {
+        println("  [PASS] nested struct literal from const struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const struct was modified through nested literal")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

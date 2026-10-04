@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5057 - math.max arguments must share one number type
+ */
+// expect-error: E5057
+// expect-error-count: 1
+
+import @math
+
+do main() {
+    mut whole i64 = 1
+    mut fraction f64 = 2.5
+    println(math.max(whole, fraction))
+}

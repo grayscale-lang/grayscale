@@ -34,7 +34,7 @@ typedef enum {
     /* The result of an `extern.` C function call. Its real type is known only
      * to the C compiler, so it is deliberately incompatible with every
      * Grayscale type: it may only be consumed by an explicitly type-annotated
-     * declaration, another `extern.` call, `c_string()`, or `cast()`. Distinct
+     * declaration, another `extern.` call, `from_c_string()`, or `cast()`. Distinct
      * from TYPE_KIND_UNKNOWN so the type-compatibility checks (which skip TYPE_KIND_UNKNOWN
      * for error recovery) still run against it. */
     TYPE_KIND_C_FUNCTION,

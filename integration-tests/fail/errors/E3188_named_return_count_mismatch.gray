@@ -1,0 +1,14 @@
+/* Test: Named return with wrong number of values
+ * Expected: E3040 error - wrong number of return values
+ */
+// expect-error: E3188
+// expect-error-count: 1
+
+do getValues() -> (age i64, name string) {
+    return 42
+}
+
+do main() {
+    mut a i64, n string = getValues()
+    println(a)
+}

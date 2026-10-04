@@ -1,0 +1,13 @@
+// expect-error: E3123
+// expect-error-count: 1
+// expect-not: W1001
+/* Error Test: E3123 - the collection of a for_each with both positions
+ * discarded is still used, so it gets no unused-variable warning */
+do main() {
+    mut total i64 = 0
+    mut names [string] = {"a", "b"}
+    for_each _, _ in names {
+        total = total + 1
+    }
+    println("${total}")
+}

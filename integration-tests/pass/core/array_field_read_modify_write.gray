@@ -1,0 +1,103 @@
+/*
+ * array_field_read_modify_write.gray - copying an array field into a mut local,
+ * changing it, and storing it back must not exhaust the arena, and the copy
+ * must still be a copy whenever anything can observe the field in between.
+ */
+
+import @arrays
+
+const Item struct {
+    code string
+    line i64
+}
+
+const Holder struct {
+    items [Item]
+}
+
+const Numbers struct {
+    values [i64]
+}
+
+do add(h ^Holder, line i64) {
+    mut xs [Item] = h^.items
+    arrays.append(xs, Item{code: "E", line: line})
+    h^.items = xs
+}
+
+do observe_between(n ^Numbers) -> i64 {
+    mut xs [i64] = n^.values
+    xs[0] = 99
+    mut seen i64 = n^.values[0]
+    n^.values = xs
+    return seen
+}
+
+do observe_through_alias(n ^Numbers, other ^Numbers) -> i64 {
+    mut xs [i64] = n^.values
+    xs[0] = 77
+    mut seen i64 = other^.values[0]
+    n^.values = xs
+    return seen
+}
+
+do leave_early(n ^Numbers, stop bool) {
+    mut xs [i64] = n^.values
+    xs[0] = 55
+    if stop { return }
+    n^.values = xs
+}
+
+do main() {
+    println("=== Array Field Read-Modify-Write Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    h = new(Holder)
+    for i in range(0, 20000) { add(h, i) }
+    if len(h^.items) == 20000 && h^.items[19999].line == 19999 {
+        println("  [PASS] 20000 appends through a pointer field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] appends through a pointer field lost items")
+        failed += 1
+    }
+
+    n = new(Numbers)
+    n^.values = {1, 2, 3}
+    if observe_between(n) == 1 && n^.values[0] == 99 {
+        println("  [PASS] field read between copy and store sees the old array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] field read between copy and store saw the new array")
+        failed += 1
+    }
+
+    n^.values = {1, 2, 3}
+    if observe_through_alias(n, n) == 1 && n^.values[0] == 77 {
+        println("  [PASS] alias read between copy and store sees the old array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias read between copy and store saw the new array")
+        failed += 1
+    }
+
+    n^.values = {1, 2, 3}
+    leave_early(n, true)
+    if n^.values[0] == 1 {
+        println("  [PASS] early exit leaves the field unchanged")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] early exit changed the field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

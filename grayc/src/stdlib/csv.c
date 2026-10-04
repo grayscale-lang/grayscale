@@ -63,7 +63,13 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
             GrayString field = gray_string_new(arena, field_start, field_length);
             GRAY_ARRAY_PUSH(arena, &row_array, &field);
 
-            if (cursor < end_cursor && *cursor == delim) cursor++;
+            if (cursor < end_cursor && *cursor == delim) {
+                cursor++;
+                if (cursor == end_cursor || *cursor == '\n' || *cursor == '\r') {
+                    GrayString trailing = gray_string_new(arena, cursor, 0);
+                    GRAY_ARRAY_PUSH(arena, &row_array, &trailing);
+                }
+            }
         }
         GRAY_ARRAY_PUSH(arena, &rows, &row_array);
 

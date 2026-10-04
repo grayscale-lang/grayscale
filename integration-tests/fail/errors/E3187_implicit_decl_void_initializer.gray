@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3187 - a bare `x = expr` declaration whose initializer is a
+ * void function call reports E3038 on the declaration, not an undefined
+ * variable.
+ */
+// expect-error: E3187
+// expect-error-count: 1
+do noop() {
+}
+
+do main() {
+    f = noop()
+}

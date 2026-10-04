@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3203 - negative array index emits exactly once
+ * Expected: single "array index cannot be negative" error (no duplicate)
+ */
+
+do main() {
+    mut a [i64] = {10, 20, 30}
+    println("${a[-1]}")
+}

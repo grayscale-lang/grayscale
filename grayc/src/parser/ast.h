@@ -171,6 +171,11 @@ struct AstNode {
      * value is stored at its own type. */
     const char *widen_to;
 
+    /* Set by the type checker on a value embedded in a struct, array or map
+     * literal whose root is a constant or a by-value parameter: codegen copies
+     * it into the literal rather than sharing its storage. */
+    bool copies_into_literal;
+
     union {
         /* NODE_LABEL */
         struct {
@@ -300,6 +305,10 @@ struct AstNode {
             bool is_mutable;
             bool is_private;
             bool is_synthetic;         /* parser-generated temporary, not user-written */
+            /* Set by the type checker on `mut xs = place` when `xs` is stored
+             * back to `place` before anything else can observe either: codegen
+             * shares the array instead of copying it. */
+            bool elides_copy;
         } variable_declaration;
 
         /* NODE_ASSIGN_STATEMENT */

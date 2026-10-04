@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3197 - a Grayscale function with a map parameter cannot be
+ * passed as a C callback.
+ * A `map[K:V]` parameter lowers to a GrayMap struct, not the `void *` C
+ * callback APIs such as qsort's comparator require, so the C API's raw
+ * address gets reinterpreted as a GrayMap that was never actually there.
+ */
+// expect-error: E3197
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do cmp(a map[string:i64], b map[string:i64]) -> i32 {
+    return 0
+}
+
+do main() {
+    mut buf ^i64 = extern.malloc(16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    extern.free(buf)
+}

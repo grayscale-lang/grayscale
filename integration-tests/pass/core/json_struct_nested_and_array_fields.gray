@@ -1,0 +1,63 @@
+// Test: #json struct fields can be nested #json structs and arrays
+import @json
+
+#json
+const Outer struct {
+    name string
+    inner Inner
+    ids [i32]
+    tags [string]
+    flags [bool]
+    ratios [f32]
+    items [Inner]
+}
+
+#json
+const Inner struct {
+    n u8
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut parsed Outer = json.parse("{\"name\":\"a\",\"inner\":{\"n\":7},\"ids\":[1,2,3],\"tags\":[\"x\",\"y\"],\"flags\":[true,false],\"ratios\":[1.5,2.5],\"items\":[{\"n\":1},{\"n\":2}]}")
+
+    if parsed.name == "a" && parsed.inner.n == 7 && len(parsed.ids) == 3 && parsed.ids[2] == 3 {
+        println("  [PASS] parse nested struct and number array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse nested struct and number array")
+        failed += 1
+    }
+
+    if len(parsed.tags) == 2 && parsed.tags[1] == "y" && len(parsed.flags) == 2 && parsed.flags[0] && !parsed.flags[1] {
+        println("  [PASS] parse string and bool arrays")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse string and bool arrays")
+        failed += 1
+    }
+
+    if len(parsed.ratios) == 2 && parsed.ratios[1] == 2.5 && len(parsed.items) == 2 && parsed.items[1].n == 2 {
+        println("  [PASS] parse f32 array and struct array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse f32 array and struct array")
+        failed += 1
+    }
+
+    mut again Outer = json.parse(json.stringify(parsed))
+    if again.name == "a" && again.inner.n == 7 && again.ids[1] == 2 && again.tags[0] == "x" && again.items[0].n == 1 && again.ratios[0] == 1.5 {
+        println("  [PASS] stringify round trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stringify round trip: ${json.stringify(parsed)}")
+        failed += 1
+    }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+}

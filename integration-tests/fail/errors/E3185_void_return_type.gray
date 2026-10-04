@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3185 - void return type
+ * Expected: "missing return value; function expects a return value"
+ */
+
+do main() {
+    test()
+}
+
+do test() -> void {  // Should fail: void cannot be used as return type
+    return
+}

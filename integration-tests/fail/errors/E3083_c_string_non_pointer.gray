@@ -1,8 +1,0 @@
-/*
- * Error Test: E3083 - c_string() requires a raw C pointer
- * Expected: E3083 "c_string() requires a raw C pointer"
- */
-
-do main() {
-    mut msg = c_string("hello")
-}

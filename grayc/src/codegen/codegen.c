@@ -2049,7 +2049,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ") ? gray_string_lit(\"true\") : gray_string_lit(\"false\")");
                 break;
             case TYPE_KIND_FLOATING_POINT:
-                emit(codegen, "gray_builtin_format_float(gray_default_arena, ");
+                emit(codegen, "gray_builtin_format_floating_point(gray_default_arena, ");
                 emit_expression(codegen, part);
                 emit_formatted(codegen, ", %d)", floating_point_bit_size(part_type ? part_type->name : NULL));
                 break;
@@ -4470,6 +4470,17 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit_folded_literal(codegen, node);
         return;
     }
+    if (node->copies_into_literal && node_type) {
+        /* A constant or by-value parameter embedded in a literal: copy it so a
+         * write through the literal cannot reach the original. */
+        const char *value_type_name = type_name(node_type);
+        if (type_shares_storage(codegen, value_type_name)) {
+            node->copies_into_literal = false;
+            emit_composite_operand(codegen, value_type_name, node);
+            node->copies_into_literal = true;
+            return;
+        }
+    }
     if (node->widen_to) {
         /* A value the type checker widens into a wide integer type. */
         const char *target = node->widen_to;
@@ -4667,7 +4678,7 @@ static AstNode *unwrap_reference_argument(AstNode *argument) {
     return argument;
 }
 
-/* The print builtin suffix for `arg`; for "_float", `*float_bits` is set to
+/* The print builtin suffix for `arg`; for "_floating_point", `*float_bits` is set to
  * the bit size the value prints at. */
 static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int *floating_point_bits) {
     *floating_point_bits = 64;
@@ -4690,7 +4701,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
                     case TYPE_KIND_STRING:  return "_str";
                     case TYPE_KIND_FLOATING_POINT:
                         *floating_point_bits = floating_point_bit_size(wildcard_type->name);
-                        return "_float";
+                        return "_floating_point";
                     case TYPE_KIND_BOOL:    return "_bool";
                     case TYPE_KIND_CHAR:    return "_char";
                     case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
@@ -4707,7 +4718,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
         case TYPE_KIND_STRING:  return "_str";
         case TYPE_KIND_FLOATING_POINT:
             *floating_point_bits = floating_point_bit_size(type->name);
-            return "_float";
+            return "_floating_point";
         case TYPE_KIND_BOOL:    return "_bool";
         case TYPE_KIND_CHAR:    return "_char";
         case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
@@ -4718,7 +4729,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
         }
     }
     if (argument->kind == NODE_STRING_VALUE || argument->kind == NODE_INTERPOLATED_STRING) return "_str";
-    if (argument->kind == NODE_FLOATING_POINT_LITERAL) return "_float";
+    if (argument->kind == NODE_FLOATING_POINT_LITERAL) return "_floating_point";
     if (argument->kind == NODE_BOOL_VALUE) return "_bool";
     if (argument->kind == NODE_CHAR_VALUE) return "_char";
     /* For call expressions, check the return type of the called function */
@@ -4773,7 +4784,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
                                 if (strcmp(return_type_spelling, "string") == 0) return "_str";
                                 if (strcmp(return_type_spelling, "f32") == 0 || strcmp(return_type_spelling, "f64") == 0) {
                                     *floating_point_bits = floating_point_bit_size(return_type_spelling);
-                                    return "_float";
+                                    return "_floating_point";
                                 }
                                 if (strcmp(return_type_spelling, "bool") == 0) return "_bool";
                                 if (strcmp(return_type_spelling, "char") == 0) return "_char";
@@ -4826,7 +4837,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *argument) {
         emit(codegen, ")");
     } else {
         if (argument_type && argument_type->kind == TYPE_KIND_FLOATING_POINT)
-            emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
+            emit(codegen, "gray_builtin_to_string_floating_point(gray_default_arena, ");
         else if (argument_type && argument_type->kind == TYPE_KIND_BOOL)
             emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
         else if (argument_type && argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER)
@@ -5258,7 +5269,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
         break;
     case TYPE_KIND_FLOATING_POINT:
         emit_indent(codegen);
-        emit_formatted(codegen, "{ GrayString _fs = gray_builtin_format_float(gray_default_arena, %s, %d); "
+        emit_formatted(codegen, "{ GrayString _fs = gray_builtin_format_floating_point(gray_default_arena, %s, %d); "
             "gray_out_printf(%s, \"%%.*s\", (int)_fs.len, _fs.data); }\n",
             c_expression, floating_point_bit_size(type->name), stream);
         break;
@@ -5614,7 +5625,7 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
             const char *suffix = resolve_print_suffix(codegen, argument, &floating_point_bits);
             emit_formatted(codegen, "gray_builtin_%s%s(", variant, suffix);
             emit_expression(codegen, argument);
-            if (strcmp(suffix, "_float") == 0) emit_formatted(codegen, ", %d", floating_point_bits);
+            if (strcmp(suffix, "_floating_point") == 0) emit_formatted(codegen, ", %d", floating_point_bits);
             emit(codegen, ")");
         }
     }
@@ -6161,13 +6172,23 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
     }
 
     /* char_count(str); return Unicode codepoint count */
-    /* c_string(ptr); convert C char* to Grayscale string. Copies onto the
+    /* from_c_string(ptr); convert C char* to Grayscale string. Copies onto the
      * arena so the result is safe to use even after the C-side buffer
      * is freed or overwritten. NULL maps to "" instead of crashing. */
-    if (strcmp(function_name, "c_string") == 0 && node->data.call.argument_count == 1) {
+    if (strcmp(function_name, "from_c_string") == 0 && node->data.call.argument_count == 1) {
         emit(codegen, "gray_c_string_dup(gray_default_arena, (const char *)");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit(codegen, ")");
+        return true;
+    }
+
+    /* to_c_string(s); a NUL-terminated copy of the string on the heap arena,
+     * which no loop iteration or function return reclaims, so the pointer
+     * stays valid wherever it is stored. */
+    if (strcmp(function_name, "to_c_string") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "({ GrayString _cs = ");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, "; (uint8_t *)gray_string_new(gray_heap_arena, _cs.data, _cs.len).data; })");
         return true;
     }
 
@@ -7260,9 +7281,9 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
         if (argument_type && argument_type->kind == TYPE_KIND_MAP) {
             const char *function_name = "gray_json_encode_map";
             switch (json_prim_class(argument_type->value_type)) {
-            case 's': function_name = "gray_json_encode_map_int"; break;
-            case 'u': function_name = "gray_json_encode_map_uint"; break;
-            case 'f': function_name = "gray_json_encode_map_float"; break;
+            case 's': function_name = "gray_json_encode_map_signed_integer"; break;
+            case 'u': function_name = "gray_json_encode_map_unsigned_integer"; break;
+            case 'f': function_name = "gray_json_encode_map_floating_point"; break;
             case 'b': function_name = "gray_json_encode_map_bool"; break;
             default:  function_name = "gray_json_encode_map"; break; /* string */
             }
@@ -7270,14 +7291,14 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
             emit_expression(codegen, argument);
             emit_formatted(codegen, "; %s(gray_default_arena, &_jm); })", function_name);
         } else if (argument_type && argument_type->kind == TYPE_KIND_ARRAY) {
-            const char *function_name = "gray_json_encode_array_int";
+            const char *function_name = "gray_json_encode_array_signed_integer";
             switch (json_prim_class(argument_type->element_type)) {
-            case 's': function_name = "gray_json_encode_array_int"; break;
-            case 'u': function_name = "gray_json_encode_array_uint"; break;
-            case 'f': function_name = "gray_json_encode_array_float"; break;
+            case 's': function_name = "gray_json_encode_array_signed_integer"; break;
+            case 'u': function_name = "gray_json_encode_array_unsigned_integer"; break;
+            case 'f': function_name = "gray_json_encode_array_floating_point"; break;
             case 'b': function_name = "gray_json_encode_array_bool"; break;
             case 'S': function_name = "gray_json_encode_array_string"; break;
-            default:  function_name = "gray_json_encode_array_int"; break;
+            default:  function_name = "gray_json_encode_array_signed_integer"; break;
             }
             emit(codegen, "({ GrayArray _ja = ");
             emit_expression(codegen, argument);
@@ -9859,7 +9880,8 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         node->data.variable_declaration.value->data.array_value.count == 0) {
         /* Empty array literal with type annotation; use correct elem size */
         emit_formatted(codegen, "GRAY_ARRAY_NEW_OF(gray_default_arena, %s, 4)", c_element_type);
-    } else if (names_existing_storage(node->data.variable_declaration.value)) {
+    } else if (names_existing_storage(node->data.variable_declaration.value) &&
+               !node->data.variable_declaration.elides_copy) {
         /* Copy-by-default: deep copy when assigning from another variable,
          * a struct field, or a container element (e.g. `mut copy [i64] = s.field`).
          * Without this, member-expr sources share backing storage with the
@@ -12966,9 +12988,16 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                             int limit = pattern->data.when_pattern.binding_count < enum_value->payload_count
                                 ? pattern->data.when_pattern.binding_count : enum_value->payload_count;
                             for (int binding_index = 0; binding_index < limit; binding_index++) {
+                                /* The payload type is written in the enum's own
+                                 * module, so resolve it there. */
+                                const char *saved_when_module = codegen->current_module;
+                                const char *saved_when_file = codegen->current_file;
+                                codegen_enter_node(codegen, declaration);
+                                const char *binding_c_type = gray_type_to_c_codegen(codegen, enum_value->payload_types[binding_index]);
+                                codegen->current_module = saved_when_module;
+                                codegen->current_file = saved_when_file;
                                 emit_indent(codegen);
-                                emit_formatted(codegen, "%s %s = ",
-                                    gray_type_to_c_codegen(codegen, enum_value->payload_types[binding_index]),
+                                emit_formatted(codegen, "%s %s = ", binding_c_type,
                                     pattern->data.when_pattern.bindings[binding_index]);
                                 emit(codegen, when_temporary);
                                 emit_formatted(codegen, ".data.%s._%d;\n", variant_name, binding_index);
@@ -13904,7 +13933,42 @@ static void emit_json_key_lookup(CodeGen *codegen, const char *json_key) {
     emit(codegen, "\"); void *_v = gray_map_get(&_m, &_k);\n");
 }
 
+/* True for a #json field that is an array or a nested #json struct: its JSON
+ * text is produced by a helper call instead of an inline scalar write. */
+static bool json_field_is_composite(CodeGen *codegen, const StructField *field) {
+    if (strcmp(field->type_name, "string") == 0 || strcmp(field->type_name, "bool") == 0) return false;
+    GrayType *field_type = type_from_name(field->type_name);
+    if (type_kind_is_number(field_type->kind)) return false;
+    return !codegen_is_enum(codegen, codegen_resolve_type(codegen, field->type_name));
+}
+
+/* Emit the statement that decodes the array element text _es into _e. */
+static void emit_json_element_decode(CodeGen *codegen, const char *element_type_name, int line) {
+    const char *resolved_element_type = codegen_resolve_type(codegen, element_type_name);
+    if (strcmp(element_type_name, "string") == 0) {
+        emit(codegen, "            _e = gray_json_unquote(arena, _es);\n");
+    } else if (strcmp(element_type_name, "bool") == 0) {
+        emit(codegen, "            _e = (_es.len == 4 && memcmp(_es.data, \"true\", 4) == 0);\n");
+    } else if (type_kind_is_number(type_from_name(element_type_name)->kind)) {
+        emit_formatted(codegen, "            gray_json_field_decode(_es, GRAY_ELEM_KIND_OF(%s), &_e, \"%s\", %d);\n",
+            gray_type_to_c_codegen(codegen, element_type_name), codegen->file, line);
+    } else {
+        emit_formatted(codegen, "            _e = gray_json_parse_%s(arena, _es);\n", resolved_element_type);
+    }
+}
+
 static void codegen_emit_json_helpers(CodeGen *codegen) {
+    /* Forward declarations: a #json struct may hold a #json struct or array
+     * declared after it. */
+    for (int i = 0; i < codegen->struct_declaration_count; i++) {
+        AstNode *statement = codegen->struct_declarations[i];
+        if (!statement->data.struct_declaration.is_json) continue;
+        const char *struct_name = statement->data.struct_declaration.name;
+        emit_formatted(codegen, "static GrayStruct_%s gray_json_parse_%s(GrayArena *arena, GrayString text);\n", struct_name, struct_name);
+        emit_formatted(codegen, "static GrayString gray_json_stringify_%s(GrayArena *arena, GrayStruct_%s _s);\n", struct_name, struct_name);
+        emit_formatted(codegen, "static GrayArray gray_json_parse_array_%s(GrayArena *arena, GrayString text);\n", struct_name);
+        emit_formatted(codegen, "static GrayString gray_json_stringify_array_%s(GrayArena *arena, GrayArray _arr);\n", struct_name);
+    }
     /* emit JSON parse/stringify helpers for #json structs. Each
      * #json struct gets two static functions:
      *   - gray_json_parse_<Name>(arena, json_string) → GrayStruct_<Name>
@@ -13948,7 +14012,23 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
                  * rejected on #json structs at typecheck time (E3173), so
                  * only plain integer-backed and string-backed enums reach here. */
                 const char *resolved_field_type = codegen_resolve_type(codegen, field->type_name);
-                if (codegen_is_enum(codegen, resolved_field_type) && !codegen_enum_is_tagged(codegen, resolved_field_type)) {
+                if (json_field_is_composite(codegen, field)) {
+                    GrayType *composite_type = type_from_name(field->type_name);
+                    emit_json_key_lookup(codegen, json_key);
+                    if (composite_type->kind == TYPE_KIND_ARRAY) {
+                        const char *element_c_type = gray_type_to_c_codegen(codegen, composite_type->element_type);
+                        emit(codegen, "      if (_v) { GrayArray _ea = gray_json_split_array(arena, *(GrayString *)_v);\n");
+                        emit_formatted(codegen, "        _r.%s = GRAY_ARRAY_NEW_OF(arena, %s, _ea.len > 0 ? _ea.len : 4);\n", sanitize_name(field->name), element_c_type);
+                        emit(codegen, "        for (int32_t _i = 0; _i < _ea.len; _i++) {\n");
+                        emit(codegen, "            GrayString _es = *(GrayString *)((char *)_ea.data + (size_t)_i * (size_t)_ea.elem_size);\n");
+                        emit_formatted(codegen, "            %s _e = {0};\n", element_c_type);
+                        emit_json_element_decode(codegen, composite_type->element_type, statement->token.line);
+                        emit_formatted(codegen, "            gray_array_push(arena, &_r.%s, &_e, __FILE__, __LINE__);\n        } } }\n", sanitize_name(field->name));
+                    } else {
+                        emit_formatted(codegen, "      if (_v) { _r.%s = gray_json_parse_%s(arena, *(GrayString *)_v); } }\n",
+                            sanitize_name(field->name), resolved_field_type);
+                    }
+                } else if (codegen_is_enum(codegen, resolved_field_type) && !codegen_enum_is_tagged(codegen, resolved_field_type)) {
                     int enum_index = codegen_enum_index(codegen, resolved_field_type);
                     AstNode *field_enum_declaration = codegen->enum_declarations[enum_index];
                     const char *enum_display_name = field_enum_declaration->data.enum_declaration.original_name
@@ -14018,6 +14098,30 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             bool is_string_enum = codegen_is_enum(codegen, resolved_field_type) && codegen_enum_is_string(codegen, resolved_field_type);
             if (strcmp(field->type_name, "string") == 0 || is_string_enum) {
                 emit_formatted(codegen, "    _need += json_escaped_len(_s.%s);\n", sanitize_name(field->name));
+            } else if (json_field_is_composite(codegen, field)) {
+                GrayType *composite_type = type_from_name(field->type_name);
+                if (composite_type->kind == TYPE_KIND_ARRAY) {
+                    GrayType *element_type = type_from_name(composite_type->element_type);
+                    if (element_type->kind == TYPE_KIND_STRUCT) {
+                        emit_formatted(codegen, "    GrayString _nt%d = gray_json_stringify_array_%s(arena, _s.%s);\n",
+                            j, codegen_resolve_type(codegen, composite_type->element_type), sanitize_name(field->name));
+                    } else {
+                        const char *encode_function = "gray_json_encode_array_signed_integer";
+                        if (is_wide_integer_type_name(composite_type->element_type)) encode_function = "gray_json_encode_array_wide_integer";
+                        else switch (json_prim_class(composite_type->element_type)) {
+                        case 'u': encode_function = "gray_json_encode_array_unsigned_integer"; break;
+                        case 'f': encode_function = "gray_json_encode_array_floating_point"; break;
+                        case 'b': encode_function = "gray_json_encode_array_bool"; break;
+                        case 'S': encode_function = "gray_json_encode_array_string"; break;
+                        default: break;
+                        }
+                        emit_formatted(codegen, "    GrayString _nt%d = %s(arena, &_s.%s);\n", j, encode_function, sanitize_name(field->name));
+                    }
+                } else {
+                    emit_formatted(codegen, "    GrayString _nt%d = gray_json_stringify_%s(arena, _s.%s);\n",
+                        j, codegen_resolve_type(codegen, field->type_name), sanitize_name(field->name));
+                }
+                emit_formatted(codegen, "    _need += (size_t)_nt%d.len;\n", j);
             } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
                 /* A number field of any sized type is rendered at that type. */
                 emit_formatted(codegen, "    GrayString _nt%d = gray_json_number_text(arena, GRAY_ELEM_KIND_OF(%s), &_s.%s);\n",
@@ -14050,7 +14154,7 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
             } else if (is_number_enum) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%lld\", (long long)_s.%s);\n",
                     sanitize_name(field->name));
-            } else if (type_kind_is_number(type_from_name(field->type_name)->kind)) {
+            } else if (type_kind_is_number(type_from_name(field->type_name)->kind) || json_field_is_composite(codegen, field)) {
                 emit_formatted(codegen, "    memcpy(_buf + _pos, _nt%d.data, (size_t)_nt%d.len); _pos += _nt%d.len;\n", j, j, j);
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_formatted(codegen, "    { const char *_bv = _s.%s ? \"true\" : \"false\"; int _bl = _s.%s ? 4 : 5;\n",

@@ -467,7 +467,7 @@ func printBuiltinsIndex() {
 		{"Width casts", []string{"i128", "u128", "i256", "u256"}},
 		{"Memory     ", []string{"new", "ref", "addr", "copy"}},
 		{"Introspect ", []string{"len", "type_of", "size_of"}},
-		{"Misc       ", []string{"error", "range", "c_string", "to_char", "char_count", "here"}},
+		{"Misc       ", []string{"error", "range", "from_c_string", "to_c_string", "to_char", "char_count", "here"}},
 		{"Types      ", []string{"SourceLocation", "Error"}},
 	}
 	for _, g := range groups {

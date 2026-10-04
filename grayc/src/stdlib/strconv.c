@@ -21,7 +21,7 @@
  * `bit_size` (32 or 64): 6-9 significant digits for a 32-bit floating-point value, 15-17
  * for a 64-bit double. Shared by builtins (print, to_string) and strconv
  * (from_f64). */
-int gray_fmt_shortest_float(char *buffer, size_t buffer_size, double value, int bit_size) {
+int gray_fmt_shortest_floating_point(char *buffer, size_t buffer_size, double value, int bit_size) {
     int minimum_precision = bit_size == 32 ? 6 : 15;
     int maximum_precision = bit_size == 32 ? 9 : 17;
     int written_length = 0;
@@ -216,7 +216,7 @@ GrayString gray_strconv_from_u64(GrayArena *arena, uint64_t value) {
 
 GrayString gray_strconv_from_f64(GrayArena *arena, double value) {
     char buffer[STRCONV_BUFFER_SIZE];
-    int length = gray_fmt_shortest_float(buffer, sizeof(buffer), value, 64);
+    int length = gray_fmt_shortest_floating_point(buffer, sizeof(buffer), value, 64);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
     memcpy(data, buffer, (size_t)length + 1);
     return (GrayString){data, (int32_t)length};

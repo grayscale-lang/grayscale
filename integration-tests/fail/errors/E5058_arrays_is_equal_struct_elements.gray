@@ -1,0 +1,18 @@
+/*
+ * Error Test: E5058 - arrays.is_equal only supports primitive and string elements
+ */
+// expect-error: E5058
+// expect-error-count: 1
+
+import @arrays
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do main() {
+    mut left [Point] = {Point{x: 1, y: 2}}
+    mut right [Point] = {Point{x: 1, y: 2}}
+    println(arrays.is_equal(left, right))
+}

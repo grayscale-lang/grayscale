@@ -1,0 +1,88 @@
+// Test: to_c_string() yields a C pointer usable as a ^u8 variable and by extern calls
+extern import "string.h"
+
+const Holder struct {
+    name ^u8
+}
+
+do build(i i64) -> string {
+    return "value-${i}-padding-padding-padding"
+}
+
+do churn() {
+    for j in range(0, 50000) {
+        mut junk string = build(j)
+    }
+}
+
+do pointer_from_loop() -> ^u8 {
+    for i in range(0, 3) {
+        mut text string = build(i)
+        return to_c_string(text)
+    }
+    return nil
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut c_text ^u8 = to_c_string("grayscale")
+    mut back string = from_c_string(c_text)
+    if back == "grayscale" {
+        println("  [PASS] round trip through ^u8")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round trip: got '${back}'")
+        failed += 1
+    }
+
+    mut length i64 = extern.strlen(c_text)
+    if length == 9 {
+        println("  [PASS] extern call reads the pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strlen: got ${length}")
+        failed += 1
+    }
+
+    mut kept ^u8 = nil
+    mut holder Holder = Holder{name: nil}
+    for i in range(0, 3) {
+        mut text string = build(i)
+        kept = to_c_string(text)
+        holder.name = to_c_string(text)
+    }
+    mut returned ^u8 = pointer_from_loop()
+    churn()
+    if from_c_string(kept) == "value-2-padding-padding-padding" && from_c_string(holder.name) == "value-2-padding-padding-padding" {
+        println("  [PASS] pointer survives loop iteration arenas")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pointer clobbered after loop")
+        failed += 1
+    }
+    if from_c_string(returned) == "value-0-padding-padding-padding" {
+        println("  [PASS] pointer survives function return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned pointer clobbered")
+        failed += 1
+    }
+
+    mut original string = "Cat"
+    mut c_copy ^u8 = to_c_string(original)
+    c_copy^ = 66
+    if original == "Cat" {
+        println("  [PASS] writes do not change the string")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string mutated through pointer")
+        failed += 1
+    }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+}

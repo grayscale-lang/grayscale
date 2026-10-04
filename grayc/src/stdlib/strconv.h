@@ -94,7 +94,7 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString string);
 /* Format a floating-point value using the shortest representation that round-trips at
  * `bit_size` (32 or 64). Used by both builtins (print, to_string) and strconv
  * (from_f64). */
-int gray_fmt_shortest_float(char *buffer, size_t buffer_size, double value, int bit_size);
+int gray_fmt_shortest_floating_point(char *buffer, size_t buffer_size, double value, int bit_size);
 
 /* Type to string conversions */
 GrayString gray_strconv_from_i64(GrayArena *arena, int64_t value);

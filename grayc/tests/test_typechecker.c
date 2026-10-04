@@ -391,10 +391,10 @@ static void test_error_E3001_type_mismatch_assign(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3002_invalid_operator(void) {
+static void test_error_E3180_string_subtraction(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() { mut x = \"a\" - \"b\" }");
-    ASSERT(has_error_code(diagnostics, "E3002"));
+    ASSERT(has_error_code(diagnostics, "E3180"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -412,11 +412,11 @@ static void test_error_E3005_const_reassign(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3006_return_from_void(void) {
+static void test_error_E3184_return_from_void(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do foo() { return 42 }\n"
         "do main() { foo() }");
-    ASSERT(has_error_code(diagnostics, "E3006"));
+    ASSERT(has_error_code(diagnostics, "E3184"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -558,10 +558,10 @@ static void test_error_E4004_duplicate_function(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E4005_no_main(void) {
+static void test_error_E4035_no_main(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do foo() { }");
-    ASSERT(has_error_code(diagnostics, "E4005"));
+    ASSERT(has_error_code(diagnostics, "E4035"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -753,12 +753,11 @@ static void test_error_E2043_duplicate_case(void) {
     diagnostic_destroy(diagnostics);
 }
 
-/* Note: compiler emits E2037 for reserved struct names (should be E2038) */
-static void test_error_E2037_reserved_struct_name(void) {
+static void test_error_E2038_reserved_struct_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const string struct { x i64 }\n"
         "do main() { }");
-    ASSERT(has_error_code(diagnostics, "E2037"));
+    ASSERT(has_error_code(diagnostics, "E2038"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -857,18 +856,18 @@ static void test_error_E3033_duplicate_enum_value(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3041_new_unknown_type(void) {
+static void test_error_E4016_new_unknown_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() { mut p = new(Bogus) }");
-    ASSERT(has_error_code(diagnostics, "E3041"));
+    ASSERT(has_error_code(diagnostics, "E4016"));
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3041_interpolate_void(void) {
+static void test_error_E3187_interpolate_void(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do noop() { }\n"
         "do main() { mut s string = \"result: ${noop()}\" }");
-    ASSERT(has_error_code(diagnostics, "E3041"));
+    ASSERT(has_error_code(diagnostics, "E3187"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -1301,13 +1300,13 @@ static void test_test_mode_skips_no_main_error(void) {
     /* --test build: a file with only #test functions and no main() is valid */
     DiagnosticList *test_mode = typecheck_diagnostics_test_mode(
         "#test\ndo test_a() { assert(1 == 1) }");
-    ASSERT(!has_error_code(test_mode, "E4005"));
+    ASSERT(!has_error_code(test_mode, "E4035"));
     diagnostic_destroy(test_mode);
 
-    /* normal build: no main() is still E4005 */
+    /* normal build: no main() is still E4035 */
     DiagnosticList *normal = typecheck_diagnostics(
         "#test\ndo test_a() { assert(1 == 1) }");
-    ASSERT(has_error_code(normal, "E4005"));
+    ASSERT(has_error_code(normal, "E4035"));
     diagnostic_destroy(normal);
 }
 
@@ -1482,9 +1481,9 @@ static void test_error_E2067_empty_struct(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3083_c_string_non_pointer(void) {
+static void test_error_E3083_from_c_string_non_pointer(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut msg = c_string(\"hello\") }");
+        "do main() { mut msg = from_c_string(\"hello\") }");
     ASSERT(has_error_code(diagnostics, "E3083"));
     diagnostic_destroy(diagnostics);
 }
@@ -2825,10 +2824,10 @@ int main(void) {
 
     /* E3xxx: Type error detection */
     RUN_TEST(test_error_E3001_type_mismatch_assign);
-    RUN_TEST(test_error_E3002_invalid_operator);
+    RUN_TEST(test_error_E3180_string_subtraction);
     RUN_TEST(test_error_E3003_non_int_index);
     RUN_TEST(test_error_E3005_const_reassign);
-    RUN_TEST(test_error_E3006_return_from_void);
+    RUN_TEST(test_error_E3184_return_from_void);
     RUN_TEST(test_error_E5023_increment_float);
     RUN_TEST(test_error_E3008_index_non_array);
     RUN_TEST(test_error_E3009_foreach_non_iterable);
@@ -2849,7 +2848,7 @@ int main(void) {
     RUN_TEST(test_error_E4002_undefined_function);
     RUN_TEST(test_error_E4003_duplicate_variable);
     RUN_TEST(test_error_E4004_duplicate_function);
-    RUN_TEST(test_error_E4005_no_main);
+    RUN_TEST(test_error_E4035_no_main);
 
     /* E5xxx: Usage problems */
     RUN_TEST(test_error_E5008_wrong_arg_count_specific);
@@ -2885,7 +2884,7 @@ int main(void) {
     RUN_TEST(test_error_E2051_nested_function);
     RUN_TEST(test_error_E2053_struct_in_function);
     RUN_TEST(test_error_E2043_duplicate_case);
-    RUN_TEST(test_error_E2037_reserved_struct_name);
+    RUN_TEST(test_error_E2038_reserved_struct_name);
     RUN_TEST(test_error_E2016_empty_enum);
     RUN_TEST(test_error_E2012_duplicate_param);
     RUN_TEST(test_error_E2013_duplicate_struct_field);
@@ -2903,8 +2902,8 @@ int main(void) {
     /* E3xxx: Additional type errors */
     RUN_TEST(test_error_E3017_fmt_struct);
     RUN_TEST(test_error_E3033_duplicate_enum_value);
-    RUN_TEST(test_error_E3041_new_unknown_type);
-    RUN_TEST(test_error_E3041_interpolate_void);
+    RUN_TEST(test_error_E4016_new_unknown_type);
+    RUN_TEST(test_error_E3187_interpolate_void);
     RUN_TEST(test_error_E3043_invalid_cast);
     RUN_TEST(test_error_E3167_cast_pointer_reinterpret);
     RUN_TEST(test_error_E3045_or_return_no_error);
@@ -2985,7 +2984,7 @@ int main(void) {
     RUN_TEST(test_error_E3082_wildcard_named_return);
     RUN_TEST(test_error_E4008_main_with_params);
     RUN_TEST(test_error_E5025_invalid_assign_target);
-    RUN_TEST(test_error_E3083_c_string_non_pointer);
+    RUN_TEST(test_error_E3083_from_c_string_non_pointer);
 
     /* Batch 2: 84 untested E3xxx error codes (#2098) */
     RUN_TEST(test_error_E3050_array_no_type_annotation);

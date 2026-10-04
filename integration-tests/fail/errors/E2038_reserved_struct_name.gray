@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2038 - reserved-struct-name
+ * Expected: "struct name is reserved"
+ */
+
+const i64 struct {
+    x i64
+}
+
+do main() {
+    println("Should not run!")
+}

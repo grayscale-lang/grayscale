@@ -187,7 +187,7 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map) {
 
 /* --- Array Encoders --- */
 
-GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *array) {
     /* 21 chars max per int64 + comma, plus brackets + nul */
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
@@ -206,7 +206,7 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *array) {
     return (GrayString){ buffer, (int32_t)position };
 }
 
-GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_unsigned_integer(GrayArena *arena, GrayArray *array) {
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
     int position = 0;
@@ -223,7 +223,7 @@ GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *array) {
     return (GrayString){ buffer, (int32_t)position };
 }
 
-GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *array) {
+GrayString gray_json_encode_array_floating_point(GrayArena *arena, GrayArray *array) {
     /* 24 chars max per %g double + comma, plus brackets + nul */
     size_t need = 2 + (array->len > 0 ? (size_t)array->len * 25 - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
@@ -298,15 +298,15 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *array) {
 
 /* --- Typed Map Encoders --- */
 
-GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_signed_integer(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_INT);
 }
 
-GrayString gray_json_encode_map_uint(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_unsigned_integer(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_UINT);
 }
 
-GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map) {
+GrayString gray_json_encode_map_floating_point(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_FLOAT);
 }
 
@@ -747,6 +747,33 @@ GrayArray gray_json_split_array(GrayArena *arena, GrayString text) {
         if (cursor < end_cursor && *cursor == ',') cursor++;
     }
     return array;
+}
+
+/* An array of 128- or 256-bit integers, each rendered at its own width. */
+GrayString gray_json_encode_array_wide_integer(GrayArena *arena, GrayArray *array) {
+    GrayString *parts = (GrayString *)gray_arena_alloc(arena, sizeof(GrayString) * (size_t)(array->len > 0 ? array->len : 1));
+    size_t need = 2;
+    for (int32_t i = 0; i < array->len; i++) {
+        parts[i] = gray_json_number_text(arena, array->elem_kind, (char *)array->data + (size_t)i * (size_t)array->elem_size);
+        need += (size_t)parts[i].len + (i > 0 ? 1 : 0);
+    }
+    char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
+    int position = 0;
+    buffer[position++] = '[';
+    for (int32_t i = 0; i < array->len; i++) {
+        if (i > 0) buffer[position++] = ',';
+        memcpy(buffer + position, parts[i].data, (size_t)parts[i].len);
+        position += parts[i].len;
+    }
+    buffer[position++] = ']';
+    buffer[position] = '\0';
+    return (GrayString){ buffer, (int32_t)position };
+}
+
+/* The decoded value of a quoted JSON string element, as split out of an array. */
+GrayString gray_json_unquote(GrayArena *arena, GrayString text) {
+    const char *cursor = text.data;
+    return parse_json_string(arena, &cursor, text.data + text.len);
 }
 
 /* _result variant */

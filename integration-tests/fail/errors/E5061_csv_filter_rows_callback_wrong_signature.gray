@@ -1,0 +1,17 @@
+/*
+ * Error Test: E5061 - csv.filter_rows callback must be func([string]) -> bool
+ */
+// expect-error: E5061
+// expect-error-count: 1
+
+import @csv
+
+do keep() -> bool {
+    return true
+}
+
+do main() {
+    mut rows [[string]] = {{"a", "b"}}
+    mut kept [[string]] = csv.filter_rows(rows, ()keep)
+    println(len(kept))
+}

@@ -87,7 +87,9 @@ void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const 
  *   diagnostic_error_message    / diagnostic_warning_message    — intentional custom message,
  *                                             used when the code is categorical
  *                                             and the site adds context,
- *                                             e.g. most parser syntax errors. */
+ *                                             e.g. most parser syntax errors.
+ *                                             Never used by typechecker.c, whose
+ *                                             text lives in error_codes.h. */
 void diagnostic_error_code(DiagnosticList *diagnostics, const char *code,
     const char *file, int line, int start_column, int end_column);
 
@@ -110,6 +112,12 @@ void diagnostic_error_message(DiagnosticList *diagnostics, const char *code, con
 
 void diagnostic_warning_code(DiagnosticList *diagnostics, const char *code,
     const char *file, int line, int start_column, int end_column);
+
+void diagnostic_warning_code_formatted(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int start_column, int end_column, ...);
+
+void diagnostic_warning_code_formatted_help(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int start_column, int end_column, const char *help, ...);
 
 void diagnostic_warning_message(DiagnosticList *diagnostics, const char *code, const char *message,
     const char *file, int line, int start_column, int end_column);
