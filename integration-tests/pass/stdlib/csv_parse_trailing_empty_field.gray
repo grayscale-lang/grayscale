@@ -1,0 +1,78 @@
+/*
+ * csv_parse_trailing_empty_field.gray - a row ending in a delimiter ends with
+ * an empty field, so csv.parse(csv.encode(rows)) returns rows.
+ */
+
+import @csv
+
+do main() {
+    println("=== CSV Parse Trailing Empty Field Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // Test 1: encode -> parse round-trip keeps trailing empty fields
+    mut src [[string]] = {{"x", "y", ""}, {"", "", ""}, {"1", "", "3"}}
+    mut back [[string]] = csv.parse(csv.encode(src))
+    mut ok bool = len(back) == 3
+    for_each i, row in back {
+        if len(row) != 3 {
+            ok = false
+        }
+    }
+    if ok {
+        println("  [PASS] round-trip keeps trailing empty fields")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip dropped a trailing empty field")
+        failed += 1
+    }
+
+    // Test 2: trailing delimiter before a newline
+    mut r2 [[string]] = csv.parse("a,b,\n")
+    if len(r2) == 1 && len(r2[0]) == 3 {
+        println("  [PASS] trailing delimiter before newline")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] trailing delimiter before newline")
+        failed += 1
+    }
+
+    // Test 3: trailing delimiter at end of input
+    mut r3 [[string]] = csv.parse(",")
+    if len(r3) == 1 && len(r3[0]) == 2 {
+        println("  [PASS] trailing delimiter at end of input")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] trailing delimiter at end of input")
+        failed += 1
+    }
+
+    // Test 4: quoted field followed by a trailing delimiter
+    mut r4 [[string]] = csv.parse("\"a\",\n")
+    if len(r4) == 1 && len(r4[0]) == 2 {
+        println("  [PASS] quoted field then trailing delimiter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quoted field then trailing delimiter")
+        failed += 1
+    }
+
+    // Test 5: custom delimiter
+    mut r5 [[string]] = csv.parse_delimited("a;b;\n", ';')
+    if len(r5) == 1 && len(r5[0]) == 3 {
+        println("  [PASS] parse_delimited keeps trailing empty field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse_delimited dropped trailing empty field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
