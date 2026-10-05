@@ -5852,8 +5852,11 @@ static int integer_type_bits(const char *name) {
 static bool literal_fits(const LiteralValue *value, GrayType *target) {
     if (target->kind == TYPE_KIND_FLOATING_POINT) {
         double magnitude_value = literal_as_double(value);
-        double limit = strcmp(target->name, "f32") == 0 ? (double)FLT_MAX : DBL_MAX;
-        return !value->is_too_large && isfinite(magnitude_value) && fabs(magnitude_value) <= limit;
+        if (value->is_too_large || !isfinite(magnitude_value)) return false;
+        /* An f32 literal fits when it rounds to a finite f32: below the
+         * midpoint between FLT_MAX and 2^128, which ties to infinity. */
+        if (strcmp(target->name, "f32") == 0) return fabs(magnitude_value) < ldexp(1.0, 128) - ldexp(1.0, 103);
+        return fabs(magnitude_value) <= DBL_MAX;
     }
     if (value->is_decimal || value->is_too_large) return false;
     int bits = integer_type_bits(target->name);
