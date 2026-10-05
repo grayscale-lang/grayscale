@@ -6424,7 +6424,7 @@ static void reject_void_in_context(TypeChecker *checker, AstNode *expression,
  * function's (T, Error). No-op for a single-value call. Shared by the
  * var-decl single-variable check and the single-value position guard. */
 static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expression,
-                                    AstNode *report_node) {
+                                    AstNode *report_node, bool is_discarded) {
     if (!call_expression || call_expression->kind != NODE_CALL_EXPRESSION) return;
     AstNode *function_node = call_expression->data.call.function;
     if (!function_node) return;
@@ -6447,6 +6447,18 @@ static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expressi
     const char *file = NODE_FILE(checker, report_node);
     int line = report_node->token.line;
     int column = report_node->token.column;
+    if (is_discarded) {
+        bool is_multi_value = (signature && signature->return_count > 1) ||
+            (name && !signature && (typechecker_is_fallible_stdlib(module_name, name) ||
+                (module_name && strcmp(module_name, "arrays") == 0 && strcmp(name, "find") == 0) ||
+                find_stdlib_multi_return(module_name, name)));
+        if (is_multi_value) {
+            char *message = typechecker_format(checker, "return value of '%s()' is not used", name);
+            diagnostic_error_help(checker->diagnostics, "E5011", message, file, line, column, 0,
+                "the call's result is discarded here; wrap the call in a function that handles it");
+        }
+        return;
+    }
     if (signature && signature->return_count > 1) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3040", file, line, column, 0,
             name, signature->return_count, name);
@@ -6470,7 +6482,7 @@ static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expressi
 /* E3040/E3089: reject a multi-value call in a single-value position (call
  * argument, operand, array element, map value, return/if/when position). */
 static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expression) {
-    reject_multi_value_call(checker, expression, expression);
+    reject_multi_value_call(checker, expression, expression, false);
 }
 
 /* emit E4005 at a stdlib call site where the function name
@@ -14104,7 +14116,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
         if (node->data.variable_declaration.value->kind == NODE_CALL_EXPRESSION &&
             strncmp(node->data.variable_declaration.name, GRAY_SYNTHETIC_TEMPORARY, sizeof(GRAY_SYNTHETIC_TEMPORARY) - 1) != 0 &&
             strncmp(node->data.variable_declaration.name, GRAY_SYNTHETIC_OR, sizeof(GRAY_SYNTHETIC_OR) - 1) != 0) {
-            reject_multi_value_call(checker, node->data.variable_declaration.value, node);
+            reject_multi_value_call(checker, node->data.variable_declaration.value, node, false);
         }
         /* Reject nil on non-nullable types */
         if (value_type->kind == TYPE_KIND_NIL && declared->kind != TYPE_KIND_UNKNOWN &&
@@ -17861,9 +17873,10 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
 
     case NODE_ENSURE_STATEMENT:
         resolve_expression(checker, node->data.ensure_statement.expression);
-        /* E3040/E3089: the deferred call's result is dropped, so a multi-value
+        /* E5011: the deferred call's result is dropped, so a multi-value
          * or fallible call cannot be deferred. */
-        reject_multi_return_in_single_position(checker, node->data.ensure_statement.expression);
+        reject_multi_value_call(checker, node->data.ensure_statement.expression,
+                                node->data.ensure_statement.expression, true);
         if (node->data.ensure_statement.expression &&
             node->data.ensure_statement.expression->kind != NODE_CALL_EXPRESSION) {
             diagnostic_error_code(checker->diagnostics, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);

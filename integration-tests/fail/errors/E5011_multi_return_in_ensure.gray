@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5011 - multi-return function as an ensure statement
+ * Expected: E5011 error — an ensure call's results are dropped
+ */
+// expect-error: E5011
+// expect-error-count: 1
+
+do fall() -> (i64, Error) {
+    return 1, nil
+}
+
+do main() {
+    ensure fall()
+}

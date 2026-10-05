@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5011 - multi-return function as a defer statement
+ * Expected: E5011 error — a deferred call's results are dropped
+ */
+// expect-error: E5011
+// expect-error-count: 1
+
+do pair() -> (i64, Error) {
+    return 1, nil
+}
+
+do main() {
+    defer pair()
+    println("done")
+}
