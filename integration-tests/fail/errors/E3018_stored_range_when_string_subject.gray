@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3018 - a string cannot be matched against a range variable
+ */
+
+// expect-error: E3018
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    mut s = "a"
+    when s {
+        is r { println("in") }
+        default { println("out") }
+    }
+}

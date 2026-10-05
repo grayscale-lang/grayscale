@@ -30,6 +30,9 @@ typedef enum {
     TYPE_KIND_POINTER,
     TYPE_KIND_ERROR,
     TYPE_KIND_FUNCTION,
+    /* The value of a range() call: Range<i64>, or Range<T> for the widest wide
+     * integer type T among its bounds. Only a local variable can hold one. */
+    TYPE_KIND_RANGE,
     TYPE_KIND_NIL,
     /* The result of an `extern.` C function call. Its real type is known only
      * to the C compiler, so it is deliberately incompatible with every

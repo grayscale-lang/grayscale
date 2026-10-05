@@ -288,7 +288,10 @@
     GRAY_ERROR("E3200", "types", "wildcard type conflict in struct '%s': '?' was bound to %s, but field '%s' is %s") \
     GRAY_ERROR("E3201", "types", "%s by zero; the divisor is always zero") \
     GRAY_ERROR("E3202", "types", "cannot interpolate %s") \
-    GRAY_ERROR("E3203", "types", "%s index cannot be negative")
+    GRAY_ERROR("E3203", "types", "%s index cannot be negative") \
+    GRAY_ERROR("E3204", "types", "'for %s in ...' only supports a range; use 'for_each %s in ...' to iterate over a collection") \
+    GRAY_ERROR("E3205", "types", "a range can only be iterated with 'for', checked with 'in' or 'not_in', matched with 'is', or stored in a variable") \
+    GRAY_ERROR("E3206", "types", "range step cannot be zero")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

@@ -1,0 +1,175 @@
+/*
+ * range_stored_in_variable.gray - The value of range() can be held in a local
+ * variable and used wherever a range() call is: for, in / not_in, and a
+ * when arm.
+ */
+
+mut failed i64 = 0
+
+do check(label string, ok bool) {
+    if ok {
+        println("  [PASS] ${label}")
+    } otherwise {
+        println("  [FAIL] ${label}")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== Range Stored In Variable Test ===")
+
+    // for over a stored range
+    mut r = range(0, 10)
+    mut sum i64 = 0
+    for i in r {
+        sum += i
+    }
+    check("for i in r sums 0..9 to 45", sum == 45)
+
+    // range(end) and range(start, end, step) forms
+    mut single = range(4)
+    mut count i64 = 0
+    for _ in single {
+        count += 1
+    }
+    check("range(4) stored runs 4 times", count == 4)
+
+    mut stepped = range(1, 10, 3)
+    mut stepped_sum i64 = 0
+    for i in stepped {
+        stepped_sum += i
+    }
+    check("range(1, 10, 3) is 1, 4, 7", stepped_sum == 12)
+
+    // negative step
+    mut down = range(10, 0, -3)
+    mut down_values i64 = 0
+    for i in down {
+        down_values = down_values * 100 + i
+    }
+    check("range(10, 0, -3) is 10, 7, 4, 1", down_values == 10070401)
+
+    // membership
+    mut x i64 = 4
+    check("4 in r", x in r)
+    check("10 not_in r", 10 not_in r)
+    check("-1 not_in r", -1 not_in r)
+    check("7 in stepped", 7 in stepped)
+    check("8 not_in stepped", 8 not_in stepped)
+    check("7 in down", 7 in down)
+    check("8 not_in down", 8 not_in down)
+    check("10 in down", 10 in down)
+    check("0 not_in down", 0 not_in down)
+
+    // when
+    mut matched string = ""
+    when x {
+        is r { matched = "r" }
+        default { matched = "none" }
+    }
+    check("when 4 is r", matched == "r")
+
+    mut other = range(20, 30)
+    x = 25
+    when x {
+        is r { matched = "r" }
+        is other { matched = "other" }
+        default { matched = "none" }
+    }
+    check("when 25 is other", matched == "other")
+
+    x = 40
+    when x {
+        is r, other { matched = "either" }
+        default { matched = "none" }
+    }
+    check("when 40 matches neither", matched == "none")
+
+    // reassignment and copy
+    r = range(5, 20, 2)
+    mut reassigned_sum i64 = 0
+    for i in r {
+        reassigned_sum += i
+    }
+    check("reassigned range(5, 20, 2) sums to 96", reassigned_sum == 96)
+
+    mut copy_of_r = r
+    r = range(0, 1)
+    mut copy_count i64 = 0
+    for _ in copy_of_r {
+        copy_count += 1
+    }
+    check("a copy keeps the range it was made from", copy_count == 8)
+
+    // the loop runs the range it started with
+    mut mutated = range(0, 3)
+    mut iterations i64 = 0
+    for _ in mutated {
+        mutated = range(0, 100)
+        iterations += 1
+    }
+    check("assigning the range inside the loop does not change the loop", iterations == 3)
+
+    // nested loops over one range
+    mut pairs i64 = 0
+    mut inner = range(0, 3)
+    for _ in inner {
+        for _ in inner {
+            pairs += 1
+        }
+    }
+    check("nested loops over one range run 3 x 3", pairs == 9)
+
+    // bounds are evaluated once, in order
+    mut n i64 = 5
+    mut computed = range(n - 2, n + 2)
+    n = 100
+    mut computed_sum i64 = 0
+    for i in computed {
+        computed_sum += i
+    }
+    check("bounds are taken when the range is built", computed_sum == 3 + 4 + 5 + 6)
+
+    // a variable step
+    mut step i64 = 2
+    mut variable_step = range(0, 7, step)
+    mut variable_step_sum i64 = 0
+    for i in variable_step {
+        variable_step_sum += i
+    }
+    check("range(0, 7, step) is 0, 2, 4, 6", variable_step_sum == 12)
+
+    // wide ranges
+    mut wide = range(i128(0), i128(5))
+    mut wide_sum i128 = 0
+    for i in wide {
+        wide_sum += i
+    }
+    check("Range<i128> sums to 10", wide_sum == i128(10))
+    mut wide_value i128 = 3
+    check("i128 3 in wide", wide_value in wide)
+    mut wide_unsigned = range(u256(10), u256(20), u256(5))
+    mut u_value u256 = 15
+    check("u256 15 in range(10, 20, 5)", u_value in wide_unsigned)
+    check("u256 16 not_in range(10, 20, 5)", u256(16) not_in wide_unsigned)
+
+    // type_of
+    check("type_of(range(0, 3))", type_of(range(0, 3)) == "Range<i64>")
+    check("type_of(r)", type_of(r) == "Range<i64>")
+    check("type_of(wide)", type_of(wide) == "Range<i128>")
+
+    // a sized integer bound
+    mut small u8 = 3
+    mut sized = range(small, 6)
+    mut sized_sum i64 = 0
+    for i in sized {
+        sized_sum += i
+    }
+    check("range(u8 3, 6) is 3, 4, 5", sized_sum == 12)
+
+    if failed > 0 {
+        println("${failed} failed")
+        panic("range_stored_in_variable failed")
+    }
+    println("All range_stored_in_variable tests passed")
+}

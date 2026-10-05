@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3204 - 'for x in' used with something that is not a range
+ * Expected: error directing to use for_each instead
+ */
+
+// expect-error: E3204
+// expect-error-count: 1
+
+do main() {
+    mut values [i64] = {1, 2, 3}
+    for x in values {
+        println("${x}")
+    }
+}

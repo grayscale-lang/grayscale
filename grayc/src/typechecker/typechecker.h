@@ -474,6 +474,12 @@ typedef struct {
     int extern_call_count;
     int extern_call_capacity;
 
+    /* The one name or range() call that may be a range value: set just
+     * before the position that takes one (a for iterable, the right side of
+     * in, an is arm, a copy or assignment, type_of) resolves it. Any other
+     * use of a range is E3205. */
+    const AstNode *range_use;
+
 } TypeChecker;
 
 /* Create and run the type checker */

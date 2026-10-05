@@ -1,0 +1,14 @@
+/*
+ * Error Test: P0090 - a stored range with a zero step panics when it is matched with is
+ */
+
+
+do main() {
+    mut step i64 = 0
+    mut r = range(0, 10, step)
+    mut x i64 = 3
+    when x {
+        is r { println("in") }
+        default { println("out") }
+    }
+}

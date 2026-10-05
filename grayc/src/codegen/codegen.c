@@ -668,6 +668,13 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         return resolved;
     }
 
+    if (strncmp(type_name, "Range<", 6) == 0) {
+        if (strcmp(type_name, "Range<i128>") == 0) return "GrayRange_i128";
+        if (strcmp(type_name, "Range<u128>") == 0) return "GrayRange_u128";
+        if (strcmp(type_name, "Range<i256>") == 0) return "GrayRange_i256";
+        if (strcmp(type_name, "Range<u256>") == 0) return "GrayRange_u256";
+        return "GrayRange_i64";
+    }
     if (strcmp(type_name, "i8") == 0)     return "int8_t";
     if (strcmp(type_name, "i16") == 0)    return "int16_t";
     if (strcmp(type_name, "i32") == 0)    return "int32_t";
@@ -1704,6 +1711,66 @@ static void emit_wide_integer_operand(CodeGen *codegen, AstNode *operand,
         emit_expression(codegen, operand);
         emit(codegen, ")");
     }
+}
+
+/* The integer type a Range<T> value runs in: "i64" or a wide integer type. */
+static const char *stored_range_element(GrayType *range_type) {
+    static const char *const wide_elements[] = { "i128", "u128", "i256", "u256" };
+    for (size_t index = 0; index < sizeof(wide_elements) / sizeof(wide_elements[0]); index++) {
+        size_t length = strlen(wide_elements[index]);
+        if (strncmp(range_type->name + strlen("Range<"), wide_elements[index], length) == 0)
+            return wide_elements[index];
+    }
+    return "i64";
+}
+
+/* A range() call as a value: a statement expression that evaluates start, end
+ * and step in order and builds the range from them, defaults filled in. */
+static void emit_range_value(CodeGen *codegen, AstNode *node) {
+    GrayType *range_type = type_table_get(codegen->type_table, node);
+    const char *element = stored_range_element(range_type);
+    bool is_wide = is_wide_integer_type_name(element);
+    const char *prefix = is_wide ? wide_integer_prefix(element) : NULL;
+    int range_id = codegen_next_id(codegen);
+    AstNode *parts[] = { node->data.range_expression.start, node->data.range_expression.end,
+                         node->data.range_expression.step };
+    static const char *const part_names[] = { "start", "stop", "step" };
+    static const int default_values[] = { 0, 0, 1 };
+    emit(codegen, "({ ");
+    for (int part_index = 0; part_index < 3; part_index++) {
+        emit_formatted(codegen, "%s _gray_range_%s_%d = ", is_wide ? prefix : "int64_t", part_names[part_index], range_id);
+        if (!parts[part_index]) {
+            if (is_wide) emit_formatted(codegen, "%s_from_u64(%d)", prefix, default_values[part_index]);
+            else emit_formatted(codegen, "%d", default_values[part_index]);
+        } else if (is_wide) {
+            emit_wide_integer_operand(codegen, parts[part_index], prefix, element, NULL);
+        } else {
+            emit_expression(codegen, parts[part_index]);
+        }
+        emit(codegen, "; ");
+    }
+    emit_formatted(codegen, "(%s){ _gray_range_start_%d, _gray_range_stop_%d, _gray_range_step_%d }; })",
+        gray_type_to_c_codegen(codegen, range_type->name), range_id, range_id, range_id);
+}
+
+/* `subject in range` for a range held in a variable. The subject is `subject_node`,
+ * or the C variable `subject_c` when the caller already holds it; it is
+ * evaluated before the range. A zero step panics here, where the range is used. */
+static void emit_stored_range_membership(CodeGen *codegen, AstNode *location_node, AstNode *range_node,
+                                         AstNode *subject_node, const char *subject_c) {
+    GrayType *range_type = type_table_get(codegen->type_table, range_node);
+    const char *element = stored_range_element(range_type);
+    const char *range_c_type = gray_type_to_c_codegen(codegen, range_type->name);
+    int range_id = codegen_next_id(codegen);
+    emit_formatted(codegen, "({ %s _gray_subject_%d = ",
+        is_wide_integer_type_name(element) ? wide_integer_prefix(element) : "int64_t", range_id);
+    if (subject_c) emit(codegen, subject_c);
+    else emit_expression(codegen, subject_node);
+    emit_formatted(codegen, "; %s _gray_range_%d = ", range_c_type, range_id);
+    emit_expression(codegen, range_node);
+    emit_formatted(codegen, "; if (%s_has_zero_step(_gray_range_%d)) { %s; } %s_contains(_gray_range_%d, _gray_subject_%d, \"%s\", %d); })",
+        range_c_type, range_id, panic_call(codegen, location_node, "P0090", ""),
+        range_c_type, range_id, range_id, codegen->file, location_node->token.line);
 }
 
 /* Emit a shift amount as an int64_t. A wide amount too large for int64_t
@@ -3129,6 +3196,15 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
     /* in / not_in; array or range membership check */
     if (operator == TOKEN_IN || operator == TOKEN_NOT_IN) {
         bool negated = (operator == TOKEN_NOT_IN);
+
+        /* A range held in a variable: x in r */
+        GrayType *membership_type = type_table_get(codegen->type_table, node->data.infix.right);
+        if (node->data.infix.right->kind != NODE_RANGE_EXPRESSION &&
+            membership_type && membership_type->kind == TYPE_KIND_RANGE) {
+            if (negated) emit(codegen, "!");
+            emit_stored_range_membership(codegen, node, node->data.infix.right, node->data.infix.left, NULL);
+            return;
+        }
 
         /* Check if right side is a range expression: x in range(a, b) */
         if (node->data.infix.right->kind == NODE_RANGE_EXPRESSION) {
@@ -4603,6 +4679,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit_label(codegen, node);
         break;
 
+    case NODE_RANGE_EXPRESSION:
+        emit_range_value(codegen, node);
+        break;
+
     case NODE_INTEGER_LITERAL:
         if (node->data.integer_literal.is_above_i64_maximum) {
             /* Literal exceeds INT64_MAX; for u64 contexts emit as a
@@ -5798,11 +5878,9 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
             return true;
         }
         GrayType *type = type_table_get(codegen->type_table, argument);
-        /* Range expression: type_of(range(0, 5)) → "Range<i64>" */
-        if (argument->kind == NODE_RANGE_EXPRESSION ||
-            (argument->kind == NODE_CALL_EXPRESSION && argument->data.call.function->kind == NODE_LABEL &&
-             strcmp(argument->data.call.function->data.label.value, "range") == 0)) {
-            emit_formatted(codegen, "gray_string_lit(\"Range<i64>\")");
+        /* A range, literal or stored: type_of(range(0, 5)) → "Range<i64>" */
+        if (type && type->kind == TYPE_KIND_RANGE) {
+            emit_formatted(codegen, "gray_string_lit(\"%s\")", type->name);
             return true;
         }
         /* Enum member access: type_of(Color.RED) → "Color" */
@@ -10403,6 +10481,8 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
             c_type = "GrayArray";
         } else if (value->kind == NODE_MAP_VALUE) {
             c_type = "GrayMap";
+        } else if (value->kind == NODE_RANGE_EXPRESSION) {
+            c_type = gray_type_to_c_codegen(codegen, type_table_get(codegen->type_table, value)->name);
         } else if (value->kind == NODE_STRUCT_VALUE) {
             /* use mangled name for generic struct instantiations */
             if (value->data.struct_value.wildcard_binding) {
@@ -12248,16 +12328,17 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
 
     AstNode *iterable_node = node->data.for_statement.iterable;
     const char *wide = NULL;
+    char blank_for_variable[VARIABLE_NAME_BUFFER_SIZE];
+    const char *variable_name;
+    if (strcmp(node->data.for_statement.variable_name, "_") == 0) {
+        snprintf(blank_for_variable, sizeof(blank_for_variable), "_gray_for_blank_%d", codegen_next_id(codegen));
+        variable_name = blank_for_variable;
+    } else {
+        variable_name = sanitize_name(node->data.for_statement.variable_name);
+    }
+    GrayType *iterable_type = iterable_node ? type_table_get(codegen->type_table, iterable_node) : NULL;
     if (iterable_node && iterable_node->kind == NODE_RANGE_EXPRESSION) {
         /* for i in range(start, end) or range(start, end, step) */
-        char blank_for_variable[VARIABLE_NAME_BUFFER_SIZE];
-        const char *variable_name;
-        if (strcmp(node->data.for_statement.variable_name, "_") == 0) {
-            snprintf(blank_for_variable, sizeof(blank_for_variable), "_gray_for_blank_%d", codegen_next_id(codegen));
-            variable_name = blank_for_variable;
-        } else {
-            variable_name = sanitize_name(node->data.for_statement.variable_name);
-        }
 
         /* A wide (i128/u128/i256/u256) range: bounds are held and stepped in
          * the wide type, and the loop variable is one. */
@@ -12398,6 +12479,27 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "for (int64_t %s = 0; %s < _gray_end_%d; %s++", variable_name, variable_name, iterator_end_id, variable_name);
         }
 
+        emit(codegen, ") {\n");
+    } else if (iterable_type && iterable_type->kind == TYPE_KIND_RANGE) {
+        /* for i in r, where r holds a range: copied once, so the loop runs the
+         * range it started with even if r is assigned in the body. */
+        const char *element = stored_range_element(iterable_type);
+        const char *range_c_type = gray_type_to_c_codegen(codegen, iterable_type->name);
+        int range_id = codegen_next_id(codegen);
+        if (is_wide_integer_type_name(element)) wide = element;
+        emit_formatted(codegen, "%s _gray_range_%d = ", range_c_type, range_id);
+        emit_expression(codegen, iterable_node);
+        emit(codegen, ";\n");
+        emit_indent(codegen);
+        emit_formatted(codegen, "if (%s_has_zero_step(_gray_range_%d)) { %s; }\n",
+            range_c_type, range_id, panic_call(codegen, node, "P0090", ""));
+        emit_indent(codegen);
+        emit_formatted(codegen, "for (%s %s = _gray_range_%d.start; %s_continues(_gray_range_%d, %s); %s = ",
+            wide ? wide_integer_prefix(wide) : "int64_t", variable_name, range_id,
+            range_c_type, range_id, variable_name, variable_name);
+        if (wide) emit_formatted(codegen, "%s_add_checked", wide_integer_prefix(wide));
+        else emit(codegen, "gray_add_check");
+        emit_formatted(codegen, "(%s, _gray_range_%d.step, \"%s\", %d)", variable_name, range_id, codegen->file, node->token.line);
         emit(codegen, ") {\n");
     } else {
         codegen_internal_error("non-range for loop reached codegen",
@@ -13203,6 +13305,11 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                         emit(codegen, ".tag == ");
                         emit_expression(codegen, case_value);
                     }
+                } else if (type_table_get(codegen->type_table, when_case->values[j]) &&
+                           type_table_get(codegen->type_table, when_case->values[j])->kind == TYPE_KIND_RANGE &&
+                           when_case->values[j]->kind != NODE_RANGE_EXPRESSION) {
+                    /* A range held in a variable: is r */
+                    emit_stored_range_membership(codegen, node, when_case->values[j], NULL, when_temporary);
                 } else if (when_case->is_range && when_case->values[j]->kind == NODE_RANGE_EXPRESSION) {
                     AstNode *range = when_case->values[j];
                     /* Check if step is a negative literal to reverse comparison direction */

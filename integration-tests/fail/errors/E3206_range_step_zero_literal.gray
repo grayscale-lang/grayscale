@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3206 - a literal zero step is rejected at compile time
+ */
+
+// expect-error: E3206
+// expect-error-count: 1
+
+do main() {
+    for i in range(0, 10, 0) {
+        println(i)
+    }
+}

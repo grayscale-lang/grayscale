@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3205 - a range cannot be used in arithmetic
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    println(r + 1)
+}

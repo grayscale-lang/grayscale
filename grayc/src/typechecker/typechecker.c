@@ -5299,6 +5299,29 @@ static void extern_call_assert_type(TypeChecker *checker, const AstNode *call,
     }
 }
 
+/* The integer type a Range<T> value runs in. */
+static GrayType *range_element_type(GrayType *range_type) {
+    char element_name[TYPE_NAME_MAX];
+    snprintf(element_name, sizeof(element_name), "%s", range_type->name + strlen("Range<"));
+    element_name[strlen(element_name) - 1] = '\0';
+    return type_from_name(element_name);
+}
+
+/* True when the integer `value_type` is checked against a range held in a
+ * variable without conversion: a wide range takes only its own wide type, an
+ * i64 range only a value that is not wide. */
+static bool range_holds_integer(GrayType *range_type, GrayType *value_type) {
+    GrayType *element_type = range_element_type(range_type);
+    bool value_is_wide = is_wide_integer_type_name(value_type->name);
+    if (!is_wide_integer_type_name(element_type->name)) return !value_is_wide;
+    return value_is_wide && strcmp(value_type->name, element_type->name) == 0;
+}
+
+/* Let `node`, when it is a name or a range() call, be a range value. */
+static void allow_range_use(TypeChecker *checker, const AstNode *node) {
+    if (node && (node->kind == NODE_LABEL || node->kind == NODE_RANGE_EXPRESSION)) checker->range_use = node;
+}
+
 static bool types_assignable(TypeChecker *checker, GrayType *destination_type, GrayType *source_type) {
     if (!destination_type || !source_type) return false;
     /* A C function result carries no statically known Grayscale type; it is
@@ -5351,6 +5374,9 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
      * code. */
     if (type_kind_is_number(destination_type->kind) && type_kind_is_number(source_type->kind))
         return type_conversion(source_type, destination_type) != CONVERSION_MISMATCH;
+    /* A range is only the same type as one over the same integer type. */
+    if (destination_type->kind == TYPE_KIND_RANGE && source_type->kind == TYPE_KIND_RANGE)
+        return strcmp(destination_type->name, source_type->name) == 0;
     if (destination_type->kind == source_type->kind) return true;
     /* Enum → integer (enums are integer-backed) */
     if (is_integer_kind(destination_type->kind) && source_type->kind == TYPE_KIND_ENUM) return true;
@@ -8929,6 +8955,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = &TYPE_STRING;
             return result;
         }
+        allow_range_use(checker, node->data.call.arguments[0]);
         /* E3084: type_of() with a type name instead of a value */
         if (node->data.call.argument_count > 0) {
             AstNode *argument = node->data.call.arguments[0];
@@ -9033,6 +9060,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         {
             AstNode *argument = node->data.call.arguments[0];
+            Symbol *argument_symbol = argument->kind == NODE_LABEL
+                ? scope_lookup(checker->current_scope, argument->data.label.value) : NULL;
+            if (argument_symbol && argument_symbol->type && argument_symbol->type->kind == TYPE_KIND_RANGE) {
+                diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, argument),
+                    argument->token.line, argument->token.column, 0);
+                result = &TYPE_I64;
+                return result;
+            }
             const char *written = size_of_type_spelling(checker, argument);
             if (written && strcmp(written, "?") != 0) {
                 reject_private_type(checker, argument, written);
@@ -10045,6 +10080,8 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
     bool is_reference_call = (node->data.call.function &&
         node->data.call.function->kind == NODE_LABEL &&
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
+    bool is_type_of_call = node->data.call.function && node->data.call.function->kind == NODE_LABEL &&
+        strcmp(node->data.call.function->data.label.value, "type_of") == 0;
     AstNode *callee_declaration = callee_function_declaration(checker, node);
     for (int i = 0; i < node->data.call.argument_count; i++) {
         /* A type argument is validated where the call is dispatched, not here:
@@ -10071,6 +10108,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             continue;
         if (is_printf_values_literal(checker, node, i))
             continue;
+        if (is_type_of_call) allow_range_use(checker, node->data.call.arguments[i]);
         resolve_expression(checker, node->data.call.arguments[i]);
 
         /* E3040: a multi-return call cannot appear in single-value
@@ -10755,6 +10793,8 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((operator == TOKEN_EQUAL || operator == TOKEN_NOT_EQUAL) &&
         left && left->kind == TYPE_KIND_ENUM && left->name)
         checker->expected_type = left;
+    if (node->data.infix.operator == TOKEN_IN || node->data.infix.operator == TOKEN_NOT_IN)
+        allow_range_use(checker, right_node);
     GrayType *right = resolve_untyped(checker, right_node);
     checker->expected_type = saved_infix_expected;
 
@@ -11186,9 +11226,10 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             if (left->kind != TYPE_KIND_CHAR && left->kind != TYPE_KIND_STRING) {
                 mismatch = true;
             }
-        } else if (right->name && strcmp(right->name, "Range<i64>") == 0) {
-            /* range() produces Range<i64>; only integer types can be checked */
-            if (!is_integer_kind(left->kind)) {
+        } else if (right->kind == TYPE_KIND_RANGE) {
+            /* only integer types can be checked against a range */
+            if (!is_integer_kind(left->kind) ||
+                (node->data.infix.right->kind != NODE_RANGE_EXPRESSION && !range_holds_integer(right, left))) {
                 mismatch = true;
             }
         } else {
@@ -12287,6 +12328,12 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         } else if (symbol) {
             symbol->was_used = true;
             result = symbol->type;
+            if (result->kind == TYPE_KIND_RANGE && node != checker->range_use) {
+                diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, node),
+                    node->token.line, node->token.column, 0);
+                result = &TYPE_UNKNOWN;
+                break;
+            }
             /* Transparent ref: unwrap pointer to expose underlying type.
              * The codegen auto-derefs ref vars, so the typechecker must
              * see the dereferenced type for indexing, comparison, etc. */
@@ -12720,6 +12767,12 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         break;
 
     case NODE_RANGE_EXPRESSION: {
+        if (node != checker->range_use) {
+            diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, node),
+                node->token.line, node->token.column, 0);
+            result = &TYPE_UNKNOWN;
+            break;
+        }
         /* Validate range arguments are integer types */
         AstNode *parts[] = { node->data.range_expression.start,
                              node->data.range_expression.end,
@@ -12742,10 +12795,13 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 typechecker_error_argument_type(checker, parts[part_index], part_index + 1, "range", "an integer", type_name(parameter_type));
             }
         }
-        GrayType *return_type = type_allocate();
-        return_type->kind = TYPE_KIND_SIGNED_INTEGER;
-        return_type->name = strdup("Range<i64>");
-        result = return_type;
+        LiteralValue step_value;
+        if (parts[2] && literal_integer_value(parts[2], &step_value) && magnitude_is_zero(step_value.magnitude))
+            diagnostic_error_code(checker->diagnostics, "E3206", NODE_FILE(checker, node),
+                parts[2]->token.line, parts[2]->token.column, 0);
+        char range_type_name[TYPE_NAME_MAX];
+        snprintf(range_type_name, sizeof(range_type_name), "Range<%s>", range_type->name);
+        result = type_from_name(range_type_name);
         break;
     }
 
@@ -14071,6 +14127,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
          * are exempt: codegen emits file-scope declarations ahead of them. */
         bool saved_is_in_file_scope_initializer = checker->is_in_file_scope_initializer;
         if (checker->function_depth == 0) checker->is_in_file_scope_initializer = true;
+        allow_range_use(checker, node->data.variable_declaration.value);
         GrayType *value_type = check_expression_as(checker, node->data.variable_declaration.value, declared);
         checker->is_in_file_scope_initializer = saved_is_in_file_scope_initializer;
 
@@ -14958,6 +15015,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
     /* The right-hand side is a single-value position: a fallible (T, Error)
      * call drops the Error, a user multi-return call fails the C compile. */
     reject_multi_return_in_single_position(checker, node->data.assign.value);
+    allow_range_use(checker, node->data.assign.value);
 
     /* Implicit declaration: x = expr where x is not in scope */
     {
@@ -15004,7 +15062,9 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    if (node->data.assign.operator == TOKEN_ASSIGN) allow_range_use(checker, node->data.assign.target);
     GrayType *target_type = resolve_expression(checker, node->data.assign.target);
+    allow_range_use(checker, node->data.assign.value);
     /* The value is stored into the target, so it is checked as the target's
      * type — for a compound assignment `x op= v` too. */
     GrayType *assigned_value_type = check_expression_as(checker, node->data.assign.value, target_type);
@@ -16563,13 +16623,16 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
     Scope *loop_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
     checker->current_scope = loop_scope;
-    resolve_expression(checker, node->data.for_statement.iterable);
-    /* The loop variable has the wide type of a wide range, i64 otherwise. */
+    allow_range_use(checker, node->data.for_statement.iterable);
+    GrayType *iterable_type = resolve_expression(checker, node->data.for_statement.iterable);
+    /* The loop variable has the integer type the range runs in. */
     GrayType *loop_variable_type = &TYPE_I64;
-    if (node->data.for_statement.iterable &&
-        node->data.for_statement.iterable->kind == NODE_RANGE_EXPRESSION) {
-        const char *wide = range_wide_type(checker, node->data.for_statement.iterable);
-        if (wide) loop_variable_type = type_from_name(wide);
+    if (iterable_type->kind == TYPE_KIND_RANGE) {
+        loop_variable_type = range_element_type(iterable_type);
+    } else if (iterable_type->kind != TYPE_KIND_UNKNOWN) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3204",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            node->data.for_statement.variable_name, node->data.for_statement.variable_name);
     }
     scope_define(loop_scope, node->data.for_statement.variable_name, loop_variable_type, false);
     /* E9005: check range bounds when both bounds and step direction are compile-time known */
@@ -17525,17 +17588,23 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
             /* A case value is checked as the subject's type: `is 300` on a u8
              * subject is out of range, and `is 0.1` on an f32 one compares as
              * f32. A range case is checked as a range. */
-            bool is_range_case = value_node->kind == NODE_RANGE_EXPRESSION ||
+            allow_range_use(checker, value_node);
+            Symbol *case_symbol = value_node->kind == NODE_LABEL
+                ? scope_lookup(checker->current_scope, value_node->data.label.value) : NULL;
+            bool is_stored_range_case = case_symbol && case_symbol->type && case_symbol->type->kind == TYPE_KIND_RANGE;
+            bool is_range_case = is_stored_range_case || value_node->kind == NODE_RANGE_EXPRESSION ||
                 (value_node->kind == NODE_CALL_EXPRESSION && value_node->data.call.function->kind == NODE_LABEL &&
                  strcmp(value_node->data.call.function->data.label.value, "range") == 0);
             GrayType *case_type = is_range_case ? resolve_expression(checker, value_node)
                                              : check_expression_as(checker, value_node, when_type);
+            if (is_stored_range_case && when_type && when_type->kind != TYPE_KIND_UNKNOWN &&
+                (!is_integer_kind(when_type->kind) || !range_holds_integer(case_type, when_type))) {
+                diagnostic_error_code_formatted(checker->diagnostics, "E3018", NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0, type_display_name(checker, when_type), type_display_name(checker, case_type));
+            }
             /* Check case value type matches scrutinee; skip range exprs and unknowns */
             if (when_type && case_type &&
                 when_type->kind != TYPE_KIND_UNKNOWN && case_type->kind != TYPE_KIND_UNKNOWN &&
-                value_node->kind != NODE_RANGE_EXPRESSION &&
-                !(value_node->kind == NODE_CALL_EXPRESSION && value_node->data.call.function->kind == NODE_LABEL &&
-                  strcmp(value_node->data.call.function->data.label.value, "range") == 0)) {
+                !is_range_case) {
                 /* Mixing an enum with a plain integer is a mismatch, matching the
                  * == operator (E3117): an integer literal pattern against an enum
                  * subject, or an enum-variant pattern against an integer subject,

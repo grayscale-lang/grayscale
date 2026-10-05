@@ -1302,4 +1302,49 @@ static inline GrayString gray_i256_to_octal_string(GrayArena *arena, gray_i256 v
     return gray_u256_to_radix_string(arena, bits, 8, false);
 }
 
+/* --- Stored range() values ---
+ * The value of a range() call kept in a variable: start, stop and step, with
+ * the defaults (start 0, step 1) already filled in. GrayRange_<T> runs in the
+ * integer type T, so every width has the same helpers. */
+
+typedef struct { int64_t start, stop, step; } GrayRange_i64;
+
+static inline bool GrayRange_i64_has_zero_step(GrayRange_i64 range) { return range.step == 0; }
+
+static inline bool GrayRange_i64_continues(GrayRange_i64 range, int64_t value) {
+    return range.step > 0 ? value < range.stop : value > range.stop;
+}
+
+/* The distance from start is taken in uint64_t so it cannot overflow. */
+static inline bool GrayRange_i64_contains(GrayRange_i64 range, int64_t value, const char *file, int line) {
+    (void)file; (void)line;
+    if (range.step > 0)
+        return value >= range.start && value < range.stop &&
+               ((uint64_t)value - (uint64_t)range.start) % (uint64_t)range.step == 0;
+    return value <= range.start && value > range.stop &&
+           ((uint64_t)range.start - (uint64_t)value) % (0 - (uint64_t)range.step) == 0;
+}
+
+#define GRAY_DEFINE_WIDE_RANGE(WIDE) \
+typedef struct { gray_##WIDE start, stop, step; } GrayRange_##WIDE; \
+static inline bool GrayRange_##WIDE##_has_zero_step(GrayRange_##WIDE range) { \
+    return gray_##WIDE##_eq(range.step, gray_##WIDE##_from_u64(0)); \
+} \
+static inline bool GrayRange_##WIDE##_continues(GrayRange_##WIDE range, gray_##WIDE value) { \
+    return gray_##WIDE##_gt(range.step, gray_##WIDE##_from_u64(0)) \
+        ? gray_##WIDE##_lt(value, range.stop) : gray_##WIDE##_gt(value, range.stop); \
+} \
+static inline bool GrayRange_##WIDE##_contains(GrayRange_##WIDE range, gray_##WIDE value, const char *file, int line) { \
+    gray_##WIDE zero = gray_##WIDE##_from_u64(0); \
+    bool is_inside = gray_##WIDE##_gt(range.step, zero) \
+        ? gray_##WIDE##_ge(value, range.start) && gray_##WIDE##_lt(value, range.stop) \
+        : gray_##WIDE##_le(value, range.start) && gray_##WIDE##_gt(value, range.stop); \
+    return is_inside && gray_##WIDE##_eq(gray_##WIDE##_mod(gray_##WIDE##_sub(value, range.start), range.step, file, line), zero); \
+}
+
+GRAY_DEFINE_WIDE_RANGE(i128)
+GRAY_DEFINE_WIDE_RANGE(u128)
+GRAY_DEFINE_WIDE_RANGE(i256)
+GRAY_DEFINE_WIDE_RANGE(u256)
+
 #endif /* GRAY_BIGINT_H */

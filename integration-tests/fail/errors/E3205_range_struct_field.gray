@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3205 - a range cannot be a struct field value
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+const Holder struct {
+    bound i64
+}
+
+do main() {
+    mut r = range(0, 3)
+    mut h = Holder{bound: r}
+    println(h.bound)
+}

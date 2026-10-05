@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3085 - a wide value cannot be checked against a Range<i64> variable
+ */
+
+// expect-error: E3085
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    mut x i128 = 1
+    println(x in r)
+}

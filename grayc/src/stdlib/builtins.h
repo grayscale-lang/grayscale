@@ -355,10 +355,12 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
 
 /*@man range
  *@sig range(start i64, end i64, step i64 = 1) -> Range<i64>
- *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime. range() is only valid as the source of a for loop; Range cannot be written as a type and the result cannot be stored. The loop variable is an i64, or the widest of i128, u128, i256 and u256 among the bounds.
+ *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. A literal step of 0 is a compile error; a step of 0 from a variable panics when the range is used. A Range can be iterated with for, checked with in and not_in, matched with is, and stored in a local variable; Range cannot be written as a type and cannot be passed to or returned from a function. The loop variable is an i64, or the widest of i128, u128, i256 and u256 among the bounds.
  *@example
  *   for i in range(0, 5) { println(i) }
  *   for i in range(0, 10, 2) { println(i) }
+ *   mut r = range(0, 10)
+ *   if 4 in r { println("in range") }
  *@end
  */
 

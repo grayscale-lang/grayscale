@@ -3028,25 +3028,16 @@ static AstNode *parse_for_statement(Parser *parser) {
         next_token(parser);  /* advance: current_token = IDENT or BLANK */
         if (peek_token_is(parser, TOKEN_IN)) {
             /* --- iteration form: for x in range(...) { } --- */
-            /* 'for x in ...' is only valid with range().
-             * For collection iteration, users must use for_each. */
+            /* The type checker rejects an iterable that is not a range. */
             const char *loop_variable_name = parser->current_token.literal;
             AstNode *node = ast_allocate(parser->arena, NODE_FOR_STATEMENT, for_token);
             node->data.for_statement.variable_name = loop_variable_name;
             node->data.for_statement.variable_type = NULL;
             next_token(parser);  /* consume IN */
             next_token(parser);  /* advance to iterable start */
-            if (!current_token_is(parser, TOKEN_RANGE)) {
-                char message[MESSAGE_BUFFER_SIZE];
-                snprintf(message, sizeof(message),
-                    "'for %s in ...' only supports 'range()'; use 'for_each %s in ...' to iterate over a collection",
-                    loop_variable_name, loop_variable_name);
-                diagnostic_error_message(parser->diagnostics, "E2002", arena_copy_string(parser->arena, message),
-                    parser->file, for_token.line, for_token.column, 0);
-                synchronize_parser(parser);
-                return NULL;
-            }
+            parser->should_suppress_struct_literal = true;
             node->data.for_statement.iterable = parse_expression(parser, PRECEDENCE_LOWEST);
+            parser->should_suppress_struct_literal = false;
             if (has_parentheses && peek_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) next_token(parser);
             if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
             node->data.for_statement.body = parse_block_statement(parser);

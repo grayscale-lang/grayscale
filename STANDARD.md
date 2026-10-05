@@ -1511,8 +1511,38 @@ the loop variable has that type. A `u64` bound of an `i64` range, or a `u128` bo
   loop (`for _ in range(0, 10, -1)`), the compiler rejects it up front with `E9005`.
   If any operand is a variable, there is no diagnostic — the loop body just never runs.
 - `start == end` is always a valid empty range.
-- Zero step always panics at runtime with `P0090`, for literal and variable operands
-  alike.
+- A literal zero step is `E3206`. A zero step that comes from a variable panics at
+  runtime with `P0090`, where the range is used.
+
+**Storing a range.** `range()` produces a value of type `Range<i64>` (`Range<i128>`,
+`Range<u128>`, `Range<i256>` or `Range<u256>` for a wide range) that a local variable
+can hold. The variable can be iterated with `for`, checked with `in` / `not_in`, matched
+with `is`, copied to another variable and reassigned a range of the same type:
+
+```gray
+mut r = range(0, 10)
+
+for i in r { ... }
+if x in r { ... }
+if x not_in r { ... }
+when x {
+    is r { ... }
+    default { ... }
+}
+
+r = range(5, 20, 2)
+type_of(r)    // "Range<i64>"
+```
+
+A range is three integers kept on the stack; iterating one does not allocate. A `for`
+loop copies the range once, so assigning the variable inside the body does not change the
+loop. The value of `x` checked against a stored range is an `i64`-compatible integer for
+a `Range<i64>`, and the same wide type for a wide range.
+
+`Range<T>` cannot be written as a type. A range cannot be passed to or returned from a
+function, stored in a struct field, array or map, indexed, printed, interpolated, compared
+or used in arithmetic: every use other than the ones above is `E3205`. `for x in` over
+anything that is not a range is `E3204`.
 
 ---
 

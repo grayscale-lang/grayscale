@@ -1,0 +1,12 @@
+/*
+ * Error Test: P0090 - a stored wide range with a zero step panics when it is iterated
+ */
+
+
+do main() {
+    mut step i128 = 0
+    mut r = range(i128(0), i128(10), step)
+    for i in r {
+        println(i)
+    }
+}

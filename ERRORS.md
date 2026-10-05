@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 521 codes** (374 errors, 17 warnings, 130 panics)
+**Total: 524 codes** (377 errors, 17 warnings, 130 panics)
 
 ---
 
@@ -273,6 +273,9 @@
 | `E3201` | types | %s by zero; the divisor is always zero |
 | `E3202` | types | cannot interpolate %s |
 | `E3203` | types | %s index cannot be negative |
+| `E3204` | types | 'for %s in ...' only supports a range; use 'for_each %s in ...' to iterate over a collection |
+| `E3205` | types | a range can only be iterated with 'for', checked with 'in' or 'not_in', matched with 'is', or stored in a variable |
+| `E3206` | types | range step cannot be zero |
 | `E4001` | names | undefined variable '%s' |
 | `E4002` | names | undefined function '%s' |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -572,4 +575,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-04 20:51:49 UTC*
+*Generated on 2026-10-05 17:56:01 UTC*

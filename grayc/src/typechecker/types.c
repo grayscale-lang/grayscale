@@ -574,6 +574,17 @@ GrayType *type_from_name(const char *name) {
         return type;
     }
 
+    /* Range type: Range<i64>, Range<i128>, etc. */
+    if (strncmp(name, "Range<", 6) == 0) {
+        GrayType *existing = pool_find(TYPE_KIND_RANGE, name);
+        if (existing) return existing;
+        GrayType *type = type_allocate();
+        type->kind = TYPE_KIND_RANGE;
+        type->name = strdup(name);
+        pool_insert(TYPE_KIND_RANGE, type->name, type);
+        return type;
+    }
+
     /* Pointer type: ^i64, ^Person, etc. */
     if (name[0] == '^') {
         return type_pointer(name + 1);

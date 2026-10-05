@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3205 - a range cannot be returned from a function
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do make() -> i64 {
+    mut r = range(0, 3)
+    return r
+}
+
+do main() {
+    println(make())
+}
