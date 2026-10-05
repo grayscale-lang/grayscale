@@ -6677,6 +6677,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
     }
     if (strcmp(function_name, "get_or_default") == 0 && node->data.call.argument_count == 3) {
         /* get_or_default(m, key, default); lookup key, return default if missing.
+         * The default is evaluated on every call, after the key and before the lookup.
          * A wide-integer key or value needs its explicit struct type instead of
          * __auto_type/__typeof__, which would infer a plain int from a literal. */
         GrayType *map_type = type_table_get(codegen->type_table, node->data.call.arguments[0]);
@@ -6688,18 +6689,12 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         if (wide_integer_key) emit_formatted(codegen, "%s _gk = ", wide_integer_prefix(wide_integer_key));
         else emit(codegen, "__auto_type _gk = ");
         emit_map_slot_value(codegen, wide_integer_key, node->data.call.arguments[1]);
+        if (wide_integer_value) emit_formatted(codegen, "; %s _gd = ", wide_integer_prefix(wide_integer_value));
+        else emit(codegen, "; __auto_type _gd = ");
+        emit_map_slot_value(codegen, wide_integer_value, node->data.call.arguments[2]);
         emit(codegen, "; void *_gv = gray_map_get(");
         emit_address_of(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &_gk); _gv ? *(");
-        if (wide_integer_value) {
-            emit(codegen, wide_integer_prefix(wide_integer_value));
-        } else {
-            emit(codegen, "__typeof__(");
-            emit_expression(codegen, node->data.call.arguments[2]);
-            emit(codegen, ")");
-        }
-        emit(codegen, " *)_gv : ");
-        emit_map_slot_value(codegen, wide_integer_value, node->data.call.arguments[2]);
+        emit(codegen, ", &_gk); _gv ? *(__typeof__(_gd) *)_gv : _gd");
         emit(codegen, "; })");
         return true;
     }

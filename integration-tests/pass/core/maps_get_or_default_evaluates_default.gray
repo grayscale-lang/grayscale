@@ -1,0 +1,46 @@
+/*
+ * maps_get_or_default_evaluates_default.gray - maps.get_or_default() evaluates
+ * its default argument on every call, whether or not the key is present.
+ */
+
+import @maps
+
+mut calls i64 = 0
+
+do default_value() -> i64 {
+    calls = calls + 1
+    return 42
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut m map[string:i64] = {"a": 1}
+
+    mut hit i64 = maps.get_or_default(m, "a", default_value())
+    if hit == 1 && calls == 1 {
+        println("  [PASS] present key returns its value and evaluates the default")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] present key: hit=${hit} calls=${calls}")
+        failed += 1
+    }
+
+    mut miss i64 = maps.get_or_default(m, "zz", default_value())
+    if miss == 42 && calls == 2 {
+        println("  [PASS] missing key returns the default")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] missing key: miss=${miss} calls=${calls}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
