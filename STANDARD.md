@@ -588,6 +588,23 @@ Arithmetic is overflow-checked at the result type, whatever expression or
 compound assignment it appears in: `xs[0] += 10` on a `[u8]` holding 250 panics,
 whether `xs` is a variable, a field, a map value, or reached through a pointer.
 
+#### 3.1.9 Source Location Type (`SourceLocation`)
+
+`SourceLocation` is a compiler-provided struct returned by `here()`. It records where the call appears, filled in at compile time:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `file` | `string` | source file path |
+| `line` | `i64` | line number (1-based) |
+| `column` | `i64` | column number (1-based) |
+
+```gray
+do main() {
+    const loc SourceLocation = here()
+    println("${loc.file}:${loc.line}:${loc.column}")
+}
+```
+
 ### 3.2 Composite Types
 
 #### 3.2.1 Arrays
@@ -3291,6 +3308,7 @@ running the child so output is not reordered.
 | `from_c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
 | `to_c_string` | `(s string) -> ^u8` | Return a NUL-terminated copy of a string as a raw C pointer that lives for the rest of the program, for storing in an extern struct field or a `^u8` variable (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
+| `here` | `() -> SourceLocation` | Return the file, line, and column of the call site, filled in at compile time (see [Section 3.1.9](#319-source-location-type-sourcelocation)) |
 | `system` | `(command string) -> i64` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 
 **Reference behavior with `ref()`:**
