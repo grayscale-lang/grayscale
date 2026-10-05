@@ -121,8 +121,9 @@ while
 
 **Declarations:**
 ```
-alias        const       do          enum        fn          import
-mut          new         private     struct      use*        using
+alias        const       do          enum        extern      fn
+import       mut         new         private     struct      use*
+using
 ```
 
 > 💡 **Tip:** `use*` is reserved exclusively for the `import and use` statement. It has no other syntactic role.
