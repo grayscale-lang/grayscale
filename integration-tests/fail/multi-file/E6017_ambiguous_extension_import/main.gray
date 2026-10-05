@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6017 - ambiguous-extension-import
+ * Expected: "matches both"
+ */
+
+import "./util"
+
+do main() {
+    println("${util.value()}")
+}

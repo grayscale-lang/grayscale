@@ -1,5 +1,5 @@
 // sources.go — Expands the path arguments of gray fmt, gray doc, and
-// gray test into the .gray files they name, so all three commands read the
+// gray test into the source files they name, so all three commands read the
 // same argument the same way.
 //
 // Author:  Marshall A Burns (@SchoolyB)
@@ -15,13 +15,30 @@ import (
 	"strings"
 )
 
+// sourceExtensions is the one list of extensions a Grayscale source file may
+// carry. Every check for one reads it.
+var sourceExtensions = []string{".gray", ".grayscale"}
+
+// sourceExtensionsText names the accepted extensions in diagnostics.
+const sourceExtensionsText = ".gray or .grayscale"
+
+// hasSourceExtension reports whether path ends in an accepted source extension.
+func hasSourceExtension(path string) bool {
+	for _, extension := range sourceExtensions {
+		if strings.HasSuffix(path, extension) {
+			return true
+		}
+	}
+	return false
+}
+
 // expandGraySourceArgs turns path arguments into a de-duplicated list of
-// .gray files:
+// source files:
 //   - "file.gray"          — that file
-//   - "dir"                — the .gray files directly inside dir (non-recursive)
-//   - "dir/..." or "..."   — every .gray file under dir, recursively
+//   - "dir"                — the source files directly inside dir (non-recursive)
+//   - "dir/..." or "..."   — every source file under dir, recursively
 //
-// A path that is missing, or is neither a .gray file nor a directory, is
+// A path that is missing, or is neither a source file nor a directory, is
 // reported on stderr as "gray <command>: ..." and skipped; ok is false when
 // that happened. Files are returned as written (joined onto their argument).
 func expandGraySourceArgs(command string, args []string) (files []string, ok bool) {
@@ -62,7 +79,7 @@ func expandGraySourceArgs(command string, args []string) (files []string, ok boo
 				continue
 			}
 			filepath.WalkDir(baseDir, func(path string, entry os.DirEntry, err error) error {
-				if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".gray") {
+				if err == nil && !entry.IsDir() && hasSourceExtension(path) {
 					add(path)
 				}
 				return nil
@@ -82,14 +99,14 @@ func expandGraySourceArgs(command string, args []string) (files []string, ok boo
 				continue
 			}
 			for _, entry := range entries {
-				if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".gray") {
+				if !entry.IsDir() && hasSourceExtension(entry.Name()) {
 					add(filepath.Join(arg, entry.Name()))
 				}
 			}
-		} else if strings.HasSuffix(arg, ".gray") {
+		} else if hasSourceExtension(arg) {
 			add(arg)
 		} else {
-			report("'%s' is not a .gray file or directory", arg)
+			report("'%s' is not a .gray or .grayscale file or directory", arg)
 		}
 	}
 	return files, ok

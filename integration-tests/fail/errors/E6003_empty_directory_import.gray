@@ -1,8 +1,8 @@
 /*
- * Error Test: E6003 - directory import with no .gray files
- * Expected: "directory contains no .gray files" error
+ * Error Test: E6003 - directory import with no source files
+ * Expected: "contains no source files" error
  *
- * Uses the empty_dir/ directory which has no .gray files
+ * Uses the empty_dir/ directory which has no source files
  */
 
 import "./empty_dir"

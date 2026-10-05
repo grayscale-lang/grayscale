@@ -26,7 +26,7 @@ import (
 )
 
 var watchCmd = &cobra.Command{
-	Use:   "watch [file.gray | directory]",
+	Use:   "watch [file.gray | file.grayscale | directory]",
 	Short: "Watch files and re-run on changes",
 	Long:  `Watch a file or directory for changes and automatically re-run.`,
 	Args:  cobra.ExactArgs(1),
@@ -57,8 +57,8 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	if info.IsDir() {
 		return watchDirectory(absTarget, compilerArgs)
 	}
-	if !strings.HasSuffix(absTarget, ".gray") {
-		return fmt.Errorf("Error: file must have .gray extension")
+	if !hasSourceExtension(absTarget) {
+		return fmt.Errorf("Error: file must have a .gray or .grayscale extension")
 	}
 	return watchFile(absTarget, compilerArgs)
 }
@@ -158,7 +158,7 @@ func watchDirectory(dirPath string, compilerArgs []string) error {
 	fmt.Println()
 
 	watchLoop(watcher, mainFile, compilerArgs,
-		func(e fsnotify.Event) bool { return strings.HasSuffix(e.Name, ".gray") },
+		func(e fsnotify.Event) bool { return hasSourceExtension(e.Name) },
 		func() []string { return collectGrayFilesInDir(dirPath) })
 	return nil
 }
@@ -178,7 +178,7 @@ func collectFilesToWatch(mainFile string) []string {
 		}
 		// Resolve relative to the main file's directory
 		resolved := filepath.Join(dir, imp)
-		if !strings.HasSuffix(resolved, ".gray") {
+		if !hasSourceExtension(resolved) {
 			// Could be a directory module
 			if info, err := os.Stat(resolved); err == nil && info.IsDir() {
 				dirFiles := collectGrayFilesInDir(resolved)
@@ -190,7 +190,12 @@ func collectFilesToWatch(mainFile string) []string {
 				}
 				continue
 			}
-			resolved += ".gray"
+			for _, extension := range sourceExtensions {
+				if _, err := os.Stat(resolved + extension); err == nil {
+					resolved += extension
+					break
+				}
+			}
 		}
 		if _, ok := seen[resolved]; !ok {
 			if _, err := os.Stat(resolved); err == nil {
@@ -241,7 +246,7 @@ func collectGrayFilesInDir(dir string) []string {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".gray") {
+		if !info.IsDir() && hasSourceExtension(path) {
 			files = append(files, path)
 		}
 		return nil
@@ -253,7 +258,7 @@ func collectGrayFilesInDir(dir string) []string {
 func findMainFile(dir string) (string, error) {
 	grayFiles := collectGrayFilesInDir(dir)
 	if len(grayFiles) == 0 {
-		return "", fmt.Errorf("no .gray files found in %s", dir)
+		return "", fmt.Errorf("no source files found in %s", dir)
 	}
 
 	var mainFiles []string

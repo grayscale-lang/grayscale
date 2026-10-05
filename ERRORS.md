@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 523 codes** (376 errors, 17 warnings, 130 panics)
+**Total: 524 codes** (377 errors, 17 warnings, 130 panics)
 
 ---
 
@@ -359,7 +359,7 @@
 | `E5063` | arguments | 'to_char()' index %lld is out of bounds |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
-| `E6003` | imports | directory '%s' contains no .gray files |
+| `E6003` | imports | directory '%s' contains no source files |
 | `E6004` | imports | cannot import own module directory |
 | `E6005` | imports | cannot import the program's entry point |
 | `E6006` | imports | module name derived from the import path is not a usable identifier |
@@ -373,6 +373,7 @@
 | `E6014` | imports | malformed import statement |
 | `E6015` | imports | C header '%s' could not be found for the current target |
 | `E6016` | imports | C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types |
+| `E6017` | imports | import '%s' matches both a .gray and a .grayscale file; import one by its full file name |
 | `E7006` | stdlib | 'threads.spawn()' requires a function reference; use '()func_name' or 'ref(func_name)' |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111) |
 | `E7015` | stdlib | 'len()' is not supported for type '%s'; 'len()' works on string, array, and map types |
@@ -574,4 +575,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-05 19:13:21 UTC*
+*Generated on 2026-10-05 21:42:36 UTC*

@@ -50,10 +50,10 @@ var testCmd = &cobra.Command{
 'gray build' / 'gray run' output — they exist only for 'gray test'.
 
 Examples:
-  gray test                Run tests in every .gray file under the current directory
+  gray test                Run tests in every source file under the current directory
   gray test file.gray      Run tests in a single file
-  gray test ./src          Run tests in the .gray files directly inside ./src
-  gray test ./src/...      Run tests in every .gray file under ./src (recursive)
+  gray test ./src          Run tests in the source files directly inside ./src
+  gray test ./src/...      Run tests in every source file under ./src (recursive)
 
 A failed assert (or any panic) inside a #test is reported as a test failure;
 the runner continues with the remaining tests. Exit status is non-zero if any

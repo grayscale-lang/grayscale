@@ -2893,7 +2893,9 @@ project/
       cache.gray         ← separate module "internal"
 ```
 
-Directory imports merge all top-level `.gray` files in that directory into a single namespace under the directory's name. Subdirectories are **not** included; they are separate modules that must be imported independently. Hidden files (names starting with `.`) are excluded from directory scans.
+Grayscale source files end in `.gray` or `.grayscale`; the two are treated identically everywhere, and a project may mix them.
+
+Directory imports merge all top-level source files in that directory into a single namespace under the directory's name. Subdirectories are **not** included; they are separate modules that must be imported independently. Hidden files (names starting with `.`) are excluded from directory scans.
 
 All relative import paths are resolved relative to the **importing file's directory**, not the entry point file's directory. A file inside `models/` that uses `import "./shared.gray"` resolves to `models/shared.gray`; to reach a file in the project root it writes `import "../shared.gray"`.
 
@@ -2907,9 +2909,9 @@ import @arrays, @maps, @strings
 
 **Local imports** use relative string paths. The compiler resolves them in order:
 
-1. If the path ends in `.gray`, import that file directly.
-2. If the path has no extension, try appending `.gray`. If a file exists, import it.
-3. If the path (without extension) is a directory, scan it for all `.gray` files and merge them into one module.
+1. If the path ends in `.gray` or `.grayscale`, import that file directly.
+2. If the path has no extension, try appending `.gray` and `.grayscale`. If exactly one file exists, import it. If both exist, the import is rejected (E6017); import one by its full file name.
+3. If the path (without extension) is a directory, scan it for all `.gray` and `.grayscale` files and merge them into one module.
 4. If none of the above match, the import is rejected as unresolvable.
 
 ```gray
@@ -2920,7 +2922,7 @@ import "./models"           // models/ directory, all .gray files merge
 
 When both `helpers.gray` and a `helpers/` directory exist, the file takes priority.
 
-If a directory contains no `.gray` files, it is an error.
+If a directory contains no source files, it is an error.
 
 **Import aliasing:** Only local imports may be aliased. A local module's name comes from the filesystem, where it can collide with another module or fail to be a valid identifier; a standard library module's name is fixed and unique, so aliasing one is an error.
 

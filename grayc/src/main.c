@@ -30,14 +30,13 @@
 #include "typechecker/typechecker.h"
 #include "codegen/codegen.h"
 #include "fmt/fmt.h"
+#include "util/source_extension.h"
 
 #ifndef GRAY_VERSION
 #define GRAY_VERSION "unknown"
 #endif
 #define PATH_BUFFER_SIZE 2048
 #define COMPILER_ARENA_SIZE (1024 * 1024)
-#define GRAY_EXTENSION      ".gray"
-#define GRAY_EXTENSION_LENGTH  5
 
 /* Wall-clock milliseconds from a monotonic source. clock() would measure only
  * this process's CPU time and miss the C compiler, which runs as a spawned
@@ -51,9 +50,9 @@ static double monotonic_milliseconds(void) {
 static void print_usage(void) {
     fprintf(stderr, "Grayscale v%s — Simple to write. Safe to run.\n", GRAY_VERSION);
     fprintf(stderr, "\nUsage:\n");
-    fprintf(stderr, "  gray <file.gray> [options]         Compile and run\n");
-    fprintf(stderr, "  gray build <file.gray> [options]   Compile to binary\n");
-    fprintf(stderr, "  gray check <file.gray>             Type check only\n");
+    fprintf(stderr, "  gray <file.gray|file.grayscale> [options]  Compile and run\n");
+    fprintf(stderr, "  gray build <file.gray|file.grayscale> [options] Compile to binary\n");
+    fprintf(stderr, "  gray check <file.gray|file.grayscale>  Type check only\n");
     fprintf(stderr, "  gray version                       Show version\n");
     fprintf(stderr, "\nOptions:\n");
     fprintf(stderr, "  -o <file>       Output binary name (default: based on input filename)\n");
@@ -82,15 +81,12 @@ static bool write_file(const char *path, const char *content) {
     return true;
 }
 
-/* Strip the .gray extension from the base name and append the platform's
+/* Strip the source extension from the base name and append the platform's
  * executable suffix, so `gray build foo.gray` yields foo.exe on Windows. */
 static char *output_name_from_input(const char *input) {
     const char *base = gray_path_basename(input);
 
-    size_t length = strlen(base);
-    if (length > GRAY_EXTENSION_LENGTH && strcmp(base + length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0) {
-        length -= GRAY_EXTENSION_LENGTH;
-    }
+    size_t length = strlen(base) - gray_source_extension_length(base);
 
     size_t suffix_length = strlen(GRAY_EXECUTABLE_SUFFIX);
     char *output = malloc(length + suffix_length + 1);
@@ -1818,9 +1814,7 @@ int main(int argc, char **argv) {
         } else {
             /* Derive from input: foo.gray -> foo.c */
             const char *base = gray_path_basename(options.input_file);
-            size_t base_length = strlen(base);
-            if (base_length > GRAY_EXTENSION_LENGTH && strcmp(base + base_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0)
-                base_length -= GRAY_EXTENSION_LENGTH;
+            size_t base_length = strlen(base) - gray_source_extension_length(base);
             default_c_output_path = malloc(base_length + 3);
             memcpy(default_c_output_path, base, base_length);
             memcpy(default_c_output_path + base_length, ".c", 3);

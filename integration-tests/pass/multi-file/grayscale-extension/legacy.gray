@@ -1,0 +1,3 @@
+do three() -> i64 {
+    return 3
+}

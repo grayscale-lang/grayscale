@@ -384,7 +384,7 @@
 #define GRAY_IMPORT_ERRORS \
     GRAY_ERROR("E6001", "imports", "unknown module '@%s'") \
     GRAY_ERROR("E6002", "imports", "cannot find file or directory '%s'") \
-    GRAY_ERROR("E6003", "imports", "directory '%s' contains no .gray files") \
+    GRAY_ERROR("E6003", "imports", "directory '%s' contains no source files") \
     GRAY_ERROR("E6004", "imports", "cannot import own module directory") \
     GRAY_ERROR("E6005", "imports", "cannot import the program's entry point") \
     GRAY_ERROR("E6006", "imports", "module name derived from the import path is not a usable identifier") \
@@ -397,7 +397,8 @@
     GRAY_ERROR("E6013", "imports", "C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.'") \
     GRAY_ERROR("E6014", "imports", "malformed import statement") \
     GRAY_ERROR("E6015", "imports", "C header '%s' could not be found for the current target") \
-    GRAY_ERROR("E6016", "imports", "C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types")
+    GRAY_ERROR("E6016", "imports", "C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types") \
+    GRAY_ERROR("E6017", "imports", "import '%s' matches both a .gray and a .grayscale file; import one by its full file name")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \

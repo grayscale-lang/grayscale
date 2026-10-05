@@ -12,6 +12,7 @@
 #include "../typechecker/types.h"
 #include "../util/constants.h"
 #include "../util/reserved.h"
+#include "../util/source_extension.h"
 #include "../util/xalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -2366,15 +2367,17 @@ static AstNode *parse_import_statement(Parser *parser) {
                 const char *slash = strrchr(item->path, '/');
                 const char *base = slash ? slash + 1 : item->path;
                 size_t base_length = strlen(base);
-                if (base_length > 5 && strcmp(base + base_length - 5, ".gray") == 0) {
-                    /* Strip .gray extension: "helpers.gray" → "helpers" */
-                    char *module_name = arena_allocate(parser->arena, base_length - 4);
-                    memcpy(module_name, base, base_length - 5);
-                    module_name[base_length - 5] = '\0';
+                size_t extension_length = gray_source_extension_length(base);
+                if (extension_length > 0) {
+                    /* Strip the source extension: "helpers.gray" → "helpers" */
+                    size_t stem_length = base_length - extension_length;
+                    char *module_name = arena_allocate(parser->arena, stem_length + 1);
+                    memcpy(module_name, base, stem_length);
+                    module_name[stem_length] = '\0';
                     item->alias = module_name;
                     item->module = module_name;
                 } else if (base_length > 0) {
-                    /* No .gray extension: use last path component as module name */
+                    /* No source extension: use last path component as module name */
                     char *module_name = arena_allocate(parser->arena, base_length + 1);
                     memcpy(module_name, base, base_length);
                     module_name[base_length] = '\0';

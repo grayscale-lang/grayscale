@@ -22,11 +22,10 @@
 #include "../lexer/lexer.h"
 #include "../util/constants.h"
 #include "../util/platform.h"
+#include "../util/source_extension.h"
 #include "../util/xalloc.h"
 
 #define PATH_BUFFER_SIZE 2048
-#define GRAY_EXTENSION      ".gray"
-#define GRAY_EXTENSION_LENGTH  5
 
 
 /* Import cache: track already-imported files to avoid duplicates and cycles.
@@ -167,6 +166,26 @@ static void mark_imported(const char *path) {
     mark_imported_from(path, NULL, NULL, false);
 }
 
+/* Copies `name` into `out` without its source extension, if it has one. */
+static void copy_without_source_extension(char *out, size_t out_size, const char *name) {
+    size_t stem_length = strlen(name) - gray_source_extension_length(name);
+    snprintf(out, out_size, "%.*s", (int)stem_length, name);
+}
+
+/* Appends each source extension to an extensionless `path` and counts the
+ * files that exist. The first match is written to `out`. */
+static int find_source_files(const char *path, char out[PATH_BUFFER_SIZE]) {
+    int match_count = 0;
+    for (int index = 0; index < GRAY_SOURCE_EXTENSION_COUNT; index++) {
+        char candidate[PATH_BUFFER_SIZE];
+        snprintf(candidate, sizeof(candidate), "%s%s", path, GRAY_SOURCE_EXTENSIONS[index]);
+        if (!gray_is_file(candidate)) continue;
+        if (match_count == 0) snprintf(out, PATH_BUFFER_SIZE, "%s", candidate);
+        match_count++;
+    }
+    return match_count;
+}
+
 /* qsort comparator over the fixed-width path buffers scan_gray_files fills. */
 static int gray_path_compare(const void *left, const void *right) {
     return strcmp((const char *)left, (const char *)right);
@@ -183,9 +202,7 @@ struct gray_file_scan {
 static bool collect_gray_file(const char *name, void *context) {
     struct gray_file_scan *scan = context;
     if (name[0] == '.') return true; /* skip hidden files */
-    size_t name_length = strlen(name);
-    if (name_length < GRAY_EXTENSION_LENGTH + 1 || strcmp(name + name_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) != 0)
-        return true;
+    if (gray_source_extension_length(name) == 0) return true;
     ARENA_GROW(scan->arena, scan->paths, scan->count, scan->capacity);
     gray_path_join(scan->paths[scan->count], PATH_BUFFER_SIZE, scan->directory_path, name);
     scan->count++;
@@ -228,13 +245,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
         /* Derive main file's module name for circular import resolution */
         const char *main_base = gray_path_basename(input_file);
         char main_module_name[MESSAGE_BUFFER_SIZE];
-        size_t main_base_length = strlen(main_base);
-        if (main_base_length > GRAY_EXTENSION_LENGTH && strcmp(main_base + main_base_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0) {
-            memcpy(main_module_name, main_base, main_base_length - GRAY_EXTENSION_LENGTH);
-            main_module_name[main_base_length - GRAY_EXTENSION_LENGTH] = '\0';
-        } else {
-            snprintf(main_module_name, sizeof(main_module_name), "%s", main_base);
-        }
+        copy_without_source_extension(main_module_name, sizeof(main_module_name), main_base);
 
         /* Determine the directory of the input file */
         char input_directory[PATH_BUFFER_SIZE];
@@ -341,18 +352,23 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                 int file_count = 0;
                 bool is_directory_import = false;
 
-                size_t import_path_length = strlen(import_path);
-                if (import_path_length >= GRAY_EXTENSION_LENGTH && strcmp(import_path + import_path_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0) {
-                    /* Case 1: explicit .gray path — direct file import */
+                if (gray_source_extension_length(import_path) > 0) {
+                    /* Case 1: explicit source file path — direct file import */
                     file_list = arena_allocate(arena, sizeof(char[PATH_BUFFER_SIZE]));
                     strncpy(file_list[0], import_path, PATH_BUFFER_SIZE - 1);
                     file_list[0][PATH_BUFFER_SIZE - 1] = '\0';
                     file_count = 1;
                 } else {
-                    /* Case 2: try appending .gray (extensionless file import) */
+                    /* Case 2: try appending each source extension (extensionless file import) */
                     char candidate_file[PATH_BUFFER_SIZE];
-                    snprintf(candidate_file, sizeof(candidate_file), "%s.gray", import_path);
-                    if (gray_is_file(candidate_file)) {
+                    int candidate_count = find_source_files(import_path, candidate_file);
+                    if (candidate_count > 1) {
+                        diagnostic_error_code_formatted(diagnostics, "E6017",
+                            statement_file, import_statement->token.line, import_statement->token.column, 0,
+                            item->path);
+                        continue;
+                    }
+                    if (candidate_count == 1) {
                         file_list = arena_allocate(arena, sizeof(char[PATH_BUFFER_SIZE]));
                         strncpy(file_list[0], candidate_file, PATH_BUFFER_SIZE - 1);
                         file_list[0][PATH_BUFFER_SIZE - 1] = '\0';
@@ -386,7 +402,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                         is_directory_import = true;
                         if (file_count == 0) {
                             char message[MESSAGE_BUFFER_LARGE_SIZE];
-                            snprintf(message, sizeof(message), "directory '%s' contains no .gray files", item->path);
+                            snprintf(message, sizeof(message), "directory '%s' contains no source files", item->path);
                             diagnostic_error_message(diagnostics, "E6003", strdup(message),
                                 statement_file, import_statement->token.line, import_statement->token.column, 0);
                             continue;
@@ -421,13 +437,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                 }
 
                 char module_name_buffer[MESSAGE_BUFFER_SIZE];
-                size_t module_base_length = strlen(module_base);
-                if (module_base_length > GRAY_EXTENSION_LENGTH && strcmp(module_base + module_base_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0) {
-                    memcpy(module_name_buffer, module_base, module_base_length - GRAY_EXTENSION_LENGTH);
-                    module_name_buffer[module_base_length - GRAY_EXTENSION_LENGTH] = '\0';
-                } else {
-                    snprintf(module_name_buffer, sizeof(module_name_buffer), "%s", module_base);
-                }
+                copy_without_source_extension(module_name_buffer, sizeof(module_name_buffer), module_base);
                 const char *module_name = item->alias ? item->alias : arena_copy_string(arena, module_name_buffer);
 
                 /* Normalize import_path so diamond deps resolve to the same canonical path */
@@ -678,13 +688,12 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                                 snprintf(transitive_path, sizeof(transitive_path), "%s%s", importing_directory, transitive_relative_path);
 
                                 /* Check if it resolves to a file inside the same directory */
-                                size_t transitive_path_length = strlen(transitive_path);
                                 bool is_sibling = false;
-                                /* Try with .gray extension if not already present */
+                                /* Try with a source extension if not already present */
                                 char transitive_path_gray[PATH_BUFFER_SIZE];
                                 const char *transitive_path_check = transitive_path;
-                                if (transitive_path_length < GRAY_EXTENSION_LENGTH || strcmp(transitive_path + transitive_path_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) != 0) {
-                                    snprintf(transitive_path_gray, sizeof(transitive_path_gray), "%s.gray", transitive_path);
+                                if (gray_source_extension_length(transitive_path) == 0 &&
+                                    find_source_files(transitive_path, transitive_path_gray) > 0) {
                                     transitive_path_check = transitive_path_gray;
                                 }
                                 char *normalized_transitive_path = gray_realpath(transitive_path_check);
@@ -736,13 +745,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                                         /* Derive alias from path (filename without .gray) */
                                         const char *sibling_base = gray_path_basename(transitive_relative_path);
                                         char sibling_name_buffer[MESSAGE_BUFFER_SIZE];
-                                        size_t sibling_base_length = strlen(sibling_base);
-                                        if (sibling_base_length > GRAY_EXTENSION_LENGTH && strcmp(sibling_base + sibling_base_length - GRAY_EXTENSION_LENGTH, GRAY_EXTENSION) == 0) {
-                                            memcpy(sibling_name_buffer, sibling_base, sibling_base_length - GRAY_EXTENSION_LENGTH);
-                                            sibling_name_buffer[sibling_base_length - GRAY_EXTENSION_LENGTH] = '\0';
-                                        } else {
-                                            snprintf(sibling_name_buffer, sizeof(sibling_name_buffer), "%s", sibling_base);
-                                        }
+                                        copy_without_source_extension(sibling_name_buffer, sizeof(sibling_name_buffer), sibling_base);
                                         sibling_alias = arena_copy_string(arena, sibling_name_buffer);
                                     }
                                     /* Record the sibling's own name as an alias
