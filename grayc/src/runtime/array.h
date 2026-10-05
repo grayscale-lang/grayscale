@@ -166,21 +166,4 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
         (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
 
-/* Create from typed literal — helper macros */
-#define GRAY_ARRAY_FROM_I64(arena, ...) \
-    gray_array_from((arena), (int64_t[]){__VA_ARGS__}, sizeof(int64_t), \
-        sizeof((int64_t[]){__VA_ARGS__}) / sizeof(int64_t), GRAY_ELEM_I64)
-
-#define GRAY_ARRAY_FROM_F64(arena, ...) \
-    gray_array_from((arena), (double[]){__VA_ARGS__}, sizeof(double), \
-        sizeof((double[]){__VA_ARGS__}) / sizeof(double), GRAY_ELEM_F64)
-
-#define GRAY_ARRAY_FROM_BOOL(arena, ...) \
-    gray_array_from((arena), (bool[]){__VA_ARGS__}, sizeof(bool), \
-        sizeof((bool[]){__VA_ARGS__}) / sizeof(bool), GRAY_ELEM_BOOL)
-
-#define GRAY_ARRAY_FROM_STR(arena, ...) \
-    gray_array_from((arena), (GrayString[]){__VA_ARGS__}, sizeof(GrayString), \
-        sizeof((GrayString[]){__VA_ARGS__}) / sizeof(GrayString), GRAY_ELEM_STRING)
-
 #endif
