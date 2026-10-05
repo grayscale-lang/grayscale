@@ -9788,7 +9788,9 @@ static bool emit_element_write_back_call(CodeGen *codegen, AstNode *node, AstNod
         store->data.assign.target = originals[s];
         store->data.assign.value = temporaries[s];
         store->data.assign.operator = TOKEN_ASSIGN;
+        codegen->is_element_write_back = true;
         emit_assign_statement(codegen, store);
+        codegen->is_element_write_back = false;
     }
     for (int s = 0; s < slot_count; s++) {
         node->data.call.arguments[slots[s]] = originals[s];
@@ -10577,6 +10579,10 @@ static void emit_heap_escaped_field_assign(CodeGen *codegen, AstNode *node, cons
     emit(codegen, "; gray_default_arena = _esc_h; }");
 }
 
+static const char *array_store_macro(CodeGen *codegen) {
+    return codegen->is_element_write_back ? "GRAY_ARRAY_STORE_BACK_AT" : "GRAY_ARRAY_SET_AT";
+}
+
 /* The element store shared by every arr[i] = v target once the caller has
  * bound the array: `GRAY_ARRAY_SET_AT(<array_ref>, ...)` with the value for
  * '=' or a string '+=' concat, closing the caller's `{` block. array_ref is
@@ -10585,7 +10591,7 @@ static void emit_array_element_store(CodeGen *codegen, AstNode *node, GrayType *
                                      const char *c_element_type, bool is_compound, const char *array_reference) {
     AstNode *index_node = node->data.assign.target->data.index_expression.index;
     TokenType assign_operator = node->data.assign.operator;
-    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(%s, %s, ", array_reference, c_element_type);
+    emit_formatted(codegen, "%s(%s, %s, ", array_store_macro(codegen), array_reference, c_element_type);
     emit_expression(codegen, index_node);
     emit(codegen, ", ");
     if (is_compound && strcmp(c_element_type, "GrayString") == 0 && assign_operator == TOKEN_PLUS_ASSIGN) {
@@ -10689,7 +10695,7 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
         codegen->loop_scope_depth > 0) {
         emit(codegen, "{ GrayString _esc_v = ");
         emit_expression(codegen, node->data.assign.value);
-        emit(codegen, "; GRAY_ARRAY_SET_AT(");
+        emit_formatted(codegen, "; %s(", array_store_macro(codegen));
         emit_expression(codegen, left);
         emit(codegen, ", GrayString, ");
         emit_expression(codegen, node->data.assign.target->data.index_expression.index);
@@ -10697,7 +10703,7 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
             codegen->file, node->token.line);
         return;
     }
-    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
+    emit_formatted(codegen, "%s(", array_store_macro(codegen));
     emit_expression(codegen, left);
     emit_formatted(codegen, ", %s, ", c_element_type);
     emit_expression(codegen, node->data.assign.target->data.index_expression.index);

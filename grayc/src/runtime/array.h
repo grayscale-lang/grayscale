@@ -142,9 +142,9 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
             gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
         (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
-#define GRAY_ARRAY_SET_AT(array, type, index, value, file, line) do { \
+#define GRAY_ARRAY_STORE_AT_IMPL(array, type, index, value, file, line, check_iterating) do { \
         GrayArray *gray_macro_array_ = &(array); int64_t gray_macro_index_ = (index); type gray_macro_value_ = (value); \
-        if (__builtin_expect(__atomic_load_n(&gray_macro_array_->iterating, __ATOMIC_RELAXED) > 0, 0)) \
+        if ((check_iterating) && __builtin_expect(__atomic_load_n(&gray_macro_array_->iterating, __ATOMIC_RELAXED) > 0, 0)) \
             gray_array_iterating_panic((file), (line)); \
         if (__builtin_expect(gray_macro_index_ < 0 || gray_macro_index_ >= gray_macro_array_->len, 0)) \
             gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
@@ -152,6 +152,13 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
         if (gray_macro_array_->elem_size == (int32_t)sizeof(type)) memcpy(gray_macro_element_, &gray_macro_value_, sizeof(type)); \
         else memcpy(gray_macro_element_, &gray_macro_value_, (size_t)gray_macro_array_->elem_size); \
     } while(0)
+#define GRAY_ARRAY_SET_AT(array, type, index, value, file, line) \
+    GRAY_ARRAY_STORE_AT_IMPL(array, type, index, value, file, line, 1)
+/* The store that puts a `&`-parameter element temporary back: the callee was
+ * allowed to mutate the element in place, so the store skips the
+ * no-mutation-during-for_each check SET_AT makes. */
+#define GRAY_ARRAY_STORE_BACK_AT(array, type, index, value, file, line) \
+    GRAY_ARRAY_STORE_AT_IMPL(array, type, index, value, file, line, 0)
 
 /* Pointer to element i for a read-modify-write (`xs[i] += v`), making the
  * same no-mutation-during-for_each and bounds checks GRAY_ARRAY_SET_AT

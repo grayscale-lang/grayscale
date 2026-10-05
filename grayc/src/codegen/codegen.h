@@ -62,6 +62,10 @@ typedef struct {
      * scoped loop and container mutations need escape-copy logic. */
     int loop_scope_depth;
 
+    /* True while emitting the store that puts a `&`-parameter element
+     * temporary back; that store skips the for_each mutation check. */
+    bool is_element_write_back;
+
     /* True while emitting the body of a loop that opens no iteration arena,
      * so break/continue have no arena pointer to restore. */
     bool is_in_no_arena_loop;
