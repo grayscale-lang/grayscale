@@ -1,0 +1,55 @@
+/*
+ * call_argument_order_range_insert_at.gray - range() and arrays.insert_at()
+ * evaluate their arguments left to right.
+ */
+
+import @arrays
+
+mut trace string = ""
+
+do tag(name string) -> i64 {
+    trace = "${trace}${name}"
+    return 1
+}
+
+do wide_tag(name string) -> i128 {
+    trace = "${trace}${name}"
+    return 1
+}
+
+do check(label string, expected string, passed ^i64, failed ^i64) {
+    if trace == expected {
+        println("  [PASS] ${label}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${label}: ${trace}")
+        failed^ += 1
+    }
+    trace = ""
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    for i in range(tag("a"), tag("b"), tag("c")) { break }
+    check("range(start, end, step)", "abc", addr(passed), addr(failed))
+
+    for i in range(tag("s"), tag("e")) { break }
+    check("range(start, end)", "se", addr(passed), addr(failed))
+
+    for i in range(wide_tag("a"), wide_tag("b"), wide_tag("c")) { break }
+    check("wide range(start, end, step)", "abc", addr(passed), addr(failed))
+
+    mut arr [i64] = {1, 2, 3}
+    arrays.insert_at(arr, tag("index"), tag("value"))
+    check("arrays.insert_at(arr, index, value)", "indexvalue", addr(passed), addr(failed))
+
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

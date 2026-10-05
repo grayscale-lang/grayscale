@@ -7734,7 +7734,9 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         /* [f32] elements are stored packed as 4-byte float. */
         if (insert_element_type_name && strcmp(insert_element_type_name, "f32") == 0) c_element_type = "float";
         const char *insert_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-        emit_formatted(codegen, "{ %s _iv = ", c_element_type);
+        emit(codegen, "{ __auto_type _ii = ");
+        emit_expression(codegen, node->data.call.arguments[1]);
+        emit_formatted(codegen, "; %s _iv = ", c_element_type);
         emit_expression(codegen, node->data.call.arguments[2]);
         emit(codegen, "; ");
         bool is_insert_string = (value_type && value_type->kind == TYPE_KIND_STRING) ||
@@ -7742,9 +7744,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         emit_escape_staged_value(codegen, node->data.call.arguments[2], insert_element_type_name, is_insert_string, "_iv", insert_arena);
         emit_formatted(codegen, "gray_arrays_insert_at(%s, ", insert_arena);
         emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &_iv); }");
+        emit(codegen, ", _ii, &_iv); }");
         return true;
     }
     if (strcmp(function_name, "remove_at") == 0 && node->data.call.argument_count == 2) {
@@ -11998,6 +11998,25 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_a
     emit_formatted(codegen, "gray_default_arena = _saved_arena_%d;\n", depth);
 }
 
+/* A range's start is the first argument, so it runs before the end and step,
+ * which the loop emits as statements ahead of the `for`. Bind a start that is
+ * not a literal to a temporary first and return its id, or -1 when there is
+ * nothing to bind. Continues at the current indent. */
+static int hoist_range_start(CodeGen *codegen, AstNode *start, const char *wide_prefix, const char *wide) {
+    if (!start || start->kind == NODE_INTEGER_LITERAL) return -1;
+    int start_id = codegen_next_id(codegen);
+    if (wide_prefix) {
+        emit_formatted(codegen, "%s _gray_start_%d = ", wide_prefix, start_id);
+        if (!emit_wide_integer_coerced(codegen, wide, start)) emit_expression(codegen, start);
+    } else {
+        emit_formatted(codegen, "int64_t _gray_start_%d = ", start_id);
+        emit_expression(codegen, start);
+    }
+    emit(codegen, ";\n");
+    emit_indent(codegen);
+    return start_id;
+}
+
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     bool no_arena = block_allocation_free(codegen, node->data.for_statement.body);
     emit_loop_arena_prologue(codegen, no_arena);
@@ -12029,6 +12048,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             const char *prefix = wide_integer_prefix(wide);
             AstNode *start = iterable_node->data.range_expression.start;
             AstNode *step = iterable_node->data.range_expression.step;
+            int wide_start_id = hoist_range_start(codegen, start, prefix, wide);
             int range_end_id = codegen_next_id(codegen);
             emit_formatted(codegen, "%s _gray_end_%d = ", prefix, range_end_id);
             if (!emit_wide_integer_coerced(codegen, wide, iterable_node->data.range_expression.end))
@@ -12048,6 +12068,8 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "for (%s %s = ", prefix, variable_name);
             if (!start) {
                 emit_formatted(codegen, "%s_from_u64(0)", prefix);
+            } else if (wide_start_id >= 0) {
+                emit_formatted(codegen, "_gray_start_%d", wide_start_id);
             } else if (!emit_wide_integer_coerced(codegen, wide, start)) {
                 emit_expression(codegen, start);
             }
@@ -12089,17 +12111,19 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 /* Variable step: store step and end once, emit runtime direction ternary. */
                 int range_step_id = codegen_next_id(codegen);
                 /* emit_indent already called above — use it for the variable declaration line */
-                emit_formatted(codegen, "int64_t _gray_step_%d = ", range_step_id);
-                emit_expression(codegen, iterable_node->data.range_expression.step);
-                emit_formatted(codegen, ", _gray_end_%d = ", range_step_id);
+                int start_id = hoist_range_start(codegen, iterable_node->data.range_expression.start, NULL, NULL);
+                emit_formatted(codegen, "int64_t _gray_end_%d = ", range_step_id);
                 emit_expression(codegen, iterable_node->data.range_expression.end);
+                emit_formatted(codegen, ", _gray_step_%d = ", range_step_id);
+                emit_expression(codegen, iterable_node->data.range_expression.step);
                 emit(codegen, ";\n");
                 /* P0090: zero step at runtime is always a panic */
                 emit_indent(codegen);
                 emit_formatted(codegen, "if (_gray_step_%d == 0) { %s; }\n", range_step_id, panic_call(codegen, node, "P0090", ""));
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", variable_name);
-                emit_expression(codegen, iterable_node->data.range_expression.start);
+                if (start_id >= 0) emit_formatted(codegen, "_gray_start_%d", start_id);
+                else emit_expression(codegen, iterable_node->data.range_expression.start);
                 emit_formatted(codegen, "; _gray_step_%d > 0 ? %s < _gray_end_%d : %s > _gray_end_%d", range_step_id, variable_name, range_step_id, variable_name, range_step_id);
                 emit_formatted(codegen, "; %s = gray_add_check(%s, _gray_step_%d, \"%s\", %d)", variable_name, variable_name, range_step_id, codegen->file, node->token.line);
             } else if (zero_step) {
@@ -12112,6 +12136,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                  * the loop, not on every iteration. */
                 AstNode *step = iterable_node->data.range_expression.step;
                 bool hoist_step = step && step->kind != NODE_INTEGER_LITERAL;
+                int start_id = hoist_range_start(codegen, iterable_node->data.range_expression.start, NULL, NULL);
                 int iterator_end_id = codegen_next_id(codegen);
                 emit_formatted(codegen, "__auto_type _gray_end_%d = ", iterator_end_id);
                 emit_expression(codegen, iterable_node->data.range_expression.end);
@@ -12124,7 +12149,8 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 }
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", variable_name);
-                emit_expression(codegen, iterable_node->data.range_expression.start);
+                if (start_id >= 0) emit_formatted(codegen, "_gray_start_%d", start_id);
+                else emit_expression(codegen, iterable_node->data.range_expression.start);
                 emit_formatted(codegen, "; %s %s _gray_end_%d; %s", variable_name, is_negative_step ? ">" : "<", iterator_end_id, variable_name);
                 if (step) {
                     emit_formatted(codegen, " = gray_add_check(%s, ", variable_name);
