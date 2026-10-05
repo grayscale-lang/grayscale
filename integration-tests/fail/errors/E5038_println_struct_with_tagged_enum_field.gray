@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5038 - println of a struct that holds a tagged enum
+ */
+// expect-error: E5038
+// expect-error-count: 1
+
+const Sh enum {
+    Circle(f64)
+    Empty
+}
+
+const W struct {
+    sh Sh
+    n i64
+}
+
+do main() {
+    mut w W = W{sh: Sh.Empty, n: 1}
+    println(w)
+}

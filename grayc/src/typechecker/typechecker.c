@@ -8740,6 +8740,28 @@ static void reject_unstable_address_target(TypeChecker *checker, AstNode *node,
     }
 }
 
+/* The tagged enum a printed value reaches through struct fields, array
+ * elements or map values, or NULL. A pointer prints as an address and is not
+ * followed; the depth bound ends a struct that contains itself by value. */
+static const char *tagged_enum_in_printed_type(TypeChecker *checker, GrayType *type, int depth) {
+    if (!type || depth > 8) return NULL;
+    if (type->kind == TYPE_KIND_ENUM)
+        return type->name && typechecker_enum_is_tagged(checker, type->name) ? type->name : NULL;
+    if (type->kind == TYPE_KIND_ARRAY && type->element_type)
+        return tagged_enum_in_printed_type(checker, typechecker_type_from_name(checker, type->element_type), depth + 1);
+    if (type->kind == TYPE_KIND_MAP && type->value_type)
+        return tagged_enum_in_printed_type(checker, typechecker_type_from_name(checker, type->value_type), depth + 1);
+    if (type->kind == TYPE_KIND_STRUCT && type->name) {
+        StructInfo *struct_info = find_struct(checker, type->name);
+        if (!struct_info) return NULL;
+        for (int i = 0; i < struct_info->field_count; i++) {
+            const char *found = tagged_enum_in_printed_type(checker, struct_info->field_types[i], depth + 1);
+            if (found) return found;
+        }
+    }
+    return NULL;
+}
+
 /* Reject an argument to print/println/eprint/eprintln that is not a printable
  * value. Does nothing for a call with no arguments; the arity check is the
  * caller's. */
@@ -8759,6 +8781,13 @@ static void check_print_argument(TypeChecker *checker, AstNode *node, const char
         diagnostic_error_code_formatted(checker->diagnostics, "E5038",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             enum_display_name(checker, argument_type->name), function_name);
+    }
+    if (argument_type->kind != TYPE_KIND_ENUM) {
+        const char *nested_tagged_enum = tagged_enum_in_printed_type(checker, argument_type, 0);
+        if (nested_tagged_enum)
+            diagnostic_error_code_formatted(checker->diagnostics, "E5038",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                enum_display_name(checker, nested_tagged_enum), function_name);
     }
     char context[TYPE_NAME_MAX];
     snprintf(context, sizeof(context), "'%s()' argument", function_name);

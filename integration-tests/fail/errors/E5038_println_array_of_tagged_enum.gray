@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5038 - println of an array of a tagged enum
+ */
+// expect-error: E5038
+// expect-error-count: 1
+
+const Sh enum {
+    Circle(f64)
+    Empty
+}
+
+do main() {
+    mut arr [Sh] = {Sh.Empty}
+    println(arr)
+}
