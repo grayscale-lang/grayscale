@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3040 - returning a multi-value call from a multi-value function
+ * Expected: one error, not a second E3188 for the same return
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do pair() -> (i64, i64) {
+    return 1, 2
+}
+
+do forward() -> (i64, i64) {
+    return pair()
+}
+
+do main() {
+    mut a, b = forward()
+    println("${a} ${b}")
+}

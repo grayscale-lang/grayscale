@@ -15537,9 +15537,12 @@ static const char *return_value_is_type_argument(TypeChecker *checker,
 }
 
 static void check_return_statement(TypeChecker *checker, AstNode *node) {
+    bool is_multi_value_rejected = false;
     for (int i = 0; i < node->data.return_statement.count; i++) {
         /* E3040: multi-return call in single-value return position */
+        int errors_before_value = diagnostic_error_count(checker->diagnostics);
         reject_multi_return_in_single_position(checker, node->data.return_statement.values[i]);
+        if (diagnostic_error_count(checker->diagnostics) > errors_before_value) is_multi_value_rejected = true;
         /* Each value is stored into its return slot. */
         GrayType *slot = i < checker->current_return_count ? checker->current_return_types[i] : NULL;
         check_expression_as(checker, node->data.return_statement.values[i], slot);
@@ -15664,7 +15667,9 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
                 is_or_return_synthetic = true;
             }
         }
-        if (!is_or_return_synthetic) {
+        /* A multi-value call already reported is the cause of the count
+         * mismatch, not a second mistake. */
+        if (!is_or_return_synthetic && !is_multi_value_rejected) {
             diagnostic_error_code_formatted(checker->diagnostics, "E3188",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 checker->current_return_count, node->data.return_statement.count);
