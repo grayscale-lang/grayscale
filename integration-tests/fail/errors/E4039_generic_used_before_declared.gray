@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4039 - a generic parameter must be declared before any
+ * parameter whose type uses its name.
+ */
+// expect-error: E4039
+// expect-error-count: 1
+
+do identity(x kind, kind generic) -> kind {
+    return x
+}
+
+do main() {
+    println(identity(1, i64))
+}

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2096 - 'generic' is not an enum variant payload type.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+const Shape enum {
+    Circle(generic)
+    Empty
+}
+
+do main() {}

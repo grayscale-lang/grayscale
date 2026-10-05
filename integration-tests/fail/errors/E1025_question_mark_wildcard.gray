@@ -1,0 +1,13 @@
+/*
+ * Error Test: E1025 - '?' is not part of the language. A type parameter is
+ * declared with 'generic'.
+ * Expected: "this symbol is not part of the language"
+ */
+// expect-error: E1025
+// expect-error-count: 1
+
+do identity(x ?) {
+    println(x)
+}
+
+do main() {}

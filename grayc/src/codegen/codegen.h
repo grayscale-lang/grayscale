@@ -75,6 +75,11 @@ typedef struct {
      * order because emission and several prefix-match scans depend on it. */
     AstNode **functions_by_name;
     bool is_functions_by_name_built;
+    /* The generic function being emitted under its mangled instantiation name,
+     * and the name it is indexed under. A call to the function from its own
+     * body (recursion) looks it up by that original name. */
+    AstNode *renamed_function;
+    const char *renamed_function_original_name;
 
     /* Type table from type checker (for type-aware codegen) */
     TypeTable *type_table;
@@ -178,12 +183,11 @@ typedef struct {
     int type_alias_count;
     int type_alias_capacity;
 
-    /* Active wildcard binding (). Set while emitting a specialised
-     * instantiation of a generic function so type-string lookups can
-     * substitute "?" with a concrete type name, and so the mangled
-     * function name can be appended at call sites. NULL outside a
-     * generic instantiation. */
-    const char *wildcard_binding;
+    /* The `generic` parameters of the function instantiation being emitted and
+     * the types they are bound to, so type spellings and type-name arguments
+     * resolve to concrete types and the mangled function name can be appended
+     * at call sites. Empty outside a generic instantiation. */
+    GenericBindings generics;
 
     /* Side channel for typed-func call-through: when the callee is a
      * variable typed func(...), the cast emitter stashes the parsed

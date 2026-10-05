@@ -1,5 +1,5 @@
 /*
- * generic-type-arg-spelling-parity - a <?> type argument accepts any type
+ * generic-type-arg-spelling-parity - a `generic` type argument accepts any type
  * name, not only a struct. Primitives went to the qualified and bare
  * spellings of the same call to pin that both still agree. A
  * module-qualified type name (types.Actor) is accepted the same way.

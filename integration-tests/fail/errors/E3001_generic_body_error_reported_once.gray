@@ -4,21 +4,22 @@
  * Error Test: E3001 - a type error inside a generic function body is
  * reported once, at the offending line, however many call sites instantiate
  * the function, and without an "in instantiation of" wrapper.
- * Covers both the '?' wildcard and the 'T <?>' forms.
+ * Covers a generic parameter used as a value type and one used only as a
+ * type argument.
  */
 
-do wrap(s ?) -> i64 {
+do wrap(kind generic, s kind) -> i64 {
     mut v i64 = "not an i64"
     return v
 }
 
-do first(T <?>) -> i64 {
+do first(kind generic) -> i64 {
     mut v i64 = "also not an i64"
     return v
 }
 
 do main() {
-    println("${wrap(42)}")
-    println("${wrap("x")}")
+    println("${wrap(i64, 42)}")
+    println("${wrap(string, "x")}")
     println("${first(i64)}")
 }

@@ -1,0 +1,9 @@
+/*
+ * Error Test: E2096 - 'generic' is not a global variable type.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+const limit generic = 10
+
+do main() {}

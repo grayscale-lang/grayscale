@@ -1,34 +1,31 @@
 /*
- * wildcard_nested_call.gray - A wildcard function calling another
- * wildcard function propagates the concrete binding.
+ * generic_nested_call.gray - A generic function calling another generic
+ * function passes its own type argument on.
  *
- * `double(x ?) ->
- * ? { return add(x, x) }` where `add` is also generic emitted
- * `gray_fn_add__unknown` because the inner call's binding wasn't
- * resolved through the outer's active binding. Fixed in both the
- * typechecker (re-check pass bypass + unknown rejection) and
- * codegen (wildcard_binding fallback for inner calls).
+ * `double` calls `add(kind, x, x)`; the call has to resolve `kind` through
+ * the instantiation being emitted, or codegen would name a specialization of
+ * `add` that was never generated.
  */
 
-do add(a ?, b ?) -> ? {
+do add(kind generic, a kind, b kind) -> kind {
     return a + b
 }
 
-do double(x ?) -> ? {
-    return add(x, x)
+do double(kind generic, x kind) -> kind {
+    return add(kind, x, x)
 }
 
-do triple(x ?) -> ? {
-    return add(add(x, x), x)
+do triple(kind generic, x kind) -> kind {
+    return add(kind, add(kind, x, x), x)
 }
 
 do main() {
-    println("=== Wildcard Nested Call Test ===")
+    println("=== Generic Nested Call Test ===")
     mut passed i64 = 0
     mut failed i64 = 0
 
     // -- i64 binding --
-    if double(5) == 10 {
+    if double(i64, 5) == 10 {
         println("  [PASS] double(5) = 10")
         passed += 1
     } otherwise {
@@ -37,7 +34,7 @@ do main() {
     }
 
     // -- f64 binding --
-    if double(1.5) == 3.0 {
+    if double(f64, 1.5) == 3.0 {
         println("  [PASS] double(1.5) = 3.0")
         passed += 1
     } otherwise {
@@ -46,7 +43,7 @@ do main() {
     }
 
     // -- deeper nesting: add(add(x,x), x) --
-    if triple(3) == 9 {
+    if triple(i64, 3) == 9 {
         println("  [PASS] triple(3) = 9")
         passed += 1
     } otherwise {

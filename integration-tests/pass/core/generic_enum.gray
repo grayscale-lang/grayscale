@@ -1,5 +1,5 @@
 /*
- * Test: enum values flow through wildcard (?) generic functions and keep
+ * Test: enum values flow through generic functions and keep
  * their identity for equality, inequality, assignment, and interpolation.
  */
 
@@ -9,11 +9,11 @@ const Color enum {
     BLUE
 }
 
-do identity(x ?) -> ? {
+do identity(kind generic, x kind) -> kind {
     return x
 }
 
-do pick(a ?, b ?, flag bool) -> ? {
+do pick(kind generic, a kind, b kind, flag bool) -> kind {
     if flag {
         return a
     }
@@ -24,48 +24,48 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    if identity(Color.RED) == Color.RED {
+    if identity(Color, Color.RED) == Color.RED {
         passed = passed + 1
     } otherwise {
         println("[FAIL] identity preserves enum equality")
         failed = failed + 1
     }
 
-    if identity(Color.RED) != Color.BLUE {
+    if identity(Color, Color.RED) != Color.BLUE {
         passed = passed + 1
     } otherwise {
         println("[FAIL] identity preserves enum inequality")
         failed = failed + 1
     }
 
-    mut c = identity(Color.GREEN)
+    mut c = identity(Color, Color.GREEN)
     if c == Color.GREEN {
         passed = passed + 1
     } otherwise {
-        println("[FAIL] wildcard result assigned to a variable")
+        println("[FAIL] generic result assigned to a variable")
         failed = failed + 1
     }
 
-    if pick(Color.RED, Color.BLUE, true) == Color.RED {
+    if pick(Color, Color.RED, Color.BLUE, true) == Color.RED {
         passed = passed + 1
     } otherwise {
         println("[FAIL] pick returns the selected enum")
         failed = failed + 1
     }
 
-    if pick(Color.RED, Color.BLUE, false) == Color.BLUE {
+    if pick(Color, Color.RED, Color.BLUE, false) == Color.BLUE {
         passed = passed + 1
     } otherwise {
         println("[FAIL] pick returns the other enum")
         failed = failed + 1
     }
 
-    mut c2 = identity(Color.RED)
-    mut c3 = identity(c2)
+    mut c2 = identity(Color, Color.RED)
+    mut c3 = identity(Color, c2)
     if c3 == Color.RED {
         passed = passed + 1
     } otherwise {
-        println("[FAIL] wildcard result fed back through identity")
+        println("[FAIL] generic result fed back through identity")
         failed = failed + 1
     }
 

@@ -2264,8 +2264,8 @@ static void test_e2e_generic_type_param(void) {
         "const Box struct {\n"
         "  value i64\n"
         "}\n"
-        "do make_it(T <?>) -> ^? {\n"
-        "  return new(T)\n"
+        "do make_it(kind generic) -> ^kind {\n"
+        "  return new(kind)\n"
         "}\n"
         "do main() {\n"
         "  mut b = make_it(Box)\n"
@@ -2274,6 +2274,33 @@ static void test_e2e_generic_type_param(void) {
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "7");
+}
+
+static void test_e2e_generic_multiple_type_parameters(void) {
+    char *output = compile_and_run(
+        ""
+        "do swap(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (b_kind, a_kind) {\n"
+        "  return b, a\n"
+        "}\n"
+        "do main() {\n"
+        "  mut s, n = swap(i64, string, 7, \"seven\")\n"
+        "  println(s)\n"
+        "  println(n)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "seven\n7");
+}
+
+static void test_e2e_generic_named_type_argument(void) {
+    char *output = compile_and_run(
+        ""
+        "do identity(kind generic, x kind) -> kind { return x }\n"
+        "do main() {\n"
+        "  println(identity(x: 5, kind: i64))\n"
+        "  println(identity(string, \"hi\"))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "5\nhi");
 }
 
 /* Type aliases (STANDARD 3.5) */
@@ -3209,6 +3236,8 @@ int main(void) {
     RUN_TEST(test_e2e_tagged_enum);
     RUN_TEST(test_e2e_struct_field_defaults);
     RUN_TEST(test_e2e_generic_type_param);
+    RUN_TEST(test_e2e_generic_multiple_type_parameters);
+    RUN_TEST(test_e2e_generic_named_type_argument);
 
     /* Type aliases */
     RUN_TEST(test_e2e_type_alias);

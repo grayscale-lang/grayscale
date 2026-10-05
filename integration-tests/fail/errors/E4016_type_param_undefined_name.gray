@@ -5,8 +5,8 @@
  * Expected: "undefined type 'Undefined'"
  */
 
-do make(T <?>) -> ^? {
-    return new(T)
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
 do main() {

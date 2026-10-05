@@ -210,6 +210,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Restricts a function or constant to the declaring module; not accessible from other modules.",
 		Example: "private do validate(n i64) -> bool {\n    return n > 0\n}",
 	},
+	"generic": {
+		Kind:    "keyword",
+		Syntax:  "do <name>(<T> generic, <value> <T>) -> <T>",
+		Desc:    "Declares a type parameter: an ordinary function parameter whose argument is a type name. Its name is usable in later parameter types, the return types and the body, including new(T), size_of(T) and T{...} (struct types only). The type is passed explicitly at the call site; the compiler generates one specialized function per set of type arguments. Valid only as the type of a function parameter.",
+		Example: "do identity(kind generic, x kind) -> kind {\n    return x\n}\n\ndo make(kind generic) -> ^kind {\n    return new(kind)\n}\n\nmut n = identity(i64, 42)\nmut p = make(Point)",
+	},
 	"alias": {
 		Kind:    "keyword",
 		Syntax:  "alias <Name> = <Type>",
@@ -434,18 +440,6 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Attribute prefix. Placed before a declaration to attach metadata or modify compiler behavior.",
 		Example: "#doc(\"A 2D point\")\nconst Point struct {\n    x i64\n    y i64\n}",
 	},
-	"?": {
-		Kind:    "symbol",
-		Syntax:  "do <name>(x ?) -> ?",
-		Desc:    "Wildcard type parameter. Binds to the concrete type of the argument at each call site, enabling generic-style functions.",
-		Example: "do identity(x ?) -> ? {\n    return x\n}",
-	},
-	"<?>": {
-		Kind:    "symbol",
-		Syntax:  "do <name>(T <?>) -> ^?",
-		Desc:    "Type-level generic parameter. Accepts a type name (not a value) at the call site, enabling type-aware constructors. A T{...} literal in the body constrains it to struct types.",
-		Example: "do make(T <?>) -> ^? {\n    return new(T)\n}\nmut p = make(Point)",
-	},
 
 	// ── Attributes ──────────────────────────────────────────────────────
 	"#doc": {
@@ -497,7 +491,7 @@ var langCategories = map[string][]langGroup{
 	"keywords": {
 		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
 		{Label: "Error handling", Names: []string{"ensure", "defer", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "use", "new", "private"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "generic", "import", "using", "use", "new", "private"}},
 		{Label: "Operators     ", Names: []string{"in", "not_in", "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "cast", "range"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},
@@ -511,7 +505,7 @@ var langCategories = map[string][]langGroup{
 		{Label: "Special", Names: []string{"func", "Error", "SourceLocation"}},
 	},
 	"symbols": {
-		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#", "?", "<?>"}},
+		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#"}},
 	},
 	"attributes": {
 		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard", "#test"}},
@@ -526,8 +520,6 @@ var langSymbolAliases = map[string]string{
 	"ampersand": "&",
 	"at":        "@",
 	"hash":      "#",
-	"wildcard":  "?",
-	"question":  "?",
 	// Attribute aliases without # prefix (shell eats #)
 	"doc":     "#doc",
 	"json":    "#json",

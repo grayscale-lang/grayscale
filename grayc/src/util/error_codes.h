@@ -39,7 +39,8 @@
     GRAY_ERROR("E1021", "syntax", "unclosed string; add a closing double quote") \
     GRAY_ERROR("E1022", "syntax", "unexpected character") \
     GRAY_ERROR("E1023", "syntax", "string literals cannot span multiple lines; use a raw string with backticks for multi-line text") \
-    GRAY_ERROR("E1024", "syntax", "identifier exceeds the maximum length of 255 characters")
+    GRAY_ERROR("E1024", "syntax", "identifier exceeds the maximum length of 255 characters") \
+    GRAY_ERROR("E1025", "syntax", "this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind')")
 
 /* --- E2xxx: Understanding Your Code (Parser) --- */
 #define GRAY_PARSER_ERRORS \
@@ -75,7 +76,6 @@
     GRAY_ERROR("E2067", "syntax", "struct '%s' has no fields; a struct must have at least one field") \
     GRAY_ERROR("E2068", "syntax", "%ss must be declared with 'const', not 'mut'; change 'mut' to 'const'") \
     GRAY_ERROR("E2069", "syntax", "members on the same line must be separated by ';'; add ';' between them or start the next member on a new line") \
-    GRAY_ERROR("E2070", "syntax", "wildcard type '?' is only allowed in function parameter and return types; not in variable declarations, struct fields, or enum types") \
     GRAY_ERROR("E2071", "syntax", "empty string interpolation '${}'; interpolation requires an expression between the braces") \
     GRAY_ERROR("E2072", "syntax", "'&' is not a valid operator; use 'addr(x)' to take the address of a variable") \
     GRAY_ERROR("E2073", "syntax", "function calls cannot have whitespace between the name and the opening parenthesis; write 'name(...)' with no space or newline") \
@@ -91,7 +91,6 @@
     GRAY_ERROR("E2084", "syntax", "blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result") \
     GRAY_ERROR("E2085", "syntax", "when statement already has a default branch; only one default is allowed") \
     GRAY_ERROR("E2086", "syntax", "'%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range") \
-    GRAY_ERROR("E2087", "syntax", "type parameters (<?>) cannot be mixed with value parameters in the same function") \
     GRAY_ERROR("E2088", "syntax", "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d") \
     GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields") \
     GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration") \
@@ -99,7 +98,9 @@
     GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
     GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list") \
     GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
-    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line")
+    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line") \
+    GRAY_ERROR("E2096", "syntax", "'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables") \
+    GRAY_ERROR("E2097", "syntax", "a 'generic' parameter cannot have a default value; its argument is the type the caller passes")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -148,16 +149,15 @@
     GRAY_ERROR("E3055", "types", "const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...)") \
     GRAY_ERROR("E3056", "types", "#strict when is not exhaustive; missing variant '%s.%s'") \
     GRAY_ERROR("E3057", "types", "type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable") \
-    GRAY_ERROR("E3058", "types", "in instantiation of generic function '%s' with '?' = %s") \
+    GRAY_ERROR("E3058", "types", "in instantiation of generic function '%s' with %s") \
     GRAY_ERROR("E3059", "types", "maps cannot be declared const; use 'mut' for maps or a struct for fixed data") \
-    GRAY_ERROR("E3060", "types", "wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type") \
     GRAY_ERROR("E3061", "types", "struct '%s' cannot contain itself by value") \
     GRAY_ERROR("E3062", "types", "'%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state)") \
     GRAY_ERROR("E3066", "types", "function reference signature mismatch: expected %s, got %s") \
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
     GRAY_ERROR("E3069", "types", "'&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable") \
     GRAY_ERROR("E3070", "types", "'ensure' may only appear at the top level of a function body; lift it out of the enclosing block") \
-    GRAY_ERROR("E3071", "types", "cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. i64, string)") \
+    GRAY_ERROR("E3071", "types", "cannot 'return nil' from a function whose return type contains a 'generic' parameter's name; 'nil' is not a valid value for every type argument (e.g. i64, string)") \
     GRAY_ERROR("E3072", "types", "cannot return 'nil' from a function that returns '%s'; nil is only valid for pointer and error types") \
     GRAY_ERROR("E3073", "types", "'return' is not allowed in 'main()'; 'main()' exits when control reaches the closing brace") \
     GRAY_ERROR("E3074", "types", "arrays cannot be compared with comparison operators; use 'arrays.is_equal(a, b)' for equality, or compare elements individually for ordering") \
@@ -168,7 +168,6 @@
     GRAY_ERROR("E3079", "types", "cannot take a mutable reference to const variable '%s'; declare '%s' as 'const', or 'copy()' the value to get an independent mutable instance") \
     GRAY_ERROR("E3080", "types", "function must return named variable '%s', not a different expression") \
     GRAY_ERROR("E3081", "types", "function '%s' used as a statement without being called; did you mean '%s()'?") \
-    GRAY_ERROR("E3082", "types", "wildcard type '?' cannot be used in named return value '%s'; use an unnamed return instead (e.g. -> (?, i64))") \
     GRAY_ERROR("E3083", "types", "'from_c_string()' requires a raw C pointer; '%s' is not a pointer type. 'from_c_string()' is only valid with values from C interop ('extern import \"header.h\"')") \
     GRAY_ERROR("E3084", "types", "'type_of()' expects a value, not a type name '%s'; use 'type_of(instance)' instead") \
     GRAY_ERROR("E3085", "types", "'in' operator type mismatch: cannot check if '%s' is in '%s'") \
@@ -212,19 +211,18 @@
     GRAY_ERROR("E3124", "types", "operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or !=") \
     GRAY_ERROR("E3125", "types", "'%s' is not a compile-time integer constant; array size must be a const integer value") \
     GRAY_ERROR("E3126", "types", "array size must be greater than zero; '%s' resolves to %s") \
-    GRAY_ERROR("E3127", "types", "type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct") \
-    GRAY_ERROR("E3128", "types", "type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'") \
+    GRAY_ERROR("E3127", "types", "generic parameter '%s' is used as a struct literal, so its argument must be a struct type, but '%s' is not a struct") \
+    GRAY_ERROR("E3128", "types", "a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'") \
     GRAY_ERROR("E3129", "safety", "empty loop body; this will loop forever at runtime") \
     GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type") \
     GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead") \
     GRAY_ERROR("E3132", "types", "alias target type '%s' is not defined") \
     GRAY_ERROR("E3133", "types", "alias '%s' creates a circular reference") \
     GRAY_ERROR("E3134", "types", "alias '%s' cannot target a module-qualified type; only local types can be aliased") \
-    GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
+    GRAY_ERROR("E3135", "types", "alias '%s' cannot target 'generic'; it declares a type parameter and is only valid as the type of a function parameter") \
     GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
     GRAY_ERROR("E3138", "types", "float literal overflows f64; max magnitude is 1.7976931348623157e308") \
-    GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
     GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be a number type, string, bool, enum, #json struct, or an array of a number type, string, bool, or #json struct") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
     GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
@@ -244,7 +242,7 @@
     GRAY_ERROR("E3156", "types", "cannot compare %s with %s") \
     GRAY_ERROR("E3157", "types", "cannot assign nil to '%s'; only Error and pointer types are nullable") \
     GRAY_ERROR("E3158", "types", "cannot pass %s to a C function") \
-    GRAY_ERROR("E3159", "types", "wildcard type conflict in '%s': '?' was bound to %s, but argument %d is %s") \
+    GRAY_ERROR("E3159", "types", "type conflict in generic call: '%s' of '%s' is %s, but argument %d is %s") \
     GRAY_ERROR("E3160", "types", "parameter '%s' has no type annotation; omitting the type is only allowed when the default value is an enum member (e.g. %s = MyEnum.VALUE)") \
     GRAY_ERROR("E3161", "types", "'%s()' cannot %s %s") \
     GRAY_ERROR("E3162", "safety", "cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns") \
@@ -284,8 +282,8 @@
     GRAY_ERROR("E3196", "types", "cannot infer type from 'nil'") \
     GRAY_ERROR("E3197", "types", "cannot pass '%s' as a C callback; its %s parameter has no C-compatible layout, but C callback APIs require 'void *', which Grayscale cannot express") \
     GRAY_ERROR("E3198", "types", "cannot pass '%s' as a C callback; its %s return type has no C-compatible layout, but the C API's function-pointer type declares a scalar return, which Grayscale cannot express") \
-    GRAY_ERROR("E3199", "types", "cannot infer wildcard type '%s' from argument %d of '%s' (got %s)") \
-    GRAY_ERROR("E3200", "types", "wildcard type conflict in struct '%s': '?' was bound to %s, but field '%s' is %s") \
+    GRAY_ERROR("E3199", "types", "argument %d of '%s' does not match its generic parameter type '%s' (got %s)") \
+    GRAY_ERROR("E3200", "types", "type conflict in generic call: '%s' of struct function '%s' is %s, but argument %d is %s") \
     GRAY_ERROR("E3201", "types", "%s by zero; the divisor is always zero") \
     GRAY_ERROR("E3202", "types", "cannot interpolate %s") \
     GRAY_ERROR("E3203", "types", "%s index cannot be negative") \
@@ -323,13 +321,14 @@
     GRAY_ERROR("E4029", "names", "'private' cannot be used inside a function; it only applies to top-level declarations") \
     GRAY_ERROR("E4030", "names", "variable '%s' shadows the C function 'extern.%s' called here; rename the variable") \
     GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'") \
-    GRAY_ERROR("E4032", "names", "cannot take a function reference to '%s'; it has a wildcard ('?') parameter or return type, which can only be resolved by calling it directly with concrete argument types") \
+    GRAY_ERROR("E4032", "names", "cannot take a function reference to '%s'; it has a 'generic' parameter, which can only be resolved by calling it directly with its type arguments") \
     GRAY_ERROR("E4033", "names", "module '%s' is not imported") \
     GRAY_ERROR("E4034", "names", "C interop requires a C header import") \
     GRAY_ERROR("E4035", "names", "program has no main() function; every program needs 'do main() { }'") \
     GRAY_ERROR("E4036", "names", "function '%s' conflicts with a type of the same name") \
     GRAY_ERROR("E4037", "names", "'%s.%s()' expects a type name as argument %d") \
-    GRAY_ERROR("E4038", "names", "cannot take a function reference to '%s.%s'; stdlib functions are not first-class values")
+    GRAY_ERROR("E4038", "names", "cannot take a function reference to '%s.%s'; stdlib functions are not first-class values") \
+    GRAY_ERROR("E4039", "names", "generic parameter '%s' is used in the type of parameter '%s' before it is declared; declare it earlier in the parameter list")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

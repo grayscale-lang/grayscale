@@ -1,0 +1,46 @@
+do log_ln(kind generic, x kind) {
+    println(x)
+}
+
+do log(kind generic, x kind) {
+    print(x)
+}
+
+do err_ln(kind generic, x kind) {
+    eprintln(x)
+}
+
+do err(kind generic, x kind) {
+    eprint(x)
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // println dispatch across instantiations
+    log_ln(i64, 42)
+    log_ln(string, "hello")
+    log_ln(f64, 3.14)
+    log_ln(bool, true)
+
+    // print dispatch across instantiations
+    log(i64, 1)
+    log(string, " ")
+    log(string, "ok")
+    println("")
+
+    // eprintln dispatch across instantiations
+    err_ln(i64, 2)
+    err_ln(string, "err")
+    err_ln(f64, 1.5)
+    err_ln(bool, false)
+
+    // eprint dispatch across instantiations
+    err(i64, 9)
+    err(string, " ")
+    err(string, "done")
+    eprintln("")
+
+    println("ALL TESTS PASSED")
+}

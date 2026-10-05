@@ -1,0 +1,62 @@
+/*
+ * generic_multi_return_destructure.gray - Destructuring a generic function
+ * whose return type names a generic parameter in multiple slots.
+ *
+ * `mut a, b = pair(i64, 42)` must give the destructured variables the types
+ * the call binds, or later uses of `a`/`b` would error as undefined.
+ */
+
+do pair(kind generic, x kind) -> (kind, kind) { return x, x }
+do mixed(kind generic, x kind) -> (kind, i64) { return x, 100 }
+do triple(kind generic, x kind) -> (kind, kind, i64) { return x, x, 7 }
+
+do main() {
+    println("=== generic multi-return destructure ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // both slots generic, bound to i64
+    mut a1, b1 = pair(i64, 42)
+    if a1 == 42 && b1 == 42 {
+        println("  [PASS] (kind, kind) -> i64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] (kind, kind) -> i64")
+        failed += 1
+    }
+
+    // generic + concrete i64
+    mut a2, b2 = mixed(string, "hi")
+    if a2 == "hi" && b2 == 100 {
+        println("  [PASS] (kind, i64) -> string/i64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] (kind, i64) -> string/i64")
+        failed += 1
+    }
+
+    // underscore in first slot
+    mut _, b3 = pair(f64, 3.14)
+    if b3 > 3.13 && b3 < 3.15 {
+        println("  [PASS] underscore + generic slot")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] underscore + generic slot")
+        failed += 1
+    }
+
+    // three slots — two generic, one concrete
+    mut a4, b4, c4 = triple(i64, 5)
+    if a4 == 5 && b4 == 5 && c4 == 7 {
+        println("  [PASS] (kind, kind, i64) three-slot")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] (kind, kind, i64) three-slot")
+        failed += 1
+    }
+
+    println("=== ${passed} passed, ${failed} failed ===")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

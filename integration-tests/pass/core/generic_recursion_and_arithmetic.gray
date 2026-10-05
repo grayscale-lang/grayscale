@@ -1,0 +1,73 @@
+/*
+ * generic_recursion_and_arithmetic.gray - a generic function can call itself,
+ * and arithmetic on generic-typed values is emitted for the type each
+ * instantiation binds, including with more than one generic parameter.
+ */
+
+const Counter struct {
+    start i64
+
+    do down(self Counter, kind generic, n i64, seed kind) -> kind {
+        if n == 0 { return seed }
+        return self.down(kind, n - 1, seed)
+    }
+}
+
+do count(kind generic, n i64, seed kind) -> kind {
+    if n == 0 { return seed }
+    return count(kind, n - 1, seed)
+}
+
+do double(kind generic, x kind) -> kind {
+    return x + x
+}
+
+do total(a_kind generic, b_kind generic, a a_kind, b b_kind) -> string {
+    mut left a_kind = a + a
+    mut right b_kind = b + b
+    return "${left} ${right}"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if count(string, 3, "done") == "done" && count(i64, 2, 9) == 9 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] recursive generic function")
+        failed += 1
+    }
+
+    mut c = Counter{start: 1}
+    if c.down(f64, 2, 1.5) == 1.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] recursive generic struct function")
+        failed += 1
+    }
+
+    if double(i64, 4) == 8 && double(string, "ab") == "abab" && double(f64, 1.5) == 3.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] arithmetic on a generic-typed value")
+        failed += 1
+    }
+
+    if total(i64, string, 2, "x") == "4 xx" && total(string, f64, "y", 0.5) == "yy 1.0" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] arithmetic with two generic parameters")
+        failed += 1
+    }
+
+    println(double(i64, 21))
+    println(double(string, "z"))
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

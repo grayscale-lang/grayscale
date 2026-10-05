@@ -122,8 +122,8 @@ while
 **Declarations:**
 ```
 alias        const       do          enum        extern      fn
-import       mut         new         private     struct      use*
-using
+generic      import      mut         new         private     struct
+use*         using
 ```
 
 > 💡 **Tip:** `use*` is reserved exclusively for the `import and use` statement. It has no other syntactic role.
@@ -1100,7 +1100,7 @@ alias Lookup = map[string:i64]
 - **Erased at compile time** — aliases produce no runtime overhead. `type_of()` returns the underlying type name.
 - **Transitive** — aliases can chain: `alias A = i64` then `alias B = A` resolves `B` to `i64`.
 - **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
-- **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
+- **Cannot alias:** module-qualified types (`mod.Type`) or `generic`.
 - **The alias name may not be a reserved type name or a builtin function name** — `alias i64 = f64` and `alias println = i64` are both rejected, the same way a struct or enum by those names is.
 
 Aliases are fully interchangeable with the underlying type:
@@ -2109,14 +2109,13 @@ do square(x i64) -> (result i64) {
 
 So the names are not purely cosmetic documentation: they constrain what a `return` in that position may name, in addition to documenting the position for callers and tooling (e.g., `gray doc`).
 
-**Restriction:** Wildcard types (`?`) cannot be used in named return positions. Since `?` resolves to a different concrete type at each call site, the name adds no useful documentation. Use an unnamed return instead:
+A return position can be named whatever its type is, including a `generic` parameter's name (section 7.9). The named variable is declared in the body with that type:
 
 ```gray
-// Error: wildcard type '?' cannot be named
-do first(arr [?]) -> (result ?) { ... }
-
-// OK: unnamed wildcard return
-do first(arr [?]) -> ? { ... }
+do first(kind generic, arr [kind]) -> (result kind) {
+    mut result kind = arr[0]
+    return result
+}
 ```
 
 #### 7.3.5 Void Functions
@@ -2761,150 +2760,99 @@ do main() {
 }
 ```
 
-### 7.9 Wildcard Types (`?`)
+### 7.9 Generics (`generic`)
 
-The `?` type is a wildcard placeholder that enables generic-style functions. When used in a function's parameter types, `?` is bound to the concrete type of the argument at each call site. The return type can also use `?` to propagate the bound type.
+A `generic` parameter is an ordinary function parameter whose argument is a type. Its name is a real name: it can be used as a type in the parameters that follow it, in the return types, and in the body.
 
 ```gray
-do identity(x ?) -> ? {
+do identity(kind generic, x kind) -> kind {
     return x
 }
 
-mut a = identity(42)        // ? binds to i64, returns i64
-mut b = identity("hello")   // ? binds to string, returns string
-```
-
-All `?` placeholders in a function signature bind to the same concrete type:
-
-```gray
-do pick_first(a ?, b ?) -> ? {
-    return a
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
-pick_first(1, 2)          // OK, both args are i64, ? binds to i64
-pick_first(1, "hello")    // Error: conflicting bindings for ?
-```
-
-Wildcard types also work with composite types in parameters and returns:
-
-```gray
-do first(arr [?]) -> ? {
-    return arr[0]
+do first(kind generic, arr [kind]) -> (result kind) {
+    mut result kind = arr[0]
+    return result
 }
 
-mut x = first({1, 2, 3})      // ? binds to i64
-mut y = first({"a", "b"})     // ? binds to string
+do pair(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (a_kind, b_kind) {
+    return a, b
+}
+
+mut n = identity(i64, 42)        // kind is i64, returns i64
+mut s = identity(string, "hi")   // kind is string, returns string
+mut p = make(Point)              // allocates a Point, returns ^Point
+mut q = make(kind: Point)        // named arguments work as for any parameter
 ```
 
-#### Where `?` is allowed
+Type and value parameters mix freely in one signature. The type is always passed explicitly at the call site; it is never inferred from the value arguments.
 
-`?` is **only** valid in function parameter types and return types. It is rejected everywhere else:
+#### Where `generic` is allowed
+
+`generic` is valid **only** as the type of a function parameter, including the parameters of struct functions. It is rejected everywhere else (`E2096`):
 
 | Usage | Result |
 |-------|--------|
 | Function parameter type | Allowed |
-| Function return type | Allowed (must have at least one `?` parameter) |
-| Variable declaration (`mut x ?`) | Rejected |
+| Variable declaration (`mut x generic`) | Rejected |
+| Global variable | Rejected |
 | Struct field type | Rejected |
-| Array type in variable (`[?]`) | Rejected |
-| Map type in variable (`map[string:?]`) | Rejected |
-| `new(?)` | Rejected |
-| Named return type (`-> (name ?)`) | Rejected; use unnamed `-> (?)` instead |
+| Enum variant payload | Rejected |
+| Return type, including named and tuple returns | Rejected |
+| Array or map element type (`[generic]`) | Rejected |
+| Alias target (`alias X = generic`) | Rejected (`E3135`) |
 
-#### Binding rules
+A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(kind)`, `size_of(kind)`, `kind{...}`).
 
-- The concrete type is inferred from the first argument that corresponds to a `?` parameter
-- All subsequent `?` parameters and the return type must be consistent with that binding
-- If the return type uses `?`, at least one parameter must also use `?` to provide the binding
+#### Rules
 
-### 7.10 Type Parameters (`<?>`)
-
-The `<?>` annotation allows a function parameter to accept a type name rather than a value. This enables reusable constructors and type-aware utility functions.
+- **Declared before use.** A `generic` parameter must be declared before any parameter type that uses its name (`E4039`). Return types follow the parameter list, so they can use every one.
+- **No default value.** A `generic` parameter's argument is the type the caller passes (`E2097`).
+- **The argument is a type name.** A struct, enum, primitive, alias of any of those, or module-qualified type name. A name that names no type is `E4016`; anything else is `E3128`:
 
 ```gray
-const Point struct {
-    x i64
-    y i64
-}
-
-do make(T <?>) -> ^? {
-    return new(T)
-}
-
-mut p = make(Point)    // allocates a new Point, returns ^Point
+mut a = make(Point)       // OK — struct
+mut b = make(Color)       // OK — enum
+mut c = make(i64)         // OK — primitive
+mut d = make(1 + 2)       // Error E3128 — not a type name
+mut e = make(Nonexistent) // Error E4016 — names no type
 ```
 
-The type parameter `T` is resolved at each call site using the same monomorphization pipeline as value wildcards (`?`). The compiler generates a specialized function for each concrete type used.
-
-#### Where `T` can be used inside the function body
-
-A type parameter name is valid in these positions:
-
-| Usage | Example | Result |
-|-------|---------|--------|
-| `new(T)` | `new(T)` | Heap-allocates an instance of `T` |
-| Struct literal | `T{x: 1, y: 2}` | Constructs a stack instance of `T`. Using this form constrains the function to struct arguments; a non-struct argument is rejected with `E3127` at the literal |
-| `size_of(T)` | `size_of(T)` | Returns the size of `T` in bytes |
-
-#### Return type inference
-
-The return type uses `?` the same way as value wildcards. `-> ^?` resolves to a pointer to the type argument, `-> ?` resolves to the type argument itself:
+- **Arguments are checked against the bound types.** An argument whose parameter is typed by a `generic` name must have the type that name is bound to (`E3159`), and an argument for a container of it must have the matching shape (`E3199`):
 
 ```gray
-do make(T <?>) -> ^? {
-    return new(T)
-}
-
-do make_stack(T <?>) -> ? {
-    return T{}
-}
-
-mut p = make(Point)          // -> ^Point
-mut s = make_stack(Point)    // -> Point
+mut x = identity(i64, "hello")   // Error E3159 — kind is i64, argument 2 is string
+mut y = first(i64, 5)            // Error E3199 — argument 2 is not an [i64]
 ```
 
-#### Restrictions
-
-**No mixing type and value parameters (E2087):**
-
-Type parameters and value parameters cannot appear in the same function signature:
+- **A `kind{...}` body constrains the function to structs (`E3127`).** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal, and `E3058` names the call site that bound it:
 
 ```gray
-do bad(T <?>, x i64) -> ^? {     // Error E2087
-    return new(T)
+do make_stack(kind generic) -> kind {
+    return kind{}          // Error E3127 when kind is bound to a non-struct
+}
+
+mut s = make_stack(Point)  // OK
+mut n = make_stack(i64)    // Error E3127 — kind is used as a struct literal
+```
+
+- **`return nil` is rejected** from a function whose return type contains a `generic` name (`E3071`); `nil` is not a value every type argument can hold.
+- **No function references.** A function with a `generic` parameter cannot be referenced with `()name` (`E4032`); call it directly with its type arguments.
+
+#### Monomorphization
+
+The compiler generates one specialized function per distinct set of type arguments. A generic function that is never called generates nothing. A type argument forwarded from one generic function to another resolves to what the caller was instantiated with:
+
+```gray
+do wrap(kind generic) -> ^kind {
+    return make(kind)      // make is specialized for whatever wrap was
 }
 ```
 
-**Any type name, but it must name a type (E4016, E3128):**
-
-Structs, enums, primitives, and aliases of any of them may all be passed as type arguments. A name that names no type, and anything that is not a type name at all, are rejected:
-
-```gray
-const Color enum {
-    RED
-    GREEN
-    BLUE
-}
-
-mut p = make(Point)       // OK — struct
-mut c = make(Color)       // OK — enum
-mut x = make(i64)         // OK — primitive
-mut y = make(1 + 2)       // Error E3128 — not a type name
-mut z = make(Nonexisto)   // Error E4016 — names no type
-```
-
-**A `T{...}` body constrains the function to structs (E3127):**
-
-A struct literal written against the type parameter is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal, and `E3058` names the call site that bound it:
-
-```gray
-do make_stack(T <?>) -> ? {
-    return T{}          // Error E3127 when T is bound to a non-struct
-}
-
-mut s = make_stack(Point)   // OK
-mut n = make_stack(i64)     // Error E3127 — T is used as a struct literal
-```
+Each instantiation's body is checked with its type arguments bound. An error found there is reported at the call that asked for the instantiation (`E3058`).
 
 #### Across module boundaries
 
@@ -2924,27 +2872,6 @@ do main() {
 ```
 
 The type argument may be written bare or module-qualified. A module-qualified name (`utils.make(types.Point)`) parses as a member expression, but as long as it names a real type it is accepted exactly as the bare spelling is. A qualified name that resolves to no type is still rejected with E3128.
-
-#### More restrictions
-
-**Returning the type argument requires a wildcard return type (E3139):**
-
-A concrete return type is a promise that has to hold for every caller. Returning the type argument breaks it for all but the caller that happens to pass a matching type, so the declaration is rejected on its own — no call site required:
-
-```gray
-do new_T(t <?>) -> Foo {
-    return new(t)^      // Error E3139 — returns whatever the caller passed
-}
-```
-
-Write the return type as `?` or `^?` instead. The same applies to returning a wildcard-typed parameter (`do id(v ?) -> Foo { return v }`).
-
-A concrete return type stays legal whenever the body returns a value of that type:
-
-```gray
-do new_foo(t <?>) -> Foo { return new(Foo)^ }   // OK — returns an actual Foo
-do size_T(t <?>) -> i64  { return size_of(t) }  // OK — size_of is always i64
-```
 
 ---
 

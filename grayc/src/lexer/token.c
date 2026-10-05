@@ -45,6 +45,7 @@ static const KeywordEntry keywords[] = {
     {"fn",          TOKEN_DO},
     {"for",         TOKEN_FOR},
     {"for_each",    TOKEN_FOR_EACH},
+    {"generic",     TOKEN_GENERIC},
     {"if",          TOKEN_IF},
     {"import",      TOKEN_IMPORT},
     {"in",          TOKEN_IN},
@@ -177,7 +178,6 @@ const char *token_type_name(TokenType type) {
     case TOKEN_AT:             return "@";
     case TOKEN_CARET:          return "^";
     case TOKEN_AMPERSAND:      return "&";
-    case TOKEN_QUESTION:       return "?";
     case TOKEN_HASH_LEFT_BRACKET:  return "#[";
     case TOKEN_STRICT:         return "#strict";
     case TOKEN_FLAGS:          return "#flags";
@@ -215,6 +215,7 @@ const char *token_type_name(TokenType type) {
     case TOKEN_ENSURE:         return "ensure";
     case TOKEN_OR_RETURN:      return "or_return";
     case TOKEN_EXTERN:         return "extern";
+    case TOKEN_GENERIC:        return "generic";
     case TOKEN_PRIVATE:        return "private";
     case TOKEN_USE:            return "use";
     case TOKEN_WHEN:           return "when";

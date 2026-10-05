@@ -77,7 +77,6 @@ typedef enum {
     TOKEN_DOT,            /* . */
     TOKEN_AT,             /* @ */
     TOKEN_AMPERSAND,      /* & */
-    TOKEN_QUESTION,       /* ?  — wildcard type placeholder */
 
     /* Hash attributes */
     TOKEN_HASH_LEFT_BRACKET,  /* #[ — opens a single-line attribute list */
@@ -119,6 +118,7 @@ typedef enum {
     TOKEN_ENSURE,
     TOKEN_OR_RETURN,
     TOKEN_EXTERN,
+    TOKEN_GENERIC,
 
     /* Module system keywords */
     TOKEN_PRIVATE,

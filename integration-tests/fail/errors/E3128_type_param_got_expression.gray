@@ -1,10 +1,10 @@
 /*
- * Error Test: E3128 - type parameter got expression instead of type
- * Expected: "type parameter expects a type name, but got a non-type expression"
+ * Error Test: E3128 - a generic parameter got an expression instead of a type
+ * Expected: "a 'generic' parameter takes a type name, but got a non-type expression"
  */
 
-do make(T <?>) -> ^? {
-    return new(T)
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
 do main() {

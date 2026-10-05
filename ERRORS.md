@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 524 codes** (377 errors, 17 warnings, 130 panics)
+**Total: 523 codes** (376 errors, 17 warnings, 130 panics)
 
 ---
 
@@ -30,6 +30,7 @@
 | `E1022` | syntax | unexpected character |
 | `E1023` | syntax | string literals cannot span multiple lines; use a raw string with backticks for multi-line text |
 | `E1024` | syntax | identifier exceeds the maximum length of 255 characters |
+| `E1025` | syntax | this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind') |
 | `E2001` | syntax | unexpected symbol |
 | `E2002` | syntax | missing symbol; expected a bracket, parenthesis, or keyword |
 | `E2010` | syntax | cannot use module '%s' before importing it; add 'import @%s' before the using statement |
@@ -62,7 +63,6 @@
 | `E2067` | syntax | struct '%s' has no fields; a struct must have at least one field |
 | `E2068` | syntax | %ss must be declared with 'const', not 'mut'; change 'mut' to 'const' |
 | `E2069` | syntax | members on the same line must be separated by ';'; add ';' between them or start the next member on a new line |
-| `E2070` | syntax | wildcard type '?' is only allowed in function parameter and return types; not in variable declarations, struct fields, or enum types |
 | `E2071` | syntax | empty string interpolation '${}'; interpolation requires an expression between the braces |
 | `E2072` | syntax | '&' is not a valid operator; use 'addr(x)' to take the address of a variable |
 | `E2073` | syntax | function calls cannot have whitespace between the name and the opening parenthesis; write 'name(...)' with no space or newline |
@@ -78,7 +78,6 @@
 | `E2084` | syntax | blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result |
 | `E2085` | syntax | when statement already has a default branch; only one default is allowed |
 | `E2086` | syntax | '%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range |
-| `E2087` | syntax | type parameters (<?>) cannot be mixed with value parameters in the same function |
 | `E2088` | syntax | mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d |
 | `E2089` | syntax | #discard attribute can only be applied to function declarations, not struct fields |
 | `E2090` | syntax | duplicate '%s' attribute; each attribute may appear at most once per declaration |
@@ -87,6 +86,8 @@
 | `E2093` | syntax | malformed '#[...]' attribute list |
 | `E2094` | syntax | attribute is applied to the wrong kind of declaration, or its argument is malformed |
 | `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line |
+| `E2096` | syntax | 'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables |
+| `E2097` | syntax | a 'generic' parameter cannot have a default value; its argument is the type the caller passes |
 | `E3001` | types | type mismatch: cannot assign %s to %s |
 | `E3002` | types | invalid operands: cannot use '%s' with %s and %s |
 | `E3003` | types | %s index must be an integer, got %s |
@@ -132,16 +133,15 @@
 | `E3055` | types | const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...) |
 | `E3056` | types | #strict when is not exhaustive; missing variant '%s.%s' |
 | `E3057` | types | type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable |
-| `E3058` | types | in instantiation of generic function '%s' with '?' = %s |
+| `E3058` | types | in instantiation of generic function '%s' with %s |
 | `E3059` | types | maps cannot be declared const; use 'mut' for maps or a struct for fixed data |
-| `E3060` | types | wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type |
 | `E3061` | types | struct '%s' cannot contain itself by value |
 | `E3062` | types | '%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state) |
 | `E3066` | types | function reference signature mismatch: expected %s, got %s |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
 | `E3070` | types | 'ensure' may only appear at the top level of a function body; lift it out of the enclosing block |
-| `E3071` | types | cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. i64, string) |
+| `E3071` | types | cannot 'return nil' from a function whose return type contains a 'generic' parameter's name; 'nil' is not a valid value for every type argument (e.g. i64, string) |
 | `E3072` | types | cannot return 'nil' from a function that returns '%s'; nil is only valid for pointer and error types |
 | `E3073` | types | 'return' is not allowed in 'main()'; 'main()' exits when control reaches the closing brace |
 | `E3074` | types | arrays cannot be compared with comparison operators; use 'arrays.is_equal(a, b)' for equality, or compare elements individually for ordering |
@@ -152,7 +152,6 @@
 | `E3079` | types | cannot take a mutable reference to const variable '%s'; declare '%s' as 'const', or 'copy()' the value to get an independent mutable instance |
 | `E3080` | types | function must return named variable '%s', not a different expression |
 | `E3081` | types | function '%s' used as a statement without being called; did you mean '%s()'? |
-| `E3082` | types | wildcard type '?' cannot be used in named return value '%s'; use an unnamed return instead (e.g. -> (?, i64)) |
 | `E3083` | types | 'from_c_string()' requires a raw C pointer; '%s' is not a pointer type. 'from_c_string()' is only valid with values from C interop ('extern import \"header.h\"') |
 | `E3084` | types | 'type_of()' expects a value, not a type name '%s'; use 'type_of(instance)' instead |
 | `E3085` | types | 'in' operator type mismatch: cannot check if '%s' is in '%s' |
@@ -196,19 +195,18 @@
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
 | `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const integer value |
 | `E3126` | types | array size must be greater than zero; '%s' resolves to %s |
-| `E3127` | types | type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct |
-| `E3128` | types | type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64' |
+| `E3127` | types | generic parameter '%s' is used as a struct literal, so its argument must be a struct type, but '%s' is not a struct |
+| `E3128` | types | a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
 | `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
 | `E3132` | types | alias target type '%s' is not defined |
 | `E3133` | types | alias '%s' creates a circular reference |
 | `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
-| `E3135` | types | alias '%s' cannot target the wildcard type '?' |
+| `E3135` | types | alias '%s' cannot target 'generic'; it declares a type parameter and is only valid as the type of a function parameter |
 | `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
 | `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
 | `E3138` | types | float literal overflows f64; max magnitude is 1.7976931348623157e308 |
-| `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
 | `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be a number type, string, bool, enum, #json struct, or an array of a number type, string, bool, or #json struct |
 | `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
 | `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
@@ -228,7 +226,7 @@
 | `E3156` | types | cannot compare %s with %s |
 | `E3157` | types | cannot assign nil to '%s'; only Error and pointer types are nullable |
 | `E3158` | types | cannot pass %s to a C function |
-| `E3159` | types | wildcard type conflict in '%s': '?' was bound to %s, but argument %d is %s |
+| `E3159` | types | type conflict in generic call: '%s' of '%s' is %s, but argument %d is %s |
 | `E3160` | types | parameter '%s' has no type annotation; omitting the type is only allowed when the default value is an enum member (e.g. %s = MyEnum.VALUE) |
 | `E3161` | types | '%s()' cannot %s %s |
 | `E3162` | safety | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
@@ -268,8 +266,8 @@
 | `E3196` | types | cannot infer type from 'nil' |
 | `E3197` | types | cannot pass '%s' as a C callback; its %s parameter has no C-compatible layout, but C callback APIs require 'void *', which Grayscale cannot express |
 | `E3198` | types | cannot pass '%s' as a C callback; its %s return type has no C-compatible layout, but the C API's function-pointer type declares a scalar return, which Grayscale cannot express |
-| `E3199` | types | cannot infer wildcard type '%s' from argument %d of '%s' (got %s) |
-| `E3200` | types | wildcard type conflict in struct '%s': '?' was bound to %s, but field '%s' is %s |
+| `E3199` | types | argument %d of '%s' does not match its generic parameter type '%s' (got %s) |
+| `E3200` | types | type conflict in generic call: '%s' of struct function '%s' is %s, but argument %d is %s |
 | `E3201` | types | %s by zero; the divisor is always zero |
 | `E3202` | types | cannot interpolate %s |
 | `E3203` | types | %s index cannot be negative |
@@ -304,13 +302,14 @@
 | `E4029` | names | 'private' cannot be used inside a function; it only applies to top-level declarations |
 | `E4030` | names | variable '%s' shadows the C function 'extern.%s' called here; rename the variable |
 | `E4031` | names | '%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s' |
-| `E4032` | names | cannot take a function reference to '%s'; it has a wildcard ('?') parameter or return type, which can only be resolved by calling it directly with concrete argument types |
+| `E4032` | names | cannot take a function reference to '%s'; it has a 'generic' parameter, which can only be resolved by calling it directly with its type arguments |
 | `E4033` | names | module '%s' is not imported |
 | `E4034` | names | C interop requires a C header import |
 | `E4035` | names | program has no main() function; every program needs 'do main() { }' |
 | `E4036` | names | function '%s' conflicts with a type of the same name |
 | `E4037` | names | '%s.%s()' expects a type name as argument %d |
 | `E4038` | names | cannot take a function reference to '%s.%s'; stdlib functions are not first-class values |
+| `E4039` | names | generic parameter '%s' is used in the type of parameter '%s' before it is declared; declare it earlier in the parameter list |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | '%s()' expects %s argument(s), got %d |
 | `E5009` | arguments | invalid base %lld for 'strconv.%s'; base must be between 2 and 36 |
@@ -575,4 +574,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-05 17:56:01 UTC*
+*Generated on 2026-10-05 19:13:21 UTC*

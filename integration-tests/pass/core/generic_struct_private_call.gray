@@ -11,7 +11,7 @@ const Box struct {
         return self.value * 2
     }
 
-    do reveal(self Box, extra ?) -> ? {
+    do reveal(self Box, kind generic, extra kind) -> kind {
         mut s i64 = self.secret()
         return extra
     }
@@ -22,7 +22,7 @@ do main() {
     mut failed i64 = 0
 
     mut b Box = Box{value: 21}
-    mut r i64 = b.reveal(100)
+    mut r i64 = b.reveal(i64, 100)
 
     if r == 100 { passed = passed + 1 } otherwise { failed = failed + 1 }
 

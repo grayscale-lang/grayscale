@@ -5,11 +5,11 @@
 
 import @fmt
 
-do format_one(value ?) -> string {
+do format_one(kind generic, value kind) -> string {
     return fmt.sprintf("%d", {value})
 }
 
-do format_pair(values [?]) -> string {
+do format_pair(kind generic, values [kind]) -> string {
     return fmt.sprintf("%s|%s", values)
 }
 
@@ -17,22 +17,22 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    mut one string = format_one(5)
+    mut one string = format_one(i64, 5)
     if one == "5" {
-        println("  [PASS] ? element formats once instantiated")
+        println("  [PASS] generic element formats once instantiated")
         passed += 1
     } otherwise {
-        println("  [FAIL] ? element formats once instantiated: got '${one}'")
+        println("  [FAIL] generic element formats once instantiated: got '${one}'")
         failed += 1
     }
 
     mut words [string] = {"a", "b"}
-    mut pair string = format_pair(words)
+    mut pair string = format_pair(string, words)
     if pair == "a|b" {
-        println("  [PASS] [?] args formats once instantiated")
+        println("  [PASS] [kind] args formats once instantiated")
         passed += 1
     } otherwise {
-        println("  [FAIL] [?] args formats once instantiated: got '${pair}'")
+        println("  [FAIL] [kind] args formats once instantiated: got '${pair}'")
         failed += 1
     }
 

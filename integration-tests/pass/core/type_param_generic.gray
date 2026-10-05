@@ -1,6 +1,6 @@
 /*
- * type_param_generic.gray - <?> type-level parameters: a struct type name
- * passed as an argument drives new(T) and size_of(T).
+ * type_param_generic.gray - generic parameters: a struct type name passed as
+ * an argument drives new(kind) and size_of(kind).
  */
 
 const Point struct {
@@ -14,12 +14,12 @@ const Color struct {
     b i64
 }
 
-do make(T <?>) -> ^? {
-    return new(T)
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
-do make_size(T <?>) -> i64 {
-    return size_of(T)
+do make_size(kind generic) -> i64 {
+    return size_of(kind)
 }
 
 do main() {

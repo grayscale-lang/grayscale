@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2096 - 'generic' declares a parameter; it is not a return type.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+do first(x i64) -> generic {
+    return x
+}
+
+do main() {}

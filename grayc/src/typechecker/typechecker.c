@@ -940,78 +940,22 @@ static void typechecker_error_undefined_type(TypeChecker *checker, AstNode *node
     diagnostic_error_code_formatted((checker)->diagnostics, "E5008", NODE_FILE((checker), (node)), \
         (node)->token.line, (node)->token.column, 0, __VA_ARGS__)
 
-static AstNode *find_struct_in_program(TypeChecker *checker, const char *name);
-
 static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name, const char *field) {
     StructInfo *struct_info = find_struct(checker, struct_name);
-    /* for mangled generic struct names (Pair__int), fall back
-     * to the base name (Pair) since fields are registered there.
-     * When the field type is "?", substitute the concrete binding
-     * extracted from the mangled suffix. */
-    const char *generic_binding = NULL;
-    if (!struct_info && struct_name) {
-        const char *dunder = strstr(struct_name, "__");
-        if (dunder) {
-            char base[MESSAGE_BUFFER_SIZE];
-            size_t prefix_length = (size_t)(dunder - struct_name);
-            if (prefix_length < sizeof(base)) {
-                memcpy(base, struct_name, prefix_length);
-                base[prefix_length] = '\0';
-                struct_info = find_struct(checker, base);
-                generic_binding = dunder + 2;
-            }
-        }
-    }
     if (!struct_info) return &TYPE_UNKNOWN;
     for (int i = 0; i < struct_info->field_count; i++) {
-        if (strcmp(struct_info->field_names[i], field) == 0) {
-            /* if the field type is ? (registered as TYPE_KIND_UNKNOWN)
-             * and we have a generic binding from the mangled name,
-             * substitute to the concrete type. Check the raw declaration
-             * type_name since the resolved GrayType lost the "?" marker. */
-            if (generic_binding && struct_info->field_types[i]->kind == TYPE_KIND_UNKNOWN) {
-                /* Find the raw struct declaration to check the field type_name */
-                if (checker->program) {
-                    AstNode *declaration = find_struct_in_program(checker,
-                        struct_name); /* try mangled first */
-                    if (!declaration) {
-                        /* Extract base name and try again */
-                        const char *double_underscore = strstr(struct_name, "__");
-                        if (double_underscore) {
-                            char base_name[MESSAGE_BUFFER_SIZE];
-                            size_t base_length = (size_t)(double_underscore - struct_name);
-                            if (base_length < sizeof(base_name)) {
-                                memcpy(base_name, struct_name, base_length);
-                                base_name[base_length] = '\0';
-                                declaration = find_struct_in_program(checker, base_name);
-                            }
-                        }
-                    }
-                    if (declaration) {
-                        for (int field_index = 0; field_index < declaration->data.struct_declaration.field_count; field_index++) {
-                            if (strcmp(declaration->data.struct_declaration.fields[field_index].name, field) == 0 &&
-                                declaration->data.struct_declaration.fields[field_index].type_name &&
-                                strchr(declaration->data.struct_declaration.fields[field_index].type_name, '?')) {
-                                return type_from_name(generic_binding);
-                            }
-                        }
-                    }
-                }
-            }
-            return struct_info->field_types[i];
-        }
+        if (strcmp(struct_info->field_names[i], field) == 0) return struct_info->field_types[i];
     }
     return &TYPE_UNKNOWN;
 }
 
 /* --- Function signature helpers --- */
 
-static bool type_name_has_wildcard(const char *type_name) {
-    if (!type_name) return false;
-    for (const char *cursor = type_name; *cursor; cursor++) {
-        if (*cursor == '?') return true;
-    }
-    return false;
+/* True when a type spelling still contains an unbound type parameter
+ * ("?kind", the placeholder generic_bindings_substitute writes while no call
+ * has bound the parameter). */
+static bool type_name_has_unbound_generic(const char *type_name) {
+    return type_name && strchr(type_name, '?') != NULL;
 }
 
 static void register_function(TypeChecker *checker, const char *name,
@@ -1051,24 +995,6 @@ static void register_function(TypeChecker *checker, const char *name,
     function_signature->instantiation_capacity = 0;
 }
 
-/* Substitute '?' with `concrete` in a type string and return a heap copy.
- * Returns a strdup of the original if no wildcard is present. */
-static char *substitute_wildcard(const char *source, const char *concrete) {
-    if (!source) return NULL;
-    if (!type_name_has_wildcard(source)) return strdup(source);
-    size_t concrete_length = strlen(concrete);
-    size_t length = 0;
-    for (const char *cursor = source; *cursor; cursor++) length += (*cursor == '?') ? concrete_length : 1;
-    char *output = xmalloc(length + 1);
-    char *write_cursor = output;
-    for (const char *cursor = source; *cursor; cursor++) {
-        if (*cursor == '?') { memcpy(write_cursor, concrete, concrete_length); write_cursor += concrete_length; }
-        else *write_cursor++ = *cursor;
-    }
-    *write_cursor = '\0';
-    return output;
-}
-
 /* Find the top-level ':' inside a "map[K:V]" type string, skipping nested
  * brackets. Sets key_out/key_len and val_out/val_len on success. */
 static bool parse_map_key_value(const char *type_name,
@@ -1093,112 +1019,12 @@ static bool parse_map_key_value(const char *type_name,
     return true;
 }
 
-/* Recursive string-based wildcard unifier.
- * Matches param_tn (containing '?') against the concrete type string
- * arg_tn and returns a heap-allocated string for the type '?' binds to,
- * or NULL on shape mismatch. Recurses into arrays and maps so nested
- * composites like [[?]], [map[string:?]], and map[string:[?]] are handled.
- *
- * Examples:
- *   "?"               vs "i64"            -> "i64"
- *   "[?]"             vs "[string]"       -> "string"
- *   "[[?]]"           vs "[[i64]]"        -> "i64"
- *   "[map[string:?]]" vs "[map[string:i64]]" -> "i64"
- *   "map[string:[?]]" vs "map[string:[i64]]" -> "i64"
- *   "map[?:?]"        vs "map[i64:i64]"   -> "i64"    (K==V required)
- */
-static char *bind_wildcard_string(const char *parameter_type_name, const char *argument_type_name) {
-    if (!parameter_type_name || !argument_type_name) return NULL;
-
-    if (strcmp(parameter_type_name, "?") == 0) {
-        if (strcmp(argument_type_name, "unknown") == 0) return NULL;
-        return strdup(argument_type_name);
-    }
-
-    size_t parameter_type_length = strlen(parameter_type_name);
-    size_t argument_type_length = strlen(argument_type_name);
-
-    /* Array: both must start/end with brackets; recurse into element types */
-    if (parameter_type_name[0] == '[' && argument_type_name[0] == '[') {
-        if (parameter_type_length < 3 || argument_type_length < 3) return NULL;
-        if (parameter_type_name[parameter_type_length - 1] != ']' || argument_type_name[argument_type_length - 1] != ']') return NULL;
-        char *inner_cursor = gray_strndup(parameter_type_name + 1, parameter_type_length - 2);
-        char *left_inner = gray_strndup(argument_type_name + 1, argument_type_length - 2);
-        char *result = bind_wildcard_string(inner_cursor, left_inner);
-        free(inner_cursor);
-        free(left_inner);
-        return result;
-    }
-
-    /* Map: both must be map types; recurse into whichever slot carries '?' */
-    if (strncmp(parameter_type_name, "map[", 4) == 0 && strncmp(argument_type_name, "map[", 4) == 0) {
-        const char *parameter_key, *parameter_value, *argument_key, *argument_value;
-        size_t parameter_key_length, parameter_value_length, argument_key_length, argument_value_length;
-        if (!parse_map_key_value(parameter_type_name, &parameter_key, &parameter_key_length, &parameter_value, &parameter_value_length)) return NULL;
-        if (!parse_map_key_value(argument_type_name,   &argument_key, &argument_key_length, &argument_value, &argument_value_length)) return NULL;
-
-        bool parameter_key_has_wildcard = false;
-        for (size_t i = 0; i < parameter_key_length; i++) if (parameter_key[i] == '?') { parameter_key_has_wildcard = true; break; }
-        bool parameter_value_has_wildcard = false;
-        for (size_t i = 0; i < parameter_value_length; i++) if (parameter_value[i] == '?') { parameter_value_has_wildcard = true; break; }
-
-        if (!parameter_key_has_wildcard && !parameter_value_has_wildcard) return NULL;
-
-        /* Concrete slots must match the argument's corresponding slot exactly */
-        if (!parameter_key_has_wildcard && (argument_key_length != parameter_key_length || memcmp(argument_key, parameter_key, parameter_key_length) != 0)) return NULL;
-        if (!parameter_value_has_wildcard && (argument_value_length != parameter_value_length || memcmp(argument_value, parameter_value, parameter_value_length) != 0)) return NULL;
-
-        if (parameter_key_has_wildcard && parameter_value_has_wildcard) {
-            /* A single '?' binding must satisfy both slots: require arg K == V */
-            if (argument_key_length != argument_value_length || memcmp(argument_key, argument_value, argument_key_length) != 0) return NULL;
-        }
-
-        char *result;
-        if (parameter_key_has_wildcard) {
-            char *cursor = gray_strndup(parameter_key, parameter_key_length);
-            char *after_wildcard = gray_strndup(argument_key, argument_key_length);
-            result = bind_wildcard_string(cursor, after_wildcard);
-            free(cursor); free(after_wildcard);
-        } else {
-            char *cursor = gray_strndup(parameter_value, parameter_value_length);
-            char *after_wildcard = gray_strndup(argument_value, argument_value_length);
-            result = bind_wildcard_string(cursor, after_wildcard);
-            free(cursor); free(after_wildcard);
-        }
-        return result;
-    }
-
-    return NULL;
-}
-
-/* Derive the concrete type that '?' binds to given the parameter's type
- * string and the resolved argument GrayType. Delegates to bind_wildcard_string
- * so composite nesting (arrays-of-arrays, maps-of-arrays, etc.) is handled
- * recursively. Caller owns the returned string. */
-static char *bind_wildcard(const char *parameter_type_name, GrayType *argument_type) {
-    if (!parameter_type_name || !argument_type) return NULL;
-    return bind_wildcard_string(parameter_type_name, type_name(argument_type));
-}
-
-/* Mark a just-registered FunctionSignature as generic if any of the declared
- * parameter or return type strings on `decl` contains a '?'. Stores
- * `decl` on the sig so later call-site instantiation can walk the
- * original type_name strings for substitution. */
+/* Mark a just-registered FunctionSignature as generic if `declaration` has a
+ * `generic` parameter. Stores `declaration` on the signature so a call can walk
+ * the original type spellings for substitution. */
 static void finalize_generic_signature(FunctionSignature *function_signature, AstNode *declaration) {
     function_signature->declaration = declaration;
-    if (!declaration || declaration->kind != NODE_FUNCTION_DECLARATION) return;
-    for (int i = 0; i < declaration->data.function_declaration.parameter_count; i++) {
-        if (type_name_has_wildcard(declaration->data.function_declaration.parameters[i].type_name)) {
-            function_signature->is_generic = true;
-            return;
-        }
-    }
-    for (int i = 0; i < declaration->data.function_declaration.return_type_count; i++) {
-        if (type_name_has_wildcard(declaration->data.function_declaration.return_types[i])) {
-            function_signature->is_generic = true;
-            return;
-        }
-    }
+    function_signature->is_generic = function_has_generic_parameters(declaration);
 }
 
 /* Record a concrete instantiation of a generic function. Returns true
@@ -1209,12 +1035,11 @@ static void finalize_generic_signature(FunctionSignature *function_signature, As
 static bool record_instantiation(FunctionSignature *function_signature, const char *concrete,
                                   AstNode *call_site) {
     if (!function_signature || !concrete) return false;
-    /* reject "unknown" as a concrete binding. This comes from
-     * the main-pass walk of a generic body where the inner call's
-     * arguments are still `?` (TYPE_KIND_UNKNOWN). The real bindings are
-     * recorded during the slice-4 re-check pass once the outer
-     * function's parameters are rebound to concrete types. */
-    if (strcmp(concrete, "unknown") == 0 || strcmp(concrete, "?") == 0) return false;
+    /* A type argument that is still an unbound type parameter comes from the
+     * main-pass walk of a generic body, where the outer function's parameters
+     * are not bound yet. The real instantiations are recorded during the
+     * re-check pass once they are. */
+    if (type_name_has_unbound_generic(concrete)) return false;
     for (int i = 0; i < function_signature->instantiation_count; i++) {
         if (strcmp(function_signature->instantiations[i], concrete) == 0) return false;
     }
@@ -2117,11 +1942,11 @@ static void ensure_escape_summary(TypeChecker *checker, FunctionSignature *funct
                     ? function_signature->declaration->data.function_declaration.body : NULL;
     if (body && function_signature->declaration->data.function_declaration.parameter_count <= 64) {
         /* returns_parameter_address matters only when the return value can carry a
-         * pointer: a pointer, or an aggregate that may hold one. A `?` return
-         * slot resolves to TYPE_KIND_UNKNOWN here — there is no call-site binding
-         * yet to give it a concrete kind — but real call sites bind it to
-         * pointer/aggregate types constantly, so check the slot's declared
-         * name for a wildcard too; otherwise a wildcard-return function's
+         * pointer: a pointer, or an aggregate that may hold one. A return slot
+         * written as a `generic` parameter's name resolves to TYPE_KIND_UNKNOWN
+         * here — there is no call-site binding yet to give it a concrete kind —
+         * but real call sites bind it to pointer/aggregate types constantly, so
+         * an unknown slot of a generic function counts too; otherwise its
          * summary is never computed and forwarding a pointer through it
          * hides the escape from both E3162 and E3163. */
         bool is_escapable_return = false;
@@ -2132,8 +1957,8 @@ static void ensure_escape_summary(TypeChecker *checker, FunctionSignature *funct
                        return_type->kind == TYPE_KIND_ARRAY || return_type->kind == TYPE_KIND_MAP ||
                        return_type->kind == TYPE_KIND_ENUM))
                 is_escapable_return = true;
-            else if (i < declared_return_count &&
-                     type_name_has_wildcard(function_signature->declaration->data.function_declaration.return_types[i]))
+            else if (i < declared_return_count && function_signature->is_generic &&
+                     return_type && return_type->kind == TYPE_KIND_UNKNOWN)
                 is_escapable_return = true;
         }
         if (is_escapable_return)
@@ -4867,8 +4692,8 @@ static const char *checker_resolve_type_name(TypeChecker *checker, const char *w
 
 /* Does a written type annotation name a type that does not exist? An
  * annotation resolves to TYPE_KIND_UNKNOWN either because the name is undefined or
- * because it is the generic wildcard, whose type comes from the call site
- * that binds it, or the bare `func`, an untyped function reference that
+ * because it is a `generic` parameter's name, whose type comes from the call
+ * site that binds it, or the bare `func`, an untyped function reference that
  * codegen stores as void *. Everything else that types as unknown is a name
  * for nothing.
  *
@@ -4877,7 +4702,7 @@ static const char *checker_resolve_type_name(TypeChecker *checker, const char *w
  * outright and `x zag` typechecked clean and failed in the C compiler. */
 static bool type_name_is_undefined(const char *written, const GrayType *resolved) {
     if (!written || !resolved || resolved->kind != TYPE_KIND_UNKNOWN) return false;
-    return !type_name_has_wildcard(written);
+    return !type_name_has_unbound_generic(resolved->name);
 }
 
 static const char *undefined_type_leaf(TypeChecker *checker, const char *written,
@@ -5194,8 +5019,45 @@ static void type_name_cache_flush(TypeChecker *checker) {
 
 static GrayType *typechecker_type_from_name_uncached(TypeChecker *checker, const char *name);
 
+/* Make the `generic` parameters of `declaration` the active type parameters, so
+ * the types written in its signature and body resolve through them. With a
+ * `binding_text` they stand for those types; without one they are unbound and
+ * stand for unknown types. checker_leave_generics() undoes it. */
+static void checker_enter_generics(TypeChecker *checker, const AstNode *declaration, const char *binding_text) {
+    generic_bindings_clear(&checker->generics);
+    generic_bindings_init(&checker->generics, declaration, binding_text);
+}
+
+static void checker_leave_generics(TypeChecker *checker) {
+    generic_bindings_clear(&checker->generics);
+}
+
+/* The active type parameters and what each is bound to, as "kind = i64, other = string". */
+static const char *describe_generic_bindings(TypeChecker *checker) {
+    char buffer[MESSAGE_BUFFER_SIZE];
+    size_t length = 0;
+    buffer[0] = '\0';
+    for (int i = 0; i < checker->generics.count && length < sizeof(buffer); i++) {
+        length += (size_t)snprintf(buffer + length, sizeof(buffer) - length, "%s%s = %s",
+            i > 0 ? ", " : "", checker->generics.names[i],
+            checker->generics.types[i] ? checker->generics.types[i] : "unknown");
+    }
+    return arena_copy_string(checker->arena, buffer);
+}
+
+/* `type_text` with the active type parameters replaced by what they stand for,
+ * or `type_text` itself when none is active. */
+static const char *checker_substitute_generics(TypeChecker *checker, const char *type_text) {
+    if (!type_text || checker->generics.count == 0) return type_text;
+    char *substituted = generic_bindings_substitute(&checker->generics, type_text);
+    const char *kept = arena_copy_string(checker->arena, substituted);
+    free(substituted);
+    return kept;
+}
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
     if (!name) return &TYPE_UNKNOWN;
+    name = checker_substitute_generics(checker, name);
     if (!checker->is_type_name_cache_active || checker->is_registering)
         return typechecker_type_from_name_uncached(checker, name);
 
@@ -7638,7 +7500,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
-/* Does `name` name a type that exists? A <?> argument has to name one: value
+/* Does `name` name a type that exists? A `generic` argument has to name one: value
  * resolution is skipped for type arguments, so this is the only thing standing
  * between a mistyped name and codegen. type_from_name() reads any capitalized
  * name as a struct, so it is never asked about the written name on its own —
@@ -7655,155 +7517,217 @@ static bool type_argument_names_a_type(TypeChecker *checker, const char *name) {
            type_from_name(resolved) != &TYPE_UNKNOWN;
 }
 
-/* Generic-call handling shared by every call spelling: bind the wildcard or
- * type parameter from the arguments, validate a type argument (E3127/E3128),
- * record the instantiation so codegen emits the specialization, and produce
- * the substituted return type.
+/* `type_text` as the type it names when the `generic` parameters in `bindings`
+ * stand for the types they are bound to. */
+static GrayType *typechecker_type_with_generics(TypeChecker *checker, const GenericBindings *bindings,
+                                                const char *type_text) {
+    GenericBindings saved = checker->generics;
+    checker->generics = *bindings;
+    GrayType *result = typechecker_type_from_name(checker, type_text);
+    checker->generics = saved;
+    return result;
+}
+
+/* True when the type written for parameter `index` of `declaration` names one of
+ * its own `generic` parameters, so its type depends on the call. */
+static bool parameter_type_depends_on_generic(const AstNode *declaration, int index) {
+    GenericBindings unbound;
+    generic_bindings_init(&unbound, declaration, NULL);
+    char *substituted = generic_bindings_substitute(&unbound,
+        declaration->data.function_declaration.parameters[index].type_name);
+    bool depends = substituted && strchr(substituted, '?') != NULL;
+    free(substituted);
+    generic_bindings_clear(&unbound);
+    return depends;
+}
+
+/* True when argument `index` of a call to `signature` is a type argument or is
+ * checked against the callee's type arguments by resolve_generic_call(), so the
+ * ordinary per-argument check must leave it alone. */
+static bool argument_is_checked_by_generic_call(const FunctionSignature *signature, int index) {
+    const AstNode *declaration = signature->declaration;
+    if (!signature->is_generic || !declaration || declaration->kind != NODE_FUNCTION_DECLARATION ||
+        index >= declaration->data.function_declaration.parameter_count) return false;
+    return declaration->data.function_declaration.parameters[index].is_type_parameter ||
+           parameter_type_depends_on_generic(declaration, index);
+}
+
+/* The types a call to generic function `declaration` binds its type
+ * parameters to, read from the type arguments resolve_generic_call() already
+ * validated and wrote back onto the call. Release with generic_bindings_clear(). */
+static void call_type_arguments(TypeChecker *checker, const AstNode *call, const AstNode *declaration,
+                                GenericBindings *bindings) {
+    generic_bindings_init(bindings, declaration, NULL);
+    int clamped_argument_count = call->data.call.argument_count < declaration->data.function_declaration.parameter_count
+        ? call->data.call.argument_count : declaration->data.function_declaration.parameter_count;
+    int slot = 0;
+    for (int argument_index = 0; argument_index < clamped_argument_count; argument_index++) {
+        if (!declaration->data.function_declaration.parameters[argument_index].is_type_parameter) continue;
+        const AstNode *type_argument = call->data.call.arguments[argument_index];
+        if (type_argument->kind == NODE_LABEL) {
+            const char *label = type_argument->data.label.value;
+            int outer_index = generic_bindings_find(&checker->generics, label);
+            const char *type_text = outer_index < 0 ? label : checker->generics.types[outer_index];
+            if (outer_index >= 0 && !type_text) type_text = typechecker_format(checker, "?%s", label);
+            bindings->types[slot] = strdup(type_text);
+        }
+        slot++;
+    }
+}
+
+/* Does an argument's type disagree with the parameter type its call binds the
+ * type arguments into? Beyond what argument_type_mismatches() sees, two
+ * structs, enums or pointees with different names, or two maps with different
+ * key or value types, are different types. */
+static bool generic_argument_conflicts(TypeChecker *checker, GrayType *parameter_type, GrayType *argument_type) {
+    if (argument_type_mismatches(checker, parameter_type, argument_type)) return true;
+    if (!argument_type || !parameter_type || !argument_type->name || !parameter_type->name) return false;
+    if (argument_type->kind == TYPE_KIND_ENUM && parameter_type->kind == TYPE_KIND_ENUM)
+        return !typechecker_same_enum_type(checker, argument_type->name, parameter_type->name);
+    if ((argument_type->kind == TYPE_KIND_STRUCT && parameter_type->kind == TYPE_KIND_STRUCT) ||
+        (argument_type->kind == TYPE_KIND_POINTER && parameter_type->kind == TYPE_KIND_POINTER))
+        return !typechecker_same_struct_type(checker, argument_type->name, parameter_type->name);
+    if (argument_type->kind == TYPE_KIND_MAP && parameter_type->kind == TYPE_KIND_MAP)
+        return !map_types_match(parameter_type, argument_type);
+    return false;
+}
+
+/* The type spelling a `generic` parameter's argument names: validated as a
+ * type name (E3127 is decided by the callee's body, E3128 here), resolved
+ * through aliases, and written back onto the argument so codegen mangles the
+ * call against the specialization that is emitted. Returns NULL once an error
+ * was reported. A type parameter of the enclosing generic function passed on as
+ * the argument resolves to what it is bound to, or to its "?name" placeholder
+ * while the enclosing body is still checked unbound. */
+static const char *resolve_type_argument(TypeChecker *checker, AstNode *node, int argument_index) {
+    AstNode *type_argument = node->data.call.arguments[argument_index];
+    /* A module-qualified type name (mod.Type) parses as a member
+     * expression, not a label. Collapse it to a label carrying the
+     * dotted spelling so the type-name resolution below handles it
+     * exactly as the bare form. */
+    if (type_argument->kind == NODE_MEMBER_EXPRESSION && ast_member_qualifier(type_argument) &&
+        type_argument->data.member.member) {
+        char qualified[MESSAGE_BUFFER_SIZE];
+        snprintf(qualified, sizeof(qualified), "%s.%s",
+            ast_member_qualifier(type_argument), type_argument->data.member.member);
+        if (type_argument_names_a_type(checker, qualified)) {
+            type_argument->kind = NODE_LABEL;
+            type_argument->data.label.value = arena_copy_string(checker->arena, qualified);
+        }
+    }
+    if (type_argument->kind != NODE_LABEL) {
+        diagnostic_error_code(checker->diagnostics, "E3128", NODE_FILE(checker, type_argument),
+            type_argument->token.line, type_argument->token.column, 0);
+        return NULL;
+    }
+    const char *label = type_argument->data.label.value;
+    int outer_index = generic_bindings_find(&checker->generics, label);
+    if (outer_index >= 0) {
+        const char *bound = checker->generics.types[outer_index];
+        return bound ? bound : arena_copy_string(checker->arena,
+            typechecker_format(checker, "?%s", label));
+    }
+    /* Must not be a variable in scope */
+    if (scope_lookup(checker->current_scope, label)) {
+        diagnostic_error_code(checker->diagnostics, "E3128", NODE_FILE(checker, type_argument),
+            type_argument->token.line, type_argument->token.column, 0);
+        return NULL;
+    }
+    /* Must name a type. Which types the function actually accepts is decided by
+     * its body: a `T{...}` literal narrows it to structs, and reports E3127
+     * where the literal is written. */
+    if (!type_argument_names_a_type(checker, label)) {
+        typechecker_error_undefined_type(checker, type_argument, label);
+        return NULL;
+    }
+    /* Bind what the name reaches, not the alias spelling. The instantiation is
+     * mangled and substituted by binding, so an alias bound as itself gave a
+     * return type no annotation of the underlying type would accept. */
+    const char *target = resolve_type_alias(checker, checker_resolve_type_name(checker, label));
+    if (target && strcmp(target, label) != 0) {
+        label = target;
+        type_argument->data.label.value = target;
+    }
+    return label;
+}
+
+/* Generic-call handling shared by every call spelling: take the types named for
+ * the callee's `generic` parameters, record the instantiation so codegen emits
+ * the specialization, check the arguments whose parameter types depend on them,
+ * and produce the substituted return type.
  *
  * The module-qualified path had none of this, so `mod.generic(i64)` accepted
  * an invalid type argument in silence and `mod.generic(T)` mangled a call to
  * a specialization that was never emitted. Sharing one implementation is what
  * keeps the qualified and bare spellings reporting identically.
  *
- * Returns the concrete return type, or NULL when the call is not generic or
- * nothing could be bound. *is_generic_out reports whether the callee is
- * generic at all, which callers use to suppress the scalar arg/param check. */
+ * `call_bindings` receives what the call binds each type parameter to; the
+ * caller releases it with generic_bindings_clear(). Returns the concrete return
+ * type, or NULL when the call is not generic. *is_generic_out reports whether
+ * the callee is generic at all, which callers use to suppress the scalar
+ * arg/param check. */
 static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
-    FunctionSignature *signature, const char *function_name, bool *is_generic_out) {
-    char *generic_binding = NULL;
+    FunctionSignature *signature, const char *function_name, bool is_struct_function,
+    GenericBindings *call_bindings, bool *is_generic_out) {
     GrayType *generic_return_type = NULL;
     bool is_generic_call = signature->is_generic && signature->declaration &&
         signature->declaration->kind == NODE_FUNCTION_DECLARATION;
+    memset(call_bindings, 0, sizeof *call_bindings);
     if (is_generic_call) {
-        int clamped_argument_count = node->data.call.argument_count < signature->declaration->data.function_declaration.parameter_count
-            ? node->data.call.argument_count : signature->declaration->data.function_declaration.parameter_count;
+        AstNode *declaration = signature->declaration;
+        generic_bindings_init(call_bindings, declaration, NULL);
+        int clamped_argument_count = node->data.call.argument_count < declaration->data.function_declaration.parameter_count
+            ? node->data.call.argument_count : declaration->data.function_declaration.parameter_count;
+        int bound_count = 0;
+        bool is_fully_bound = true;
         for (int argument_index = 0; argument_index < clamped_argument_count; argument_index++) {
-            const char *parameter_type_name = signature->declaration->data.function_declaration.parameters[argument_index].type_name;
-            /* Type parameter (<?>) — binding comes from the label
-             * (a struct name), not from resolve_expression. */
-            if (signature->declaration->data.function_declaration.parameters[argument_index].is_type_parameter) {
-                AstNode *type_argument = node->data.call.arguments[argument_index];
-                /* A module-qualified type name (mod.Type) parses as a member
-                 * expression, not a label. Collapse it to a label carrying the
-                 * dotted spelling so the type-name resolution below handles it
-                 * exactly as the bare form. */
-                if (type_argument->kind == NODE_MEMBER_EXPRESSION && ast_member_qualifier(type_argument) &&
-                    type_argument->data.member.member) {
-                    char qualified[MESSAGE_BUFFER_SIZE];
-                    snprintf(qualified, sizeof(qualified), "%s.%s",
-                        ast_member_qualifier(type_argument), type_argument->data.member.member);
-                    if (type_argument_names_a_type(checker, qualified)) {
-                        type_argument->kind = NODE_LABEL;
-                        type_argument->data.label.value = arena_copy_string(checker->arena, qualified);
-                    }
-                }
-                if (type_argument->kind != NODE_LABEL) {
-                    diagnostic_error_code(checker->diagnostics, "E3128",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]),
-                        node->data.call.arguments[argument_index]->token.line,
-                        node->data.call.arguments[argument_index]->token.column, 0);
-                    continue;
-                }
-                const char *argument_label = node->data.call.arguments[argument_index]->data.label.value;
-                /* Type parameter forwarding: rewrite T → "?" so
-                 * codegen can substitute, same as new(T). */
-                if (checker->type_parameter_name &&
-                    strcmp(argument_label, checker->type_parameter_name) == 0) {
-                    node->data.call.arguments[argument_index]->data.label.value = "?";
-                    argument_label = "?";
-                }
-                if (strcmp(argument_label, "?") == 0) {
-                    if (checker->type_parameter_binding) {
-                        argument_label = checker->type_parameter_binding;
-                    } else {
-                        /* First pass — no binding yet, accept and
-                         * propagate the wildcard. */
-                        if (!generic_binding) generic_binding = (char *)"?";
-                        continue;
-                    }
-                }
-                /* Must not be a variable in scope */
-                if (scope_lookup(checker->current_scope, argument_label)) {
-                    diagnostic_error_code(checker->diagnostics, "E3128",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]),
-                        node->data.call.arguments[argument_index]->token.line,
-                        node->data.call.arguments[argument_index]->token.column, 0);
-                    continue;
-                }
-                /* Must name a type. Which types the function actually accepts
-                 * is decided by its body: a `T{...}` literal narrows it to
-                 * structs, and reports E3127 where the literal is written. */
-                if (!type_argument_names_a_type(checker, argument_label)) {
-                    typechecker_error_undefined_type(checker, node->data.call.arguments[argument_index], argument_label);
-                    continue;
-                }
-                /* Bind what the name reaches, not the alias spelling. The
-                 * instantiation is mangled and substituted by binding, so an
-                 * alias bound as itself gave a return type no annotation of
-                 * the underlying type would accept. The argument label is
-                 * rewritten with it, or codegen would mangle the call site
-                 * against a specialization that is never emitted. */
-                {
-                    const char *target = resolve_type_alias(checker,
-                        checker_resolve_type_name(checker, argument_label));
-                    if (target && strcmp(target, argument_label) != 0) {
-                        argument_label = target;
-                        node->data.call.arguments[argument_index]->data.label.value = target;
-                    }
-                }
-                if (!generic_binding) {
-                    generic_binding = (char *)argument_label;
-                }
-                continue;
-            }
-            GrayType *argument_type = resolve_expression(checker, node->data.call.arguments[argument_index]);
-            /* A C interop value carries no Grayscale type. It must never bind a
-             * `?` (codegen would emit its display name, "a C interop value", as
-             * a C type name), and the generic path is the only arg check that
-             * runs for a generic callee, so reject it here as a non-generic
-             * argument would. */
+            if (!declaration->data.function_declaration.parameters[argument_index].is_type_parameter) continue;
+            const char *type_argument = resolve_type_argument(checker, node, argument_index);
+            if (type_argument) call_bindings->types[bound_count] = strdup(type_argument);
+            else is_fully_bound = false;
+            bound_count++;
+        }
+        /* A type argument left out is already an arity error. */
+        if (bound_count < call_bindings->count) is_fully_bound = false;
+        if (is_fully_bound) {
+            char *joined = generic_bindings_join(call_bindings);
+            record_instantiation(signature, joined, node);
+            free(joined);
+        }
+        /* Arguments whose parameter types depend on a type parameter are checked
+         * against the types the call binds it to. */
+        for (int argument_index = 0; argument_index < clamped_argument_count; argument_index++) {
+            const Parameter *parameter = &declaration->data.function_declaration.parameters[argument_index];
+            if (parameter->is_type_parameter || !parameter_type_depends_on_generic(declaration, argument_index)) continue;
+            AstNode *argument = node->data.call.arguments[argument_index];
+            GrayType *expected_type = typechecker_type_with_generics(checker, call_bindings, parameter->type_name);
+            GrayType *argument_type = check_expression_as(checker, argument, expected_type);
+            /* A C interop value carries no Grayscale type, so it can never
+             * stand for a type parameter's type. */
             if (argument_type && argument_type->kind == TYPE_KIND_C_FUNCTION) {
-                typechecker_error_argument_type(checker, node->data.call.arguments[argument_index], argument_index + 1,
+                typechecker_error_argument_type(checker, argument, argument_index + 1,
                     function_name, "a typed value", "a C interop value");
                 continue;
             }
-            if (!type_name_has_wildcard(parameter_type_name)) continue;
-            char *bound = bind_wildcard(parameter_type_name, argument_type);
-            if (!bound) {
-                /* arg is TYPE_KIND_UNKNOWN: we are inside a generic
-                 * function body during the main pass and the
-                 * outer param hasn't been bound yet. The
-                 * re-check pass will validate with concrete
-                 * types — skip the false-positive here. */
-                if (argument_type->kind == TYPE_KIND_UNKNOWN) continue;
-                diagnostic_error_code_formatted(checker->diagnostics, "E3199",
-                    NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                    parameter_type_name, argument_index + 1, function_name, type_name(argument_type));
-                continue;
-            }
-            if (!generic_binding) {
-                generic_binding = bound;
-            } else if (strcmp(generic_binding, bound) != 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3159",
-                    NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                    function_name, generic_binding, argument_index + 1, bound);
-                free(bound);
+            if (!generic_argument_conflicts(checker, expected_type, argument_type)) continue;
+            int generic_index = generic_bindings_find(call_bindings, parameter->type_name);
+            if (generic_index >= 0) {
+                diagnostic_error_code_formatted(checker->diagnostics, is_struct_function ? "E3200" : "E3159",
+                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
+                    parameter->type_name, function_name, call_bindings->types[generic_index],
+                    argument_index + 1, type_display_name(checker, argument_type));
             } else {
-                free(bound);
+                diagnostic_error_code_formatted(checker->diagnostics, "E3199",
+                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
+                    argument_index + 1, function_name, type_display_name(checker, expected_type),
+                    type_display_name(checker, argument_type));
             }
         }
-        if (generic_binding) {
-            record_instantiation(signature, generic_binding, node);
-            if (signature->declaration->data.function_declaration.return_type_count > 0) {
-                char *return_type_text = substitute_wildcard(
-                    signature->declaration->data.function_declaration.return_types[0],
-                    generic_binding);
-                generic_return_type = type_from_name(return_type_text);
-                /* return_type_text is owned by type_from_name on the
-                 * heap path; leak is fine at compile time. */
-            } else {
-                generic_return_type = &TYPE_VOID;
-            }
+        if (declaration->data.function_declaration.return_type_count > 0) {
+            generic_return_type = typechecker_type_with_generics(checker, call_bindings,
+                declaration->data.function_declaration.return_types[0]);
+        } else {
+            generic_return_type = &TYPE_VOID;
         }
     }
     if (is_generic_out) *is_generic_out = is_generic_call;
@@ -7877,32 +7801,16 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 diagnostic_error_code_formatted(checker->diagnostics, "E4017", NODE_FILE(checker, node),
                     node->token.line, node->token.column, 0, display_module, member_function_name);
             }
-            /* Wildcard (generic) struct function: record instantiation
-             * and substitute the concrete return type. */
-            if (signature->is_generic && signature->declaration &&
-                signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                char *binding = NULL;
-                int clamped_argument_count = node->data.call.argument_count < signature->declaration->data.function_declaration.parameter_count
-                    ? node->data.call.argument_count : signature->declaration->data.function_declaration.parameter_count;
-                for (int argument_index = 0; argument_index < clamped_argument_count && !binding; argument_index++) {
-                    const char *parameter_type_name = signature->declaration->data.function_declaration.parameters[argument_index].type_name;
-                    GrayType *argument_type_for_binding = resolve_expression(checker, node->data.call.arguments[argument_index]);
-                    if (!type_name_has_wildcard(parameter_type_name)) continue;
-                    binding = bind_wildcard(parameter_type_name, argument_type_for_binding);
-                }
-                if (binding) {
-                    record_instantiation(signature, binding, node);
-                    if (signature->declaration->data.function_declaration.return_type_count > 0) {
-                        char *return_type_text = substitute_wildcard(
-                            signature->declaration->data.function_declaration.return_types[0], binding);
-                        result = type_from_name(return_type_text);
-                    } else {
-                        result = &TYPE_VOID;
-                    }
-                    free(binding);
-                } else {
-                    result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
-                }
+            /* A generic struct function records its instantiation and
+             * substitutes the type arguments into the return type. */
+            bool is_generic_call = false;
+            GenericBindings call_bindings;
+            GrayType *generic_return_type = resolve_generic_call(checker, node, signature,
+                typechecker_format(checker, "%s.%s", display_module, member_function_name), true,
+                &call_bindings, &is_generic_call);
+            generic_bindings_clear(&call_bindings);
+            if (is_generic_call && generic_return_type) {
+                result = generic_return_type;
             } else {
                 result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
             }
@@ -7932,6 +7840,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             char callee[MESSAGE_BUFFER_SIZE];
             snprintf(callee, sizeof(callee), "%s.%s", display_module, member_function_name);
             for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                if (argument_is_checked_by_generic_call(signature, argument_index)) continue;
                 GrayType *parameter_type = signature->parameter_types[argument_index];
                 GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
                 bool was_argument_reported = false;
@@ -8033,8 +7942,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
              * it an invalid type argument passed silently and codegen
              * mangled a call to a specialization it never emitted. */
             bool is_module_generic = false;
+            GenericBindings module_bindings;
             GrayType *module_generic_return = resolve_generic_call(checker, node, signature,
-                display, &is_module_generic);
+                display, false, &module_bindings, &is_module_generic);
+            generic_bindings_clear(&module_bindings);
             if (is_module_generic && module_generic_return) {
                 result = module_generic_return;
             } else if (signature->return_count > 0) {
@@ -8046,8 +7957,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
              * return type and nothing else: what it was passed went
              * unchecked, so a mismatch — two modules' same-named but
              * distinct structs among them — reached codegen and came back
-             * as a C compiler error. A generic callee is already unified
-             * against its arguments above. */
+             * as a C compiler error. A generic callee's arguments are
+             * already checked against its type arguments above. */
             if (!is_module_generic) {
                 int check_count = node->data.call.argument_count < signature->parameter_count
                     ? node->data.call.argument_count : signature->parameter_count;
@@ -8198,30 +8109,14 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     struct_function_signature->was_used = true;
                     symbol->was_used = true;
                     warn_if_function_deprecated(checker, node, struct_function_signature);
-                    if (struct_function_signature->is_generic && struct_function_signature->declaration &&
-                        struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                        char *binding = NULL;
-                        int clamped_argument_count = node->data.call.argument_count < struct_function_signature->declaration->data.function_declaration.parameter_count
-                            ? node->data.call.argument_count : struct_function_signature->declaration->data.function_declaration.parameter_count;
-                        for (int argument_index = 0; argument_index < clamped_argument_count && !binding; argument_index++) {
-                            const char *parameter_type_name = struct_function_signature->declaration->data.function_declaration.parameters[argument_index].type_name;
-                            GrayType *argument_type_for_binding = resolve_expression(checker, node->data.call.arguments[argument_index]);
-                            if (!type_name_has_wildcard(parameter_type_name)) continue;
-                            binding = bind_wildcard(parameter_type_name, argument_type_for_binding);
-                        }
-                        if (binding) {
-                            record_instantiation(struct_function_signature, binding, node);
-                            if (struct_function_signature->declaration->data.function_declaration.return_type_count > 0) {
-                                char *return_type_text = substitute_wildcard(
-                                    struct_function_signature->declaration->data.function_declaration.return_types[0], binding);
-                                result = type_from_name(return_type_text);
-                            } else {
-                                result = &TYPE_VOID;
-                            }
-                            free(binding);
-                        } else {
-                            result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
-                        }
+                    bool is_generic_call = false;
+                    GenericBindings call_bindings;
+                    GrayType *generic_return_type = resolve_generic_call(checker, node, struct_function_signature,
+                        typechecker_format(checker, "%s.%s", display_struct_name, member_function_name), true,
+                        &call_bindings, &is_generic_call);
+                    generic_bindings_clear(&call_bindings);
+                    if (is_generic_call && generic_return_type) {
+                        result = generic_return_type;
                     } else {
                         result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
                     }
@@ -8258,6 +8153,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         char callee[MESSAGE_BUFFER_SIZE];
                         snprintf(callee, sizeof(callee), "%s.%s", display_struct_name, member_function_name);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                            if (argument_is_checked_by_generic_call(struct_function_signature, argument_index)) continue;
                             GrayType *parameter_type = struct_function_signature->parameter_types[argument_index];
                             GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
                             bool was_argument_reported = false;
@@ -9050,14 +8946,6 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = &TYPE_I64;
             return result;
         }
-        /* Rewrite size_of(T) → size_of(?) when T is a type param */
-        if (node->data.call.argument_count == 1 &&
-            node->data.call.arguments[0]->kind == NODE_LABEL &&
-            checker->type_parameter_name &&
-            strcmp(node->data.call.arguments[0]->data.label.value,
-                   checker->type_parameter_name) == 0) {
-            node->data.call.arguments[0]->data.label.value = "?";
-        }
         {
             AstNode *argument = node->data.call.arguments[0];
             Symbol *argument_symbol = argument->kind == NODE_LABEL
@@ -9069,7 +8957,9 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 return result;
             }
             const char *written = size_of_type_spelling(checker, argument);
-            if (written && strcmp(written, "?") != 0) {
+            /* A type parameter is checked where its argument is named; codegen
+             * sizes whatever it is bound to in each instantiation. */
+            if (written && generic_bindings_find(&checker->generics, written) < 0) {
                 reject_private_type(checker, argument, written);
                 /* A container spelling types as TYPE_KIND_ARRAY or TYPE_KIND_MAP whatever
                  * its parts name, so the check has to look at every leaf. */
@@ -9544,38 +9434,25 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             typechecker_error_arity(checker, node, function_name,
                 expected_count, node->data.call.argument_count);
         }
-        /* Generic (wildcard) dispatch: unify each '?' parameter
-         * against the corresponding argument to derive a single
-         * concrete binding T, record the instantiation, and
-         * substitute T into the return type. Skip the normal
-         * per-argument check below since '?' would otherwise collapse
-         * to TYPE_KIND_UNKNOWN and produce no useful errors. */
+        /* A generic call takes the type arguments for the callee's `generic`
+         * parameters, records the instantiation, and substitutes them into
+         * the return type. */
         bool is_generic_call = false;
+        GenericBindings call_bindings;
         GrayType *generic_return_type = resolve_generic_call(checker, node, signature,
-            function_name, &is_generic_call);
+            function_name, false, &call_bindings, &is_generic_call);
+        generic_bindings_clear(&call_bindings);
 
         /* Check argument types */
         int check_count = node->data.call.argument_count < signature->parameter_count
             ? node->data.call.argument_count : signature->parameter_count;
         for (int argument_index = 0; argument_index < check_count; argument_index++) {
-            /* Skip type parameters — no value to type-check */
-            if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION &&
-                argument_index < signature->declaration->data.function_declaration.parameter_count &&
-                signature->declaration->data.function_declaration.parameters[argument_index].is_type_parameter)
-                continue;
-            /* A wildcard parameter's argument was typed by the binding above;
-             * checking it against the unbound '?' type would retype it. */
-            if (is_generic_call &&
-                type_name_has_wildcard(signature->declaration->data.function_declaration.parameters[argument_index].type_name))
-                continue;
+            /* A type argument has no value to type-check, and an argument whose
+             * parameter type depends on one was checked against the bound type
+             * above. */
+            if (argument_is_checked_by_generic_call(signature, argument_index)) continue;
             GrayType *parameter_type = signature->parameter_types[argument_index];
             GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
-            if (is_generic_call) {
-                /* Generic branch already handled unification;
-                 * suppress the scalar param/argument comparison which
-                 * would compare against TYPE_KIND_UNKNOWN. */
-                continue;
-            }
             bool was_argument_reported = false;
             AstNode *argument_node = node->data.call.arguments[argument_index];
             if (argument_type_mismatches(checker, parameter_type, argument_type)) {
@@ -9900,10 +9777,13 @@ static bool type_name_as_value(TypeChecker *checker, const char *name) {
 }
 
 /* The declaration of the function a call names, for the spellings whose
- * signature can be resolved before the arguments are walked: a bare name and a
- * module-qualified one. Returns NULL for anything else, which leaves the
- * argument loop behaving as it did. */
-static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node) {
+ * signature can be resolved before the arguments are walked: a bare name, a
+ * module-qualified one, and a struct function. `*leading_parameters` is how
+ * many leading parameters the written arguments skip (the receiver of an
+ * instance call). Returns NULL for anything else, which leaves the argument
+ * loop behaving as it did. */
+static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node, int *leading_parameters) {
+    *leading_parameters = 0;
     AstNode *function_node = node->data.call.function;
     if (!function_node) return NULL;
     FunctionSignature *signature = NULL;
@@ -9913,6 +9793,24 @@ static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node)
         const char *qualifier = ast_member_qualifier(function_node);
         if (qualifier)
             signature = find_module_function(checker, qualifier, function_node->data.member.member);
+        if (qualifier && !signature) {
+            /* A struct function: Type.func(...), or instance.func(...), whose
+             * receiver is the parameter the written arguments do not cover. */
+            const char *struct_name = qualifier;
+            Symbol *receiver = scope_lookup(checker->current_scope, qualifier);
+            if (receiver && receiver->type) {
+                struct_name = receiver->type->kind == TYPE_KIND_STRUCT ? receiver->type->name
+                            : receiver->type->kind == TYPE_KIND_POINTER ? receiver->type->element_type : NULL;
+            }
+            if (struct_name && is_struct_name(checker, struct_name)) {
+                char struct_key[MESSAGE_BUFFER_SIZE], prefixed[MESSAGE_BUFFER_SIZE];
+                snprintf(prefixed, sizeof(prefixed), "%s_%s",
+                    checker_resolve_declaration_into(checker, struct_name, struct_key, sizeof(struct_key)),
+                    function_node->data.member.member);
+                signature = find_function(checker, prefixed);
+                if (signature && receiver) *leading_parameters = 1;
+            }
+        }
     }
     return (signature && signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) ? signature->declaration : NULL;
 }
@@ -9928,13 +9826,27 @@ static const struct { const char *name; int index; } builtin_type_arguments[] = 
 
 /* Is argument `index` of this call a type position — a place that takes a type
  * name rather than a value? Answered from where the function is declared: a
- * <?> parameter on a user function, an EXPECTED_ARGUMENT_TYPE position in the stdlib table,
+ * `generic` parameter on a user function (`leading_parameters` is 1 when an
+ * instance call leaves its receiver out of the written arguments), an EXPECTED_ARGUMENT_TYPE position in the stdlib table,
  * or the builtin table above. A type position must never reach value
  * resolution, which would report the type name as a value (E3100). */
 static bool argument_is_type_position(TypeChecker *checker, AstNode *node,
-                                 AstNode *callee_declaration, int index) {
-    if (callee_declaration && index < callee_declaration->data.function_declaration.parameter_count &&
-        callee_declaration->data.function_declaration.parameters[index].is_type_parameter)
+                                 AstNode *callee_declaration, int leading_parameters, int index) {
+    int parameter_index = index + leading_parameters;
+    /* A named argument takes the parameter it names, wherever it is written. */
+    if (callee_declaration && node->data.call.argument_names && node->data.call.argument_names[index]) {
+        parameter_index = -1;
+        for (int i = 0; i < callee_declaration->data.function_declaration.parameter_count; i++) {
+            if (strcmp(callee_declaration->data.function_declaration.parameters[i].name,
+                       node->data.call.argument_names[index]) == 0) {
+                parameter_index = i;
+                break;
+            }
+        }
+    }
+    if (callee_declaration && parameter_index >= 0 &&
+        parameter_index < callee_declaration->data.function_declaration.parameter_count &&
+        callee_declaration->data.function_declaration.parameters[parameter_index].is_type_parameter)
         return true;
     AstNode *function_node = node->data.call.function;
     if (!function_node) return false;
@@ -10082,14 +9994,15 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
     bool is_type_of_call = node->data.call.function && node->data.call.function->kind == NODE_LABEL &&
         strcmp(node->data.call.function->data.label.value, "type_of") == 0;
-    AstNode *callee_declaration = callee_function_declaration(checker, node);
+    int callee_leading_parameters = 0;
+    AstNode *callee_declaration = callee_function_declaration(checker, node, &callee_leading_parameters);
     for (int i = 0; i < node->data.call.argument_count; i++) {
         /* A type argument is validated where the call is dispatched, not here:
-         * resolve_generic_call() for a <?> parameter, the stdlib argument
+         * resolve_generic_call() for a `generic` parameter, the stdlib argument
          * check for an EXPECTED_ARGUMENT_TYPE position, the builtin's own handler for the
          * rest. Resolving one here would report the type name as a value. */
         if (node->data.call.arguments[i]->kind == NODE_LABEL &&
-            argument_is_type_position(checker, node, callee_declaration, i))
+            argument_is_type_position(checker, node, callee_declaration, callee_leading_parameters, i))
             continue;
         if (is_reference_call && node->data.call.arguments[i]->kind == NODE_LABEL &&
             find_function(checker, node->data.call.arguments[i]->data.label.value)) {
@@ -11648,28 +11561,22 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
 static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     const char *struct_name = node->data.struct_value.name;
-    /* Type parameter: rewrite T → "?" so codegen can substitute */
-    if (checker->type_parameter_name && strcmp(struct_name, checker->type_parameter_name) == 0) {
-        node->data.struct_value.name = "?";
-        struct_name = "?";
-    }
     /* A literal written against a type parameter is what narrows the function
      * to struct arguments — `T{...}` means nothing for an i64. The binding is
      * judged as E3127 below rather than as an undefined type, which is what
-     * `i64` would otherwise be called here. */
-    bool is_name_from_type_parameter = false;
-    if (strcmp(struct_name, "?") == 0) {
-        /* During re-check with a binding, validate with concrete struct */
-        if (checker->type_parameter_binding) {
-            struct_name = checker->type_parameter_binding;
-            is_name_from_type_parameter = true;
-        } else {
-            /* Main pass — skip field validation, return unknown */
+     * `i64` would otherwise be called here. The node keeps the parameter's name
+     * so codegen resolves it against each instantiation. */
+    int generic_index = generic_bindings_find(&checker->generics, struct_name);
+    bool is_name_from_type_parameter = generic_index >= 0;
+    if (is_name_from_type_parameter) {
+        const char *bound = checker->generics.types[generic_index];
+        if (!bound) {
+            /* Main pass — skip field validation, the type is not known yet */
             for (int i = 0; i < node->data.struct_value.count; i++)
                 resolve_expression(checker, node->data.struct_value.field_values[i]);
-            result = &TYPE_UNKNOWN;
-            return result;
+            return typechecker_type_from_name(checker, struct_name);
         }
+        struct_name = bound;
     }
     reject_private_type(checker, node, struct_name);
     typechecker_mark_type_module_used(checker, struct_name);
@@ -11721,7 +11628,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 node->data.struct_value.was_type_parameter_rejected = true;
                 diagnostic_error_code_formatted(checker->diagnostics, "E3127",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    checker->type_parameter_name ? checker->type_parameter_name : "T",
+                    checker->generics.names[generic_index],
                     unqualified_display_name(struct_name));
             }
         } else {
@@ -11825,69 +11732,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* for generic structs, infer the wildcard binding from
-     * the field values and record the instantiation on the struct
-     * decl so codegen can emit per-binding typedefs. */
-    AstNode *struct_declaration = find_struct_in_program(checker, struct_name);
-    if (struct_declaration && struct_declaration->data.struct_declaration.is_generic) {
-        const char *binding = NULL;
-        for (int i = 0; i < node->data.struct_value.count; i++) {
-            const char *field_name = node->data.struct_value.field_names[i];
-            if (!field_name) continue;
-            /* Find the field's declared type in the struct decl */
-            for (int j = 0; j < struct_declaration->data.struct_declaration.field_count; j++) {
-                if (strcmp(struct_declaration->data.struct_declaration.fields[j].name, field_name) == 0 &&
-                    struct_declaration->data.struct_declaration.fields[j].type_name &&
-                    strcmp(struct_declaration->data.struct_declaration.fields[j].type_name, "?") == 0) {
-                    GrayType *value_type = type_table_get(checker->type_table,
-                        node->data.struct_value.field_values[i]);
-                    if (!value_type) value_type = resolve_expression(checker, node->data.struct_value.field_values[i]);
-                    if (value_type && value_type->kind != TYPE_KIND_UNKNOWN) {
-                        const char *concrete = type_name(value_type);
-                        if (!binding) {
-                            binding = concrete;
-                        } else if (strcmp(binding, concrete) != 0) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E3200",
-                                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                                struct_name, binding, field_name, concrete);
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-        if (binding) {
-            node->data.struct_value.wildcard_binding = strdup(binding);
-            /* Record instantiation on the struct decl */
-            bool already = false;
-            for (int instantiation_index = 0; instantiation_index < struct_declaration->data.struct_declaration.instantiation_count; instantiation_index++) {
-                if (strcmp(struct_declaration->data.struct_declaration.instantiations[instantiation_index], binding) == 0) {
-                    already = true;
-                    break;
-                }
-            }
-            if (!already) {
-                int field_count = struct_declaration->data.struct_declaration.instantiation_count;
-                struct_declaration->data.struct_declaration.instantiations = xrealloc(
-                    (void *)struct_declaration->data.struct_declaration.instantiations,
-                    sizeof(const char *) * (size_t)(field_count + 1));
-                struct_declaration->data.struct_declaration.instantiations[field_count] = strdup(binding);
-                struct_declaration->data.struct_declaration.instantiation_count = field_count + 1;
-            }
-            /* Return mangled struct type */
-            char mangled[MESSAGE_BUFFER_SIZE];
-            size_t position = snprintf(mangled, sizeof(mangled), "%s__", struct_name);
-            for (const char *cursor = binding; *cursor && position < sizeof(mangled) - 1; cursor++) {
-                mangled[position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
-            }
-            mangled[position] = '\0';
-            result = type_struct(strdup(mangled));
-        } else {
-            result = type_struct(struct_name);
-        }
-    } else {
-        result = type_struct(struct_name);
-    }
+    result = type_struct(struct_name);
     return result;
 }
 
@@ -11980,7 +11825,7 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
         reference_signature->was_used = true;
         warn_if_function_deprecated(checker, node, reference_signature);
         reject_test_function_reference(checker, node, reference_signature);
-        /* E4032: a bare function reference to a generic ('?' wildcard)
+        /* E4032: a bare function reference to a generic (`generic` parameter)
          * function can't be resolved to any C symbol — codegen only emits
          * one specialisation per concrete call-site instantiation, and a
          * func-ref used as a plain value (held, passed, or handed to a C
@@ -12086,38 +11931,6 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
         result = type_from_name("func");
     }
     return result;
-}
-
-/* Declared type name of the parameter `elem` names in the function currently
- * being checked, or NULL if `elem` is not a bare parameter reference. A
- * wildcard parameter's symbol type is the shared TYPE_UNKNOWN, so the '?'
- * marker survives only on the declaration. */
-static const char *parameter_reference_type_name(TypeChecker *checker, AstNode *element) {
-    if (!element || element->kind != NODE_LABEL || !checker->current_function_declaration)
-        return NULL;
-    AstNode *function_declaration = checker->current_function_declaration;
-    for (int i = 0; i < function_declaration->data.function_declaration.parameter_count; i++) {
-        Parameter *parameter = &function_declaration->data.function_declaration.parameters[i];
-        if (!parameter->is_type_parameter && parameter->name &&
-            strcmp(parameter->name, element->data.label.value) == 0)
-            return parameter->type_name;
-    }
-    return NULL;
-}
-
-/* Grayscale type name for an array- or map-literal element, used when an
- * unannotated array/map infers its element (or K/V) type from an entry. */
-static const char *literal_element_type_name(TypeChecker *checker, AstNode *element, GrayType *resolved) {
-    /* A wildcard-typed element resolves to TYPE_UNKNOWN — recover the '?' from
-     * the parameter declaration so {x, x} / {k: v} infer [?] / map[K:?]. The
-     * composite unifier and monomorphization then bind it per call site,
-     * instead of [unknown] failing to match a declared -> [?] return. */
-    if (resolved && resolved->kind == TYPE_KIND_UNKNOWN) {
-        const char *parameter_type_name = parameter_reference_type_name(checker, element);
-        if (parameter_type_name && type_name_has_wildcard(parameter_type_name))
-            return parameter_type_name;
-    }
-    return resolved ? type_name(resolved) : "unknown";
 }
 
 static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
@@ -12247,17 +12060,12 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
     case NODE_LABEL: {
         const char *name = node->data.label.value;
 
-        /* Type parameter name (e.g. T) — resolve as unknown during main
-         * pass, or as the concrete binding during re-check.
-         * Also handle "?" which is the rewritten form of T. */
-        if (checker->type_parameter_name &&
-            (strcmp(name, checker->type_parameter_name) == 0 ||
-             strcmp(name, "?") == 0)) {
-            if (checker->type_parameter_binding) {
-                result = type_from_name(checker->type_parameter_binding);
-            } else {
-                result = &TYPE_UNKNOWN;
-            }
+        /* A type parameter's name used as a value (new(T), size_of(T)) is the
+         * type it is bound to, or unknown during the main pass. */
+        int generic_index = generic_bindings_find(&checker->generics, name);
+        if (generic_index >= 0 && !scope_lookup(checker->current_scope, name)) {
+            const char *bound = checker->generics.types[generic_index];
+            result = bound ? type_from_name(bound) : typechecker_type_from_name(checker, name);
             break;
         }
 
@@ -12635,7 +12443,6 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
              * first element that has one, which every literal element takes
              * too; i64 (f64 with a decimal literal) when all are literals. */
             GrayType *element_type = NULL;
-            AstNode *element_node = NULL;
             bool any_decimal = false;
             for (int i = 0; i < node->data.array_value.count; i++) {
                 AstNode *element = node->data.array_value.elements[i];
@@ -12645,14 +12452,13 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     any_decimal = any_decimal || type->is_decimal;
                 } else if (!element_type) {
                     element_type = type;
-                    element_node = element;
                 }
             }
             if (!element_type) element_type = any_decimal ? &TYPE_F64 : &TYPE_I64;
             if (element_type->kind == TYPE_KIND_ERROR)
                 diagnostic_error_code(checker->diagnostics, "E3153", NODE_FILE(checker, node),
                     node->token.line, node->token.column, 0);
-            result = type_array(literal_element_type_name(checker, element_node, element_type));
+            result = type_array(type_name(element_type));
             for (int i = 0; i < node->data.array_value.count; i++) {
                 AstNode *element = node->data.array_value.elements[i];
                 GrayType *element_resolved = is_literal_expression(element)
@@ -12697,15 +12503,14 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
          * key (value) takes too; i64 (f64 with a decimal literal) when all
          * are literals. */
         GrayType *first_key_type = NULL, *first_value_type = NULL;
-        AstNode *first_key_node = NULL, *first_value_node = NULL;
         bool key_decimal = false, value_decimal = false;
         for (int i = 0; i < node->data.map_value.count; i++) {
             GrayType *checked_key_type = resolve_untyped(checker, node->data.map_value.keys[i]);
             GrayType *checked_value_type = resolve_untyped(checker, node->data.map_value.values[i]);
             if (checked_key_type->kind == TYPE_KIND_LITERAL) key_decimal = key_decimal || checked_key_type->is_decimal;
-            else if (!first_key_type) { first_key_type = checked_key_type; first_key_node = node->data.map_value.keys[i]; }
+            else if (!first_key_type) first_key_type = checked_key_type;
             if (checked_value_type->kind == TYPE_KIND_LITERAL) value_decimal = value_decimal || checked_value_type->is_decimal;
-            else if (!first_value_type) { first_value_type = checked_value_type; first_value_node = node->data.map_value.values[i]; }
+            else if (!first_value_type) first_value_type = checked_value_type;
             /* void can't be a map key or value. */
             reject_void_in_context(checker, node->data.map_value.keys[i], checked_key_type, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], checked_value_type, "map value");
@@ -12741,9 +12546,9 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         if (node->data.map_value.count > 0) {
             /* Use the freshly-resolved types, not type_table_get: during
              * generic instantiation typetable writes are suppressed, so a
-             * stale wildcard entry from the first pass would otherwise stick. */
-            resolved_type->key_type = strdup(literal_element_type_name(checker, first_key_node, first_key_type));
-            resolved_type->value_type = strdup(literal_element_type_name(checker, first_value_node, first_value_type));
+             * stale entry from the first pass would otherwise stick. */
+            resolved_type->key_type = strdup(type_name(first_key_type));
+            resolved_type->value_type = strdup(type_name(first_value_type));
         } else if (saved_map_expected && saved_map_expected->kind == TYPE_KIND_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types
@@ -12954,10 +12759,12 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
 
     case NODE_NEW_EXPRESSION: {
         const char *new_type = node->data.new_expression.type_name;
-        /* Type parameter: rewrite T → "?" so codegen can substitute */
-        if (checker->type_parameter_name && strcmp(new_type, checker->type_parameter_name) == 0) {
-            node->data.new_expression.type_name = "?";
-            new_type = "?";
+        if (strcmp(checker_substitute_generics(checker, new_type), new_type) != 0) {
+            /* A type written with a type parameter allocates whatever it is
+             * bound to in each instantiation; the node keeps the spelling for
+             * codegen to resolve. */
+            result = typechecker_type_from_name(checker, typechecker_format(checker, "^%s", new_type));
+            break;
         }
         reject_private_type(checker, node, new_type);
         /* Resolve the name as written, then aliases — the same order a type
@@ -12965,32 +12772,23 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         new_type = checker_resolve_type_name(checker, new_type);
         new_type = resolve_type_alias(checker, new_type);
         node->data.new_expression.type_name = new_type;
-        if (strcmp(new_type, "?") == 0) {
-            /* During re-check with a binding, validate the concrete type */
-            if (checker->type_parameter_binding) {
-                result = type_pointer(checker->type_parameter_binding);
-            } else {
-                result = type_pointer("?");
-            }
-        } else {
-            typechecker_mark_type_module_used(checker, new_type);
-            GrayType *narrowed_type = type_from_name(new_type);
-            bool known = is_struct_name(checker, new_type) ||
-                         is_enum_name(checker, new_type) ||
-                         (narrowed_type->kind != TYPE_KIND_UNKNOWN && narrowed_type->kind != TYPE_KIND_STRUCT) ||
-                         /* Stdlib opaque types (Thread, Mutex, ...): type_from_name()
-                          * normalizes the mangled mod_Type to a bare-name TYPE_KIND_STRUCT,
-                          * which the disjunct above deliberately excludes since
-                          * type_from_name() also returns TYPE_KIND_STRUCT for any
-                          * unregistered capitalized name. Check the opaque
-                          * allowlist explicitly instead, same as
-                          * typechecker_type_from_name() does elsewhere. */
-                         is_stdlib_opaque_type_available(checker, unqualified_display_name(new_type));
-            if (!known) {
-                typechecker_error_undefined_type(checker, node, unqualified_display_name(new_type));
-            }
-            result = type_pointer(new_type);
+        typechecker_mark_type_module_used(checker, new_type);
+        GrayType *narrowed_type = type_from_name(new_type);
+        bool known = is_struct_name(checker, new_type) ||
+                     is_enum_name(checker, new_type) ||
+                     (narrowed_type->kind != TYPE_KIND_UNKNOWN && narrowed_type->kind != TYPE_KIND_STRUCT) ||
+                     /* Stdlib opaque types (Thread, Mutex, ...): type_from_name()
+                      * normalizes the mangled mod_Type to a bare-name TYPE_KIND_STRUCT,
+                      * which the disjunct above deliberately excludes since
+                      * type_from_name() also returns TYPE_KIND_STRUCT for any
+                      * unregistered capitalized name. Check the opaque
+                      * allowlist explicitly instead, same as
+                      * typechecker_type_from_name() does elsewhere. */
+                     is_stdlib_opaque_type_available(checker, unqualified_display_name(new_type));
+        if (!known) {
+            typechecker_error_undefined_type(checker, node, unqualified_display_name(new_type));
         }
+        result = type_pointer(new_type);
         break;
     }
 
@@ -14524,7 +14322,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
             }
         }
         } /* end: name != "main" */
-        if (declared->kind == TYPE_KIND_UNKNOWN &&
+        if (declared->kind == TYPE_KIND_UNKNOWN && !type_name_has_unbound_generic(declared->name) &&
             !(node->data.variable_declaration.value &&
               (node->data.variable_declaration.value->kind == NODE_CALL_EXPRESSION ||
                node->data.variable_declaration.value->kind == NODE_MEMBER_EXPRESSION))) {
@@ -14534,28 +14332,29 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                Exceptions: func refs, func ref calls (return type unknown),
                member access (the member named the mistake, and leaving the
                variable undeclared turns one error into one per later read),
-               and wildcard propagation (value derived from a ?-typed var). */
-            bool wildcard_propagation = false;
+               and propagation of a type parameter's unknown type (value derived from a
+               variable typed by one). */
+            bool generic_propagation = false;
             if (node->data.variable_declaration.value) {
                 AstNode *value = node->data.variable_declaration.value;
                 /* Direct variable reference: mut tmp = value */
                 if (value->kind == NODE_LABEL) {
                     Symbol *label_source_symbol = scope_lookup(checker->current_scope, value->data.label.value);
                     if (label_source_symbol && label_source_symbol->type->kind == TYPE_KIND_UNKNOWN)
-                        wildcard_propagation = true;
+                        generic_propagation = true;
                 }
-                /* Array index: mut x = arr[0] where arr is [?] */
+                /* Array index: mut x = arr[0] where arr is [kind] */
                 if (value->kind == NODE_INDEX_EXPRESSION && value->data.index_expression.left &&
                     value->data.index_expression.left->kind == NODE_LABEL) {
                     Symbol *label_source_symbol = scope_lookup(checker->current_scope,
                         value->data.index_expression.left->data.label.value);
                     if (label_source_symbol && label_source_symbol->type->kind == TYPE_KIND_ARRAY &&
                         label_source_symbol->type->element_type &&
-                        strcmp(label_source_symbol->type->element_type, "?") == 0)
-                        wildcard_propagation = true;
+                        type_name_has_unbound_generic(label_source_symbol->type->element_type))
+                        generic_propagation = true;
                 }
             }
-            if (!wildcard_propagation) return;
+            if (!generic_propagation) return;
         }
         /* A module-level variable is bound under the name its module gives
          * it, because that is what a reference to it resolves to. Locals have
@@ -14620,10 +14419,10 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 }
             }
             /* Store multi-return types for temp variables from calls.
-             * For generic functions, substitute the wildcard binding
+             * For generic functions, substitute the type arguments
              * so destructured slots get concrete types instead of
-             * TYPE_KIND_UNKNOWN; without this, `mut a, b = pair(42)` where
-             * pair returns (?, ?) leaves the temp's slot types
+             * TYPE_KIND_UNKNOWN; without this, `mut a, b = pair(i64, 42)` where
+             * pair returns (kind, kind) leaves the temp's slot types
              * unknown, the unannotated LHS vars never declare, and
              * subsequent uses error as undefined. */
             if (function_node->kind == NODE_LABEL) {
@@ -14674,34 +14473,20 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                         int slot_count = signature->return_count;
                         if (signature->is_generic && signature->declaration &&
                             signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                            /* Bind '?' from the call's args, then
-                             * substitute into each return slot. */
-                            AstNode *call = node->data.variable_declaration.value;
+                            /* Read the type arguments off the call, then
+                             * substitute them into each return slot. */
                             AstNode *declaration = signature->declaration;
-                            char *binding = NULL;
-                            int clamped_argument_count = call->data.call.argument_count <
-                                     declaration->data.function_declaration.parameter_count
-                                ? call->data.call.argument_count
-                                : declaration->data.function_declaration.parameter_count;
-                            for (int argument_index = 0; argument_index < clamped_argument_count && !binding; argument_index++) {
-                                const char *parameter_type_name =
-                                    declaration->data.function_declaration.parameters[argument_index].type_name;
-                                if (!parameter_type_name || !type_name_has_wildcard(parameter_type_name)) continue;
-                                GrayType *argument_type = resolve_expression(checker, call->data.call.arguments[argument_index]);
-                                binding = bind_wildcard(parameter_type_name, argument_type);
+                            GenericBindings call_bindings;
+                            call_type_arguments(checker, node->data.variable_declaration.value, declaration, &call_bindings);
+                            int return_count = declaration->data.function_declaration.return_type_count;
+                            GrayType **substituted_return_types = xmalloc(sizeof(GrayType *) * (size_t)return_count);
+                            for (int return_index = 0; return_index < return_count; return_index++) {
+                                substituted_return_types[return_index] = typechecker_type_with_generics(checker,
+                                    &call_bindings, declaration->data.function_declaration.return_types[return_index]);
                             }
-                            if (binding) {
-                                int return_count = declaration->data.function_declaration.return_type_count;
-                                GrayType **substituted_return_types = xmalloc(sizeof(GrayType *) * (size_t)return_count);
-                                for (int return_index = 0; return_index < return_count; return_index++) {
-                                    char *substring = substitute_wildcard(
-                                        declaration->data.function_declaration.return_types[return_index], binding);
-                                    substituted_return_types[return_index] = substring ? type_from_name(substring) : &TYPE_UNKNOWN;
-                                }
-                                free(binding);
-                                slots = substituted_return_types;
-                                slot_count = return_count;
-                            }
+                            generic_bindings_clear(&call_bindings);
+                            slots = substituted_return_types;
+                            slot_count = return_count;
                         }
                         symbol->return_types = slots;
                         symbol->return_count = slot_count;
@@ -15555,47 +15340,6 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
     }
 }
 
-/* A returned value whose type is the caller's type argument, or a
- * wildcard-typed parameter. Such a value has no fixed type — it is a Foo only
- * for the one caller that passes Foo — so it cannot satisfy a concrete
- * declared return type. Reports the offending name and what it is; returns
- * NULL when the value's type is fixed. Derefs are transparent: `new(t)^` is
- * the type argument just as `new(t)` is. */
-static const char *return_value_is_type_argument(TypeChecker *checker,
-    AstNode *value, const char **what, AstNode **argument_slot) {
-    if (!value) return NULL;
-    if (value->kind == NODE_POSTFIX_EXPRESSION && value->data.postfix.operator == TOKEN_CARET)
-        return return_value_is_type_argument(checker, value->data.postfix.left, what, argument_slot);
-    *argument_slot = value;
-    /* The parser normalises a type-parameter name in a type position to "?",
-     * so match either form and report the name the user wrote. */
-    const char *type_parameter = checker->type_parameter_name;
-    const char *built = NULL;
-    if (value->kind == NODE_NEW_EXPRESSION) built = value->data.new_expression.type_name;
-    else if (value->kind == NODE_STRUCT_VALUE) built = value->data.struct_value.name;
-    if (built && (type_name_has_wildcard(built) || (type_parameter && strcmp(built, type_parameter) == 0))) {
-        *what = "an instance of the type argument";
-        return type_parameter ? type_parameter : built;
-    }
-    /* A parameter declared with a wildcard type (e.g. `v ?`) carries the same
-     * contradiction: its type is the argument's, not the declared one. */
-    if (value->kind == NODE_LABEL && checker->current_function_declaration) {
-        AstNode *function_declaration = checker->current_function_declaration;
-        for (int i = 0; i < function_declaration->data.function_declaration.parameter_count; i++) {
-            Parameter *parameter = &function_declaration->data.function_declaration.parameters[i];
-            if (parameter->is_type_parameter || !parameter->name ||
-                strcmp(parameter->name, value->data.label.value) != 0)
-                continue;
-            if (type_name_has_wildcard(parameter->type_name)) {
-                *what = "a wildcard-typed value";
-                return parameter->name;
-            }
-            break;
-        }
-    }
-    return NULL;
-}
-
 static void check_return_statement(TypeChecker *checker, AstNode *node) {
     bool is_multi_value_rejected = false;
     for (int i = 0; i < node->data.return_statement.count; i++) {
@@ -15640,10 +15384,10 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
         pointer_checker_check_mem_escape(checker, return_value, return_value);
     }
     /* E3071: `return nil` from a function whose return type contains
-     * '?' is unsound; nil isn't a value for every binding (i64,
-     * string, etc.). The codegen would otherwise emit `NULL` and let
-     * clang reject the result as an int/struct conversion error.
-     * Allow nil in non-primary return slots (e.g. (?, Error)).
+     * a `generic` parameter's name is unsound; nil isn't a value for every
+     * binding (i64, string, etc.). The codegen would otherwise emit `NULL` and
+     * let clang reject the result as an int/struct conversion error.
+     * Allow nil in non-primary return slots (e.g. (kind, Error)).
      * Skip during the per-instantiation re-check so we only emit once. */
     if (!checker->should_suppress_type_table_writes &&
         checker->current_return_count > 0 && node->data.return_statement.count > 0) {
@@ -15654,33 +15398,9 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             if (return_value->kind != NODE_NIL_VALUE) continue;
             const char *type_name_text = (i == 0 && checker->current_return_type_names)
                 ? checker->current_return_type_names[i] : NULL;
-            if (type_name_text && type_name_has_wildcard(type_name_text)) {
+            if (type_name_text && type_name_has_unbound_generic(checker_substitute_generics(checker, type_name_text))) {
                 diagnostic_error_code(checker->diagnostics, "E3071", NODE_FILE(checker, return_value), return_value->token.line, return_value->token.column, 0);
             }
-        }
-    }
-
-    /* E3139: a concrete declared return type is a promise that has to hold for
-     * every caller. Returning the caller's type argument breaks it for all but
-     * the one caller that happens to pass a matching type. Checked here rather
-     * than during monomorphisation so it fires on the declaration alone, even
-     * when the function is never called. */
-    if (!checker->should_suppress_type_table_writes &&
-        checker->current_return_count > 0 && node->data.return_statement.count > 0) {
-        int count = node->data.return_statement.count;
-        int slots = count < checker->current_return_count ? count : checker->current_return_count;
-        for (int i = 0; i < slots; i++) {
-            const char *declared = checker->current_return_type_names
-                ? checker->current_return_type_names[i] : NULL;
-            if (!declared || type_name_has_wildcard(declared)) continue;
-            const char *what = NULL;
-            AstNode *return_value = node->data.return_statement.values[i];
-            AstNode *report_node = return_value;
-            const char *offender = return_value_is_type_argument(checker, return_value, &what, &report_node);
-            if (!offender) continue;
-            diagnostic_error_code_formatted(checker->diagnostics, "E3139",
-                NODE_FILE(checker, report_node), report_node->token.line,
-                report_node->token.column, 0, what, offender, declared, declared);
         }
     }
 
@@ -16865,15 +16585,14 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
     checker->function_depth++;
     checker->arena_count = 0;
 
+    /* The `generic` parameters stand for unknown types while the body is
+     * checked once for every call; each instantiation is re-checked later with
+     * them bound. */
+    checker_enter_generics(checker, node, NULL);
+
     /* Define parameters in function scope, check for duplicates */
     for (int i = 0; i < node->data.function_declaration.parameter_count; i++) {
         Parameter *parameter = &node->data.function_declaration.parameters[i];
-        /* Type parameter (<?>) — not a variable; just record the name
-         * so the body can recognise T in type positions. */
-        if (parameter->is_type_parameter) {
-            checker->type_parameter_name = parameter->name;
-            continue;
-        }
         /* E2038: reserved type name as parameter name */
         if (is_reserved_type_name(parameter->name)) {
             diagnostic_error_code_formatted(checker->diagnostics, "E2038",
@@ -16900,6 +16619,29 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diagnostics, "E2012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, parameter->name);
                 break;
             }
+        }
+        /* A type parameter is not a variable: its name stands for a type in
+         * the parameter types after it, the return types and the body. */
+        if (parameter->is_type_parameter) continue;
+        /* E4039: a parameter type that names a type parameter declared later */
+        {
+            GenericBindings declared_later;
+            generic_bindings_init(&declared_later, node, NULL);
+            int declared_so_far = 0;
+            for (int j = 0; j <= i; j++)
+                if (node->data.function_declaration.parameters[j].is_type_parameter) declared_so_far++;
+            for (int j = declared_so_far; j < declared_later.count; j++) {
+                GenericBindings single_generic = { 1, &declared_later.names[j], &declared_later.types[j] };
+                char *substituted = generic_bindings_substitute(&single_generic, parameter->type_name);
+                bool is_used_early = substituted && strchr(substituted, '?');
+                free(substituted);
+                if (!is_used_early) continue;
+                diagnostic_error_code_formatted(checker->diagnostics, "E4039",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    declared_later.names[j], parameter->name);
+                break;
+            }
+            generic_bindings_clear(&declared_later);
         }
         /* W2008: parameter shadows an enum variant name */
         for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
@@ -16999,35 +16741,6 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
         scope_define(function_scope, parameter->name, parameter_type, parameter->is_mutable);
     }
 
-    /* E3060: wildcard in return type but no wildcard in any parameter.
-     * Suppress when every wildcard return is in a named position — E3082
-     * handles that case with a more specific message. */
-    {
-        bool return_has_wildcard = false;
-        bool are_all_wildcards_named = true;
-        bool parameter_has_wildcard = false;
-        for (int i = 0; i < node->data.function_declaration.return_type_count; i++) {
-            if (type_name_has_wildcard(node->data.function_declaration.return_types[i])) {
-                return_has_wildcard = true;
-                if (!node->data.function_declaration.return_names ||
-                    !node->data.function_declaration.return_names[i]) {
-                    are_all_wildcards_named = false;
-                }
-            }
-        }
-        if (return_has_wildcard && !are_all_wildcards_named) {
-            for (int i = 0; i < node->data.function_declaration.parameter_count; i++) {
-                if (type_name_has_wildcard(node->data.function_declaration.parameters[i].type_name)) {
-                    parameter_has_wildcard = true;
-                    break;
-                }
-            }
-            if (!parameter_has_wildcard) {
-                diagnostic_error_code(checker->diagnostics, "E3060", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-        }
-    }
-
     /* Define named return variables in function scope */
     if (node->data.function_declaration.return_names) {
         for (int i = 0; i < node->data.function_declaration.return_type_count; i++) {
@@ -17042,14 +16755,6 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                             resolved_name, "another named return value");
                         break;
                     }
-                }
-                /* E3082: wildcard type '?' in named return position */
-                if (i < node->data.function_declaration.return_type_count &&
-                    node->data.function_declaration.return_types[i] &&
-                    strcmp(node->data.function_declaration.return_types[i], "?") == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3082",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        resolved_name);
                 }
                 /* E2063: named return collides with parameter */
                 for (int j = 0; j < node->data.function_declaration.parameter_count; j++) {
@@ -17238,8 +16943,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
     checker->current_function_scope_depth = saved_function_scope_depth;
     checker->current_function_declaration = saved_function_declaration;
     checker->using_module_count = previous_using_count;
-    checker->type_parameter_name = NULL;
-    checker->type_parameter_binding = NULL;
+    checker_leave_generics(checker);
     checker->function_depth--;
     checker->current_scope = outer;
     scope_destroy(function_scope);
@@ -18201,9 +17905,6 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         }
     }
 
-    /* Leaf: must be a known primitive, enum, struct, or wildcard '?' */
-    if (type_name_has_wildcard(type_name)) return;
-
     /* Naming a type is a use of the module that defines it. Function
      * parameters and return types already mark it; without this a struct
      * field was the one reference that did not, so an import used only for
@@ -18417,12 +18118,6 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
             diagnostic_error_code_formatted(checker->diagnostics, "E4007",
                 NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
                 alias_name);
-        }
-        /* E3135: cannot alias wildcard type */
-        if (strcmp(target, "?") == 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3135",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, alias_name);
-            goto next_alias;
         }
         /* Register the alias */
         if (checker->type_alias_count >= checker->type_alias_capacity) {
@@ -18933,18 +18628,6 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
         checker->structs[checker->struct_count - 1].is_deprecated = statement->data.struct_declaration.is_deprecated;
         checker->structs[checker->struct_count - 1].deprecated_message = statement->data.struct_declaration.deprecated_message;
 
-        /* Detect generic structs (any field with ? in type) */
-        statement->data.struct_declaration.is_generic = false;
-        statement->data.struct_declaration.instantiations = NULL;
-        statement->data.struct_declaration.instantiation_count = 0;
-        for (int j = 0; j < field_count; j++) {
-            if (statement->data.struct_declaration.fields[j].type_name &&
-                strchr(statement->data.struct_declaration.fields[j].type_name, '?')) {
-                statement->data.struct_declaration.is_generic = true;
-                break;
-            }
-        }
-
         /* Register struct-namespaced functions as StructName_funcName */
         for (int j = 0; j < statement->data.struct_declaration.function_count; j++) {
             AstNode *function_node = statement->data.struct_declaration.functions[j].function_declaration;
@@ -18984,6 +18667,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             }
             int parameter_count = function_node->data.function_declaration.parameter_count;
             GrayType **parameter_types = arena_allocate(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
+            checker_enter_generics(checker, function_node, NULL);
             for (int index = 0; index < parameter_count; index++) {
                 parameter_types[index] = typechecker_type_from_name(checker, function_node->data.function_declaration.parameters[index].type_name);
                 warn_if_type_name_deprecated(checker, function_node, function_node->data.function_declaration.parameters[index].type_name,
@@ -18996,6 +18680,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 warn_if_type_name_deprecated(checker, function_node, function_node->data.function_declaration.return_types[index],
                     statement->data.struct_declaration.name);
             }
+            checker_leave_generics(checker);
             /* Register with prefixed name: StructName_funcName */
             char buffer[MESSAGE_BUFFER_SIZE];
             /* A struct function is namespaced under its struct, and the
@@ -19042,6 +18727,7 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
 
         int parameter_count = statement->data.function_declaration.parameter_count;
         GrayType **parameter_types = arena_allocate(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
+        checker_enter_generics(checker, statement, NULL);
         for (int j = 0; j < parameter_count; j++) {
             parameter_types[j] = typechecker_type_from_name(checker, statement->data.function_declaration.parameters[j].type_name);
             typechecker_mark_type_module_used(checker, statement->data.function_declaration.parameters[j].type_name);
@@ -19055,6 +18741,7 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
             typechecker_mark_type_module_used(checker, statement->data.function_declaration.return_types[j]);
             warn_if_type_name_deprecated(checker, statement, statement->data.function_declaration.return_types[j], NULL);
         }
+        checker_leave_generics(checker);
 
         /* E4008: main() cannot have parameters or return types */
         if (strcmp(statement->data.function_declaration.name, "main") == 0) {
@@ -19850,9 +19537,9 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     }
     literal_flush_pending(checker, 0);
 
-    /* Pass 3: re-check generic function bodies per instantiation
-     * ( slice 4). The main pass walked bodies with '?' as
-     * TYPE_KIND_UNKNOWN, so operations the concrete type doesn't support
+    /* Pass 3: re-check generic function bodies per instantiation. The main
+     * pass walked bodies with each `generic` parameter's name as an unknown
+     * type, so operations the concrete type doesn't support
      * (e.g. `a + b` on strings) slipped through. For every recorded
      * instantiation, rebind the parameters to concrete types and
      * re-run check_block on the body. If any new errors fire, emit
@@ -19862,7 +19549,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
      *
      * The outer loop repeats until no new instantiations are
      * discovered, which handles type parameter forwarding: when
-     * wrap(Point) re-checks and its body calls make(T), that
+     * wrap(Point) re-checks and its body calls make(kind), that
      * registers make(Point) as a new instantiation to process. */
     bool new_instantiations = true;
     int *instantiation_cursors = xcalloc((size_t)checker->function_count, sizeof(int));
@@ -19887,21 +19574,14 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             checker->current_scope = instantiation_scope;
             checker->function_depth++;
 
+            /* Rebind the type parameters to this instantiation's types. */
+            checker_enter_generics(checker, declaration, concrete);
             for (int parameter_index = 0; parameter_index < declaration->data.function_declaration.parameter_count; parameter_index++) {
                 Parameter *parameter = &declaration->data.function_declaration.parameters[parameter_index];
-                /* Type parameter — not a variable; set binding for body re-check */
-                if (parameter->is_type_parameter) {
-                    checker->type_parameter_name = parameter->name;
-                    checker->type_parameter_binding = concrete;
-                    continue;
-                }
-                char *substring = substitute_wildcard(parameter->type_name, concrete);
-                GrayType *parameter_type = substring ? type_from_name(substring) : &TYPE_UNKNOWN;
+                /* A type parameter is not a variable. */
+                if (parameter->is_type_parameter) continue;
+                GrayType *parameter_type = typechecker_type_from_name(checker, parameter->type_name);
                 scope_define(instantiation_scope, parameter->name, parameter_type, parameter->is_mutable);
-                /* `sub` leaks on purpose; type_from_name stores the
-                 * name pointer for array/map kinds and we need it
-                 * alive for the duration of the re-check. Compile-
-                 * time allocation; short-lived process. */
             }
 
             GrayType **previous_return_types = checker->current_return_types;
@@ -19917,9 +19597,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                 return_types = xmalloc(sizeof(GrayType *) * (size_t)return_count);
                 return_names = xmalloc(sizeof(const char *) * (size_t)return_count);
                 for (int return_index = 0; return_index < return_count; return_index++) {
-                    char *substring = substitute_wildcard(
-                        declaration->data.function_declaration.return_types[return_index], concrete);
-                    return_types[return_index] = substring ? type_from_name(substring) : &TYPE_UNKNOWN;
+                    return_types[return_index] = typechecker_type_from_name(checker,
+                        declaration->data.function_declaration.return_types[return_index]);
                     return_names[return_index] = declaration->data.function_declaration.return_types[return_index];
                 }
             }
@@ -19969,8 +19648,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             checker->current_return_count = previous_return_count;
             checker->has_current_named_returns = was_previous_named;
             checker->current_return_names = previous_return_names_saved;
-            checker->type_parameter_name = NULL;
-            checker->type_parameter_binding = NULL;
+            const char *instantiation_text = describe_generic_bindings(checker);
+            checker_leave_generics(checker);
             checker->current_scope = outer_scope;
             checker->function_depth--;
             free(return_types);
@@ -19978,7 +19657,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             scope_destroy(instantiation_scope);
 
             if (errors_after > errors_before && call_site) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3058", NODE_FILE(checker, call_site), call_site->token.line, call_site->token.column, 0, function_display_name(function_signature), concrete);
+                diagnostic_error_code_formatted(checker->diagnostics, "E3058", NODE_FILE(checker, call_site), call_site->token.line, call_site->token.column, 0, function_display_name(function_signature), instantiation_text);
             }
         }
         instantiation_cursors[field_index] = function_signature->instantiation_count;

@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3199 - map[kind:kind] requires key type to equal value type
+ *
+ * One type argument stands for both slots, so the argument's key type must
+ * equal its value type. Otherwise the argument does not match the parameter's
+ * type and the call must fail cleanly.
+ */
+// expect-error: E3199
+// expect-error-count: 1
+
+do count(kind generic, m map[kind:kind]) -> i64 {
+    mut n i64 = 0
+    for_each k, v in m {
+        n += 1
+    }
+    return n
+}
+
+do main() {
+    mut mixed map[string:i64] = {"a": 1, "b": 2}
+    mut n i64 = count(string, mixed)  // key type != value type → reject
+}

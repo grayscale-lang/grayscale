@@ -1,40 +1,38 @@
 /*
- * wildcard_multi_return.gray - Wildcard functions with named returns.
+ * generic_multi_return.gray - Generic functions with named returns.
  *
- * the monomorphiser
- * applied the binding suffix to the GrayMulti struct name, producing
- * GrayMulti_pair__int which didn't exist. multi_base_name() now strips
- * the suffix so all instantiations share the one-time typedef.
+ * The return types are concrete, so every instantiation shares the one
+ * multi-return typedef rather than getting a per-binding one.
  */
 
-do pair(a ?, b ?) -> (first i64, second i64) {
+do pair(kind generic, a kind, b kind) -> (first i64, second i64) {
     mut first i64 = a
     mut second i64 = b
     return first, second
 }
 
 do main() {
-    println("=== Wildcard Multi-Return Test ===")
+    println("=== Generic Multi-Return Test ===")
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // -- same-type wildcard, both i64 --
-    mut x i64, y i64 = pair(42, 100)
+    // -- both arguments i64 --
+    mut x i64, y i64 = pair(i64, 42, 100)
     if x == 42 && y == 100 {
-        println("  [PASS] pair(42, 100) = (42, 100)")
+        println("  [PASS] pair(i64, 42, 100) = (42, 100)")
         passed += 1
     } otherwise {
-        println("  [FAIL] pair(42, 100): got (${x}, ${y})")
+        println("  [FAIL] pair(i64, 42, 100): got (${x}, ${y})")
         failed += 1
     }
 
     // -- reuse with different values, same binding --
-    mut a i64, b i64 = pair(1, 2)
+    mut a i64, b i64 = pair(i64, 1, 2)
     if a == 1 && b == 2 {
-        println("  [PASS] pair(1, 2) = (1, 2)")
+        println("  [PASS] pair(i64, 1, 2) = (1, 2)")
         passed += 1
     } otherwise {
-        println("  [FAIL] pair(1, 2): got (${a}, ${b})")
+        println("  [FAIL] pair(i64, 1, 2): got (${a}, ${b})")
         failed += 1
     }
 

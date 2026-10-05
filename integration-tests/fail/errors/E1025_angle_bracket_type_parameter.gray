@@ -1,0 +1,13 @@
+/*
+ * Error Test: E1025 - the removed '<?>' spelling of a type parameter is
+ * reported once, pointing at 'generic'.
+ * Expected: "this symbol is not part of the language"
+ */
+// expect-error: E1025
+// expect-error-count: 1
+
+do make(T <?>) {
+    println("make")
+}
+
+do main() {}

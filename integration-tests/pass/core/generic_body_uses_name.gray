@@ -1,0 +1,89 @@
+/*
+ * generic_body_uses_name.gray - a generic parameter's name is usable as a type
+ * anywhere in the body: variable annotations, container element types,
+ * pointers, casts, new() and size_of().
+ */
+
+import @arrays
+
+const Point struct {
+    x i64
+    y i64
+}
+
+alias Count = i64
+
+do fill(kind generic, n i64, value kind) -> [kind] {
+    mut result [kind] = {}
+    for i in range(0, n) {
+        arrays.append(result, value)
+    }
+    return result
+}
+
+do total(kind generic, items [kind], zero kind) -> kind {
+    mut sum kind = zero
+    for_each item in items {
+        sum = sum + item
+    }
+    return sum
+}
+
+do through_pointer(kind generic, value kind) -> kind {
+    mut slot ^kind = new(kind)
+    slot^ = value
+    return slot^
+}
+
+do width(kind generic) -> i64 {
+    return size_of(kind)
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut words = fill(string, 3, "x")
+    if len(words) == 3 && words[2] == "x" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [kind] local filled with strings")
+        failed += 1
+    }
+
+    if total(i64, {1, 2, 3}, 0) == 6 && total(f64, {1.5, 2.5}, 0.0) == 4.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] kind-typed accumulator")
+        failed += 1
+    }
+
+    // An alias is a valid type argument and binds to what it names.
+    if total(Count, {4, 5}, 0) == 9 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] alias as a type argument")
+        failed += 1
+    }
+
+    if through_pointer(i64, 7) == 7 && through_pointer(string, "p") == "p" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] ^kind local through new(kind)")
+        failed += 1
+    }
+
+    if width(u8) == 1 && width(i64) == 8 && width(Point) == 16 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] size_of(kind) per type argument")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

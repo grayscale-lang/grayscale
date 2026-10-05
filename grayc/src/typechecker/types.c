@@ -590,6 +590,18 @@ GrayType *type_from_name(const char *name) {
         return type_pointer(name + 1);
     }
 
+    /* A type parameter no call has bound yet: "?kind" is the unknown type that
+     * stands for the `generic` parameter named kind. */
+    if (name[0] == '?' && name[1]) {
+        GrayType *existing = pool_find(TYPE_KIND_UNKNOWN, name);
+        if (existing) return existing;
+        GrayType *type = type_allocate();
+        type->kind = TYPE_KIND_UNKNOWN;
+        type->name = strdup(name);
+        pool_insert(TYPE_KIND_UNKNOWN, type->name, type);
+        return type;
+    }
+
     /* Array type: [i64], [string], [i64,3], etc. */
     if (name[0] == '[') {
         size_t length = strlen(name);

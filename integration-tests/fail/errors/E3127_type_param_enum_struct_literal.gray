@@ -1,7 +1,7 @@
 /*
- * Error Test: E3127 - the same T{...} body form with an enum binding. An enum
+ * Error Test: E3127 - the same kind{...} body form with an enum binding. An enum
  * names a real type, so the call site accepts it; the struct literal does not.
- * Expected: "type parameter 'T' is used as a struct literal"
+ * Expected: "generic parameter 'kind' is used as a struct literal"
  */
 
 const Color enum {
@@ -9,8 +9,8 @@ const Color enum {
     GREEN
 }
 
-do mk_stack(T <?>) -> ? {
-    return T{}
+do mk_stack(kind generic) -> kind {
+    return kind{}
 }
 
 do main() {

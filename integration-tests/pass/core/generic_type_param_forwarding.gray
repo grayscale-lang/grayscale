@@ -1,6 +1,6 @@
 /*
  * Test: generic type parameter forwarding between functions
- * Verifies that T can be forwarded through nested generic calls.
+ * Verifies that a generic parameter can be forwarded through nested generic calls.
  */
 
 const Point struct {
@@ -8,12 +8,12 @@ const Point struct {
     y i64
 }
 
-do make(T <?>) -> ^? {
-    return new(T)
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
-do wrap(T <?>) -> ^? {
-    return make(T)
+do wrap(kind generic) -> ^kind {
+    return make(kind)
 }
 
 do main() {

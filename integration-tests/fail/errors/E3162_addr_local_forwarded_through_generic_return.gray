@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3162 - addr() of a local forwarded through a generic-return
+ * helper (do forward(kind generic, x ^kind) -> ^kind { return x }) before being
+ * returned.
+ *
+ * forward's own escape summary must be computed even though the pointee of its
+ * return type is unknown until a call site binds it;
+ * otherwise the address passing through it is invisible to the checker.
+ */
+
+do forward(kind generic, x ^kind) -> ^kind {
+    return x
+}
+
+do make() -> ^i64 {
+    mut y i64 = 5
+    return forward(i64, addr(y))
+}
+
+do main() {
+    mut p ^i64 = make()
+    println(p^)
+}

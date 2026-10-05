@@ -4,8 +4,8 @@
  * Expected: "got a non-type expression"
  */
 
-do make(T <?>) -> ^? {
-    return new(T)
+do make(kind generic) -> ^kind {
+    return new(kind)
 }
 
 do main() {

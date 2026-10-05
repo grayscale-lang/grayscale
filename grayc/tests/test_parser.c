@@ -881,10 +881,45 @@ static void test_parse_error_E2069_missing_separator_in_struct(void) {
     ASSERT(parser_has_code(diagnostics, "E2069"));
 }
 
-static void test_parse_error_E2070_wildcard_in_var(void) {
-    AstNode *program = parse_test_input("do main() { mut x ? = 42 }");
+static void test_parse_error_E2096_generic_in_var(void) {
+    AstNode *program = parse_test_input("do main() { mut x generic = 42 }");
     (void)program;
-    ASSERT(parser_has_code(diagnostics, "E2070"));
+    ASSERT(parser_has_code(diagnostics, "E2096"));
+}
+
+static void test_parse_error_E2096_generic_in_return_type(void) {
+    AstNode *program = parse_test_input("do f(x i64) -> generic { return x }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2096"));
+}
+
+static void test_parse_error_E2096_generic_in_container(void) {
+    AstNode *program = parse_test_input("do f(items [generic]) { }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2096"));
+}
+
+static void test_parse_error_E2097_generic_default_value(void) {
+    AstNode *program = parse_test_input("do f(kind generic = i64) { }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2097"));
+}
+
+static void test_parse_generic_parameter(void) {
+    AstNode *program = parse_test_input("do f(kind generic, x kind) -> kind { return x }");
+    ASSERT_NOT_NULL(program);
+    ASSERT(!parser_has_code(diagnostics, "E2096"));
+    AstNode *function = program->data.program.statements[0];
+    ASSERT_EQ(function->data.function_declaration.parameter_count, 2);
+    ASSERT(function->data.function_declaration.parameters[0].is_type_parameter);
+    ASSERT(!function->data.function_declaration.parameters[1].is_type_parameter);
+    ASSERT_STR_EQ(function->data.function_declaration.parameters[1].type_name, "kind");
+}
+
+static void test_parse_error_E3135_alias_generic(void) {
+    AstNode *program = parse_test_input("alias Any = generic");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E3135"));
 }
 
 static void test_parse_error_E2071_empty_interpolation(void) {
@@ -1167,7 +1202,12 @@ int main(void) {
     RUN_TEST(test_parse_error_E2062_too_many_multi_vars);
     RUN_TEST(test_parse_error_E2068_mut_struct);
     RUN_TEST(test_parse_error_E2069_missing_separator_in_struct);
-    RUN_TEST(test_parse_error_E2070_wildcard_in_var);
+    RUN_TEST(test_parse_error_E2096_generic_in_var);
+    RUN_TEST(test_parse_error_E2096_generic_in_return_type);
+    RUN_TEST(test_parse_error_E2096_generic_in_container);
+    RUN_TEST(test_parse_error_E2097_generic_default_value);
+    RUN_TEST(test_parse_generic_parameter);
+    RUN_TEST(test_parse_error_E3135_alias_generic);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
     RUN_TEST(test_parse_error_E2077_empty_index);
     RUN_TEST(test_parse_error_truncated_at_eof);

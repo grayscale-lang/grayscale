@@ -127,7 +127,7 @@ static void test_keywords(void) {
 }
 
 static void test_more_keywords(void) {
-    Lexer *lexer = create_test_lexer("import using struct enum nil new true false when is default cast ensure private");
+    Lexer *lexer = create_test_lexer("import using struct enum nil new true false when is default cast ensure private generic");
     ASSERT_EQ(next_token(lexer).type, TOKEN_IMPORT);
     ASSERT_EQ(next_token(lexer).type, TOKEN_USING);
     ASSERT_EQ(next_token(lexer).type, TOKEN_STRUCT);
@@ -142,6 +142,7 @@ static void test_more_keywords(void) {
     ASSERT_EQ(next_token(lexer).type, TOKEN_CAST);
     ASSERT_EQ(next_token(lexer).type, TOKEN_ENSURE);
     ASSERT_EQ(next_token(lexer).type, TOKEN_PRIVATE);
+    ASSERT_EQ(next_token(lexer).type, TOKEN_GENERIC);
 }
 
 static void test_identifiers(void) {
@@ -355,6 +356,14 @@ static void test_error_E1003_unclosed_comment(void) {
     ASSERT_EQ(token.type, TOKEN_ILLEGAL);
     ASSERT_NOT_NULL(lexer->error_code);
     ASSERT_STR_EQ(lexer->error_code, "E1003");
+}
+
+static void test_error_E1025_question_mark(void) {
+    Lexer *lexer = create_test_lexer("?");
+    Token token = next_token(lexer);
+    ASSERT_EQ(token.type, TOKEN_ILLEGAL);
+    ASSERT_NOT_NULL(lexer->error_code);
+    ASSERT_STR_EQ(lexer->error_code, "E1025");
 }
 
 static void test_error_E1005_unclosed_char(void) {
@@ -707,6 +716,7 @@ int main(void) {
     RUN_TEST(test_octal_literal);
     RUN_TEST(test_binary_literal);
     RUN_TEST(test_or_return_keyword);
+    RUN_TEST(test_error_E1025_question_mark);
     RUN_TEST(test_caret_token);
     RUN_TEST(test_float_with_underscores);
     RUN_TEST(test_interpolation_tokens);

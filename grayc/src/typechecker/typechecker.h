@@ -114,12 +114,10 @@ typedef struct {
     bool is_deprecated;    /* true if declared with #deprecated attribute */
     const char *deprecated_message; /* NULL if bare #deprecated */
 
-    /* Wildcard type support .
-     * A function is "generic" if any of its param or return type strings
-     * contain a '?'. Generic functions are instantiated per call site:
-     * at each call the wildcard is bound to a concrete type derived from
-     * the call's arguments, and an entry is appended to `instantiations`.
-     * Codegen emits one specialized C function per unique instantiation. */
+    /* A function is "generic" if any parameter is declared `generic`. Each call
+     * names the types for those parameters, and an entry is appended to
+     * `instantiations`. Codegen emits one specialized C function per unique
+     * instantiation. */
     bool is_generic;
     AstNode *declaration;                /* source NODE_FUNCTION_DECLARATION for body lookup */
 
@@ -218,7 +216,7 @@ typedef struct {
     unsigned long long returns_parameter_mem_allocation;
     unsigned long long returns_parameter_mem_allocation_field;
 
-    const char **instantiations;  /* concrete type each call bound `?` to */
+    const char **instantiations;  /* type arguments of each call, joined by GENERIC_BINDING_SEPARATOR */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;
     int instantiation_capacity;
@@ -423,11 +421,11 @@ typedef struct {
     int pending_literal_count;
     int pending_literal_capacity;
 
-    /* Type-level generic parameters (<?> syntax).
-     * type_parameter_name is the parameter name (e.g. "T") during body check.
-     * type_parameter_binding is the concrete struct name during re-check. */
-    const char *type_parameter_name;
-    const char *type_parameter_binding;
+    /* The `generic` parameters of the function being checked and the types they
+     * are bound to. Every type spelling and type name used as a value goes
+     * through them: unbound while the body is checked once for all calls,
+     * bound while it is re-checked for one instantiation. */
+    GenericBindings generics;
 
     /* Arena for diagnostic message strings — replaces per-message strdup */
     Arena *arena;

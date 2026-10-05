@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3135 - alias cannot target 'generic'
+ * Expected: alias 'Any' cannot target 'generic'
+ */
+
+alias Any = generic
+
+do main() {}
