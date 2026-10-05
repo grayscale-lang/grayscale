@@ -12563,6 +12563,9 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (!element_type) element_type = any_decimal ? &TYPE_F64 : &TYPE_I64;
+            if (element_type->kind == TYPE_KIND_ERROR)
+                diagnostic_error_code(checker->diagnostics, "E3153", NODE_FILE(checker, node),
+                    node->token.line, node->token.column, 0);
             result = type_array(literal_element_type_name(checker, element_node, element_type));
             for (int i = 0; i < node->data.array_value.count; i++) {
                 AstNode *element = node->data.array_value.elements[i];
@@ -12626,6 +12629,9 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         }
         if (!first_key_type) first_key_type = key_decimal ? &TYPE_F64 : &TYPE_I64;
         if (!first_value_type) first_value_type = value_decimal ? &TYPE_F64 : &TYPE_I64;
+        if (first_key_type->kind == TYPE_KIND_ERROR || first_value_type->kind == TYPE_KIND_ERROR)
+            diagnostic_error_code(checker->diagnostics, "E3153", NODE_FILE(checker, node),
+                node->token.line, node->token.column, 0);
         for (int i = 0; i < node->data.map_value.count; i++) {
             AstNode *key_node = node->data.map_value.keys[i];
             AstNode *value_node = node->data.map_value.values[i];

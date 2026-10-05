@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3153 - Error value inside a map literal with no declared type
+ */
+// expect-error: E3153
+// expect-error-count: 1
+
+do main() {
+    mut e Error = error(.NotFound, "gone")
+    println(len({"k": e}))
+}
