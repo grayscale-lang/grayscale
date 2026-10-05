@@ -5475,6 +5475,14 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
         emit_formatted(codegen, "gray_out_printf(%s, \"}\");\n", stream);
         break;
     }
+    case TYPE_KIND_ERROR: {
+        /* The message, as a bare Error prints; nil when unset. */
+        int error_id = codegen_next_id(codegen);
+        emit_indent(codegen);
+        emit_formatted(codegen, "{ GrayError *_pe%d = (%s); if (_pe%d) gray_out_printf(%s, \"%%.*s\", (int)_pe%d->msg.len, _pe%d->msg.data); "
+            "else gray_out_printf(%s, \"nil\"); }\n", error_id, c_expression, error_id, stream, error_id, error_id, stream);
+        break;
+    }
     case TYPE_KIND_POINTER: {
         /* Print the address as hex (0x...). Pointers are addresses; printing
          * the pointee instead would be surprising and lose the only thing

@@ -1,0 +1,13 @@
+// expect-contains: R{e: gone, n: 1}
+/* Panic Test: P0083 - println of a struct with an Error field prints the message;
+ * the panic after it makes the run's output reach the harness. */
+const R struct {
+    e Error
+    n i64
+}
+
+do main() {
+    mut e Error = error(.NotFound, "gone")
+    println(R{e: e, n: 1})
+    sleep_ms(-1)
+}
