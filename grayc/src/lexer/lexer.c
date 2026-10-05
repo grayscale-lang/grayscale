@@ -602,7 +602,9 @@ Token lexer_next_token(Lexer *lexer) {
         break;
 
     case '?':
-        token = make_token(TOKEN_QUESTION, "?", token.line, token.column);
+        lexer->error_code = "E1025";
+        lexer->error_message = "this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind')";
+        token = make_token(TOKEN_ILLEGAL, lexer->error_message, token.line, token.column);
         break;
 
     case '|':

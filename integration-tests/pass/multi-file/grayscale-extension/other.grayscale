@@ -1,0 +1,3 @@
+do two() -> i64 {
+    return 2
+}

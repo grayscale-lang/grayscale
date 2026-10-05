@@ -1,0 +1,102 @@
+/*
+ * assign_index_before_value.gray - In a plain assignment to an array element,
+ * the index expression is evaluated before the right-hand side.
+ */
+
+const Item struct {
+    x i64
+    inner [i64]
+}
+
+mut cursor i64 = 0
+mut trace string = ""
+
+do idx() -> i64 {
+    trace = "${trace}i"
+    return 0
+}
+
+do val() -> i64 {
+    trace = "${trace}v"
+    return 7
+}
+
+do bump() -> i64 {
+    cursor = cursor + 1
+    return 100
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut arr [i64] = {0, 0, 0}
+    arr[cursor] = bump()
+    if arr[0] == 100 && arr[1] == 0 {
+        println("  [PASS] arr[i] = f() stores at the index read before the call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arr[i] = f() stores at the index read before the call")
+        failed += 1
+    }
+
+    trace = ""
+    arr[idx()] = val()
+    if trace == "iv" {
+        println("  [PASS] arr[idx()] = val() order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arr[idx()] = val() order: ${trace}")
+        failed += 1
+    }
+
+    trace = ""
+    mut items [Item] = {Item { x: 0, inner: {0, 0} }}
+    items[idx()].x = val()
+    if trace == "iv" {
+        println("  [PASS] items[idx()].x = val() order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] items[idx()].x = val() order: ${trace}")
+        failed += 1
+    }
+
+    trace = ""
+    items[0].inner[idx()] = val()
+    if trace == "iv" {
+        println("  [PASS] items[0].inner[idx()] = val() order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] items[0].inner[idx()] = val() order: ${trace}")
+        failed += 1
+    }
+
+    trace = ""
+    mut grid [[i64]] = {{0, 0}, {0, 0}}
+    grid[idx()][idx()] = val()
+    if trace == "iiv" {
+        println("  [PASS] grid[idx()][idx()] = val() order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] grid[idx()][idx()] = val() order: ${trace}")
+        failed += 1
+    }
+
+    trace = ""
+    mut pa ^[i64] = addr(arr)
+    pa^[idx()] = val()
+    if trace == "iv" {
+        println("  [PASS] pa^[idx()] = val() order")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pa^[idx()] = val() order: ${trace}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

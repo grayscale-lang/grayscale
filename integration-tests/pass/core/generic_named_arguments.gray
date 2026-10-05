@@ -1,0 +1,46 @@
+/*
+ * generic_named_arguments.gray - a type argument is passed like any other
+ * argument, so it can be named and written out of order.
+ */
+
+const Point struct {
+    x i64
+}
+
+do identity(kind generic, x kind) -> kind {
+    return x
+}
+
+do make(kind generic) -> ^kind {
+    return new(kind)
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a = identity(kind: i64, x: 41)
+    mut b = identity(x: "named", kind: string)
+    if a == 41 && b == "named" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] named type argument in either order")
+        failed += 1
+    }
+
+    mut p = make(kind: Point)
+    p^.x = 3
+    if p^.x == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] make(kind: Point)")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,12 @@
+/*
+ * Error Test: P0090 - a stored range with a zero step panics when it is iterated
+ */
+
+
+do main() {
+    mut step i64 = 0
+    mut r = range(0, 10, step)
+    for i in r {
+        println(i)
+    }
+}

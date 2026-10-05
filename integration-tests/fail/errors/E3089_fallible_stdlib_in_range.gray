@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3089 - fallible stdlib call as a range() bound
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do main() {
+    for i in range(0, strconv.to_i64("3")) {
+        println("${i}")
+    }
+}

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E2096 - 'generic' is only valid as the type of a function
+ * parameter, not in a variable declaration.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+do main() {
+    mut x generic = 42
+}

@@ -22,37 +22,37 @@ do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // Value wildcard, qualified
-    mut a i64 = vutils.identity(42)
+    // Value of a generic type, qualified
+    mut a i64 = vutils.identity(i64, 42)
     if a == 42 {
-        println("  [PASS] vutils.identity(42) == 42")
+        println("  [PASS] vutils.identity(i64, 42) == 42")
         passed += 1
     } otherwise {
-        println("  [FAIL] vutils.identity(42): expected 42, got ${a}")
+        println("  [FAIL] vutils.identity(i64, 42): expected 42, got ${a}")
         failed += 1
     }
 
-    // Value wildcard, bare through 'using'
-    mut b i64 = identity(42)
+    // Value of a generic type, bare through 'using'
+    mut b i64 = identity(i64, 42)
     if b == 42 {
-        println("  [PASS] identity(42) == 42")
+        println("  [PASS] identity(i64, 42) == 42")
         passed += 1
     } otherwise {
-        println("  [FAIL] identity(42): expected 42, got ${b}")
+        println("  [FAIL] identity(i64, 42): expected 42, got ${b}")
         failed += 1
     }
 
-    // Value wildcard binds a different type at a second call site
-    mut s string = vutils.identity("hello")
+    // A second call site binds a different type
+    mut s string = vutils.identity(string, "hello")
     if s == "hello" {
-        println("  [PASS] vutils.identity(\"hello\") == hello")
+        println("  [PASS] vutils.identity(string, \"hello\") == hello")
         passed += 1
     } otherwise {
-        println("  [FAIL] vutils.identity(\"hello\"): got ${s}")
+        println("  [FAIL] vutils.identity(string, \"hello\"): got ${s}")
         failed += 1
     }
 
-    // Type parameter, qualified, local struct
+    // Type argument, qualified, local struct
     mut c Actor = utils.new_T(Actor)
     if c.id == 0 {
         println("  [PASS] utils.new_T(Actor) returned a zeroed Actor")
@@ -62,7 +62,7 @@ do main() {
         failed += 1
     }
 
-    // Type parameter returning a pointer, qualified
+    // Type argument returning a pointer, qualified
     mut d ^Actor = utils.new_T_ptr(Actor)
     if d^.id == 0 {
         println("  [PASS] utils.new_T_ptr(Actor) returned a pointer to a zeroed Actor")
@@ -72,7 +72,7 @@ do main() {
         failed += 1
     }
 
-    // Type parameter, qualified, imported struct
+    // Type argument, qualified, imported struct
     mut e models.Thing = utils.new_T(models.Thing)
     if models.Thing.bump(e) == 1 {
         println("  [PASS] utils.new_T(models.Thing) on an imported struct type")
@@ -82,7 +82,7 @@ do main() {
         failed += 1
     }
 
-    // Type parameter, imported struct named bare through 'import and use'
+    // Type argument, imported struct named bare through 'import and use'
     mut f Thing = utils.new_T(Thing)
     if Thing.bump(f) == 1 {
         println("  [PASS] utils.new_T(Thing) with the bare imported name")

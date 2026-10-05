@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3071 - return-nil-from-generic-return
+ * Expected: "'return nil' from a function whose return type contains a 'generic' parameter's name"
+ * A generic return takes any type argument — nil is not a value every type
+ * can hold (i64, string, etc.), so it must be rejected at type-check.
+ */
+
+do identity(kind generic, x kind) -> kind {
+    return nil
+}
+
+do main() {}

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3001 - a range variable cannot be assigned an integer
+ */
+
+// expect-error: E3001
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    r = 5
+    for i in r {
+        println(i)
+    }
+}

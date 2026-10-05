@@ -13,9 +13,9 @@ const b_Color enum {
 
 alias b_Alias = b_Point
 
-// A lowercase type parameter must construct with `t{}` the same as `T{}`.
-do make_default(t <?>) -> ? {
-    return t{}
+// A lowercase generic name must construct with `kind{}` the same as `T{}`.
+do make_default(kind generic) -> kind {
+    return kind{}
 }
 
 do main() {

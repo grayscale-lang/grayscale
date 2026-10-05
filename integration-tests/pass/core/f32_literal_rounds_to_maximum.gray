@@ -1,0 +1,31 @@
+/*
+ * f32_literal_rounds_to_maximum.gray - an f32 literal that rounds to the
+ * largest finite f32 is accepted, so the text println prints for it can be
+ * written back as a literal.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut largest f32 = 3.4028235e38
+    mut exact f32 = 3.40282346638528859811704183484516925440e38
+    mut negative f32 = -3.4028235e38
+    mut rounds_down f32 = 3.4028235677973362e38
+
+    if largest == exact && rounds_down == exact && negative == -exact {
+        println("  [PASS] literals that round to the largest f32 equal it")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] literals that round to the largest f32 equal it")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

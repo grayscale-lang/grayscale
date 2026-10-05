@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3205 - an arrays function does not take a range
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+import @arrays
+
+do main() {
+    mut r = range(0, 3)
+    mut copied = arrays.reverse(r)
+    println(len(copied))
+}

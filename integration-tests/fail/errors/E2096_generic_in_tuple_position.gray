@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2096 - 'generic' is not a tuple return position.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+do pair(x i64) -> (i64, generic) {
+    return x, x
+}
+
+do main() {}

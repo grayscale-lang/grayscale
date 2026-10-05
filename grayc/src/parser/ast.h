@@ -86,7 +86,7 @@ typedef struct {
     const char *name;
     const char *type_name;
     bool is_mutable;
-    bool is_type_parameter; /* true when declared with <?> syntax */
+    bool is_type_parameter; /* true when declared with the `generic` keyword */
     AstNode *default_value;
 } Parameter;
 
@@ -242,7 +242,6 @@ struct AstNode {
             const char **field_names;
             AstNode **field_values;
             int count;
-            const char *wildcard_binding; /*concrete type for ? fields */
             /* E3127 already reported for this literal. A return value is
              * resolved twice — once for the statement, once against the
              * declared return type — and one bad literal is one error. */
@@ -259,7 +258,12 @@ struct AstNode {
         struct { AstNode *left; TokenType operator; } postfix;
 
         /* NODE_CALL_EXPRESSION */
-        struct { AstNode *function; AstNode **arguments; int argument_count; const char **argument_names; } call;
+        struct {
+            AstNode *function; AstNode **arguments; int argument_count; const char **argument_names;
+            /* Arguments in the order written, kept when named arguments are
+             * reordered into parameter order; NULL otherwise. */
+            AstNode **written_arguments; int written_argument_count;
+        } call;
 
         /* NODE_INDEX_EXPRESSION */
         struct { AstNode *left; AstNode *index; } index_expression;
@@ -385,12 +389,15 @@ struct AstNode {
             bool is_test;                    /* #test attribute — test-only function */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
-            /* Wildcard generics concrete type bindings recorded
-             * by the typechecker per call site. Codegen emits one
-             * specialised C function for each entry. NULL/0 for
-             * non-generic functions. */
+            /* The type arguments each call binds the `generic` parameters to,
+             * recorded by the typechecker (see GENERIC_BINDING_SEPARATOR).
+             * Codegen emits one specialised C function for each entry.
+             * NULL/0 for non-generic functions. */
             const char **instantiations;
             int instantiation_count;
+            /* Codegen's memo of function_uses_watermark: 0 not yet decided,
+             * 1 eligible, 2 not eligible. */
+            int watermark_state;
         } function_declaration;
 
         /* NODE_IMPORT_STATEMENT */
@@ -415,9 +422,6 @@ struct AstNode {
             StructFunction *functions;
             int function_count;
             bool is_json; /* #json attribute — enables JSON serialization and deserialization */
-            bool is_generic; /* has ? in at least one field type */
-            const char **instantiations; /* concrete bindings */
-            int instantiation_count;
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             bool is_private;
@@ -461,6 +465,48 @@ struct AstNode {
 
 /* Node constructor helpers */
 AstNode *ast_allocate(Arena *arena, NodeKind kind, Token token);
+
+/* --- generic parameters ------------------------------------------------
+ *
+ * A `generic` parameter's argument is a type, and its name stands for that
+ * type in later parameter types, the return types and the body. An
+ * instantiation is spelled as the type arguments in parameter order joined by
+ * GENERIC_BINDING_SEPARATOR ("Point;[i64]"), which no type spelling contains.
+ *
+ * GenericBindings pairs each such name with the type it is bound to. A NULL
+ * type means no call has bound it yet: the body is being checked once for all
+ * instantiations, and the name stands for an unknown type. */
+#define GENERIC_BINDING_SEPARATOR ';'
+
+typedef struct {
+    int count;
+    const char **names;
+    const char **types;
+} GenericBindings;
+
+/* True when `declaration` has at least one `generic` parameter. */
+bool function_has_generic_parameters(const AstNode *declaration);
+
+/* Fill `bindings` with the `generic` parameters of `declaration`, bound to the
+ * types in `binding_text`, or unbound when it is NULL. The arrays are heap
+ * allocated; release them with generic_bindings_clear(). */
+void generic_bindings_init(GenericBindings *bindings, const AstNode *declaration,
+                           const char *binding_text);
+void generic_bindings_clear(GenericBindings *bindings);
+
+/* The types the generics are bound to, in order, joined by
+ * GENERIC_BINDING_SEPARATOR — the spelling of an instantiation. Every type must
+ * be bound. Heap allocated; the caller owns it. */
+char *generic_bindings_join(const GenericBindings *bindings);
+
+/* The index of the generic named `name`, or -1. */
+int generic_bindings_find(const GenericBindings *bindings, const char *name);
+
+/* `type_text` with every generic name replaced by the type it is bound to, or
+ * by "?name" while it is unbound (an unknown type that remembers which generic
+ * it stands for). Heap allocated; the caller owns it. A name written as a
+ * module qualifier or as a member (kind.Type, mod.kind) is not a generic name. */
+char *generic_bindings_substitute(const GenericBindings *bindings, const char *type_text);
 
 /* --- member expression shape accessors ---------------------------------
  *

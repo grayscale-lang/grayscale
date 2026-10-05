@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3089 - returning a fallible stdlib call from a (T, Error) function
+ * Expected: one error, not a second E3188 for the same return
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do convert(text string) -> (i64, Error) {
+    return strconv.to_i64(text)
+}
+
+do main() {
+    mut value, err = convert("1")
+    println("${value}")
+}

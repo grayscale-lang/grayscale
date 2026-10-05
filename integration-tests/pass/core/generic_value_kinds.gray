@@ -1,0 +1,111 @@
+/*
+ * generic_value_kinds.gray - generic functions across every kind of value a type
+ * argument can name: wide integers, sized integers, floats, char, enums,
+ * strings, plus fallible returns with or_return and mutable parameters.
+ */
+
+const Color enum {
+    RED
+    GREEN
+}
+
+do pair(kind generic, x kind) -> (kind, kind) {
+    return x, x
+}
+
+do twice(kind generic, x kind) -> kind {
+    mut a, b = pair(kind, x)
+    return b
+}
+
+do zero_of(kind generic) -> kind {
+    mut slot ^kind = new(kind)
+    return slot^
+}
+
+do first_or(kind generic, items [kind], fallback kind) -> (kind, Error) {
+    if len(items) == 0 { return fallback, error(.Unknown, "empty") }
+    return items[0], nil
+}
+
+do use_first(kind generic, items [kind], fallback kind) -> (kind, Error) {
+    mut value = first_or(kind, items, fallback) or_return
+    return value, nil
+}
+
+do text(kind generic, v kind) -> string {
+    return string(v)
+}
+
+do type_name_of(kind generic, v kind) -> string {
+    return type_of(v)
+}
+
+do assign(kind generic, &slot kind, value kind) {
+    slot = value
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if twice(i128, cast(5, i128)) == cast(5, i128) && twice(u8, cast(7, u8)) == cast(7, u8) {
+        passed += 1
+    } otherwise {
+        println("[FAIL] wide and sized integers")
+        failed += 1
+    }
+
+    if twice(char, 'q') == 'q' && twice(f32, cast(1.5, f32)) == cast(1.5, f32) && twice(Color, Color.GREEN) == Color.GREEN {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char, f32 and enum")
+        failed += 1
+    }
+
+    if zero_of(string) == "" && zero_of(i256) == cast(0, i256) && zero_of(bool) == false {
+        passed += 1
+    } otherwise {
+        println("[FAIL] zero values through new(kind)")
+        failed += 1
+    }
+
+    mut found, found_error = use_first(i64, {5, 6}, 0)
+    mut missing, missing_error = use_first(string, {}, "fb")
+    if found == 5 && found_error == nil && missing == "" && missing_error != nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] or_return through a generic fallible function")
+        failed += 1
+    }
+
+    mut target i64 = 1
+    assign(i64, target, 9)
+    if target == 9 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] mutable kind parameter")
+        failed += 1
+    }
+
+    if text(f64, 2.5) == "2.5" && text(bool, true) == "true" && text(i64, 7) == "7" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] string(kind) per type argument")
+        failed += 1
+    }
+
+    if type_name_of(string, "s") == "string" && type_name_of(f64, 1.5) == "f64" && type_name_of(i128, cast(1, i128)) == "i128" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] type_of(kind) per type argument")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

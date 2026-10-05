@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5011 - fallible stdlib call as a defer statement
+ * Expected: E5011 error — a deferred call's (T, Error) result is dropped
+ */
+// expect-error: E5011
+// expect-error-count: 1
+
+import @io
+
+do main() {
+    defer io.read_file("data.txt")
+    println("done")
+}

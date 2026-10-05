@@ -1,0 +1,251 @@
+/*
+ * generic_types.gray - generic parameters in function signatures
+ *
+ * Covers generic parameters used as value, return and element types,
+ * mixed-type instantiations, same-function reuse with different
+ * concrete types, and nested generic calls.
+ */
+
+do first(kind generic, arr [kind]) -> kind {
+    return arr[0]
+}
+
+do last(kind generic, arr [kind]) -> kind {
+    return arr[len(arr) - 1]
+}
+
+do max(kind generic, a kind, b kind) -> kind {
+    if a > b { return a }
+    return b
+}
+
+do min(kind generic, a kind, b kind) -> kind {
+    if a < b { return a }
+    return b
+}
+
+do identity(kind generic, x kind) -> kind {
+    return x
+}
+
+do contains(kind generic, arr [kind], target kind) -> bool {
+    for_each item in arr {
+        if item == target { return true }
+    }
+    return false
+}
+
+// --- map helpers ---
+
+do get_or(kind generic, m map[string:kind], k string, fallback kind) -> kind {
+    if k in m { return m[k] }
+    return fallback
+}
+
+do has_key(kind generic, m map[kind:i64], k kind) -> bool {
+    return k in m
+}
+
+// map[kind:kind] accepts only a map whose key type equals its value type,
+// since one type argument must satisfy both slots.
+do count_entries(kind generic, m map[kind:kind]) -> i64 {
+    mut n i64 = 0
+    for_each k, v in m {
+        n += 1
+    }
+    return n
+}
+
+// Non-string concrete key in map[K:kind] — exercises a key type other than
+// string.
+do get_or_int_key(kind generic, m map[i64:kind], k i64, fallback kind) -> kind {
+    if k in m { return m[k] }
+    return fallback
+}
+
+do main() {
+    println("=== Generic Types Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // -- first/last on [i64] --
+    mut nums [i64] = {10, 20, 30, 40}
+    if first(i64, nums) == 10 && last(i64, nums) == 40 {
+        println("  [PASS] first/last on [i64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] first/last on [i64]")
+        failed += 1
+    }
+
+    // -- first/last on [string] — reuse of the same generic fn with a different type argument --
+    mut words [string] = {"alpha", "beta", "gamma"}
+    if first(string, words) == "alpha" && last(string, words) == "gamma" {
+        println("  [PASS] first/last on [string]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] first/last on [string]")
+        failed += 1
+    }
+
+    // -- first on [f64] --
+    mut floats [f64] = {1.5, 2.5, 3.5}
+    if first(f64, floats) == 1.5 {
+        println("  [PASS] first on [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] first on [f64]")
+        failed += 1
+    }
+
+    // -- max/min with i64 --
+    if max(i64, 10, 20) == 20 && min(i64, 10, 20) == 10 {
+        println("  [PASS] max/min i64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] max/min i64")
+        failed += 1
+    }
+
+    // -- max/min with f64 --
+    if max(f64, 1.5, 2.5) == 2.5 && min(f64, 1.5, 2.5) == 1.5 {
+        println("  [PASS] max/min f64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] max/min f64")
+        failed += 1
+    }
+
+    // -- identity preserves concrete types across distinct instantiations --
+    mut i i64 = identity(i64, 42)
+    mut s string = identity(string, "hi")
+    mut f f64 = identity(f64, 3.14)
+    mut b bool = identity(bool, true)
+    if i == 42 && s == "hi" && f == 3.14 && b {
+        println("  [PASS] identity across i64/string/f64/bool")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] identity across types")
+        failed += 1
+    }
+
+    // -- contains over [i64]: for_each element type must substitute --
+    if contains(i64, nums, 20) && !contains(i64, nums, 99) {
+        println("  [PASS] contains [i64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] contains [i64]")
+        failed += 1
+    }
+
+    // -- contains over [string]: for_each + string '==' dispatch --
+    if contains(string, words, "beta") && !contains(string, words, "zeta") {
+        println("  [PASS] contains [string]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] contains [string]")
+        failed += 1
+    }
+
+    // -- contains over [f64] --
+    if contains(f64, floats, 2.5) && !contains(f64, floats, 9.9) {
+        println("  [PASS] contains [f64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] contains [f64]")
+        failed += 1
+    }
+
+    // -- use a generic result inside another generic call --
+    if max(i64, first(i64, nums), last(i64, nums)) == 40 {
+        println("  [PASS] nested generic calls")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] nested generic calls")
+        failed += 1
+    }
+
+    // -- map[K:kind] with concrete key and generic value --
+    mut ages map[string:i64] = {"alice": 30, "bob": 25}
+    if get_or(i64, ages, "alice", 0) == 30 && get_or(i64, ages, "zoe", 99) == 99 {
+        println("  [PASS] get_or on map[string:i64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] get_or on map[string:i64]")
+        failed += 1
+    }
+
+    // -- same generic reused against a different concrete value type --
+    mut titles map[string:string] = {"a": "Admin"}
+    if get_or(string, titles, "a", "Guest") == "Admin" && get_or(string, titles, "b", "Guest") == "Guest" {
+        println("  [PASS] get_or on map[string:string]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] get_or on map[string:string]")
+        failed += 1
+    }
+
+    // -- map[kind:V] with generic key and concrete value --
+    mut prices map[string:i64] = {"apple": 5}
+    mut weights map[i64:i64] = {42: 7}
+    if has_key(string, prices, "apple") && !has_key(string, prices, "pear") &&
+       has_key(i64, weights, 42) && !has_key(i64, weights, 99) {
+        println("  [PASS] has_key across map[string:i64] and map[i64:i64]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] has_key across map[string:i64] and map[i64:i64]")
+        failed += 1
+    }
+
+    // -- map[kind:kind] — both slots generic (key type == value type) --
+    mut ii map[i64:i64] = {1: 10, 2: 20, 3: 30}
+    mut ss map[string:string] = {"a": "A", "b": "B"}
+    if count_entries(i64, ii) == 3 && count_entries(string, ss) == 2 {
+        println("  [PASS] count_entries on map[kind:kind] (i64:i64 and string:string)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] count_entries on map[kind:kind]")
+        failed += 1
+    }
+
+    // -- non-string concrete key in map[K:?] --
+    mut ids map[i64:string] = {1: "one", 2: "two"}
+    if get_or_int_key(string, ids, 1, "none") == "one" && get_or_int_key(string, ids, 99, "none") == "none" {
+        println("  [PASS] get_or_int_key on map[i64:string]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] get_or_int_key on map[i64:string]")
+        failed += 1
+    }
+
+    // -- narrow value types: f64/bool/char/u8 must not fall back to int64_t --
+    mut float_m map[string:f64] = {"pi": 3.14}
+    mut flag_m map[string:bool] = {"on": true, "off": false}
+    mut char_m map[string:char] = {"a": 'A', "b": 'B'}
+    mut byte_m map[string:u8] = {"x": 0b1010}
+    mut zb u8 = 0b0
+    mut ex u8 = 0b1010
+    if get_or(f64, float_m, "pi", 0.0) == 3.14 &&
+       get_or(f64, float_m, "e", 2.71) == 2.71 &&
+       get_or(bool, flag_m, "on", false) &&
+       !get_or(bool, flag_m, "off", true) &&
+       get_or(char, char_m, "a", '?') == 'A' &&
+       get_or(char, char_m, "z", '?') == '?' &&
+       get_or(u8, byte_m, "x", zb) == ex &&
+       get_or(u8, byte_m, "y", zb) == zb {
+        println("  [PASS] get_or with narrow value types (f64/bool/char/u8)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] get_or with narrow value types")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

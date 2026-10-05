@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3089 - fallible stdlib call as the operand of unary -
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do main() {
+    mut z i64 = -strconv.to_i64("3")
+    println("${z}")
+}

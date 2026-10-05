@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3058 - a generic instantiation fails when the concrete type
+ * doesn't support an operator used in the generic body.
+ *
+ * The compiler must error at the call site, not inside the generic function.
+ * This verifies the body re-check emits the instantiation-failure error
+ * pointing at the offending call.
+ *
+ * max(kind, kind, kind) uses '>' in its body. Strings don't support '>', so
+ * passing string must error at the max(...) call, not inside max.
+ */
+
+do max(kind generic, a kind, b kind) -> kind {
+    if a > b { return a }
+    return b
+}
+
+do main() {
+    mut s string = max(string, "apple", "banana")
+}

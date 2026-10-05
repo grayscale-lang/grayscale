@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3205 - a range() call cannot be used as a value outside a range position
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do main() {
+    println(range(0, 3))
+}

@@ -34,7 +34,7 @@ func runVerify() int {
 		return 1
 	}
 
-	tmp, err := os.CreateTemp("", "gray-verify-*.gray")
+	tmp, err := os.CreateTemp("", "gray-verify-*"+sourceExtensions[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: could not create temp file: %v\n", err)
 		return 1

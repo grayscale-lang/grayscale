@@ -143,7 +143,7 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
         (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
 #define GRAY_ARRAY_SET_AT(array, type, index, value, file, line) do { \
-        type gray_macro_value_ = (value); GrayArray *gray_macro_array_ = &(array); int64_t gray_macro_index_ = (index); \
+        GrayArray *gray_macro_array_ = &(array); int64_t gray_macro_index_ = (index); type gray_macro_value_ = (value); \
         if (__builtin_expect(__atomic_load_n(&gray_macro_array_->iterating, __ATOMIC_RELAXED) > 0, 0)) \
             gray_array_iterating_panic((file), (line)); \
         if (__builtin_expect(gray_macro_index_ < 0 || gray_macro_index_ >= gray_macro_array_->len, 0)) \
@@ -165,22 +165,5 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source);
             gray_array_oob_panic(gray_macro_index_, gray_macro_array_->len, (file), (line)); \
         (void *)((char *)gray_macro_array_->data + (size_t)gray_macro_index_ * (size_t)gray_macro_array_->elem_size); \
     }))
-
-/* Create from typed literal — helper macros */
-#define GRAY_ARRAY_FROM_I64(arena, ...) \
-    gray_array_from((arena), (int64_t[]){__VA_ARGS__}, sizeof(int64_t), \
-        sizeof((int64_t[]){__VA_ARGS__}) / sizeof(int64_t), GRAY_ELEM_I64)
-
-#define GRAY_ARRAY_FROM_F64(arena, ...) \
-    gray_array_from((arena), (double[]){__VA_ARGS__}, sizeof(double), \
-        sizeof((double[]){__VA_ARGS__}) / sizeof(double), GRAY_ELEM_F64)
-
-#define GRAY_ARRAY_FROM_BOOL(arena, ...) \
-    gray_array_from((arena), (bool[]){__VA_ARGS__}, sizeof(bool), \
-        sizeof((bool[]){__VA_ARGS__}) / sizeof(bool), GRAY_ELEM_BOOL)
-
-#define GRAY_ARRAY_FROM_STR(arena, ...) \
-    gray_array_from((arena), (GrayString[]){__VA_ARGS__}, sizeof(GrayString), \
-        sizeof((GrayString[]){__VA_ARGS__}) / sizeof(GrayString), GRAY_ELEM_STRING)
 
 #endif

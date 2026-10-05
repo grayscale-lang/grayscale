@@ -1,0 +1,61 @@
+/*
+ * generic_composite_types.gray - a generic parameter's name works inside nested
+ * composite types.
+ *
+ * Note: map[string:[kind]] (map-of-array) is not tested here because indexing a
+ * map-lookup result as an array requires a temp variable at the C level
+ * (separate codegen limitation).
+ */
+
+/* array-of-array: the generic name is two layers deep */
+do a_first(kind generic, arr [[kind]]) -> kind {
+    return arr[0][0]
+}
+
+/* array-of-map: the generic name is nested inside the map value slot */
+do b_first(kind generic, arr [map[string:kind]]) -> kind {
+    return arr[0]["x"]
+}
+
+/* triple-nested array */
+do d_first(kind generic, arr [[[kind]]]) -> kind {
+    return arr[0][0][0]
+}
+
+/* array-of-map with a generic key */
+do e_has(kind generic, arr [map[kind:i64]], k kind) -> bool {
+    return k in arr[0]
+}
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+
+    /* a_first: [[i64]] */
+    mut ai [[i64]] = {{1, 2}, {3, 4}}
+    if a_first(i64, ai) == 1 { pass += 1 } otherwise { fail += 1 }
+
+    /* a_first reused with [[string]] */
+    mut as_ [[string]] = {{"hello", "world"}}
+    if a_first(string, as_) == "hello" { pass += 1 } otherwise { fail += 1 }
+
+    /* b_first: [map[string:i64]] */
+    mut bm [map[string:i64]] = {{"x": 7, "y": 8}}
+    if b_first(i64, bm) == 7 { pass += 1 } otherwise { fail += 1 }
+
+    /* b_first reused with [map[string:string]] */
+    mut bs [map[string:string]] = {{"x": "hi"}}
+    if b_first(string, bs) == "hi" { pass += 1 } otherwise { fail += 1 }
+
+    /* d_first: [[[i64]]] */
+    mut dm [[[i64]]] = {{{42}}}
+    if d_first(i64, dm) == 42 { pass += 1 } otherwise { fail += 1 }
+
+    /* e_has: [map[string:i64]] — generic key */
+    mut em [map[string:i64]] = {{"foo": 1}}
+    if e_has(string, em, "foo") && !e_has(string, em, "bar") { pass += 1 } otherwise { fail += 1 }
+
+    println("generic_composite_types: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,87 @@
+/*
+ * named_argument_and_field_source_order.gray - named arguments and struct
+ * literal fields are evaluated in the order they are written, not in
+ * parameter or field declaration order.
+ */
+
+mut trace string = ""
+
+do tick(tag string) -> i64 {
+    trace = "${trace}${tag}"
+    return len(trace)
+}
+
+do add(a i64, b i64) -> i64 {
+    return a * 10 + b
+}
+
+do three(a i64, c i64, b i64 = 100) -> i64 {
+    return a * 10000 + b * 100 + c
+}
+
+const S struct {
+    a i64
+    b i64
+    c i64
+}
+
+const Q struct {
+    base i64
+
+    do combine(self Q, x i64, y i64) -> i64 {
+        return self.base + x * 10 + y
+    }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut sum i64 = add(b: tick("B"), a: tick("A"))
+    if trace == "BA" && sum == 21 {
+        println("  [PASS] named arguments of a function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] named arguments of a function: ${trace} ${sum}")
+        failed += 1
+    }
+
+    trace = ""
+    mut skipped i64 = three(c: tick("c"), a: tick("a"))
+    if trace == "ca" && skipped == 30001 {
+        println("  [PASS] named arguments skipping a default")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] named arguments skipping a default: ${trace} ${skipped}")
+        failed += 1
+    }
+
+    trace = ""
+    mut q Q = Q{base: 0}
+    mut total i64 = q.combine(y: tick("y"), x: tick("x"))
+    if trace == "yx" && total == 21 {
+        println("  [PASS] named arguments of a struct function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] named arguments of a struct function: ${trace} ${total}")
+        failed += 1
+    }
+
+    trace = ""
+    mut s S = S{c: tick("c"), a: tick("a"), b: tick("b")}
+    if trace == "cab" && s.a == 2 && s.b == 3 && s.c == 1 {
+        println("  [PASS] struct literal fields")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal fields: ${trace} ${s.a} ${s.b} ${s.c}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

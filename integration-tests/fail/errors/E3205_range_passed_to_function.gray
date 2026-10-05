@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3205 - a range cannot be passed to a function
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do total(value i64) -> i64 {
+    return value
+}
+
+do main() {
+    mut r = range(0, 3)
+    println(total(r))
+}

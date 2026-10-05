@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3205 - a range cannot be cast
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    mut s = cast(r, string)
+}

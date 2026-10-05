@@ -21,6 +21,12 @@ typedef struct {
     char saved_variable[32];
 } ScopeArena;
 
+/* One function function_uses_watermark is scanning, linked innermost first. */
+typedef struct WatermarkProbe {
+    AstNode *function;
+    struct WatermarkProbe *outer;
+} WatermarkProbe;
+
 typedef struct {
     StringBuffer output;
     StringBuffer global_initializer; /* Deferred initialization for file-scope arrays */
@@ -60,10 +66,13 @@ typedef struct {
      * so break/continue have no arena pointer to restore. */
     bool is_in_no_arena_loop;
 
-    /* Non-zero while function_uses_watermark scans a body: calls are not
-     * treated as allocation-free there, which stops mutually recursive
-     * functions from recursing through the analysis. */
-    int watermark_probe;
+    /* The functions function_uses_watermark is scanning, innermost first. A
+     * call back to the innermost one is a self-call and is assumed
+     * allocation-free; a call to any other function still being scanned is
+     * mutual recursion and is not, which also taints the result so a
+     * function scanned from inside another's scan is not memoized on it. */
+    WatermarkProbe *watermark_probe;
+    bool watermark_probe_tainted;
 
     /* All function declarations (for mutable param lookup at call sites) */
     AstNode **all_functions;
@@ -75,6 +84,11 @@ typedef struct {
      * order because emission and several prefix-match scans depend on it. */
     AstNode **functions_by_name;
     bool is_functions_by_name_built;
+    /* The generic function being emitted under its mangled instantiation name,
+     * and the name it is indexed under. A call to the function from its own
+     * body (recursion) looks it up by that original name. */
+    AstNode *renamed_function;
+    const char *renamed_function_original_name;
 
     /* Type table from type checker (for type-aware codegen) */
     TypeTable *type_table;
@@ -178,12 +192,11 @@ typedef struct {
     int type_alias_count;
     int type_alias_capacity;
 
-    /* Active wildcard binding (). Set while emitting a specialised
-     * instantiation of a generic function so type-string lookups can
-     * substitute "?" with a concrete type name, and so the mangled
-     * function name can be appended at call sites. NULL outside a
-     * generic instantiation. */
-    const char *wildcard_binding;
+    /* The `generic` parameters of the function instantiation being emitted and
+     * the types they are bound to, so type spellings and type-name arguments
+     * resolve to concrete types and the mangled function name can be appended
+     * at call sites. Empty outside a generic instantiation. */
+    GenericBindings generics;
 
     /* Side channel for typed-func call-through: when the callee is a
      * variable typed func(...), the cast emitter stashes the parsed

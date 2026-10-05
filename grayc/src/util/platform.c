@@ -84,18 +84,6 @@ extern char **environ;
  * to snprintf into its own PATH_BUFFER_SIZE buffer. */
 #define GRAY_PATH_BUFFER_SIZE 2048
 
-/* --- Strings --- */
-
-char *gray_strndup(const char *string, size_t max_length) {
-    size_t length = 0;
-    while (length < max_length && string[length] != '\0') length++;
-    char *out = malloc(length + 1);
-    if (!out) return NULL;
-    memcpy(out, string, length);
-    out[length] = '\0';
-    return out;
-}
-
 /* --- Console --- */
 
 void gray_enable_virtual_terminal_mode(void) {

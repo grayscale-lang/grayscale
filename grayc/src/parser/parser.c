@@ -12,6 +12,7 @@
 #include "../typechecker/types.h"
 #include "../util/constants.h"
 #include "../util/reserved.h"
+#include "../util/source_extension.h"
 #include "../util/xalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -316,24 +317,19 @@ static Precedence get_token_precedence(TokenType type) {
 
 /* --- Expression Parsing --- */
 
-/* True when a type spelling contains the generic wildcard `?`. The wildcard is
- * stored as the literal string "?" in the same slot as any other type name and
- * carried unchanged until the typechecker replaces it with a concrete type. */
-static bool type_string_has_wildcard(const char *type_name) {
-    if (!type_name) return false;
-    for (const char *cursor = type_name; *cursor; cursor++) {
-        if (*cursor == '?') return true;
-    }
-    return false;
+/* `generic` declares a type parameter and is only valid as the type of a
+ * function parameter. Anywhere else a type is written it is reported here, and
+ * the keyword is read as the type's name so parsing carries on. */
+static const char *reject_generic_type(Parser *parser) {
+    diagnostic_error_code(parser->diagnostics, "E2096", parser->file,
+        parser->current_token.line, parser->current_token.column, 0);
+    return "generic";
 }
 
 /* Read a type name: simple (i64, Person) or qualified (models.Task).
  * Assumes current token is the first identifier. Returns arena-allocated string. */
 static const char *read_type_name(Parser *parser) {
-    /* Wildcard type placeholder: `?` in a type position */
-    if (current_token_is(parser, TOKEN_QUESTION)) {
-        return "?";
-    }
+    if (current_token_is(parser, TOKEN_GENERIC)) return reject_generic_type(parser);
     const char *name = parser->current_token.literal;
     if (peek_token_is(parser, TOKEN_DOT)) {
         next_token(parser); /* skip . */
@@ -414,10 +410,7 @@ static const char *parse_bracketed_type(Parser *parser) {
 }
 
 static const char *parse_complex_type(Parser *parser) {
-    if (current_token_is(parser, TOKEN_QUESTION)) {
-        /* Bare wildcard type: ? */
-        return "?";
-    }
+    if (current_token_is(parser, TOKEN_GENERIC)) return reject_generic_type(parser);
     if (current_token_is(parser, TOKEN_LEFT_BRACKET)) {
         /* Array type [T] or fixed-size [T, N] for any element type T, or the
          * map shorthand [K:V] */
@@ -1016,6 +1009,11 @@ static AstNode *parse_prefix(Parser *parser) {
             return parse_struct_literal(parser, name);
         }
         return parse_identifier(parser);
+    case TOKEN_GENERIC: {
+        /* A type position written as an expression, e.g. size_of(generic). */
+        reject_generic_type(parser);
+        return parse_identifier(parser);
+    }
     case TOKEN_INTEGER_LITERAL:       return parse_integer_literal(parser);
     case TOKEN_FLOATING_POINT_LITERAL:     return parse_floating_point_literal(parser);
     case TOKEN_STRING:
@@ -1179,12 +1177,6 @@ static AstNode *parse_prefix(Parser *parser) {
         if (!expect_peek_token(parser, TOKEN_LEFT_PARENTHESIS)) return NULL;
         next_token(parser);
         node->data.new_expression.type_name = parse_complex_type(parser);
-        if (type_string_has_wildcard(node->data.new_expression.type_name)) {
-            diagnostic_error_message(parser->diagnostics, "E2070",
-                arena_copy_string(parser->arena,
-                    "wildcard type '?' cannot be used with 'new()'; 'new()' requires a concrete type"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
-        }
         if (!expect_peek_token(parser, TOKEN_RIGHT_PARENTHESIS)) return NULL;
         return node;
     }
@@ -1648,11 +1640,9 @@ static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) 
     }
     node->data.variable_declaration.name = parser->current_token.literal;
 
-    /* Optional type annotation. TOKEN_QUESTION is included so a bare
-     * wildcard `?` in a declaration flows through parse_complex_type and
-     * lands on the existing E2070 diagnostic below; without it, the
-     * token falls through to the generic "unexpected token" fallback
-     * and the user gets no hint about why `?` isn't allowed here. */
+    /* Optional type annotation. TOKEN_GENERIC is included so `generic` in a
+     * declaration flows through parse_complex_type and lands on its E2096
+     * diagnostic instead of the generic "unexpected token" fallback. */
     /* E2079: reject 'nil' as a type annotation. nil is a value per the
      * language, not a type; consume the token to avoid a cascading
      * "nil is an unexpected expression statement" diagnostic. */
@@ -1665,17 +1655,10 @@ static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) 
     node->data.variable_declaration.type_name = NULL;
     if (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_CARET) || peek_token_is(parser, TOKEN_LEFT_BRACKET) ||
         peek_token_is(parser, TOKEN_STRUCT) || peek_token_is(parser, TOKEN_ENUM) ||
-        peek_token_is(parser, TOKEN_QUESTION)) {
+        peek_token_is(parser, TOKEN_GENERIC)) {
         next_token(parser);
         node->data.variable_declaration.type_name = parse_complex_type(parser);
         if (!node->data.variable_declaration.type_name) return NULL;
-        /* E2070: wildcard `?` only allowed in function signatures */
-        if (type_string_has_wildcard(node->data.variable_declaration.type_name)) {
-            diagnostic_error_message(parser->diagnostics, "E2070",
-                arena_copy_string(parser->arena,
-                    "wildcard type '?' is only allowed in function parameter and return types; not in variable declarations"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
-        }
         /* E2068: mut <name> struct/enum; should be const */
         if (node->data.variable_declaration.is_mutable &&
             (strcmp(node->data.variable_declaration.type_name, "struct") == 0 ||
@@ -1729,7 +1712,7 @@ static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) 
                 if (current_token_is(parser, TOKEN_BLANK)) names[variable_count] = "_";
                 if (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_CARET) ||
                     peek_token_is(parser, TOKEN_LEFT_BRACKET) || peek_token_is(parser, TOKEN_STRUCT) ||
-                    peek_token_is(parser, TOKEN_ENUM) || peek_token_is(parser, TOKEN_QUESTION)) {
+                    peek_token_is(parser, TOKEN_ENUM) || peek_token_is(parser, TOKEN_GENERIC)) {
                     next_token(parser);
                     types[variable_count] = parse_complex_type(parser);
                     if (!types[variable_count]) return NULL;
@@ -1953,14 +1936,20 @@ static AstNode *parse_function_declaration(Parser *parser) {
 
             /* Type name follows (unless next parameter or closing paren) */
             if (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_CARET) ||
-                peek_token_is(parser, TOKEN_LEFT_BRACKET) || peek_token_is(parser, TOKEN_QUESTION) ||
-                peek_token_is(parser, TOKEN_LESS_THAN)) {
+                peek_token_is(parser, TOKEN_LEFT_BRACKET) || peek_token_is(parser, TOKEN_GENERIC) ||
+                peek_token_is(parser, TOKEN_LESS_THAN) || peek_token_is(parser, TOKEN_ILLEGAL)) {
                 next_token(parser);
-                if (current_token_is(parser, TOKEN_LESS_THAN)) {
-                    /* <?> type parameter syntax */
-                    if (!expect_peek_token(parser, TOKEN_QUESTION)) return NULL;
-                    if (!expect_peek_token(parser, TOKEN_GREATER_THAN)) return NULL;
-                    parameter->type_name = "?";
+                if (current_token_is(parser, TOKEN_GENERIC) || current_token_is(parser, TOKEN_ILLEGAL)) {
+                    /* An illegal token here is the removed `?` spelling, which
+                     * the lexer reports with E1025. */
+                    parameter->type_name = "generic";
+                    parameter->is_type_parameter = true;
+                } else if (current_token_is(parser, TOKEN_LESS_THAN)) {
+                    /* The removed `<?>` spelling. The lexer reports the '?'
+                     * with E1025; consume the rest so that is the only error. */
+                    next_token(parser);
+                    if (peek_token_is(parser, TOKEN_GREATER_THAN)) next_token(parser);
+                    parameter->type_name = "generic";
                     parameter->is_type_parameter = true;
                 } else {
                     parameter->type_name = parse_complex_type(parser);
@@ -1979,6 +1968,11 @@ static AstNode *parse_function_declaration(Parser *parser) {
                 next_token(parser); /* skip = */
                 next_token(parser);
                 parameter->default_value = parse_expression(parser, PRECEDENCE_LOWEST);
+                if (parameter->is_type_parameter) {
+                    diagnostic_error_code(parser->diagnostics, "E2097", parser->file,
+                        parameter->default_value ? parameter->default_value->token.line : parser->current_token.line,
+                        parameter->default_value ? parameter->default_value->token.column : parser->current_token.column, 0);
+                }
             }
 
             node->data.function_declaration.parameter_count++;
@@ -2009,6 +2003,7 @@ static AstNode *parse_function_declaration(Parser *parser) {
         Parameter *parameter = &node->data.function_declaration.parameters[i];
         if (!parameter->type_name && i + 1 < node->data.function_declaration.parameter_count) {
             parameter->type_name = node->data.function_declaration.parameters[i + 1].type_name;
+            parameter->is_type_parameter = node->data.function_declaration.parameters[i + 1].is_type_parameter;
             if (!parameter->default_value && node->data.function_declaration.parameters[i + 1].default_value) {
                 parameter->default_value = node->data.function_declaration.parameters[i + 1].default_value;
             }
@@ -2019,21 +2014,6 @@ static AstNode *parse_function_declaration(Parser *parser) {
                 "parameter '%s' is missing a type; every parameter must have a type (e.g., %s i64)",
                 parameter->name, parameter->name);
             diagnostic_error_message(parser->diagnostics, "E2002", arena_copy_string(parser->arena, message),
-                parser->file, node->token.line, node->token.column, 0);
-        }
-    }
-
-    /* E2087: type parameters (<?>) cannot be mixed with value parameters */
-    {
-        bool has_type_parameter = false, has_value_parameter = false;
-        for (int i = 0; i < node->data.function_declaration.parameter_count; i++) {
-            if (node->data.function_declaration.parameters[i].is_type_parameter)
-                has_type_parameter = true;
-            else
-                has_value_parameter = true;
-        }
-        if (has_type_parameter && has_value_parameter) {
-            diagnostic_error_code(parser->diagnostics, "E2087",
                 parser->file, node->token.line, node->token.column, 0);
         }
     }
@@ -2108,14 +2088,15 @@ static AstNode *parse_function_declaration(Parser *parser) {
                      (strcmp(parser->current_token.literal, "func") == 0 && peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)));
 
                 if (current_token_is(parser, TOKEN_IDENTIFIER) && !is_complex_type_start &&
-                    (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_QUESTION) ||
+                    (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_GENERIC) ||
                      peek_token_is(parser, TOKEN_LEFT_BRACKET) || peek_token_is(parser, TOKEN_CARET)) &&
                     (!is_type || peek_token_is(parser, TOKEN_IDENTIFIER) ||
                      peek_token_is(parser, TOKEN_CARET) || peek_token_is(parser, TOKEN_LEFT_BRACKET) ||
-                     peek_token_is(parser, TOKEN_QUESTION))) {
+                     peek_token_is(parser, TOKEN_GENERIC))) {
                     /* Named return: name type; store both (: accept
-                     * TOKEN_QUESTION, TOKEN_LEFT_BRACKET, TOKEN_CARET as type-start
-                     * tokens so `(first ?, items [i64], ptr ^T)` work) */
+                     * TOKEN_GENERIC, TOKEN_LEFT_BRACKET, TOKEN_CARET as type-start
+                     * tokens so `(first generic, items [i64], ptr ^T)` reach the
+                     * E2096 report in parse_complex_type) */
                     const char *return_name = parser->current_token.literal;
                     next_token(parser);
                     int return_index = node->data.function_declaration.return_type_count;
@@ -2386,15 +2367,17 @@ static AstNode *parse_import_statement(Parser *parser) {
                 const char *slash = strrchr(item->path, '/');
                 const char *base = slash ? slash + 1 : item->path;
                 size_t base_length = strlen(base);
-                if (base_length > 5 && strcmp(base + base_length - 5, ".gray") == 0) {
-                    /* Strip .gray extension: "helpers.gray" → "helpers" */
-                    char *module_name = arena_allocate(parser->arena, base_length - 4);
-                    memcpy(module_name, base, base_length - 5);
-                    module_name[base_length - 5] = '\0';
+                size_t extension_length = gray_source_extension_length(base);
+                if (extension_length > 0) {
+                    /* Strip the source extension: "helpers.gray" → "helpers" */
+                    size_t stem_length = base_length - extension_length;
+                    char *module_name = arena_allocate(parser->arena, stem_length + 1);
+                    memcpy(module_name, base, stem_length);
+                    module_name[stem_length] = '\0';
                     item->alias = module_name;
                     item->module = module_name;
                 } else if (base_length > 0) {
-                    /* No .gray extension: use last path component as module name */
+                    /* No source extension: use last path component as module name */
                     char *module_name = arena_allocate(parser->arena, base_length + 1);
                     memcpy(module_name, base, base_length);
                     module_name[base_length] = '\0';
@@ -2667,25 +2650,6 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         ARENA_GROW(parser->arena, node->data.struct_declaration.fields,
             node->data.struct_declaration.field_count, field_capacity);
 
-        /* E2070: wildcard `?` in field-name position used to slip past the
-         * struct-field guard (the check further down only inspects the type
-         * slot) and embed '?' in the generated C struct identifier, where
-         * clang rejected it with a raw C error. Catch it here before reading
-         * the name. */
-        if (current_token_is(parser, TOKEN_QUESTION)) {
-            diagnostic_error_message(parser->diagnostics, "E2070",
-                arena_copy_string(parser->arena,
-                    "wildcard type '?' is not allowed as a struct field name; only in function parameter and return types"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
-            next_token(parser); /* skip the '?' */
-            /* Skip the trailing type token (if any) so we don't cascade. */
-            if (!current_token_is(parser, TOKEN_RIGHT_BRACE) && !current_token_is(parser, TOKEN_END_OF_FILE)) {
-                parse_complex_type(parser);
-                next_token(parser);
-            }
-            continue;
-        }
-
         /* E2089: #discard on a struct field instead of a function */
         if (has_pending_discard) {
             diagnostic_error_code(parser->diagnostics, "E2089",
@@ -2758,14 +2722,6 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Current token is now the type; parse it and backfill all names in this group */
         const char *type_name = parse_complex_type(parser);
         if (!type_name) return NULL;
-        /* E2070: wildcard `?` is not allowed as a struct field type */
-        if (type_string_has_wildcard(type_name)) {
-            diagnostic_error_message(parser->diagnostics, "E2070",
-                arena_copy_string(parser->arena,
-                    "wildcard type '?' cannot be used as a struct field type"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
-            return NULL;
-        }
         for (int i = group_start; i < node->data.struct_declaration.field_count; i++) {
             node->data.struct_declaration.fields[i].type_name = type_name;
             node->data.struct_declaration.fields[i].default_value = NULL;
@@ -2870,22 +2826,6 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOKEN_CONST)) {
             reject_nested_declaration(parser, "enum", node->data.enum_declaration.name);
-            continue;
-        }
-
-        /* E2070: wildcard `?` in variant-name position used to slip past the
-         * parser and embed '?' in the generated C enum identifier, where clang
-         * rejected it with a raw C error. Catch it here before reading the
-         * variant name. */
-        if (current_token_is(parser, TOKEN_QUESTION)) {
-            diagnostic_error_message(parser->diagnostics, "E2070",
-                arena_copy_string(parser->arena,
-                    "wildcard type '?' is not allowed in enum declarations; only in function parameter and return types"),
-                parser->file, parser->current_token.line, parser->current_token.column, 0);
-            next_token(parser); /* skip the '?' */
-            /* Skip an optional trailing ',' so we don't cascade into the
-             * next variant with a stale current_token. */
-            if (current_token_is(parser, TOKEN_COMMA)) next_token(parser);
             continue;
         }
 
@@ -3028,25 +2968,16 @@ static AstNode *parse_for_statement(Parser *parser) {
         next_token(parser);  /* advance: current_token = IDENT or BLANK */
         if (peek_token_is(parser, TOKEN_IN)) {
             /* --- iteration form: for x in range(...) { } --- */
-            /* 'for x in ...' is only valid with range().
-             * For collection iteration, users must use for_each. */
+            /* The type checker rejects an iterable that is not a range. */
             const char *loop_variable_name = parser->current_token.literal;
             AstNode *node = ast_allocate(parser->arena, NODE_FOR_STATEMENT, for_token);
             node->data.for_statement.variable_name = loop_variable_name;
             node->data.for_statement.variable_type = NULL;
             next_token(parser);  /* consume IN */
             next_token(parser);  /* advance to iterable start */
-            if (!current_token_is(parser, TOKEN_RANGE)) {
-                char message[MESSAGE_BUFFER_SIZE];
-                snprintf(message, sizeof(message),
-                    "'for %s in ...' only supports 'range()'; use 'for_each %s in ...' to iterate over a collection",
-                    loop_variable_name, loop_variable_name);
-                diagnostic_error_message(parser->diagnostics, "E2002", arena_copy_string(parser->arena, message),
-                    parser->file, for_token.line, for_token.column, 0);
-                synchronize_parser(parser);
-                return NULL;
-            }
+            parser->should_suppress_struct_literal = true;
             node->data.for_statement.iterable = parse_expression(parser, PRECEDENCE_LOWEST);
+            parser->should_suppress_struct_literal = false;
             if (has_parentheses && peek_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) next_token(parser);
             if (!expect_peek_token(parser, TOKEN_LEFT_BRACE)) return NULL;
             node->data.for_statement.body = parse_block_statement(parser);
@@ -3374,13 +3305,20 @@ static AstNode *parse_alias_declaration(Parser *parser) {
 
     /* E2001: a keyword, literal or punctuation mark cannot start a type. */
     if (!current_token_is(parser, TOKEN_IDENTIFIER) && !current_token_is(parser, TOKEN_LEFT_BRACKET) &&
-        !current_token_is(parser, TOKEN_CARET) && !current_token_is(parser, TOKEN_QUESTION)) {
+        !current_token_is(parser, TOKEN_CARET) && !current_token_is(parser, TOKEN_GENERIC)) {
         char message[MESSAGE_BUFFER_SIZE];
         snprintf(message, sizeof(message),
             "unexpected token '%s' in alias declaration; expected a type",
             parser->current_token.literal ? parser->current_token.literal : "?");
         diagnostic_error_message(parser->diagnostics, "E2001", arena_copy_string(parser->arena, message),
             parser->file, parser->current_token.line, parser->current_token.column, 0);
+        return NULL;
+    }
+
+    if (current_token_is(parser, TOKEN_GENERIC)) {
+        diagnostic_error_code_formatted(parser->diagnostics, "E3135", parser->file,
+            parser->current_token.line, parser->current_token.column, 0,
+            node->data.alias_declaration.name);
         return NULL;
     }
 

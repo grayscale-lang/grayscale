@@ -115,7 +115,7 @@ do main() {
 
 - **Simplicity** — Readable, opinionated syntax — bitwise and membership operators are real keywords (`bit_and`, `bit_xor`, `not_in`), not punctuation — with familiar per-file aliases (`fn`, `switch`/`case`, `elif`/`else`, `while`, `defer`) for those who prefer them. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray check`, `gray new`, and `gray watch`.
 - **Flexibility** — Build scripts and dev tooling, cross-platform CLI utilities, HTTP/JSON backend services, SQLite-backed apps, network daemons, and batch data processing, or learning systems programming fundamentals.
-- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
+- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` or `.grayscale` files, and C headers can all be imported.
 - **Safety** — An automatic scope-based arena management memory model with a compile-time [pointer checker](STANDARD.md#117-memory-safety) that proves no pointer is ever readable after its memory is reclaimed, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
 ---
 
@@ -168,6 +168,8 @@ it does not need to be on `PATH`.
 
 ## Commands
 
+Source files end in `.gray` or `.grayscale`; both work everywhere and can be mixed in one project.
+
 | Command | Description | Example |
 |---------|-------------|---------|
 | `gray <file>` | Compile and run | `gray main.gray` |
@@ -177,7 +179,7 @@ it does not need to be on `PATH`.
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
 | `gray test [path...]` | Compile and run `#test` functions | `gray test ./src/...` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
-| `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
+| `gray fmt <path>` | Format `.gray` and `.grayscale` source files in place | `gray fmt .` or `gray fmt ./...` |
 | `gray fmt --check <path>` | Check formatting without modifying files (CI gate) | `gray fmt --check ./...` |
 | `gray doc <file>` | Generate docs from `#doc` attributes | `gray doc main.gray` |
 | `gray new <name>` | Scaffold a new project | `gray new myproject` |

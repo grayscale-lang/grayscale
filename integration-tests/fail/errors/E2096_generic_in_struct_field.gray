@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2096 - 'generic' is not a field type.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+const Box struct {
+    value generic
+}
+
+do main() {}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3206 - a literal zero step is rejected when the range is stored
+ */
+
+// expect-error: E3206
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 10, 0)
+    for i in r {
+        println(i)
+    }
+}

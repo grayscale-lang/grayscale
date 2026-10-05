@@ -1,7 +1,7 @@
 /*
  * type_param_concrete_return_ok.gray - A concrete return type stays legal on a
- * function with a type parameter whenever the body returns a value of that
- * concrete type. Only returning the caller's type argument is rejected.
+ * function with a generic parameter whenever the body returns a value of that
+ * concrete type.
  */
 
 const Foo struct {
@@ -9,22 +9,22 @@ const Foo struct {
 }
 
 // Returns the type argument, and says so.
-do new_T(t <?>) -> ? {
-    return new(t)^
+do new_T(kind generic) -> kind {
+    return new(kind)^
 }
 
-do new_T_ptr(t <?>) -> ^? {
-    return new(t)
+do new_T_ptr(kind generic) -> ^kind {
+    return new(kind)
 }
 
 // Promises Foo, returns an actual Foo.
-do new_foo(t <?>) -> Foo {
+do new_foo(kind generic) -> Foo {
     return new(Foo)^
 }
 
 // Promises i64, returns an actual i64.
-do size_T(t <?>) -> i64 {
-    return size_of(t)
+do size_T(kind generic) -> i64 {
+    return size_of(kind)
 }
 
 do main() {

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2097 - a 'generic' parameter's argument is the type the caller
+ * passes, so it cannot have a default value.
+ */
+// expect-error: E2097
+// expect-error-count: 1
+
+do make(kind generic = i64) {
+    println("make")
+}
+
+do main() {}

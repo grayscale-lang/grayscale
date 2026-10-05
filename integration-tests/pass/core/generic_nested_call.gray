@@ -1,0 +1,61 @@
+/*
+ * generic_nested_call.gray - A generic function calling another generic
+ * function passes its own type argument on.
+ *
+ * `double` calls `add(kind, x, x)`; the call has to resolve `kind` through
+ * the instantiation being emitted, or codegen would name a specialization of
+ * `add` that was never generated.
+ */
+
+do add(kind generic, a kind, b kind) -> kind {
+    return a + b
+}
+
+do double(kind generic, x kind) -> kind {
+    return add(kind, x, x)
+}
+
+do triple(kind generic, x kind) -> kind {
+    return add(kind, add(kind, x, x), x)
+}
+
+do main() {
+    println("=== Generic Nested Call Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // -- i64 binding --
+    if double(i64, 5) == 10 {
+        println("  [PASS] double(5) = 10")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] double(5)")
+        failed += 1
+    }
+
+    // -- f64 binding --
+    if double(f64, 1.5) == 3.0 {
+        println("  [PASS] double(1.5) = 3.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] double(1.5)")
+        failed += 1
+    }
+
+    // -- deeper nesting: add(add(x,x), x) --
+    if triple(i64, 3) == 9 {
+        println("  [PASS] triple(3) = 9")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] triple(3)")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

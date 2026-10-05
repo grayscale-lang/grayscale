@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3089 - fallible stdlib call as the cast() operand
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do main() {
+    mut z f64 = cast(strconv.to_i64("3"), f64)
+    println("${z}")
+}

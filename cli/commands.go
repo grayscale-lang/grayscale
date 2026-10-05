@@ -70,15 +70,15 @@ func parseArenaLimit(s string) (uint64, error) {
 }
 
 var checkCmd = &cobra.Command{
-	Use:   "check [file.gray | directory]",
+	Use:   "check [file.gray | file.grayscale | directory]",
 	Short: "Type-check a file or project without compiling",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Allow directories for project-wide check
 		info, statErr := os.Stat(args[0])
 		isDir := statErr == nil && info.IsDir()
-		if !isDir && !strings.HasSuffix(args[0], ".gray") {
-			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
+		if !isDir && !hasSourceExtension(args[0]) {
+			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray or .grayscale file", args[0])
 		}
 		code, err := driver.Check(args[0], quietArgs(cmd))
 		if err != nil {
@@ -137,8 +137,8 @@ var buildCmd = &cobra.Command{
 	Short: "Compile a Grayscale source file to a native binary",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !strings.HasSuffix(args[0], ".gray") {
-			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
+		if !hasSourceExtension(args[0]) {
+			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray or .grayscale file", args[0])
 		}
 		opts, err := commonBuildOpts(cmd)
 		if err != nil {
@@ -224,12 +224,12 @@ to a different path (parent directories are created as needed).`,
 
 var fmtCmd = &cobra.Command{
 	Use:   "fmt <path>",
-	Short: "Format .gray source files",
-	Long: `Normalize formatting of .gray source files (indentation, trailing
+	Short: "Format Grayscale source files",
+	Long: `Normalize formatting of .gray and .grayscale source files (indentation, trailing
 whitespace, end-of-file newline, blank-line runs).
 
 Examples:
-  gray fmt .              Format .gray files in current directory (no recursion)
+  gray fmt .              Format source files in current directory (no recursion)
   gray fmt ./...          Format recursively from current directory
   gray fmt file.gray        Format a single file
   gray fmt a.gray b.gray      Format multiple files
@@ -702,8 +702,8 @@ var rootCmd = &cobra.Command{
 			fmt.Printf("%sVersion: %s\n\nRun 'gray help' for usage.\n", asciiBanner, Version)
 			return nil
 		}
-		if !strings.HasSuffix(args[0], ".gray") {
-			return fmt.Errorf("error: unknown command or invalid file '%s' — expected a .gray file\n  usage: gray <file.gray>\n  help:  gray --help", args[0])
+		if !hasSourceExtension(args[0]) {
+			return fmt.Errorf("error: unknown command or invalid file '%s' — expected a .gray or .grayscale file\n  usage: gray <file.gray>\n  help:  gray --help", args[0])
 		}
 
 		// Pass extra args through to the compiled program
@@ -791,8 +791,8 @@ var crossBuildCmd = &cobra.Command{
 	Short: "Cross-compile a Grayscale source file for another platform",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !strings.HasSuffix(args[0], ".gray") {
-			fmt.Fprintf(os.Stderr, "error: '%s' is not a valid Grayscale source file — expected a .gray file\n", args[0])
+		if !hasSourceExtension(args[0]) {
+			fmt.Fprintf(os.Stderr, "error: '%s' is not a valid Grayscale source file — expected a .gray or .grayscale file\n", args[0])
 			return &ExitError{1}
 		}
 
@@ -858,7 +858,7 @@ func init() {
 		fmt.Fprintf(cmd.OutOrStdout(), `%s
 
 Usage:
-  gray [file.gray] [flags]
+  gray [file.gray | file.grayscale] [flags]
   gray [command]
 
 Available Commands:

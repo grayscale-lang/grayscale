@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3085 - an i64 value cannot be checked against a Range<i128> variable
+ */
+
+// expect-error: E3085
+// expect-error-count: 1
+
+do main() {
+    mut r = range(i128(0), i128(3))
+    mut x i64 = 1
+    println(x in r)
+}

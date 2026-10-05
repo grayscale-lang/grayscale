@@ -1,0 +1,12 @@
+/*
+ * Pass Test: a project mixing .gray and .grayscale files, imported with and
+ * without an explicit extension
+ */
+
+import "./helper"
+import "./other.grayscale"
+import "./legacy"
+
+do main() {
+    println("${helper.one()} ${other.two()} ${legacy.three()}")
+}

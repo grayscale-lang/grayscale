@@ -80,7 +80,7 @@ func runFmt(args []string, checkMode bool) int {
 		exit = 1
 	}
 	if len(files) == 0 {
-		fmt.Println("gray fmt: no .gray files found")
+		fmt.Println("gray fmt: no source files found")
 		return exit
 	}
 
@@ -102,7 +102,7 @@ func runFmt(args []string, checkMode bool) int {
 
 		if checkMode {
 			// Copy to temp, format it, compare
-			tmp, err := os.CreateTemp("", "gray-fmt-check-*.gray")
+			tmp, err := os.CreateTemp("", "gray-fmt-check-*"+sourceExtensions[0])
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
 				exit = 1

@@ -3,10 +3,10 @@
 
 import @fmt
 
-do show(value ?) {
+do show(kind generic, value kind) {
     fmt.printfln("%s", {value})
 }
 
 do main() {
-    show(7)
+    show(i64, 7)
 }

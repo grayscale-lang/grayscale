@@ -1,0 +1,68 @@
+/*
+ * generic_multiple_parameters.gray - several generic parameters in one
+ * signature, mixed freely with value parameters, each bound independently.
+ */
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do swap(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (b_kind, a_kind) {
+    return b, a
+}
+
+// Type and value parameters interleave; the second type is declared after a
+// value parameter and still used by the parameters and return type after it.
+do pick(a_kind generic, index i64, b_kind generic, a a_kind, b b_kind) -> b_kind {
+    return b
+}
+
+// The type arguments are passed on in swapped order, so the swap undoes itself.
+do swap_twice(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (a_kind, b_kind) {
+    mut first, second = swap(b_kind, a_kind, b, a)
+    return first, second
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut s, n = swap(i64, string, 7, "seven")
+    if s == "seven" && n == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] swap(i64, string): got (${s}, ${n})")
+        failed += 1
+    }
+
+    mut f, p = swap(f64, Point, 2.5, Point{x: 1, y: 2})
+    if f.x == 1 && f.y == 2 && p == 2.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] swap(f64, Point)")
+        failed += 1
+    }
+
+    if pick(i64, 0, string, 5, "five") == "five" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] pick with a value parameter between type parameters")
+        failed += 1
+    }
+
+    mut a, b = swap_twice(string, bool, "yes", true)
+    if a == "yes" && b == true {
+        passed += 1
+    } otherwise {
+        println("[FAIL] swap_twice forwarding both type arguments swapped: got (${a}, ${b})")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

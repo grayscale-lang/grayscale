@@ -1,0 +1,71 @@
+/*
+ * Test: generic struct functions monomorphize per type argument, via
+ * type-qualified calls and instance dispatch, across two structs in one file.
+ */
+
+const Box struct {
+    value i64
+
+    do identity(kind generic, val kind) -> kind {
+        return val
+    }
+
+    do wrap(self Box, kind generic, val kind) -> kind {
+        return val
+    }
+}
+
+const Pair struct {
+    first i64
+    second i64
+
+    do pick(kind generic, index i64, a kind, b kind) -> kind {
+        if index == 0 {
+            return a
+        }
+        return b
+    }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut b = Box { value: 10 }
+
+    mut r1 i64 = Box.identity(i64, 42)
+    mut r2 string = Box.identity(string, "hello")
+    mut r3 bool = Box.identity(bool, true)
+    mut r4 f64 = Box.identity(f64, 3.5)
+    if r1 == 42 && r2 == "hello" && r3 == true && r4 == 3.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] type-qualified generic calls")
+        failed += 1
+    }
+
+    mut r5 i64 = b.wrap(i64, 99)
+    mut r6 string = b.wrap(string, "world")
+    if r5 == 99 && r6 == "world" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] instance-dispatch generic calls")
+        failed += 1
+    }
+
+    mut r7 i64 = Pair.pick(i64, 0, 10, 20)
+    mut r8 string = Pair.pick(string, 1, "left", "right")
+    if r7 == 10 && r8 == "right" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] second struct generic calls")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

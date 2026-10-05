@@ -1411,14 +1411,6 @@ static void test_error_E3080_named_return_mismatch(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3082_wildcard_named_return(void) {
-    DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do get(x ?) -> (val ?) { return x }\n"
-        "do main() { println(get(1)) }");
-    ASSERT(has_error_code(diagnostics, "E3082"));
-    diagnostic_destroy(diagnostics);
-}
-
 static void test_error_E2014_duplicate_enum_variant(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Color enum { RED RED }\n"
@@ -2506,29 +2498,53 @@ static void test_error_E3126_array_size_zero(void) {
     diagnostic_destroy(diagnostics);
 }
 
-/* --- Generics/wildcards --- */
+/* --- Generics --- */
 
 static void test_error_E3058_generic_type_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do to_int(x ?) -> i64 { return x }\n"
-        "do main() { to_int(\"hello\") }");
+        "do to_int(kind generic, x kind) -> i64 { return x }\n"
+        "do main() { to_int(string, \"hello\") }");
     ASSERT(has_error_code(diagnostics, "E3058"));
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3060_wildcard_return_no_param(void) {
+static void test_error_E3159_generic_argument_conflict(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad(x i64) -> ? { return x }\n"
-        "do main() { bad(1) }");
-    ASSERT(has_error_code(diagnostics, "E3060"));
+        "do identity(kind generic, x kind) -> kind { return x }\n"
+        "do main() { identity(i64, \"hello\") }");
+    ASSERT(has_error_code(diagnostics, "E3159"));
     diagnostic_destroy(diagnostics);
 }
 
-/* A type parameter takes any type name; a T{...} literal in the body is what
+static void test_error_E3199_generic_argument_shape(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do count(kind generic, items [kind]) -> i64 { return len(items) }\n"
+        "do main() { count(i64, 5) }");
+    ASSERT(has_error_code(diagnostics, "E3199"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E4039_generic_used_before_declared(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do f(x kind, kind generic) -> kind { return x }\n"
+        "do main() { f(1, i64) }");
+    ASSERT(has_error_code(diagnostics, "E4039"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_generic_parameters_mix_with_value_parameters(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do pick(a_kind generic, n i64, b_kind generic, a a_kind, b b_kind) -> b_kind { return b }\n"
+        "do main() { println(pick(string, 1, i64, \"x\", 2)) }");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A generic parameter takes any type name; a kind{...} literal in the body is what
  * narrows one to struct types, and E3127 is reported at the literal. */
 static void test_error_E3127_struct_literal_non_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do mk_stack(T <?>) -> ? { return T{} }\n"
+        "do mk_stack(kind generic) -> kind { return kind{} }\n"
         "do main() { mk_stack(i64) }");
     ASSERT(has_error_code(diagnostics, "E3127"));
     diagnostic_destroy(diagnostics);
@@ -2536,7 +2552,7 @@ static void test_error_E3127_struct_literal_non_struct(void) {
 
 static void test_E3127_not_reported_for_primitive_type_arg(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> i64 { return size_of(t) }\n"
+        "do identity(kind generic) -> i64 { return size_of(kind) }\n"
         "do main() { identity(i64) }");
     ASSERT(!has_error_code(diagnostics, "E3127"));
     diagnostic_destroy(diagnostics);
@@ -2544,7 +2560,7 @@ static void test_E3127_not_reported_for_primitive_type_arg(void) {
 
 static void test_error_E4016_type_arg_names_no_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> i64 { return size_of(t) }\n"
+        "do identity(kind generic) -> i64 { return size_of(kind) }\n"
         "do main() { identity(Nonexistent) }");
     ASSERT(has_error_code(diagnostics, "E4016"));
     diagnostic_destroy(diagnostics);
@@ -2552,7 +2568,7 @@ static void test_error_E4016_type_arg_names_no_type(void) {
 
 static void test_error_E3128_sizeof_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> i64 { return size_of(t) }\n"
+        "do identity(kind generic) -> i64 { return size_of(kind) }\n"
         "do main() {\n"
         "  mut x i64 = 5\n"
         "  identity(x)\n"
@@ -2587,10 +2603,10 @@ static void test_error_E3124_tagged_enum_equality(void) {
 
 /* --- Remaining misc --- */
 
-static void test_error_E3071_return_nil_wildcard_ptr(void) {
+static void test_error_E3071_return_nil_generic(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad(x ?) -> ? { return nil }\n"
-        "do main() { bad(1) }");
+        "do bad(kind generic, x kind) -> kind { return nil }\n"
+        "do main() { bad(i64, 1) }");
     ASSERT(has_error_code(diagnostics, "E3071"));
     diagnostic_destroy(diagnostics);
 }
@@ -2981,7 +2997,6 @@ int main(void) {
     RUN_TEST(test_error_E3076_map_compare);
     RUN_TEST(test_error_E3078_pointer_arithmetic);
     RUN_TEST(test_error_E3080_named_return_mismatch);
-    RUN_TEST(test_error_E3082_wildcard_named_return);
     RUN_TEST(test_error_E4008_main_with_params);
     RUN_TEST(test_error_E5025_invalid_assign_target);
     RUN_TEST(test_error_E3083_from_c_string_non_pointer);
@@ -3070,14 +3085,17 @@ int main(void) {
     RUN_TEST(test_error_E3125_array_size_not_const);
     RUN_TEST(test_error_E3126_array_size_zero);
     RUN_TEST(test_error_E3058_generic_type_error);
-    RUN_TEST(test_error_E3060_wildcard_return_no_param);
+    RUN_TEST(test_error_E3159_generic_argument_conflict);
+    RUN_TEST(test_error_E3199_generic_argument_shape);
+    RUN_TEST(test_error_E4039_generic_used_before_declared);
+    RUN_TEST(test_generic_parameters_mix_with_value_parameters);
     RUN_TEST(test_error_E3127_struct_literal_non_struct);
     RUN_TEST(test_E3127_not_reported_for_primitive_type_arg);
     RUN_TEST(test_error_E4016_type_arg_names_no_type);
     RUN_TEST(test_error_E3128_sizeof_variable);
     RUN_TEST(test_error_E3110_implicit_enum_no_context);
     RUN_TEST(test_error_E3124_tagged_enum_equality);
-    RUN_TEST(test_error_E3071_return_nil_wildcard_ptr);
+    RUN_TEST(test_error_E3071_return_nil_generic);
     RUN_TEST(test_error_E3075_chain_struct_calls);
     RUN_TEST(test_error_E3089_fallible_no_error_handling);
     RUN_TEST(test_error_E3094_array_index_assign_type);

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2096 - 'generic' is not an array element type.
+ */
+// expect-error: E2096
+// expect-error-count: 1
+
+do count(items [generic]) -> i64 {
+    return len(items)
+}
+
+do main() {}

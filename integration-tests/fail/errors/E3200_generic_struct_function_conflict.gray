@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3200 - an argument of a generic struct function whose parameter
+ * is typed by a generic name must have the type that name is bound to.
+ * Expected: "'kind' of struct function 'Box.wrap' is i64, but argument 3 is string"
+ */
+// expect-error: E3200
+// expect-error-count: 1
+
+const Box struct {
+    value i64
+
+    do wrap(self Box, kind generic, item kind) -> kind {
+        return item
+    }
+}
+
+do main() {
+    mut b = Box{value: 1}
+    println(b.wrap(i64, "not an i64"))
+}

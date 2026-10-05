@@ -77,8 +77,13 @@ static const char *operator_to_c_string(TokenType operator) {
 /* Forward declarations */
 static void emit_statement(CodeGen *codegen, AstNode *node);
 static void reset_line_directive(CodeGen *codegen);
+static void emit_line_directive(CodeGen *codegen, const char *file, int line);
 static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
+static void emit_assign_statement(CodeGen *codegen, AstNode *node);
+#define MAX_ASSIGN_TARGET_INDEXES 8
+static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
+                                       AstNode **saved_indexes, bool is_scoped);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_error_code(CodeGen *codegen, const char *name);
@@ -216,7 +221,7 @@ static const char *codegen_declaration_name(CodeGen *codegen, AstNode *node,
     /* While a generic instantiation is being emitted the caller has already
      * put the per-binding mangled name in hand (and on the node). That
      * mangling is by type argument, not by module, and wins. */
-    if (codegen->wildcard_binding) return fallback;
+    if (codegen->generics.count > 0) return fallback;
     DeclarationEntry *entry = module_table_entry_for_node(codegen->modules, node);
     return entry ? module_mangle(codegen->modules, entry) : fallback;
 }
@@ -517,96 +522,93 @@ static void mangle_generic_name(char *buffer, size_t buffer_size, const char *ba
     buffer[position] = '\0';
 }
 
-/* Returns true if the function declaration contains any wildcard ('?')
- * type parameters or return types, indicating a generic function. */
+/* The instantiation a call to generic function `function` selects: the type
+ * each of its type arguments names, joined as the typechecker spells an
+ * instantiation. A type parameter of the instantiation being emitted that is
+ * passed on resolves to what it is bound to here. Heap allocated. */
+static char *codegen_call_binding(CodeGen *codegen, const AstNode *function, const AstNode *call,
+                                  int leading_parameters) {
+    GenericBindings bindings;
+    generic_bindings_init(&bindings, function, NULL);
+    int slot = 0;
+    for (int i = leading_parameters; i < function->data.function_declaration.parameter_count; i++) {
+        if (!function->data.function_declaration.parameters[i].is_type_parameter) continue;
+        const char *type_text = "unknown";
+        if (i - leading_parameters < call->data.call.argument_count) {
+            const AstNode *type_argument = call->data.call.arguments[i - leading_parameters];
+            if (type_argument->kind == NODE_LABEL) {
+                type_text = type_argument->data.label.value;
+                int outer_index = generic_bindings_find(&codegen->generics, type_text);
+                if (outer_index >= 0 && codegen->generics.types[outer_index])
+                    type_text = codegen->generics.types[outer_index];
+            }
+        }
+        bindings.types[slot++] = strdup(type_text);
+    }
+    for (; slot < bindings.count; slot++) bindings.types[slot] = strdup("unknown");
+    char *joined = generic_bindings_join(&bindings);
+    generic_bindings_clear(&bindings);
+    return joined;
+}
+
+/* Returns true if the function declaration has a `generic` parameter. */
 static bool function_is_generic(AstNode *function_node) {
-    for (int i = 0; i < function_node->data.function_declaration.parameter_count; i++) {
-        if (function_node->data.function_declaration.parameters[i].type_name &&
-            strchr(function_node->data.function_declaration.parameters[i].type_name, '?')) return true;
+    return function_has_generic_parameters(function_node);
+}
+
+/* Returns true if any return type of the function names one of its `generic`
+ * parameters, so each instantiation has its own return type. */
+static bool function_return_depends_on_generic(const AstNode *function_node) {
+    GenericBindings unbound;
+    generic_bindings_init(&unbound, function_node, NULL);
+    bool depends = false;
+    for (int i = 0; i < function_node->data.function_declaration.return_type_count && !depends; i++) {
+        char *substituted = generic_bindings_substitute(&unbound, function_node->data.function_declaration.return_types[i]);
+        depends = substituted && strchr(substituted, '?') != NULL;
+        free(substituted);
     }
-    for (int i = 0; i < function_node->data.function_declaration.return_type_count; i++) {
-        if (function_node->data.function_declaration.return_types[i] &&
-            strchr(function_node->data.function_declaration.return_types[i], '?')) return true;
-    }
-    return false;
+    generic_bindings_clear(&unbound);
+    return depends;
 }
 
 /* Map Grayscale type name to C type */
-/* Return a type string with any '?' replaced by the active wildcard
- * binding. Returns the original pointer if no binding is active or the
- * string has no wildcard. The substituted string lives in a small ring
- * of static buffers so a handful of nested calls can each keep their
- * result alive simultaneously. */
+/* Return a type string with the active instantiation's type parameters
+ * replaced by the types they are bound to. Returns the original pointer if no
+ * instantiation is active or the string names no type parameter. The
+ * substituted string lives in a small ring of static buffers so a handful of
+ * nested calls can each keep their result alive simultaneously. */
 static const char *multi_return_base_name(const char *function_name);
 static const char *multi_return_name(AstNode *function_node);
 static const char *codegen_effective_type_string(CodeGen *codegen, const char *type_name) {
-    if (!type_name || !codegen || !codegen->wildcard_binding) return type_name;
-    if (!strchr(type_name, '?')) return type_name;
-    size_t binding_length = strlen(codegen->wildcard_binding);
+    if (!type_name || !codegen || codegen->generics.count == 0) return type_name;
+    char *substituted = generic_bindings_substitute(&codegen->generics, type_name);
+    if (strcmp(substituted, type_name) == 0) {
+        free(substituted);
+        return type_name;
+    }
     static char buffers[4][TYPE_NAME_MAX];
     static int slot = 0;
     char *output = buffers[slot];
     slot = (slot + 1) & 3;
-    char *write_cursor = output;
-    char *end_cursor = output + TYPE_NAME_MAX - 1;
-    for (const char *read_cursor = type_name; *read_cursor && write_cursor < end_cursor; read_cursor++) {
-        if (*read_cursor == '?') {
-            size_t avail = (size_t)(end_cursor - write_cursor);
-            size_t copy = binding_length < avail ? binding_length : avail;
-            memcpy(write_cursor, codegen->wildcard_binding, copy);
-            write_cursor += copy;
-        } else {
-            *write_cursor++ = *read_cursor;
-        }
-    }
-    *write_cursor = '\0';
+    snprintf(output, TYPE_NAME_MAX, "%s", substituted);
+    free(substituted);
     return output;
 }
 
-/* Recursively derive what '?' binds to given a param type pattern (ptn)
- * containing '?' and a concrete argument type name (atn).
- * Returns malloc'd binding string (caller must free) or NULL on mismatch. */
-static char *codegen_bind_wildcard(const char *parameter_type_name, const char *argument_type_name) {
-    if (!parameter_type_name || !argument_type_name || !strchr(parameter_type_name, '?')) return NULL;
-    if (strcmp(parameter_type_name, "?") == 0) return strdup(argument_type_name);
-    size_t parameter_type_length = strlen(parameter_type_name);
-    size_t argument_type_length = strlen(argument_type_name);
-    /* Array layer: strip matching outer [...] brackets */
-    if (parameter_type_length >= 3 && parameter_type_name[0] == '[' && parameter_type_name[parameter_type_length - 1] == ']') {
-        if (argument_type_length < 3 || argument_type_name[0] != '[' || argument_type_name[argument_type_length - 1] != ']') return NULL;
-        char *array_pattern_inner = gray_strndup(parameter_type_name + 1, parameter_type_length - 2);
-        char *array_argument_inner = gray_strndup(argument_type_name + 1, argument_type_length - 2);
-        char *result = codegen_bind_wildcard(array_pattern_inner, array_argument_inner);
-        free(array_pattern_inner); free(array_argument_inner);
-        return result;
-    }
-    /* Map layer: find top-level ':' in both sides and recurse into wildcard slot */
-    if (parameter_type_length > 4 && strncmp(parameter_type_name, "map[", 4) == 0 && parameter_type_name[parameter_type_length - 1] == ']') {
-        if (argument_type_length <= 4 || strncmp(argument_type_name, "map[", 4) != 0 || argument_type_name[argument_type_length - 1] != ']') return NULL;
-        const char *map_pattern_content = parameter_type_name + 4; size_t map_pattern_content_length = parameter_type_length - 5;
-        const char *map_argument_content = argument_type_name + 4; size_t map_argument_content_length = argument_type_length - 5;
-        int depth = 0; const char *map_pattern_colon = NULL, *map_argument_colon = NULL;
-        for (size_t i = 0; i < map_pattern_content_length; i++) {
-            if (map_pattern_content[i] == '[') depth++; else if (map_pattern_content[i] == ']') depth--;
-            else if (map_pattern_content[i] == ':' && depth == 0) { map_pattern_colon = map_pattern_content + i; break; }
-        }
-        depth = 0;
-        for (size_t i = 0; i < map_argument_content_length; i++) {
-            if (map_argument_content[i] == '[') depth++; else if (map_argument_content[i] == ']') depth--;
-            else if (map_argument_content[i] == ':' && depth == 0) { map_argument_colon = map_argument_content + i; break; }
-        }
-        if (!map_pattern_colon || !map_argument_colon) return NULL;
-        char *map_pattern_key = gray_strndup(map_pattern_content, (size_t)(map_pattern_colon - map_pattern_content));
-        char *map_pattern_value = gray_strndup(map_pattern_colon + 1, map_pattern_content_length - (size_t)(map_pattern_colon - map_pattern_content) - 1);
-        char *map_argument_key = gray_strndup(map_argument_content, (size_t)(map_argument_colon - map_argument_content));
-        char *map_argument_value = gray_strndup(map_argument_colon + 1, map_argument_content_length - (size_t)(map_argument_colon - map_argument_content) - 1);
-        char *result = NULL;
-        if (strchr(map_pattern_key, '?')) result = codegen_bind_wildcard(map_pattern_key, map_argument_key);
-        if (!result && strchr(map_pattern_value, '?')) result = codegen_bind_wildcard(map_pattern_value, map_argument_value);
-        free(map_pattern_key); free(map_pattern_value); free(map_argument_key); free(map_argument_value);
-        return result;
-    }
-    return NULL;
+/* The type an expression has in the instantiation being emitted. The type
+ * table holds what the single main-pass check found, and there an expression
+ * typed by a type parameter is unknown ("?kind"), or a container of one
+ * ("[?kind]"). Resolve those against the active bindings. A plain unknown type
+ * cannot say which parameter it comes from, so it takes the only one when the
+ * instantiation has just one. */
+static GrayType *codegen_effective_type(CodeGen *codegen, GrayType *type) {
+    if (!codegen || codegen->generics.count == 0) return type;
+    if (!type || (type->kind == TYPE_KIND_UNKNOWN && type->name && strcmp(type->name, "unknown") == 0))
+        return codegen->generics.count == 1 && codegen->generics.types[0]
+            ? type_from_name(codegen->generics.types[0]) : type;
+    const char *spelling = type_name(type);
+    const char *effective = codegen_effective_type_string(codegen, spelling);
+    return effective == spelling ? type : type_from_name(effective);
 }
 
 /* Resolve type alias name to underlying type (codegen side).
@@ -652,18 +654,27 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         type_name = resolve_type_alias_codegen(codegen, type_name);
     }
 
-    /* if Wildcard type'?' appears in the type
-     * string while a generic instantiation is active, rewrite via
-     * codegen_effective_type_string and recurse through the normal mapping. */
-    if (codegen && codegen->wildcard_binding && strchr(type_name, '?')) {
+    /* A type parameter named in the type string while a generic instantiation
+     * is active is rewritten via codegen_effective_type_string and mapped
+     * again with no instantiation active, so the result is not rewritten twice. */
+    if (codegen && codegen->generics.count > 0) {
         const char *substituted = codegen_effective_type_string(codegen, type_name);
-        const char *saved = codegen->wildcard_binding;
-        codegen->wildcard_binding = NULL;
-        const char *resolved = gray_type_to_c_codegen(codegen, substituted);
-        codegen->wildcard_binding = saved;
-        return resolved;
+        if (substituted != type_name) {
+            GenericBindings saved = codegen->generics;
+            memset(&codegen->generics, 0, sizeof codegen->generics);
+            const char *resolved = gray_type_to_c_codegen(codegen, substituted);
+            codegen->generics = saved;
+            return resolved;
+        }
     }
 
+    if (strncmp(type_name, "Range<", 6) == 0) {
+        if (strcmp(type_name, "Range<i128>") == 0) return "GrayRange_i128";
+        if (strcmp(type_name, "Range<u128>") == 0) return "GrayRange_u128";
+        if (strcmp(type_name, "Range<i256>") == 0) return "GrayRange_i256";
+        if (strcmp(type_name, "Range<u256>") == 0) return "GrayRange_u256";
+        return "GrayRange_i64";
+    }
     if (strcmp(type_name, "i8") == 0)     return "int8_t";
     if (strcmp(type_name, "i16") == 0)    return "int16_t";
     if (strcmp(type_name, "i32") == 0)    return "int32_t";
@@ -844,8 +855,8 @@ static const char *wide_integer_prefix(const char *type_spelling);
 
 /* Resolve a Grayscale type to its C type for map key/value storage.
  * Uses gray_type_to_c_codegen for struct/array/map types, hardcoded for primitives.
- * Routes the input through codegen_effective_type_string so '?' inside a generic
- * instantiation resolves to the active wildcard binding. */
+ * Routes the input through codegen_effective_type_string so a type parameter
+ * inside a generic instantiation resolves to the type it is bound to. */
 static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_type_name) {
     if (!gray_type_name) return "int64_t";
     gray_type_name = codegen_effective_type_string(codegen, gray_type_name);
@@ -1537,6 +1548,8 @@ static const char *resolve_wide_integer_type(CodeGen *codegen, AstNode *node) {
     /* The type checker's resolved type decides. The walk below is for a node
      * it could not type: one inside a generic body, typed by the binding. */
     GrayType *resolved = type_table_get(codegen->type_table, node);
+    if (resolved && resolved->kind == TYPE_KIND_UNKNOWN && resolved->name && resolved->name[0] == '?')
+        resolved = codegen_effective_type(codegen, resolved);
     if (resolved && resolved->kind != TYPE_KIND_UNKNOWN)
         return resolved->kind == TYPE_KIND_SIGNED_INTEGER || resolved->kind == TYPE_KIND_UNSIGNED_INTEGER
             ? wide_integer_type_name(resolved->name) : NULL;
@@ -1702,6 +1715,66 @@ static void emit_wide_integer_operand(CodeGen *codegen, AstNode *operand,
     }
 }
 
+/* The integer type a Range<T> value runs in: "i64" or a wide integer type. */
+static const char *stored_range_element(GrayType *range_type) {
+    static const char *const wide_elements[] = { "i128", "u128", "i256", "u256" };
+    for (size_t index = 0; index < sizeof(wide_elements) / sizeof(wide_elements[0]); index++) {
+        size_t length = strlen(wide_elements[index]);
+        if (strncmp(range_type->name + strlen("Range<"), wide_elements[index], length) == 0)
+            return wide_elements[index];
+    }
+    return "i64";
+}
+
+/* A range() call as a value: a statement expression that evaluates start, end
+ * and step in order and builds the range from them, defaults filled in. */
+static void emit_range_value(CodeGen *codegen, AstNode *node) {
+    GrayType *range_type = type_table_get(codegen->type_table, node);
+    const char *element = stored_range_element(range_type);
+    bool is_wide = is_wide_integer_type_name(element);
+    const char *prefix = is_wide ? wide_integer_prefix(element) : NULL;
+    int range_id = codegen_next_id(codegen);
+    AstNode *parts[] = { node->data.range_expression.start, node->data.range_expression.end,
+                         node->data.range_expression.step };
+    static const char *const part_names[] = { "start", "stop", "step" };
+    static const int default_values[] = { 0, 0, 1 };
+    emit(codegen, "({ ");
+    for (int part_index = 0; part_index < 3; part_index++) {
+        emit_formatted(codegen, "%s _gray_range_%s_%d = ", is_wide ? prefix : "int64_t", part_names[part_index], range_id);
+        if (!parts[part_index]) {
+            if (is_wide) emit_formatted(codegen, "%s_from_u64(%d)", prefix, default_values[part_index]);
+            else emit_formatted(codegen, "%d", default_values[part_index]);
+        } else if (is_wide) {
+            emit_wide_integer_operand(codegen, parts[part_index], prefix, element, NULL);
+        } else {
+            emit_expression(codegen, parts[part_index]);
+        }
+        emit(codegen, "; ");
+    }
+    emit_formatted(codegen, "(%s){ _gray_range_start_%d, _gray_range_stop_%d, _gray_range_step_%d }; })",
+        gray_type_to_c_codegen(codegen, range_type->name), range_id, range_id, range_id);
+}
+
+/* `subject in range` for a range held in a variable. The subject is `subject_node`,
+ * or the C variable `subject_c` when the caller already holds it; it is
+ * evaluated before the range. A zero step panics here, where the range is used. */
+static void emit_stored_range_membership(CodeGen *codegen, AstNode *location_node, AstNode *range_node,
+                                         AstNode *subject_node, const char *subject_c) {
+    GrayType *range_type = type_table_get(codegen->type_table, range_node);
+    const char *element = stored_range_element(range_type);
+    const char *range_c_type = gray_type_to_c_codegen(codegen, range_type->name);
+    int range_id = codegen_next_id(codegen);
+    emit_formatted(codegen, "({ %s _gray_subject_%d = ",
+        is_wide_integer_type_name(element) ? wide_integer_prefix(element) : "int64_t", range_id);
+    if (subject_c) emit(codegen, subject_c);
+    else emit_expression(codegen, subject_node);
+    emit_formatted(codegen, "; %s _gray_range_%d = ", range_c_type, range_id);
+    emit_expression(codegen, range_node);
+    emit_formatted(codegen, "; if (%s_has_zero_step(_gray_range_%d)) { %s; } %s_contains(_gray_range_%d, _gray_subject_%d, \"%s\", %d); })",
+        range_c_type, range_id, panic_call(codegen, location_node, "P0090", ""),
+        range_c_type, range_id, range_id, codegen->file, location_node->token.line);
+}
+
 /* Emit a shift amount as an int64_t. A wide amount too large for int64_t
  * cannot be in range for any operand, so it panics with the shift's
  * max_amount. */
@@ -1792,8 +1865,16 @@ static AstNode *find_function(CodeGen *codegen, const char *name) {
     AstNode search_key;
     search_key.data.function_declaration.name = name;
     AstNode *search_key_pointer = &search_key;
+    /* The index is ordered by the declared names, so the function being
+     * emitted under its mangled name is looked up as itself. */
+    const char *mangled_name = NULL;
+    if (codegen->renamed_function) {
+        mangled_name = codegen->renamed_function->data.function_declaration.name;
+        codegen->renamed_function->data.function_declaration.name = codegen->renamed_function_original_name;
+    }
     AstNode **match = bsearch(&search_key_pointer, codegen->functions_by_name, (size_t)codegen->function_count,
         sizeof(AstNode *), function_name_compare);
+    if (codegen->renamed_function) codegen->renamed_function->data.function_declaration.name = mangled_name;
     return match ? *match : NULL;
 }
 
@@ -2022,10 +2103,8 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
             GrayType *part_type = type_table_get(codegen->type_table, part);
             TypeKind type_kind = part_type ? part_type->kind : TYPE_KIND_UNKNOWN;
             if (type_kind == TYPE_KIND_UNKNOWN) {
-                if (codegen->wildcard_binding) {
-                    GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
-                    if (wildcard_type) { type_kind = wildcard_type->kind; part_type = wildcard_type; }
-                }
+                GrayType *effective_type = codegen_effective_type(codegen, part_type ? part_type : &TYPE_UNKNOWN);
+                if (effective_type) { type_kind = effective_type->kind; part_type = effective_type; }
             }
             if (type_kind == TYPE_KIND_UNKNOWN) {
                 if (part->kind == NODE_FLOATING_POINT_LITERAL) type_kind = TYPE_KIND_FLOATING_POINT;
@@ -2275,13 +2354,14 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
             if (inferred_type && inferred_type->kind != TYPE_KIND_UNKNOWN) element_type_for_copy = inferred_type;
         }
     }
-    /* Inside a generic function body, a wildcard-typed element (return {x, x}
-     * for -> [?]) resolves to TYPE_KIND_UNKNOWN in the un-specialised pass. Use the
-     * active instantiation binding so the compound literal stores the concrete
-     * C type instead of defaulting to int64_t. */
-    if ((!element_type_for_copy || element_type_for_copy->kind == TYPE_KIND_UNKNOWN) && codegen->wildcard_binding) {
-        GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
-        if (wildcard_type && wildcard_type->kind != TYPE_KIND_UNKNOWN) element_type_for_copy = wildcard_type;
+    /* Inside a generic function body, an element typed by a type parameter
+     * (return {x, x} for -> [kind]) resolves to TYPE_KIND_UNKNOWN in the
+     * un-specialised pass. Use the active instantiation's binding so the
+     * compound literal stores the concrete C type instead of defaulting to
+     * int64_t. */
+    if (!element_type_for_copy || element_type_for_copy->kind == TYPE_KIND_UNKNOWN) {
+        GrayType *effective_type = codegen_effective_type(codegen, element_type_for_copy);
+        if (effective_type && effective_type->kind != TYPE_KIND_UNKNOWN) element_type_for_copy = effective_type;
     }
     TypeKind type_kind = element_type_for_copy ? element_type_for_copy->kind : TYPE_KIND_SIGNED_INTEGER;
 
@@ -2581,12 +2661,53 @@ static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_na
     emit(codegen, "}");
 }
 
+/* True when evaluating `node` can run a call, so its position in the order of
+ * evaluation is observable. */
+static bool expression_contains_call(AstNode *node) {
+    if (!node) return false;
+    switch (node->kind) {
+        case NODE_CALL_EXPRESSION: return true;
+        case NODE_INFIX_EXPRESSION:
+            return expression_contains_call(node->data.infix.left) || expression_contains_call(node->data.infix.right);
+        case NODE_PREFIX_EXPRESSION: return expression_contains_call(node->data.prefix.right);
+        case NODE_POSTFIX_EXPRESSION: return expression_contains_call(node->data.postfix.left);
+        case NODE_MEMBER_EXPRESSION: return expression_contains_call(node->data.member.object);
+        case NODE_INDEX_EXPRESSION:
+            return expression_contains_call(node->data.index_expression.left) ||
+                   expression_contains_call(node->data.index_expression.index);
+        case NODE_CAST_EXPRESSION: return expression_contains_call(node->data.cast.value);
+        case NODE_INTERPOLATED_STRING:
+            for (int i = 0; i < node->data.interpolated_string.part_count; i++)
+                if (expression_contains_call(node->data.interpolated_string.parts[i])) return true;
+            return false;
+        default: return false;
+    }
+}
+
+/* A value emitted ahead of its use takes no type context from the slot it
+ * lands in, so literals that need one stay where they are. */
+static bool expression_can_be_hoisted(AstNode *node) {
+    return expression_contains_call(node) && node->kind != NODE_ARRAY_VALUE &&
+           node->kind != NODE_MAP_VALUE && node->kind != NODE_STRUCT_VALUE;
+}
+
+/* A synthetic label naming a temporary, typed as `original`. */
+static AstNode *make_temporary_label(CodeGen *codegen, AstNode *original, const char *name) {
+    AstNode *label = xcalloc(1, sizeof(AstNode));
+    label->kind = NODE_LABEL;
+    label->token = original->token;
+    label->data.label.value = name;
+    type_table_put(codegen->type_table, label, type_table_get(codegen->type_table, original));
+    return label;
+}
+
 static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Struct literal: (GrayStruct_Name){.field = value, ...} */
-    /* Resolve ? → concrete binding for type params */
+    /* A type parameter's name resolves to the type it is bound to */
     const char *struct_name_text = node->data.struct_value.name;
-    if (strcmp(struct_name_text, "?") == 0 && codegen->wildcard_binding) {
-        struct_name_text = codegen->wildcard_binding;
+    int generic_index = generic_bindings_find(&codegen->generics, struct_name_text);
+    if (generic_index >= 0 && codegen->generics.types[generic_index]) {
+        struct_name_text = codegen->generics.types[generic_index];
     } else if (node->resolved_declaration) {
         struct_name_text = module_mangle(codegen->modules, node->resolved_declaration);
     } else {
@@ -2606,21 +2727,52 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             struct_name_text = codegen_resolve_type(codegen, struct_name_text);
         }
     }
+    /* C initializes the fields of a compound literal in declaration order,
+     * whatever order they are written in. Fields whose values run calls are
+     * evaluated into temporaries first, in the order written, when that
+     * differs from declaration order. */
+    AstNode *hoist_declaration = find_struct_declaration(codegen, struct_name_text);
+    AstNode **original_field_values = NULL;
+    if (hoist_declaration) {
+        int hoistable_count = 0;
+        bool is_out_of_order = false;
+        int previous_index = -1;
+        for (int i = 0; i < node->data.struct_value.count; i++) {
+            if (!expression_can_be_hoisted(node->data.struct_value.field_values[i])) continue;
+            hoistable_count++;
+            int declared_index = -1;
+            for (int field_index = 0; field_index < hoist_declaration->data.struct_declaration.field_count; field_index++) {
+                if (strcmp(hoist_declaration->data.struct_declaration.fields[field_index].name,
+                           node->data.struct_value.field_names[i]) == 0) { declared_index = field_index; break; }
+            }
+            if (declared_index < previous_index) is_out_of_order = true;
+            previous_index = declared_index;
+        }
+        if (hoistable_count >= 2 && is_out_of_order) {
+            int hoist_id = codegen_next_id(codegen);
+            size_t values_size = sizeof(AstNode *) * (size_t)node->data.struct_value.count;
+            original_field_values = xmalloc(values_size);
+            memcpy(original_field_values, node->data.struct_value.field_values, values_size);
+            emit(codegen, "({ ");
+            for (int i = 0; i < node->data.struct_value.count; i++) {
+                AstNode *field_value = original_field_values[i];
+                if (!expression_can_be_hoisted(field_value)) continue;
+                char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+                snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_sf%d_%d", hoist_id, i);
+                emit_formatted(codegen, "__auto_type %s = ", name);
+                emit_expression(codegen, field_value);
+                emit(codegen, "; ");
+                node->data.struct_value.field_values[i] = make_temporary_label(codegen, field_value, name);
+            }
+        }
+    }
     /* Wrapped in an extra pair of parens: a bare compound literal
      * (T){.a=x, .b=y} contains an unparenthesized top-level comma, which the
      * C preprocessor splits into separate macro arguments wherever this
      * value lands inside a function-like macro call (GRAY_ARRAY_SET_AT and
      * friends). ((T){.a=x, .b=y}) reads as one token run everywhere. */
     emit(codegen, "(");
-    /* use mangled name for generic struct instantiations */
-    if (node->data.struct_value.wildcard_binding) {
-        const char *binding = node->data.struct_value.wildcard_binding;
-        char mangled[MESSAGE_BUFFER_SIZE];
-        mangle_generic_name(mangled, sizeof(mangled), struct_name_text, binding);
-        emit_formatted(codegen, "(GrayStruct_%s){", mangled);
-    } else {
-        emit_formatted(codegen, "(GrayStruct_%s){", struct_name_text);
-    }
+    emit_formatted(codegen, "(GrayStruct_%s){", struct_name_text);
     /* Look up the struct decl so we can thread each field's declared
      * type into emit_expression as current_variable_type. Without it, an
      * empty array literal in a field slot (e.g. `Bag{items: {}}`)
@@ -2748,6 +2900,11 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     codegen->current_module = saved_struct_module;
     codegen->current_file = saved_struct_file;
     emit(codegen, "})");
+    if (original_field_values) {
+        memcpy(node->data.struct_value.field_values, original_field_values,
+               sizeof(AstNode *) * (size_t)node->data.struct_value.count);
+        emit(codegen, "; })");
+    }
 }
 
 static void emit_prefix_expression(CodeGen *codegen, AstNode *node) {
@@ -2809,12 +2966,9 @@ static void emit_prefix_expression(CodeGen *codegen, AstNode *node) {
 }
 
 /* The number type the operation at `node` is computed in: its resolved
- * type, or the active binding inside a generic instantiation. */
+ * type, or what its type parameter is bound to inside a generic instantiation. */
 static GrayType *codegen_operation_type(CodeGen *codegen, AstNode *node) {
-    GrayType *type = type_table_get(codegen->type_table, node);
-    if ((!type || type->kind == TYPE_KIND_UNKNOWN) && codegen->wildcard_binding)
-        type = type_from_name(codegen->wildcard_binding);
-    return type;
+    return codegen_effective_type(codegen, type_table_get(codegen->type_table, node));
 }
 
 /* One operand of an arithmetic operation computed in `type`: the C
@@ -2923,17 +3077,12 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
     /* Check if either operand is a string; need special handling */
     GrayType *left_type = type_table_get(codegen->type_table, node->data.infix.left);
     GrayType *right_type = type_table_get(codegen->type_table, node->data.infix.right);
-    /* Inside a generic instantiation, operands that were
-     * typed TYPE_KIND_UNKNOWN in the main pass (because they traced back
-     * to a '?' parameter) should be treated as the active wildcard
-     * binding so string/struct comparisons pick up the right path. */
-    if (codegen && codegen->wildcard_binding) {
-        static GrayType wildcard_type_static;
-        GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
-        if (wildcard_type) { wildcard_type_static = *wildcard_type; wildcard_type = &wildcard_type_static; }
-        if (!left_type || left_type->kind == TYPE_KIND_UNKNOWN) left_type = wildcard_type;
-        if (!right_type || right_type->kind == TYPE_KIND_UNKNOWN) right_type = wildcard_type;
-    }
+    /* Inside a generic instantiation, operands that were typed
+     * TYPE_KIND_UNKNOWN in the main pass (because they traced back to a type
+     * parameter) take the type their parameter is bound to, so string/struct
+     * comparisons pick up the right path. */
+    left_type = codegen_effective_type(codegen, left_type);
+    right_type = codegen_effective_type(codegen, right_type);
     bool is_left_string = (left_type && left_type->kind == TYPE_KIND_STRING) || node->data.infix.left->kind == NODE_STRING_VALUE;
     bool is_right_string = (right_type && right_type->kind == TYPE_KIND_STRING) || node->data.infix.right->kind == NODE_STRING_VALUE;
     /* Also treat string enum operands as strings for comparison purposes */
@@ -3041,6 +3190,15 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
     /* in / not_in; array or range membership check */
     if (operator == TOKEN_IN || operator == TOKEN_NOT_IN) {
         bool negated = (operator == TOKEN_NOT_IN);
+
+        /* A range held in a variable: x in r */
+        GrayType *membership_type = type_table_get(codegen->type_table, node->data.infix.right);
+        if (node->data.infix.right->kind != NODE_RANGE_EXPRESSION &&
+            membership_type && membership_type->kind == TYPE_KIND_RANGE) {
+            if (negated) emit(codegen, "!");
+            emit_stored_range_membership(codegen, node, node->data.infix.right, node->data.infix.left, NULL);
+            return;
+        }
 
         /* Check if right side is a range expression: x in range(a, b) */
         if (node->data.infix.right->kind == NODE_RANGE_EXPRESSION) {
@@ -3894,7 +4052,7 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
     /* cast(value, type); dispatch to conversion functions for non-trivial casts */
     const char *target = node->data.cast.target_type;
     AstNode *value = node->data.cast.value;
-    GrayType *value_type = type_table_get(codegen->type_table, value);
+    GrayType *value_type = codegen_effective_type(codegen, type_table_get(codegen->type_table, value));
     TypeKind value_kind = value_type ? value_type->kind : TYPE_KIND_UNKNOWN;
 
     /* Infer kind from AST if type table has no info */
@@ -4298,9 +4456,10 @@ static void emit_new_expression(CodeGen *codegen, AstNode *node) {
      * zero-filled GrayMap/GrayArray has key_size/value_size/elem_size = 0
      * and operations on them silently fail. */
     const char *type_name_text = node->data.new_expression.type_name;
-    /* Resolve ? → concrete binding for type params */
-    if (strcmp(type_name_text, "?") == 0 && codegen->wildcard_binding) {
-        type_name_text = codegen->wildcard_binding;
+    /* A type written with a type parameter resolves to what it is bound to */
+    const char *generic_type_text = codegen_effective_type_string(codegen, type_name_text);
+    if (generic_type_text != type_name_text) {
+        type_name_text = generic_type_text;
     } else {
         /* new() names its type as written; the struct declaration it has to
          * find (for field defaults) is keyed by the module's spelling. */
@@ -4515,6 +4674,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit_label(codegen, node);
         break;
 
+    case NODE_RANGE_EXPRESSION:
+        emit_range_value(codegen, node);
+        break;
+
     case NODE_INTEGER_LITERAL:
         if (node->data.integer_literal.is_above_i64_maximum) {
             /* Literal exceeds INT64_MAX; for u64 contexts emit as a
@@ -4685,34 +4848,33 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *argument, int
     /* addr() calls always print in hex format */
     if (argument->kind == NODE_CALL_EXPRESSION && argument->data.call.function->kind == NODE_LABEL &&
         strcmp(argument->data.call.function->data.label.value, "addr") == 0) return "_addr";
-    /* During wildcard monomorphisation the type table retains the type from the
-     * first instantiation. If the argument is a label that names a '?'-typed parameter
-     * of the current function, use the active binding instead so each instantiation
-     * gets the correct print variant. */
-    if (codegen->wildcard_binding && argument->kind == NODE_LABEL && codegen->current_function) {
+    /* During monomorphisation the type table retains the type from the main
+     * pass. If the argument is a label that names a parameter typed by a type
+     * parameter, use what it is bound to instead so each instantiation gets
+     * the correct print variant. */
+    if (codegen->generics.count > 0 && argument->kind == NODE_LABEL && codegen->current_function) {
         const char *label = argument->data.label.value;
         for (int i = 0; i < codegen->current_function->data.function_declaration.parameter_count; i++) {
             Parameter *parameter = &codegen->current_function->data.function_declaration.parameters[i];
-            if (parameter->type_name && strchr(parameter->type_name, '?') &&
-                strcmp(parameter->name, label) == 0) {
-                GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
-                if (wildcard_type) {
-                    switch (wildcard_type->kind) {
-                    case TYPE_KIND_STRING:  return "_str";
-                    case TYPE_KIND_FLOATING_POINT:
-                        *floating_point_bits = floating_point_bit_size(wildcard_type->name);
-                        return "_floating_point";
-                    case TYPE_KIND_BOOL:    return "_bool";
-                    case TYPE_KIND_CHAR:    return "_char";
-                    case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
-                    case TYPE_KIND_POINTER: return "_addr";
-                    default:         return "_i64";
-                    }
-                }
+            if (parameter->is_type_parameter || !parameter->type_name || strcmp(parameter->name, label) != 0) continue;
+            const char *effective = codegen_effective_type_string(codegen, parameter->type_name);
+            if (effective == parameter->type_name) break;
+            GrayType *bound_type = type_from_name(effective);
+            switch (bound_type->kind) {
+            case TYPE_KIND_STRING:  return "_str";
+            case TYPE_KIND_FLOATING_POINT:
+                *floating_point_bits = floating_point_bit_size(bound_type->name);
+                return "_floating_point";
+            case TYPE_KIND_BOOL:    return "_bool";
+            case TYPE_KIND_CHAR:    return "_char";
+            case TYPE_KIND_UNSIGNED_INTEGER:    return "_u64";
+            case TYPE_KIND_POINTER: return "_addr";
+            default:         return "_i64";
             }
         }
     }
     GrayType *type = type_table_get(codegen->type_table, argument);
+    if (type && type->kind == TYPE_KIND_UNKNOWN) type = codegen_effective_type(codegen, type);
     if (type && type->kind != TYPE_KIND_UNKNOWN) {
         switch (type->kind) {
         case TYPE_KIND_STRING:  return "_str";
@@ -4816,7 +4978,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *argument) {
         emit(codegen, ")");
         return;
     }
-    GrayType *argument_type = type_table_get(codegen->type_table, argument);
+    GrayType *argument_type = codegen_effective_type(codegen, type_table_get(codegen->type_table, argument));
     if (argument_type && argument_type->kind == TYPE_KIND_ERROR) {
         int unique_id = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayError *_gray_str_err%d = (", unique_id);
@@ -5475,6 +5637,14 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
         emit_formatted(codegen, "gray_out_printf(%s, \"}\");\n", stream);
         break;
     }
+    case TYPE_KIND_ERROR: {
+        /* The message, as a bare Error prints; nil when unset. */
+        int error_id = codegen_next_id(codegen);
+        emit_indent(codegen);
+        emit_formatted(codegen, "{ GrayError *_pe%d = (%s); if (_pe%d) gray_out_printf(%s, \"%%.*s\", (int)_pe%d->msg.len, _pe%d->msg.data); "
+            "else gray_out_printf(%s, \"nil\"); }\n", error_id, c_expression, error_id, stream, error_id, error_id, stream);
+        break;
+    }
     case TYPE_KIND_POINTER: {
         /* Print the address as hex (0x...). Pointers are addresses; printing
          * the pointee instead would be surprising and lose the only thing
@@ -5701,12 +5871,10 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
             emit_formatted(codegen, "gray_string_lit(\"%s\")", wide_integer_type);
             return true;
         }
-        GrayType *type = type_table_get(codegen->type_table, argument);
-        /* Range expression: type_of(range(0, 5)) → "Range<i64>" */
-        if (argument->kind == NODE_RANGE_EXPRESSION ||
-            (argument->kind == NODE_CALL_EXPRESSION && argument->data.call.function->kind == NODE_LABEL &&
-             strcmp(argument->data.call.function->data.label.value, "range") == 0)) {
-            emit_formatted(codegen, "gray_string_lit(\"Range<i64>\")");
+        GrayType *type = codegen_effective_type(codegen, type_table_get(codegen->type_table, argument));
+        /* A range, literal or stored: type_of(range(0, 5)) → "Range<i64>" */
+        if (type && type->kind == TYPE_KIND_RANGE) {
+            emit_formatted(codegen, "gray_string_lit(\"%s\")", type->name);
             return true;
         }
         /* Enum member access: type_of(Color.RED) → "Color" */
@@ -6677,6 +6845,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
     }
     if (strcmp(function_name, "get_or_default") == 0 && node->data.call.argument_count == 3) {
         /* get_or_default(m, key, default); lookup key, return default if missing.
+         * The default is evaluated on every call, after the key and before the lookup.
          * A wide-integer key or value needs its explicit struct type instead of
          * __auto_type/__typeof__, which would infer a plain int from a literal. */
         GrayType *map_type = type_table_get(codegen->type_table, node->data.call.arguments[0]);
@@ -6688,18 +6857,12 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         if (wide_integer_key) emit_formatted(codegen, "%s _gk = ", wide_integer_prefix(wide_integer_key));
         else emit(codegen, "__auto_type _gk = ");
         emit_map_slot_value(codegen, wide_integer_key, node->data.call.arguments[1]);
+        if (wide_integer_value) emit_formatted(codegen, "; %s _gd = ", wide_integer_prefix(wide_integer_value));
+        else emit(codegen, "; __auto_type _gd = ");
+        emit_map_slot_value(codegen, wide_integer_value, node->data.call.arguments[2]);
         emit(codegen, "; void *_gv = gray_map_get(");
         emit_address_of(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &_gk); _gv ? *(");
-        if (wide_integer_value) {
-            emit(codegen, wide_integer_prefix(wide_integer_value));
-        } else {
-            emit(codegen, "__typeof__(");
-            emit_expression(codegen, node->data.call.arguments[2]);
-            emit(codegen, ")");
-        }
-        emit(codegen, " *)_gv : ");
-        emit_map_slot_value(codegen, wide_integer_value, node->data.call.arguments[2]);
+        emit(codegen, ", &_gk); _gv ? *(__typeof__(_gd) *)_gv : _gd");
         emit(codegen, "; })");
         return true;
     }
@@ -7734,7 +7897,9 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         /* [f32] elements are stored packed as 4-byte float. */
         if (insert_element_type_name && strcmp(insert_element_type_name, "f32") == 0) c_element_type = "float";
         const char *insert_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-        emit_formatted(codegen, "{ %s _iv = ", c_element_type);
+        emit(codegen, "{ __auto_type _ii = ");
+        emit_expression(codegen, node->data.call.arguments[1]);
+        emit_formatted(codegen, "; %s _iv = ", c_element_type);
         emit_expression(codegen, node->data.call.arguments[2]);
         emit(codegen, "; ");
         bool is_insert_string = (value_type && value_type->kind == TYPE_KIND_STRING) ||
@@ -7742,9 +7907,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         emit_escape_staged_value(codegen, node->data.call.arguments[2], insert_element_type_name, is_insert_string, "_iv", insert_arena);
         emit_formatted(codegen, "gray_arrays_insert_at(%s, ", insert_arena);
         emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", &_iv); }");
+        emit(codegen, ", _ii, &_iv); }");
         return true;
     }
     if (strcmp(function_name, "remove_at") == 0 && node->data.call.argument_count == 2) {
@@ -8961,51 +9124,18 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             if (namespaced_function) {
                 /* Generic struct function: mangle with concrete binding */
                 if (function_is_generic(namespaced_function)) {
-                    const char *binding = NULL;
-                    char *dynamic_binding = NULL;
-                    int clamped_argument_count = namespaced_function->data.function_declaration.parameter_count < node->data.call.argument_count
-                        ? namespaced_function->data.function_declaration.parameter_count : node->data.call.argument_count;
-                    for (int parameter_index = 0; parameter_index < clamped_argument_count && !binding; parameter_index++) {
-                        /* Type parameter: the binding is the argument label
-                         * itself (a struct name), not a resolved value type.
-                         * Without this the loop found nothing to bind and
-                         * mangled the call against a specialization that was
-                         * never emitted. */
-                        if (namespaced_function->data.function_declaration.parameters[parameter_index].is_type_parameter) {
-                            if (node->data.call.arguments[parameter_index]->kind == NODE_LABEL) {
-                                const char *label = node->data.call.arguments[parameter_index]->data.label.value;
-                                if (strcmp(label, "?") == 0 && codegen->wildcard_binding)
-                                    binding = codegen->wildcard_binding;
-                                else
-                                    binding = label;
-                            }
-                            continue;
-                        }
-                        const char *parameter_type_name = namespaced_function->data.function_declaration.parameters[parameter_index].type_name;
-                        if (!parameter_type_name || !strchr(parameter_type_name, '?')) continue;
-                        GrayType *argument_type_for_binding = type_table_get(codegen->type_table, node->data.call.arguments[parameter_index]);
-                        if (!argument_type_for_binding) continue;
-                        if (strcmp(parameter_type_name, "?") == 0) {
-                            const char *type_spelling = type_name(argument_type_for_binding);
-                            binding = ((argument_type_for_binding->kind == TYPE_KIND_UNKNOWN || strcmp(type_spelling, "unknown") == 0)
-                                && codegen->wildcard_binding)
-                                ? codegen->wildcard_binding : type_spelling;
-                        } else {
-                            dynamic_binding = codegen_bind_wildcard(parameter_type_name, type_name(argument_type_for_binding));
-                            if (dynamic_binding) binding = dynamic_binding;
-                        }
-                    }
+                    bool is_self_injected = instance_dispatch &&
+                        namespaced_function->data.function_declaration.parameter_count > node->data.call.argument_count;
+                    char *binding = codegen_call_binding(codegen, namespaced_function, node, is_self_injected ? 1 : 0);
                     char mangled[MESSAGE_BUFFER_SIZE];
                     size_t position = (size_t)snprintf(mangled, sizeof(mangled),
                         "gray_fn_%s_%s__", resolved_name, member);
-                    if (binding) {
-                        for (const char *cursor = binding; *cursor && position < sizeof(mangled) - 1; cursor++) {
-                            mangled[position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
-                        }
+                    for (const char *cursor = binding; *cursor && position < sizeof(mangled) - 1; cursor++) {
+                        mangled[position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
                     }
                     mangled[position] = '\0';
                     emit_formatted(codegen, "%s(", mangled);
-                    free(dynamic_binding);
+                    free(binding);
                 } else {
                     emit_formatted(codegen, "gray_fn_%s_%s(", resolved_name, member);
                 }
@@ -9214,70 +9344,23 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     if (function_name_text && target_function) {
         /* Known function; use gray_fn_ prefix. For generic functions,
          * rewrite to the mangled instantiation name derived from the
-         * first wildcard parameter's argument type ). */
+         * call's type arguments. */
         bool is_target_function_generic = function_is_generic(target_function);
         if (is_target_function_generic) {
-            /* Derive the concrete binding by scanning params for the
-             * first '?' slot and reading the matching arg's type. */
-            const char *binding = NULL;
-            char *dynamic_binding = NULL;
-            int parameter_count = target_function->data.function_declaration.parameter_count;
-            int argument_count = node->data.call.argument_count;
-            int paired_count = parameter_count < argument_count ? parameter_count : argument_count;
-            for (int parameter_index = 0; parameter_index < paired_count && !binding; parameter_index++) {
-                /* Type parameter: binding is the arg label directly.
-                 * When forwarding (T→"?"), resolve via the outer binding. */
-                if (target_function->data.function_declaration.parameters[parameter_index].is_type_parameter) {
-                    if (node->data.call.arguments[parameter_index]->kind == NODE_LABEL) {
-                        const char *label = node->data.call.arguments[parameter_index]->data.label.value;
-                        if (strcmp(label, "?") == 0 && codegen->wildcard_binding)
-                            binding = codegen->wildcard_binding;
-                        else
-                            binding = label;
-                    }
-                    continue;
-                }
-                const char *parameter_type_name = target_function->data.function_declaration.parameters[parameter_index].type_name;
-                if (!parameter_type_name || !strchr(parameter_type_name, '?')) continue;
-                GrayType *argument_type_for_binding = type_table_get(codegen->type_table, node->data.call.arguments[parameter_index]);
-                if (!argument_type_for_binding) continue;
-                if (strcmp(parameter_type_name, "?") == 0) {
-                    /* Inside a generic body the arg's typetable entry is still
-                     * TYPE_KIND_UNKNOWN from the main-pass walk; use the outer binding. */
-                    const char *type_spelling = type_name(argument_type_for_binding);
-                    if ((argument_type_for_binding->kind == TYPE_KIND_UNKNOWN || strcmp(type_spelling, "unknown") == 0) &&
-                        codegen->wildcard_binding) {
-                        binding = codegen->wildcard_binding;
-                    } else {
-                        binding = type_spelling;
-                    }
-                } else {
-                    /* Composite param type (e.g. [[?]], [map[K:?]], map[K:[?]]).
-                     * Use the recursive helper to peel layers until '?' is reached. */
-                    char *derived = codegen_bind_wildcard(parameter_type_name, type_name(argument_type_for_binding));
-                    if (derived) {
-                        free(dynamic_binding);
-                        dynamic_binding = derived;
-                        binding = dynamic_binding;
-                    }
-                }
-            }
+            char *binding = codegen_call_binding(codegen, target_function, node, 0);
             size_t resolved_function_name_length = strlen(resolved_function_name);
-            size_t binding_length = binding ? strlen(binding) : 0;
-            size_t mangled_name_size = 8 + resolved_function_name_length + 2 + binding_length + 1; /* 8 = strlen("gray_fn_") */
+            size_t mangled_name_size = 8 + resolved_function_name_length + 2 + strlen(binding) + 1; /* 8 = strlen("gray_fn_") */
             char *mangled = malloc(mangled_name_size);
-            if (!mangled) return;
+            if (!mangled) { free(binding); return; }
             size_t mangled_position = (size_t)snprintf(mangled, mangled_name_size, "gray_fn_%s__",
                 resolved_function_name);
-            if (binding) {
-                for (const char *cursor = binding; *cursor && mangled_position < mangled_name_size - 1; cursor++) {
-                    mangled[mangled_position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
-                }
+            for (const char *cursor = binding; *cursor && mangled_position < mangled_name_size - 1; cursor++) {
+                mangled[mangled_position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
             }
             mangled[mangled_position] = '\0';
             emit(codegen, mangled);
             free(mangled);
-            free(dynamic_binding);
+            free(binding);
         } else {
             emit(codegen, "gray_fn_");
             emit(codegen, resolved_function_name);
@@ -9635,9 +9718,143 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
  * a scope arena that ambient arena is the block's, which dies at the end of
  * the block while the mutated data lives on — so run the call in the
  * function-level arena instead. */
+/* True when `argument` names a slot inside an array or map's backing store:
+ * an index expression, possibly under struct field accesses. */
+static bool argument_is_container_element(CodeGen *codegen, AstNode *argument) {
+    AstNode *current = argument;
+    while (current) {
+        if (current->kind == NODE_MEMBER_EXPRESSION) {
+            current = current->data.member.object;
+        } else if (current->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *left_type = type_table_get(codegen->type_table, current->data.index_expression.left);
+            if (left_type && (left_type->kind == TYPE_KIND_ARRAY || left_type->kind == TYPE_KIND_MAP)) return true;
+            current = current->data.index_expression.left;
+        } else {
+            return false;
+        }
+    }
+    return false;
+}
+
+/* A container element passed to a `&` parameter: the callee may grow or clear
+ * the container, which moves its backing store and leaves a pointer to the
+ * element dangling. Pass a temporary holding the element instead, and store
+ * it back into the element once the call returns. */
+#define MAX_WRITE_BACK_ARGUMENTS 8
+static bool emit_element_write_back_call(CodeGen *codegen, AstNode *node, AstNode *callee) {
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    if (node->data.call.argument_count != parameter_count) return false;
+    int slots[MAX_WRITE_BACK_ARGUMENTS];
+    int slot_count = 0;
+    for (int i = 0; i < parameter_count && slot_count < MAX_WRITE_BACK_ARGUMENTS; i++) {
+        if (callee->data.function_declaration.parameters[i].is_mutable &&
+            argument_is_container_element(codegen, node->data.call.arguments[i]))
+            slots[slot_count++] = i;
+    }
+    if (slot_count == 0) return false;
+
+    int unique_id = codegen_next_id(codegen);
+    AstNode *originals[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode *temporaries[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode *hoisted_nodes[MAX_WRITE_BACK_ARGUMENTS][MAX_ASSIGN_TARGET_INDEXES];
+    AstNode *hoisted_originals[MAX_WRITE_BACK_ARGUMENTS][MAX_ASSIGN_TARGET_INDEXES];
+    int hoisted_counts[MAX_WRITE_BACK_ARGUMENTS];
+    emit(codegen, "({ ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *argument = node->data.call.arguments[slots[s]];
+        originals[s] = argument;
+        hoisted_counts[s] = hoist_assign_target_indexes(codegen, argument, hoisted_nodes[s], hoisted_originals[s], false);
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_wb%d_%d", unique_id, s);
+        emit_formatted(codegen, "__auto_type %s = ", name);
+        emit_expression(codegen, argument);
+        emit(codegen, "; ");
+        AstNode *temporary = xcalloc(1, sizeof(AstNode));
+        temporary->kind = NODE_LABEL;
+        temporary->token = argument->token;
+        temporary->data.label.value = name;
+        type_table_put(codegen->type_table, temporary, type_table_get(codegen->type_table, argument));
+        temporaries[s] = temporary;
+        node->data.call.arguments[slots[s]] = temporary;
+    }
+    bool has_result = callee->data.function_declaration.return_type_count != 0;
+    if (has_result) emit_formatted(codegen, "__auto_type _gray_wr%d = ", unique_id);
+    emit_call_expression(codegen, node);
+    emit(codegen, "; ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *store = xcalloc(1, sizeof(AstNode));
+        store->kind = NODE_ASSIGN_STATEMENT;
+        store->token = originals[s]->token;
+        store->data.assign.target = originals[s];
+        store->data.assign.value = temporaries[s];
+        store->data.assign.operator = TOKEN_ASSIGN;
+        emit_assign_statement(codegen, store);
+    }
+    for (int s = 0; s < slot_count; s++) {
+        node->data.call.arguments[slots[s]] = originals[s];
+        for (int h = 0; h < hoisted_counts[s]; h++)
+            hoisted_nodes[s][h]->data.index_expression.index = hoisted_originals[s][h];
+    }
+    if (has_result) emit_formatted(codegen, "_gray_wr%d; ", unique_id);
+    emit(codegen, "})");
+    return true;
+}
+
+/* Named arguments are reordered into parameter order for the call, but they
+ * are evaluated in the order written. When that differs, bind the arguments
+ * that run calls to temporaries in written order and pass those. */
+static bool emit_written_order_call(CodeGen *codegen, AstNode *node, AstNode *callee) {
+    int written_count = node->data.call.written_argument_count;
+    if (!node->data.call.written_arguments || written_count < 2) return false;
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    int slots[MAX_WRITE_BACK_ARGUMENTS];
+    int slot_count = 0;
+    int previous_slot = -1;
+    bool is_out_of_order = false;
+    for (int k = 0; k < written_count && slot_count < MAX_WRITE_BACK_ARGUMENTS; k++) {
+        AstNode *written = node->data.call.written_arguments[k];
+        int slot = -1;
+        for (int i = 0; i < node->data.call.argument_count; i++)
+            if (node->data.call.arguments[i] == written) { slot = i; break; }
+        if (slot < 0 || slot >= parameter_count || callee->data.function_declaration.parameters[slot].is_mutable) continue;
+        if (!expression_can_be_hoisted(written)) continue;
+        if (slot < previous_slot) is_out_of_order = true;
+        previous_slot = slot;
+        slots[slot_count++] = slot;
+    }
+    if (slot_count < 2 || !is_out_of_order) return false;
+
+    int unique_id = codegen_next_id(codegen);
+    AstNode *originals[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode **saved_written = node->data.call.written_arguments;
+    emit(codegen, "({ ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *argument = node->data.call.arguments[slots[s]];
+        originals[s] = argument;
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_na%d_%d", unique_id, s);
+        emit_formatted(codegen, "__auto_type %s = ", name);
+        emit_expression(codegen, argument);
+        emit(codegen, "; ");
+        node->data.call.arguments[slots[s]] = make_temporary_label(codegen, argument, name);
+    }
+    node->data.call.written_arguments = NULL;
+    bool has_result = callee->data.function_declaration.return_type_count != 0;
+    if (has_result) emit_formatted(codegen, "__auto_type _gray_nr%d = ", unique_id);
+    emit_call_expression(codegen, node);
+    emit(codegen, "; ");
+    node->data.call.written_arguments = saved_written;
+    for (int s = 0; s < slot_count; s++) node->data.call.arguments[slots[s]] = originals[s];
+    if (has_result) emit_formatted(codegen, "_gray_nr%d; ", unique_id);
+    emit(codegen, "})");
+    return true;
+}
+
 static void emit_call_expression(CodeGen *codegen, AstNode *node) {
-    AstNode *callee = codegen->loop_scope_depth > 0
-        ? resolve_called_function(codegen, node) : NULL;
+    AstNode *named_callee = resolve_called_function(codegen, node);
+    if (named_callee && emit_written_order_call(codegen, node, named_callee)) return;
+    if (named_callee && emit_element_write_back_call(codegen, node, named_callee)) return;
+    AstNode *callee = codegen->loop_scope_depth > 0 ? named_callee : NULL;
     if (!callee || !function_uses_caller_arena(codegen, callee)) {
         emit_call_expression_body(codegen, node);
         return;
@@ -10178,20 +10395,10 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
             c_type = "GrayArray";
         } else if (value->kind == NODE_MAP_VALUE) {
             c_type = "GrayMap";
+        } else if (value->kind == NODE_RANGE_EXPRESSION) {
+            c_type = gray_type_to_c_codegen(codegen, type_table_get(codegen->type_table, value)->name);
         } else if (value->kind == NODE_STRUCT_VALUE) {
-            /* use mangled name for generic struct instantiations */
-            if (value->data.struct_value.wildcard_binding) {
-                const char *binding = value->data.struct_value.wildcard_binding;
-                const char *base = value->data.struct_value.name;
-                static char struct_value_buffer[MESSAGE_BUFFER_SIZE];
-                size_t string_position = snprintf(struct_value_buffer, sizeof(struct_value_buffer), "%s__", base);
-                for (const char *cursor = binding; *cursor && string_position < sizeof(struct_value_buffer) - 1; cursor++)
-                    struct_value_buffer[string_position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
-                struct_value_buffer[string_position] = '\0';
-                c_type = gray_type_to_c_codegen(codegen, struct_value_buffer);
-            } else {
-                c_type = gray_type_to_c_codegen(codegen, value->data.struct_value.name);
-            }
+            c_type = gray_type_to_c_codegen(codegen, value->data.struct_value.name);
         } else if (value->kind == NODE_INFIX_EXPRESSION) {
             /* Check type table for infix result type */
             GrayType *infix_type = type_table_get(codegen->type_table, value);
@@ -10681,6 +10888,52 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
     }
 }
 
+/* Plain `=` to a field of an array element (`ps[idx()].x = val()`): C leaves
+ * the order of the two sides of `=` unspecified, and the right-hand side runs
+ * first. Bind each non-literal array index in the target to a temporary,
+ * left to right, before the statement so indexes are evaluated before the
+ * right-hand side as the spec requires. Returns the number of temporaries
+ * opened (each opens one `{` when `is_scoped`); `saved_indexes` receives the original index
+ * nodes, which the caller restores with restore_assign_target_indexes. */
+static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
+                                       AstNode **saved_indexes, bool is_scoped) {
+    AstNode *indexed[MAX_ASSIGN_TARGET_INDEXES];
+    int count = 0;
+    AstNode *current = target;
+    while (current && count < MAX_ASSIGN_TARGET_INDEXES) {
+        if (current->kind == NODE_MEMBER_EXPRESSION) {
+            current = current->data.member.object;
+        } else if (current->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *left_type = type_table_get(codegen->type_table, current->data.index_expression.left);
+            AstNode *index = current->data.index_expression.index;
+            if (left_type && left_type->kind == TYPE_KIND_ARRAY && index->kind != NODE_INTEGER_LITERAL)
+                indexed[count++] = current;
+            current = current->data.index_expression.left;
+        } else {
+            break;
+        }
+    }
+    for (int i = count - 1; i >= 0; i--) {
+        int slot = count - 1 - i;
+        int temporary_id = codegen_next_id(codegen);
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_ix%d", temporary_id);
+        emit(codegen, is_scoped ? "{ int64_t " : "int64_t ");
+        emit(codegen, name);
+        emit(codegen, " = ");
+        emit_expression(codegen, indexed[i]->data.index_expression.index);
+        emit(codegen, "; ");
+        AstNode *label = xcalloc(1, sizeof(AstNode));
+        label->kind = NODE_LABEL;
+        label->token = indexed[i]->data.index_expression.index->token;
+        label->data.label.value = name;
+        index_nodes[slot] = indexed[i];
+        saved_indexes[slot] = indexed[i]->data.index_expression.index;
+        indexed[i]->data.index_expression.index = label;
+    }
+    return count;
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
@@ -11150,6 +11403,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    AstNode *hoisted_nodes[MAX_ASSIGN_TARGET_INDEXES];
+    AstNode *hoisted_originals[MAX_ASSIGN_TARGET_INDEXES];
+    int hoisted_count = 0;
+    if (node->data.assign.operator == TOKEN_ASSIGN && node->data.assign.target->kind == NODE_MEMBER_EXPRESSION)
+        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals, true);
     emit_expression(codegen, node->data.assign.target);
     emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.operator));
     /* A plain scalar / integer literal (of any width) assigned to a wide integer
@@ -11173,7 +11431,12 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     } else {
         emit_expression(codegen, node->data.assign.value);
     }
-    emit(codegen, ";\n");
+    emit(codegen, ";");
+    for (int i = 0; i < hoisted_count; i++) {
+        hoisted_nodes[i]->data.index_expression.index = hoisted_originals[i];
+        emit(codegen, " }");
+    }
+    emit(codegen, "\n");
 }
 
 /* Collect ensure statements from a block, growing the buffer as needed. */
@@ -11440,7 +11703,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         for (int i = 0; i < node->data.return_statement.count; i++) {
             if (i > 0) emit(codegen, ", ");
             const char *return_wide_integer = (i < codegen->current_function->data.function_declaration.return_type_count)
-                ? codegen->current_function->data.function_declaration.return_types[i] : NULL;
+                ? codegen_effective_type_string(codegen, codegen->current_function->data.function_declaration.return_types[i]) : NULL;
             if (!emit_wide_integer_coerced(codegen, return_wide_integer, node->data.return_statement.values[i]))
                 emit_declared_value(codegen, return_wide_integer, node->data.return_statement.values[i]);
         }
@@ -11458,7 +11721,8 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         for (int i = 0; i < return_count - 1; i++) {
             /* Use {0} for composite types (structs, arrays, maps, strings)
              * and 0 for scalars to avoid -Wbraced-scalar-init. */
-            const char *return_type_spelling = codegen->current_function->data.function_declaration.return_types[i];
+            const char *return_type_spelling = codegen_effective_type_string(codegen,
+                codegen->current_function->data.function_declaration.return_types[i]);
             bool composite = false;
             if (return_type_spelling) {
                 GrayType *return_type = type_from_name(return_type_spelling);
@@ -11470,7 +11734,8 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, composite ? "{0}, " : "0, ");
         }
         {
-            const char *return_wide_integer = codegen->current_function->data.function_declaration.return_types[return_count - 1];
+            const char *return_wide_integer = codegen_effective_type_string(codegen,
+                codegen->current_function->data.function_declaration.return_types[return_count - 1]);
             if (!emit_wide_integer_coerced(codegen, return_wide_integer, node->data.return_statement.values[0]))
                 emit_declared_value(codegen, return_wide_integer, node->data.return_statement.values[0]);
         }
@@ -11496,7 +11761,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "{ __auto_type _ret = ");
         const char *return_wide_integer_type = (codegen->current_function &&
             codegen->current_function->data.function_declaration.return_type_count == 1)
-            ? codegen->current_function->data.function_declaration.return_types[0] : NULL;
+            ? codegen_effective_type_string(codegen, codegen->current_function->data.function_declaration.return_types[0]) : NULL;
         if (!emit_wide_integer_coerced(codegen, return_wide_integer_type, node->data.return_statement.values[0]))
             emit_declared_value(codegen, return_wide_integer_type, node->data.return_statement.values[0]);
         emit(codegen, "; ");
@@ -11709,11 +11974,12 @@ static bool codegen_expression_allocation_free(CodeGen *codegen, AstNode *expres
 
 /* A call to a function on the watermark path allocates nothing that outlives
  * it. Arguments must be allocation-free and copy-free: an array, map or
- * struct argument is deep-copied into the caller's arena. Not recognised
- * while function_uses_watermark is scanning a body, so that scan keeps its
- * no-call rule and cannot recurse through callers of each other. */
+ * struct argument is deep-copied into the caller's arena. While
+ * function_uses_watermark is scanning a body, a call back to the function
+ * being scanned is assumed to be on the watermark path (the rest of its body
+ * decides), and a call to any other function still being scanned is not, so
+ * the scan cannot recurse through callers of each other. */
 static bool codegen_call_allocation_free(CodeGen *codegen, AstNode *expression) {
-    if (codegen->watermark_probe) return false;
     AstNode *function_node = expression->data.call.function;
     if (!function_node || function_node->kind != NODE_LABEL) return false;
     AstNode *callee = find_function(codegen, function_node->data.label.value);
@@ -11724,6 +11990,14 @@ static bool codegen_call_allocation_free(CodeGen *codegen, AstNode *expression) 
         AstNode *argument = expression->data.call.arguments[i];
         if (!codegen_expression_allocation_free(codegen, argument)) return false;
         if (!codegen_type_is_copy_free(type_table_get(codegen->type_table, argument))) return false;
+    }
+    if (codegen->watermark_probe) {
+        if (callee == codegen->watermark_probe->function) return true;
+        for (WatermarkProbe *probe = codegen->watermark_probe->outer; probe; probe = probe->outer) {
+            if (probe->function != callee) continue;
+            codegen->watermark_probe_tainted = true;
+            return false;
+        }
     }
     return function_uses_watermark(codegen, callee);
 }
@@ -11807,8 +12081,17 @@ static bool codegen_statement_allocation_free(CodeGen *codegen, AstNode *stateme
             return block_allocation_free(codegen, statement->data.loop_statement.body);
         case NODE_BREAK_STATEMENT: case NODE_CONTINUE_STATEMENT:
             return true;
+        case NODE_RETURN_STATEMENT:
+            /* Scalar values only: a string, array, map or struct is escaped
+             * out of the scope's arena by the return. */
+            for (int i = 0; i < statement->data.return_statement.count; i++) {
+                AstNode *value = statement->data.return_statement.values[i];
+                if (!codegen_expression_allocation_free(codegen, value)) return false;
+                if (!codegen_type_is_copy_free(type_table_get(codegen->type_table, value))) return false;
+            }
+            return true;
         default:
-            /* when / for_each / return / ensure / bare block — keep the arena */
+            /* when / for_each / ensure / bare block — keep the arena */
             return false;
     }
 }
@@ -11822,6 +12105,8 @@ static bool codegen_statement_allocation_free(CodeGen *codegen, AstNode *stateme
  * body touches can escape or dangle when the watermark is restored. */
 static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
     if (!node || node->kind != NODE_FUNCTION_DECLARATION) return false;
+    if (node->data.function_declaration.watermark_state)
+        return node->data.function_declaration.watermark_state == 1;
     if (node->data.function_declaration.return_type_count != 1) return false;
     /* return_names is allocated even for an unnamed return; entry 0 is NULL
      * unless the return value was actually given a name. */
@@ -11845,7 +12130,10 @@ static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
 
     AstNode *body = node->data.function_declaration.body;
     if (!body || body->kind != NODE_BLOCK_STATEMENT) return false;
-    codegen->watermark_probe++;
+    WatermarkProbe probe = { node, codegen->watermark_probe };
+    codegen->watermark_probe = &probe;
+    bool outer_tainted = codegen->watermark_probe_tainted;
+    codegen->watermark_probe_tainted = false;
     bool is_allocation_free = true;
     for (int i = 0; i < body->data.block.count && is_allocation_free; i++) {
         AstNode *statement = body->data.block.statements[i];
@@ -11856,7 +12144,13 @@ static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
             is_allocation_free = codegen_statement_allocation_free(codegen, statement);
         }
     }
-    codegen->watermark_probe--;
+    codegen->watermark_probe = probe.outer;
+    /* A result reached through a call to a function still being scanned
+     * depends on where the scan started, so only the outermost scan, which
+     * is the one that call is relative to, may memoize it. */
+    if (!codegen->watermark_probe_tainted || !probe.outer)
+        node->data.function_declaration.watermark_state = is_allocation_free ? 1 : 2;
+    codegen->watermark_probe_tainted = outer_tainted || codegen->watermark_probe_tainted;
     return is_allocation_free;
 }
 
@@ -11941,6 +12235,25 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_a
     emit_formatted(codegen, "gray_default_arena = _saved_arena_%d;\n", depth);
 }
 
+/* A range's start is the first argument, so it runs before the end and step,
+ * which the loop emits as statements ahead of the `for`. Bind a start that is
+ * not a literal to a temporary first and return its id, or -1 when there is
+ * nothing to bind. Continues at the current indent. */
+static int hoist_range_start(CodeGen *codegen, AstNode *start, const char *wide_prefix, const char *wide) {
+    if (!start || start->kind == NODE_INTEGER_LITERAL) return -1;
+    int start_id = codegen_next_id(codegen);
+    if (wide_prefix) {
+        emit_formatted(codegen, "%s _gray_start_%d = ", wide_prefix, start_id);
+        if (!emit_wide_integer_coerced(codegen, wide, start)) emit_expression(codegen, start);
+    } else {
+        emit_formatted(codegen, "int64_t _gray_start_%d = ", start_id);
+        emit_expression(codegen, start);
+    }
+    emit(codegen, ";\n");
+    emit_indent(codegen);
+    return start_id;
+}
+
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     bool no_arena = block_allocation_free(codegen, node->data.for_statement.body);
     emit_loop_arena_prologue(codegen, no_arena);
@@ -11948,16 +12261,17 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
 
     AstNode *iterable_node = node->data.for_statement.iterable;
     const char *wide = NULL;
+    char blank_for_variable[VARIABLE_NAME_BUFFER_SIZE];
+    const char *variable_name;
+    if (strcmp(node->data.for_statement.variable_name, "_") == 0) {
+        snprintf(blank_for_variable, sizeof(blank_for_variable), "_gray_for_blank_%d", codegen_next_id(codegen));
+        variable_name = blank_for_variable;
+    } else {
+        variable_name = sanitize_name(node->data.for_statement.variable_name);
+    }
+    GrayType *iterable_type = iterable_node ? type_table_get(codegen->type_table, iterable_node) : NULL;
     if (iterable_node && iterable_node->kind == NODE_RANGE_EXPRESSION) {
         /* for i in range(start, end) or range(start, end, step) */
-        char blank_for_variable[VARIABLE_NAME_BUFFER_SIZE];
-        const char *variable_name;
-        if (strcmp(node->data.for_statement.variable_name, "_") == 0) {
-            snprintf(blank_for_variable, sizeof(blank_for_variable), "_gray_for_blank_%d", codegen_next_id(codegen));
-            variable_name = blank_for_variable;
-        } else {
-            variable_name = sanitize_name(node->data.for_statement.variable_name);
-        }
 
         /* A wide (i128/u128/i256/u256) range: bounds are held and stepped in
          * the wide type, and the loop variable is one. */
@@ -11972,6 +12286,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             const char *prefix = wide_integer_prefix(wide);
             AstNode *start = iterable_node->data.range_expression.start;
             AstNode *step = iterable_node->data.range_expression.step;
+            int wide_start_id = hoist_range_start(codegen, start, prefix, wide);
             int range_end_id = codegen_next_id(codegen);
             emit_formatted(codegen, "%s _gray_end_%d = ", prefix, range_end_id);
             if (!emit_wide_integer_coerced(codegen, wide, iterable_node->data.range_expression.end))
@@ -11991,6 +12306,8 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "for (%s %s = ", prefix, variable_name);
             if (!start) {
                 emit_formatted(codegen, "%s_from_u64(0)", prefix);
+            } else if (wide_start_id >= 0) {
+                emit_formatted(codegen, "_gray_start_%d", wide_start_id);
             } else if (!emit_wide_integer_coerced(codegen, wide, start)) {
                 emit_expression(codegen, start);
             }
@@ -12032,17 +12349,19 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 /* Variable step: store step and end once, emit runtime direction ternary. */
                 int range_step_id = codegen_next_id(codegen);
                 /* emit_indent already called above — use it for the variable declaration line */
-                emit_formatted(codegen, "int64_t _gray_step_%d = ", range_step_id);
-                emit_expression(codegen, iterable_node->data.range_expression.step);
-                emit_formatted(codegen, ", _gray_end_%d = ", range_step_id);
+                int start_id = hoist_range_start(codegen, iterable_node->data.range_expression.start, NULL, NULL);
+                emit_formatted(codegen, "int64_t _gray_end_%d = ", range_step_id);
                 emit_expression(codegen, iterable_node->data.range_expression.end);
+                emit_formatted(codegen, ", _gray_step_%d = ", range_step_id);
+                emit_expression(codegen, iterable_node->data.range_expression.step);
                 emit(codegen, ";\n");
                 /* P0090: zero step at runtime is always a panic */
                 emit_indent(codegen);
                 emit_formatted(codegen, "if (_gray_step_%d == 0) { %s; }\n", range_step_id, panic_call(codegen, node, "P0090", ""));
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", variable_name);
-                emit_expression(codegen, iterable_node->data.range_expression.start);
+                if (start_id >= 0) emit_formatted(codegen, "_gray_start_%d", start_id);
+                else emit_expression(codegen, iterable_node->data.range_expression.start);
                 emit_formatted(codegen, "; _gray_step_%d > 0 ? %s < _gray_end_%d : %s > _gray_end_%d", range_step_id, variable_name, range_step_id, variable_name, range_step_id);
                 emit_formatted(codegen, "; %s = gray_add_check(%s, _gray_step_%d, \"%s\", %d)", variable_name, variable_name, range_step_id, codegen->file, node->token.line);
             } else if (zero_step) {
@@ -12055,6 +12374,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                  * the loop, not on every iteration. */
                 AstNode *step = iterable_node->data.range_expression.step;
                 bool hoist_step = step && step->kind != NODE_INTEGER_LITERAL;
+                int start_id = hoist_range_start(codegen, iterable_node->data.range_expression.start, NULL, NULL);
                 int iterator_end_id = codegen_next_id(codegen);
                 emit_formatted(codegen, "__auto_type _gray_end_%d = ", iterator_end_id);
                 emit_expression(codegen, iterable_node->data.range_expression.end);
@@ -12067,7 +12387,8 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 }
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", variable_name);
-                emit_expression(codegen, iterable_node->data.range_expression.start);
+                if (start_id >= 0) emit_formatted(codegen, "_gray_start_%d", start_id);
+                else emit_expression(codegen, iterable_node->data.range_expression.start);
                 emit_formatted(codegen, "; %s %s _gray_end_%d; %s", variable_name, is_negative_step ? ">" : "<", iterator_end_id, variable_name);
                 if (step) {
                     emit_formatted(codegen, " = gray_add_check(%s, ", variable_name);
@@ -12091,6 +12412,27 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "for (int64_t %s = 0; %s < _gray_end_%d; %s++", variable_name, variable_name, iterator_end_id, variable_name);
         }
 
+        emit(codegen, ") {\n");
+    } else if (iterable_type && iterable_type->kind == TYPE_KIND_RANGE) {
+        /* for i in r, where r holds a range: copied once, so the loop runs the
+         * range it started with even if r is assigned in the body. */
+        const char *element = stored_range_element(iterable_type);
+        const char *range_c_type = gray_type_to_c_codegen(codegen, iterable_type->name);
+        int range_id = codegen_next_id(codegen);
+        if (is_wide_integer_type_name(element)) wide = element;
+        emit_formatted(codegen, "%s _gray_range_%d = ", range_c_type, range_id);
+        emit_expression(codegen, iterable_node);
+        emit(codegen, ";\n");
+        emit_indent(codegen);
+        emit_formatted(codegen, "if (%s_has_zero_step(_gray_range_%d)) { %s; }\n",
+            range_c_type, range_id, panic_call(codegen, node, "P0090", ""));
+        emit_indent(codegen);
+        emit_formatted(codegen, "for (%s %s = _gray_range_%d.start; %s_continues(_gray_range_%d, %s); %s = ",
+            wide ? wide_integer_prefix(wide) : "int64_t", variable_name, range_id,
+            range_c_type, range_id, variable_name, variable_name);
+        if (wide) emit_formatted(codegen, "%s_add_checked", wide_integer_prefix(wide));
+        else emit(codegen, "gray_add_check");
+        emit_formatted(codegen, "(%s, _gray_range_%d.step, \"%s\", %d)", variable_name, range_id, codegen->file, node->token.line);
         emit(codegen, ") {\n");
     } else {
         codegen_internal_error("non-range for loop reached codegen",
@@ -12161,19 +12503,11 @@ static const char *multi_return_base_name(const char *function_name) {
     return output;
 }
 
-/*  + : pick the right multi-return struct name. Use
- * the full mangled name when return types contain '?'
- * (per-instantiation struct), base name otherwise (shared). */
+/* Pick the right multi-return struct name: the full mangled name when a return
+ * type names a type parameter (per-instantiation struct), the base name
+ * otherwise (shared). */
 static const char *multi_return_name(AstNode *function_node) {
-    bool has_wildcard = false;
-    for (int i = 0; i < function_node->data.function_declaration.return_type_count; i++) {
-        if (function_node->data.function_declaration.return_types[i] &&
-            strchr(function_node->data.function_declaration.return_types[i], '?')) {
-            has_wildcard = true;
-            break;
-        }
-    }
-    return has_wildcard ? function_node->data.function_declaration.name
+    return function_return_depends_on_generic(function_node) ? function_node->data.function_declaration.name
                   : multi_return_base_name(function_node->data.function_declaration.name);
 }
 
@@ -12192,29 +12526,21 @@ static const char *function_return_type(CodeGen *codegen, AstNode *node) {
     if (node->data.function_declaration.return_type_count == 1) {
         return gray_type_to_c_codegen(codegen, node->data.function_declaration.return_types[0]);
     }
-    /*  + : for multi-return, use `GrayMulti_<name>`. The
-     * monomorphiser temporarily renames the func to `<name>__<binding>`.
-     * When return types DON'T contain '?', all instantiations share one
-     * struct → use the base name ). When return types DO contain
-     * '?', each instantiation gets its own struct → use the full
-     * mangled name ). */
+    /* For multi-return, use `GrayMulti_<name>`. The monomorphiser
+     * temporarily renames the func to `<name>__<binding>`. When no return type
+     * names a generic parameter, all instantiations share one struct → use the
+     * base name. When one does, each instantiation gets its own struct → use
+     * the full mangled name. */
     static char buffer[MESSAGE_BUFFER_SIZE];
     const char *function_name = node->data.function_declaration.name;
-    bool has_wildcard_return = false;
-    for (int i = 0; i < node->data.function_declaration.return_type_count; i++) {
-        if (node->data.function_declaration.return_types[i] &&
-            strchr(node->data.function_declaration.return_types[i], '?')) {
-            has_wildcard_return = true;
-            break;
-        }
-    }
-    if (!has_wildcard_return) {
+    if (!function_return_depends_on_generic(node)) {
         /* strip __<binding> suffix; shared struct. */
         snprintf(buffer, sizeof(buffer), "GrayMulti_%s", multi_return_base_name(function_name));
     } else {
         /* use the full (possibly mangled) name; per-instantiation
-         * struct. The wildcard_binding is active so gray_type_to_c_codegen will
-         * substitute '?' in the struct fields. */
+         * struct. The instantiation's bindings are active so
+         * gray_type_to_c_codegen will substitute the type parameters in the
+         * struct fields. */
         snprintf(buffer, sizeof(buffer), "GrayMulti_%s", function_name);
     }
     return buffer;
@@ -12222,6 +12548,14 @@ static const char *function_return_type(CodeGen *codegen, AstNode *node) {
 
 static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_main) {
     codegen_enter_node(codegen, node);
+    /* The signature belongs to the function's own .gray line. A function is
+     * attributed to the file its opening line names, so leaving this at
+     * <generated> filed every function — and its gcov data — under it. */
+    if (node->token.file && node->token.line > 0) {
+        char *signature_file = normalize_path_separators(node->token.file);
+        emit_line_directive(codegen, signature_file, node->token.line);
+        free(signature_file);
+    }
     /* Return type */
     if (is_main) {
         emit(codegen, "static void gray_fn_main(void)");
@@ -12896,6 +13230,11 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                         emit(codegen, ".tag == ");
                         emit_expression(codegen, case_value);
                     }
+                } else if (type_table_get(codegen->type_table, when_case->values[j]) &&
+                           type_table_get(codegen->type_table, when_case->values[j])->kind == TYPE_KIND_RANGE &&
+                           when_case->values[j]->kind != NODE_RANGE_EXPRESSION) {
+                    /* A range held in a variable: is r */
+                    emit_stored_range_membership(codegen, node, when_case->values[j], NULL, when_temporary);
                 } else if (when_case->is_range && when_case->values[j]->kind == NODE_RANGE_EXPRESSION) {
                     AstNode *range = when_case->values[j];
                     /* Check if step is a negative literal to reverse comparison direction */
@@ -13032,14 +13371,13 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         break;
     }
     case NODE_FUNCTION_DECLARATION: {
-        /* Generic function ): emit one specialised copy per
-         * concrete instantiation the typechecker recorded. If a
-         * generic function was declared but never called, there are
-         * no instantiations and we skip emission entirely; the
-         * un-specialised form has '?' in its signature and can't be
-         * compiled as C. */
-        bool has_wildcard = function_is_generic(node);
-        if (has_wildcard) {
+        /* Generic function: emit one specialised copy per concrete
+         * instantiation the typechecker recorded. If a generic function was
+         * declared but never called, there are no instantiations and we skip
+         * emission entirely; the un-specialised form has a type parameter in
+         * its signature and can't be compiled as C. */
+        bool is_generic_function = function_is_generic(node);
+        if (is_generic_function) {
             const char *original_name = node->data.function_declaration.name;
             for (int instantiation_index = 0; instantiation_index < node->data.function_declaration.instantiation_count; instantiation_index++) {
                 const char *concrete = node->data.function_declaration.instantiations[instantiation_index];
@@ -13047,14 +13385,18 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 mangle_generic_name(mangled, sizeof(mangled), original_name, concrete);
 
                 node->data.function_declaration.name = mangled;
-                const char *saved = codegen->wildcard_binding;
-                codegen->wildcard_binding = concrete;
+                codegen->renamed_function = node;
+                codegen->renamed_function_original_name = original_name;
+                GenericBindings saved = codegen->generics;
+                generic_bindings_init(&codegen->generics, node, concrete);
                 /* Per-instantiation multi-return typedefs were already
-                 * emitted in the forward-declaration loop ). */
+                 * emitted in the forward-declaration loop. */
                 emit_function_declaration(codegen, node, false);
-                codegen->wildcard_binding = saved;
+                generic_bindings_clear(&codegen->generics);
+                codegen->generics = saved;
             }
             node->data.function_declaration.name = original_name;
+            codegen->renamed_function = NULL;
         } else {
             emit_function_declaration(codegen, node,
                 strcmp(node->data.function_declaration.name, "main") == 0);
@@ -13180,6 +13522,7 @@ CodeGen codegen_create(const char *file) {
     codegen.function_capacity = 0;
     codegen.functions_by_name = NULL;
     codegen.is_functions_by_name_built = false;
+    codegen.renamed_function = NULL;
     codegen.type_table = NULL;
     codegen.reference_variables = NULL;
     codegen.reference_variable_count = 0;
@@ -13212,7 +13555,7 @@ CodeGen codegen_create(const char *file) {
     codegen.type_alias_targets = NULL;
     codegen.type_alias_count = 0;
     codegen.type_alias_capacity = 0;
-    codegen.wildcard_binding = NULL;
+    memset(&codegen.generics, 0, sizeof codegen.generics);
     codegen.pending_call_typed_signature = NULL;
     codegen.scope_arenas = NULL;
     codegen.scope_arena_count = 0;
@@ -13579,12 +13922,9 @@ static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatem
         int struct_count = codegen->struct_declaration_count;
         AstNode **structs = codegen->struct_declarations;
         for (int i = 0; i < struct_count; i++) {
-            if (structs[i]->data.struct_declaration.is_generic) continue;
-            {
-                const char *struct_name_text = codegen_declaration_name(codegen, structs[i],
-                                                   structs[i]->data.struct_declaration.name);
-                emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", struct_name_text, struct_name_text);
-            }
+            const char *struct_name_text = codegen_declaration_name(codegen, structs[i],
+                                               structs[i]->data.struct_declaration.name);
+            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", struct_name_text, struct_name_text);
         }
         if (struct_count > 0) emit(codegen, "\n");
     }
@@ -13865,9 +14205,6 @@ static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatem
                 emitted[slot_index] = true;
                 emit_count++;
                 if (is_struct_node) {
-                    /* Skip generic structs here; they're emitted
-                     * per-instantiation below. */
-                    if (node->data.struct_declaration.is_generic) continue;
                     codegen_emit_struct_body(codegen, node);
                 } else {
                     codegen_emit_tagged_enum_body(codegen, node);
@@ -13888,30 +14225,6 @@ static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatem
 
         free(emitted);
         if (tagged_enums) free(tagged_enums);
-    }
-
-    /* emit per-instantiation typedefs for generic (wildcard) structs.
-     * For each recorded binding, substitute ? → concrete in field types
-     * and emit under a mangled name (e.g. GrayStruct_Pair__int). */
-    for (int i = 0; i < codegen->struct_declaration_count; i++) {
-        AstNode *statement = codegen->struct_declarations[i];
-        if (!statement->data.struct_declaration.is_generic) continue;
-        for (int instantiation_index = 0; instantiation_index < statement->data.struct_declaration.instantiation_count; instantiation_index++) {
-            const char *concrete = statement->data.struct_declaration.instantiations[instantiation_index];
-            char mangled[MESSAGE_BUFFER_SIZE];
-            mangle_generic_name(mangled, sizeof(mangled), statement->data.struct_declaration.name, concrete);
-            /* Forward declaration */
-            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", mangled, mangled);
-            emit_formatted(codegen, "struct GrayStruct_%s {\n", mangled);
-            const char *saved = codegen->wildcard_binding;
-            codegen->wildcard_binding = concrete;
-            for (int j = 0; j < statement->data.struct_declaration.field_count; j++) {
-                StructField *field = &statement->data.struct_declaration.fields[j];
-                emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
-            }
-            codegen->wildcard_binding = saved;
-            emit(codegen, "};\n\n");
-        }
     }
 }
 
@@ -14247,27 +14560,20 @@ static void codegen_emit_forward_declarations(CodeGen *codegen, const TopLevelSt
     }
 
     /* Emit multi-return type definitions. Skip generic functions whose
-     * return types contain '?'; those need per-instantiation typedefs
-     * emitted during monomorphisation ). Use codegen->all_functions so that
+     * return types name a generic parameter; those need per-instantiation
+     * typedefs emitted during monomorphisation. Use codegen->all_functions so that
      * struct-namespaced functions (already renamed to StructName_func)
      * are included alongside top-level functions. */
     for (int i = 0; i < codegen->function_count; i++) {
         AstNode *statement = codegen->all_functions[i];
         if (statement->kind == NODE_FUNCTION_DECLARATION &&
             statement->data.function_declaration.return_type_count > 1) {
-            bool has_wildcard = false;
-            for (int return_index = 0; return_index < statement->data.function_declaration.return_type_count; return_index++) {
-                if (statement->data.function_declaration.return_types[return_index] &&
-                    strchr(statement->data.function_declaration.return_types[return_index], '?')) {
-                    has_wildcard = true;
-                    break;
-                }
-            }
+            bool is_generic_function = function_return_depends_on_generic(statement);
             /* A bare return type resolves against the function's own module,
              * so the typedef's field types must be emitted in that module —
              * otherwise a cross-module enum falls back to an undefined
              * GrayStruct_<Name> instead of GrayEnum_<module>_<Name>. */
-            if (!has_wildcard) {
+            if (!is_generic_function) {
                 codegen_enter_node(codegen, statement);
                 emit_multi_return_typedef(codegen, statement);
             }
@@ -14288,47 +14594,39 @@ static void codegen_emit_forward_declarations(CodeGen *codegen, const TopLevelSt
             continue;
         }
 
-        /* Detect wildcard generics ); emit one forward per
-         * instantiation under a mangled name, skipping the un-specialised
-         * signature which would contain '?' in C. */
-        bool has_wildcard = function_is_generic(statement);
+        /* Detect generic functions; emit one forward per instantiation under
+         * a mangled name, skipping the un-specialised signature, which has no
+         * C type for a type parameter. */
+        bool is_generic_function = function_is_generic(statement);
 
-        int emit_rounds = has_wildcard ? statement->data.function_declaration.instantiation_count : 1;
+        int emit_rounds = is_generic_function ? statement->data.function_declaration.instantiation_count : 1;
         const char *original_name = statement->data.function_declaration.name;
         for (int round = 0; round < emit_rounds; round++) {
-            const char *saved_binding = codegen->wildcard_binding;
+            GenericBindings saved_bindings = codegen->generics;
             /* mangled is heap-allocated so the AST temporarily points at
              * stable memory while emit_multi_return_typedef / function_return_type
              * read statement->data.function_declaration.name. */
             char *mangled = NULL;
-            if (has_wildcard) {
+            if (is_generic_function) {
                 mangled = xmalloc(MESSAGE_BUFFER_SIZE);
                 const char *concrete = statement->data.function_declaration.instantiations[round];
-                codegen->wildcard_binding = concrete;
+                generic_bindings_init(&codegen->generics, statement, concrete);
                 mangle_generic_name(mangled, MESSAGE_BUFFER_SIZE, original_name, concrete);
             }
-            const char *emit_name = has_wildcard ? mangled : original_name;
+            const char *emit_name = is_generic_function ? mangled : original_name;
             /* Temporarily set the func name to the mangled version so
              * function_return_type sees the right name for multi-return
              * structs  + ). */
-            if (has_wildcard) statement->data.function_declaration.name = mangled;
+            if (is_generic_function) statement->data.function_declaration.name = mangled;
             /* emit per-instantiation multi-return typedef
              * before the forward declaration that references it. */
-            if (has_wildcard && statement->data.function_declaration.return_type_count > 1) {
-                bool has_wildcard_return = false;
-                for (int return_index = 0; return_index < statement->data.function_declaration.return_type_count; return_index++) {
-                    if (statement->data.function_declaration.return_types[return_index] &&
-                        strchr(statement->data.function_declaration.return_types[return_index], '?')) {
-                        has_wildcard_return = true;
-                        break;
-                    }
-                }
-                if (has_wildcard_return) emit_multi_return_typedef(codegen, statement);
+            if (is_generic_function && statement->data.function_declaration.return_type_count > 1) {
+                if (function_return_depends_on_generic(statement)) emit_multi_return_typedef(codegen, statement);
             }
             emit_formatted(codegen, "static %s ", function_return_type(codegen, statement));
-            if (has_wildcard) statement->data.function_declaration.name = original_name;
+            if (is_generic_function) statement->data.function_declaration.name = original_name;
             emit_formatted(codegen, "gray_fn_%s(",
-                has_wildcard ? emit_name : codegen_declaration_name(codegen, statement, emit_name));
+                is_generic_function ? emit_name : codegen_declaration_name(codegen, statement, emit_name));
             {
                 bool is_first_forward = true;
                 for (int j = 0; j < statement->data.function_declaration.parameter_count; j++) {
@@ -14347,7 +14645,8 @@ static void codegen_emit_forward_declarations(CodeGen *codegen, const TopLevelSt
                 }
             }
             emit(codegen, ");\n");
-            codegen->wildcard_binding = saved_binding;
+            if (is_generic_function) generic_bindings_clear(&codegen->generics);
+            codegen->generics = saved_bindings;
             free(mangled);
         }
     }

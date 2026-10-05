@@ -1,6 +1,7 @@
-/* Error Test: P0090 - range() with literal zero step panics at runtime */
+/* Error Test: P0090 - a zero step taken from a variable panics at runtime */
 do main() {
-    for i in range(0, 10, 0) {
+    mut step i64 = 0
+    for i in range(0, 10, step) {
         println(i)
     }
 }

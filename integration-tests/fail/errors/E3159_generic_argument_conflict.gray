@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3159 - an argument whose parameter type is a generic parameter's
+ * name must have the type that parameter is bound to.
+ * Expected: "'kind' of 'identity' is i64, but argument 2 is string"
+ */
+// expect-error: E3159
+// expect-error-count: 1
+
+do identity(kind generic, x kind) -> kind {
+    return x
+}
+
+do main() {
+    mut n = identity(i64, "not an i64")
+    println(n)
+}

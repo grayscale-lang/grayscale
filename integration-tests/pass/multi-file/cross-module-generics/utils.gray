@@ -1,7 +1,7 @@
-do new_T(t <?>) -> ? {
-    return new(t)^
+do new_T(kind generic) -> kind {
+    return new(kind)^
 }
 
-do new_T_ptr(t <?>) -> ^? {
-    return new(t)
+do new_T_ptr(kind generic) -> ^kind {
+    return new(kind)
 }

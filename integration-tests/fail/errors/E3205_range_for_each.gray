@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3205 - for_each over a range
+ */
+
+// expect-error: E3205
+// expect-error-count: 1
+
+do main() {
+    mut r = range(0, 3)
+    for_each x in r {
+        println(x)
+    }
+}

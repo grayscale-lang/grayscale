@@ -10,7 +10,7 @@ do last() -> string {
     return "Lovelace"
 }
 
-do join(a ?, b ?) -> ? {
+do join(kind generic, a kind, b kind) -> kind {
     return a + b
 }
 
@@ -86,7 +86,7 @@ do main() {
     }
 
     // Test 7: generic function instantiated with string
-    mut g string = join("foo", "bar")
+    mut g string = join(string, "foo", "bar")
     if g == "foobar" {
         println("  [PASS] generic instantiation with string")
         passed += 1

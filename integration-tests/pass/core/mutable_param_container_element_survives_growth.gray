@@ -1,0 +1,82 @@
+/*
+ * mutable_param_container_element_survives_growth.gray - an array or map
+ * element passed to a & parameter receives the callee's write even when the
+ * callee grows or clears the container that holds the element.
+ */
+
+import @arrays
+
+mut global_array [i64] = {1}
+
+do bump_global(&x i64) {
+    for i in range(0, 1000) { arrays.append(global_array, i) }
+    x = 42
+}
+
+do grow_array(&a [i64], &x i64) {
+    for i in range(0, 1000) { arrays.append(a, i) }
+    x = 42
+}
+
+do grow_map(&m map[string:i64], &x i64) {
+    for i in range(0, 1000) { m["k${i}"] = i }
+    x = 42
+}
+
+do clear_then_set(&a [i64], &x i64) {
+    arrays.clear(a)
+    arrays.append(a, 7)
+    x = 42
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    bump_global(global_array[0])
+    if global_array[0] == 42 && len(global_array) == 1001 {
+        println("  [PASS] global array element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] global array element: ${global_array[0]}")
+        failed += 1
+    }
+
+    mut arr [i64] = {1}
+    grow_array(arr, arr[0])
+    if arr[0] == 42 && len(arr) == 1001 {
+        println("  [PASS] array element, callee grows the array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array element, callee grows the array: ${arr[0]}")
+        failed += 1
+    }
+
+    mut m map[string:i64] = {"a": 1}
+    grow_map(m, m["a"])
+    if m["a"] == 42 && len(m) == 1001 {
+        println("  [PASS] map value, callee grows the map")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map value, callee grows the map: ${m["a"]}")
+        failed += 1
+    }
+
+    mut cleared [i64] = {1}
+    clear_then_set(cleared, cleared[0])
+    if cleared[0] == 42 && len(cleared) == 1 {
+        println("  [PASS] array element, callee clears the array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array element, callee clears the array: ${cleared[0]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
