@@ -499,6 +499,9 @@ void typechecker_free(TypeChecker *checker);
 /* Query the type table (used by codegen) */
 GrayType *type_table_get(TypeTable *table, AstNode *node);
 
+/* Record the type of a node codegen synthesizes after type checking. */
+void type_table_put(TypeTable *table, AstNode *node, GrayType *type);
+
 /* Get the type table from the checker */
 TypeTable *typechecker_get_table(TypeChecker *checker);
 

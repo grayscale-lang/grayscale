@@ -79,6 +79,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node);
 static void reset_line_directive(CodeGen *codegen);
 static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
+static void emit_assign_statement(CodeGen *codegen, AstNode *node);
+#define MAX_ASSIGN_TARGET_INDEXES 8
+static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
+                                       AstNode **saved_indexes, bool is_scoped);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_error_code(CodeGen *codegen, const char *name);
@@ -9638,9 +9642,92 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
  * a scope arena that ambient arena is the block's, which dies at the end of
  * the block while the mutated data lives on — so run the call in the
  * function-level arena instead. */
+/* True when `argument` names a slot inside an array or map's backing store:
+ * an index expression, possibly under struct field accesses. */
+static bool argument_is_container_element(CodeGen *codegen, AstNode *argument) {
+    AstNode *current = argument;
+    while (current) {
+        if (current->kind == NODE_MEMBER_EXPRESSION) {
+            current = current->data.member.object;
+        } else if (current->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *left_type = type_table_get(codegen->type_table, current->data.index_expression.left);
+            if (left_type && (left_type->kind == TYPE_KIND_ARRAY || left_type->kind == TYPE_KIND_MAP)) return true;
+            current = current->data.index_expression.left;
+        } else {
+            return false;
+        }
+    }
+    return false;
+}
+
+/* A container element passed to a `&` parameter: the callee may grow or clear
+ * the container, which moves its backing store and leaves a pointer to the
+ * element dangling. Pass a temporary holding the element instead, and store
+ * it back into the element once the call returns. */
+#define MAX_WRITE_BACK_ARGUMENTS 8
+static bool emit_element_write_back_call(CodeGen *codegen, AstNode *node, AstNode *callee) {
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    if (node->data.call.argument_count != parameter_count) return false;
+    int slots[MAX_WRITE_BACK_ARGUMENTS];
+    int slot_count = 0;
+    for (int i = 0; i < parameter_count && slot_count < MAX_WRITE_BACK_ARGUMENTS; i++) {
+        if (callee->data.function_declaration.parameters[i].is_mutable &&
+            argument_is_container_element(codegen, node->data.call.arguments[i]))
+            slots[slot_count++] = i;
+    }
+    if (slot_count == 0) return false;
+
+    int unique_id = codegen_next_id(codegen);
+    AstNode *originals[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode *temporaries[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode *hoisted_nodes[MAX_WRITE_BACK_ARGUMENTS][MAX_ASSIGN_TARGET_INDEXES];
+    AstNode *hoisted_originals[MAX_WRITE_BACK_ARGUMENTS][MAX_ASSIGN_TARGET_INDEXES];
+    int hoisted_counts[MAX_WRITE_BACK_ARGUMENTS];
+    emit(codegen, "({ ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *argument = node->data.call.arguments[slots[s]];
+        originals[s] = argument;
+        hoisted_counts[s] = hoist_assign_target_indexes(codegen, argument, hoisted_nodes[s], hoisted_originals[s], false);
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_wb%d_%d", unique_id, s);
+        emit_formatted(codegen, "__auto_type %s = ", name);
+        emit_expression(codegen, argument);
+        emit(codegen, "; ");
+        AstNode *temporary = xcalloc(1, sizeof(AstNode));
+        temporary->kind = NODE_LABEL;
+        temporary->token = argument->token;
+        temporary->data.label.value = name;
+        type_table_put(codegen->type_table, temporary, type_table_get(codegen->type_table, argument));
+        temporaries[s] = temporary;
+        node->data.call.arguments[slots[s]] = temporary;
+    }
+    bool has_result = callee->data.function_declaration.return_type_count != 0;
+    if (has_result) emit_formatted(codegen, "__auto_type _gray_wr%d = ", unique_id);
+    emit_call_expression(codegen, node);
+    emit(codegen, "; ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *store = xcalloc(1, sizeof(AstNode));
+        store->kind = NODE_ASSIGN_STATEMENT;
+        store->token = originals[s]->token;
+        store->data.assign.target = originals[s];
+        store->data.assign.value = temporaries[s];
+        store->data.assign.operator = TOKEN_ASSIGN;
+        emit_assign_statement(codegen, store);
+    }
+    for (int s = 0; s < slot_count; s++) {
+        node->data.call.arguments[slots[s]] = originals[s];
+        for (int h = 0; h < hoisted_counts[s]; h++)
+            hoisted_nodes[s][h]->data.index_expression.index = hoisted_originals[s][h];
+    }
+    if (has_result) emit_formatted(codegen, "_gray_wr%d; ", unique_id);
+    emit(codegen, "})");
+    return true;
+}
+
 static void emit_call_expression(CodeGen *codegen, AstNode *node) {
-    AstNode *callee = codegen->loop_scope_depth > 0
-        ? resolve_called_function(codegen, node) : NULL;
+    AstNode *named_callee = resolve_called_function(codegen, node);
+    if (named_callee && emit_element_write_back_call(codegen, node, named_callee)) return;
+    AstNode *callee = codegen->loop_scope_depth > 0 ? named_callee : NULL;
     if (!callee || !function_uses_caller_arena(codegen, callee)) {
         emit_call_expression_body(codegen, node);
         return;
@@ -10689,11 +10776,10 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
  * first. Bind each non-literal array index in the target to a temporary,
  * left to right, before the statement so indexes are evaluated before the
  * right-hand side as the spec requires. Returns the number of temporaries
- * opened (each opens one `{`); `saved_indexes` receives the original index
+ * opened (each opens one `{` when `is_scoped`); `saved_indexes` receives the original index
  * nodes, which the caller restores with restore_assign_target_indexes. */
-#define MAX_ASSIGN_TARGET_INDEXES 8
 static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
-                                       AstNode **saved_indexes) {
+                                       AstNode **saved_indexes, bool is_scoped) {
     AstNode *indexed[MAX_ASSIGN_TARGET_INDEXES];
     int count = 0;
     AstNode *current = target;
@@ -10715,7 +10801,7 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
         int temporary_id = codegen_next_id(codegen);
         char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
         snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_ix%d", temporary_id);
-        emit(codegen, "{ int64_t ");
+        emit(codegen, is_scoped ? "{ int64_t " : "int64_t ");
         emit(codegen, name);
         emit(codegen, " = ");
         emit_expression(codegen, indexed[i]->data.index_expression.index);
@@ -11204,7 +11290,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     AstNode *hoisted_originals[MAX_ASSIGN_TARGET_INDEXES];
     int hoisted_count = 0;
     if (node->data.assign.operator == TOKEN_ASSIGN && node->data.assign.target->kind == NODE_MEMBER_EXPRESSION)
-        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals);
+        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals, true);
     emit_expression(codegen, node->data.assign.target);
     emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.operator));
     /* A plain scalar / integer literal (of any width) assigned to a wide integer

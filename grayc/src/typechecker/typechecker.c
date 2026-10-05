@@ -156,6 +156,10 @@ static void typetable_set(TypeTable *table, AstNode *node, GrayType *type) {
     }
 }
 
+void type_table_put(TypeTable *table, AstNode *node, GrayType *type) {
+    typetable_set(table, node, type);
+}
+
 GrayType *type_table_get(TypeTable *table, AstNode *node) {
     if (!table || !table->nodes) return NULL;
 
