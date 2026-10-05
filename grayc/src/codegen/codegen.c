@@ -10681,6 +10681,53 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
     }
 }
 
+/* Plain `=` to a field of an array element (`ps[idx()].x = val()`): C leaves
+ * the order of the two sides of `=` unspecified, and the right-hand side runs
+ * first. Bind each non-literal array index in the target to a temporary,
+ * left to right, before the statement so indexes are evaluated before the
+ * right-hand side as the spec requires. Returns the number of temporaries
+ * opened (each opens one `{`); `saved_indexes` receives the original index
+ * nodes, which the caller restores with restore_assign_target_indexes. */
+#define MAX_ASSIGN_TARGET_INDEXES 8
+static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
+                                       AstNode **saved_indexes) {
+    AstNode *indexed[MAX_ASSIGN_TARGET_INDEXES];
+    int count = 0;
+    AstNode *current = target;
+    while (current && count < MAX_ASSIGN_TARGET_INDEXES) {
+        if (current->kind == NODE_MEMBER_EXPRESSION) {
+            current = current->data.member.object;
+        } else if (current->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *left_type = type_table_get(codegen->type_table, current->data.index_expression.left);
+            AstNode *index = current->data.index_expression.index;
+            if (left_type && left_type->kind == TYPE_KIND_ARRAY && index->kind != NODE_INTEGER_LITERAL)
+                indexed[count++] = current;
+            current = current->data.index_expression.left;
+        } else {
+            break;
+        }
+    }
+    for (int i = count - 1; i >= 0; i--) {
+        int slot = count - 1 - i;
+        int temporary_id = codegen_next_id(codegen);
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_ix%d", temporary_id);
+        emit(codegen, "{ int64_t ");
+        emit(codegen, name);
+        emit(codegen, " = ");
+        emit_expression(codegen, indexed[i]->data.index_expression.index);
+        emit(codegen, "; ");
+        AstNode *label = xcalloc(1, sizeof(AstNode));
+        label->kind = NODE_LABEL;
+        label->token = indexed[i]->data.index_expression.index->token;
+        label->data.label.value = name;
+        index_nodes[slot] = indexed[i];
+        saved_indexes[slot] = indexed[i]->data.index_expression.index;
+        indexed[i]->data.index_expression.index = label;
+    }
+    return count;
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
@@ -11150,6 +11197,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    AstNode *hoisted_nodes[MAX_ASSIGN_TARGET_INDEXES];
+    AstNode *hoisted_originals[MAX_ASSIGN_TARGET_INDEXES];
+    int hoisted_count = 0;
+    if (node->data.assign.operator == TOKEN_ASSIGN && node->data.assign.target->kind == NODE_MEMBER_EXPRESSION)
+        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals);
     emit_expression(codegen, node->data.assign.target);
     emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.operator));
     /* A plain scalar / integer literal (of any width) assigned to a wide integer
@@ -11173,7 +11225,12 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     } else {
         emit_expression(codegen, node->data.assign.value);
     }
-    emit(codegen, ";\n");
+    emit(codegen, ";");
+    for (int i = 0; i < hoisted_count; i++) {
+        hoisted_nodes[i]->data.index_expression.index = hoisted_originals[i];
+        emit(codegen, " }");
+    }
+    emit(codegen, "\n");
 }
 
 /* Collect ensure statements from a block, growing the buffer as needed. */
