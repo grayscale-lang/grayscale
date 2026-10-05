@@ -77,6 +77,7 @@ static const char *operator_to_c_string(TokenType operator) {
 /* Forward declarations */
 static void emit_statement(CodeGen *codegen, AstNode *node);
 static void reset_line_directive(CodeGen *codegen);
+static void emit_line_directive(CodeGen *codegen, const char *file, int line);
 static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
 static void emit_assign_statement(CodeGen *codegen, AstNode *node);
@@ -12518,6 +12519,14 @@ static const char *function_return_type(CodeGen *codegen, AstNode *node) {
 
 static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_main) {
     codegen_enter_node(codegen, node);
+    /* The signature belongs to the function's own .gray line. A function is
+     * attributed to the file its opening line names, so leaving this at
+     * <generated> filed every function — and its gcov data — under it. */
+    if (node->token.file && node->token.line > 0) {
+        char *signature_file = normalize_path_separators(node->token.file);
+        emit_line_directive(codegen, signature_file, node->token.line);
+        free(signature_file);
+    }
     /* Return type */
     if (is_main) {
         emit(codegen, "static void gray_fn_main(void)");

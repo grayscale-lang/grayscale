@@ -2998,6 +2998,13 @@ static void test_e2e_line_directives(void) {
      * statement) — otherwise every diagnostic past it in the function is
      * off by however many scaffolding lines came before the directive. */
     ASSERT(strncmp(at_return + strlen(needle), "    gray_panic_call_file", 25) != 0);
+    /* A function's signature is mapped to its own .gray line: a function is
+     * attributed to the file its opening line names, which is what keys its
+     * gcov data to the .gray file rather than to <generated>. */
+    snprintf(needle, sizeof(needle), "#line 1 \"%s\"\nstatic int64_t gray_fn_add", gray_file);
+    ASSERT(strstr(c, needle) != NULL);
+    snprintf(needle, sizeof(needle), "#line 5 \"%s\"\nstatic void gray_fn_main", gray_file);
+    ASSERT(strstr(c, needle) != NULL);
     /* Between add()'s body and main()'s own prologue, generated code is
      * reset to a synthetic marker so it doesn't inherit add()'s last .gray
      * location. */
