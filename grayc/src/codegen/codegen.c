@@ -11974,11 +11974,12 @@ static bool codegen_expression_allocation_free(CodeGen *codegen, AstNode *expres
 
 /* A call to a function on the watermark path allocates nothing that outlives
  * it. Arguments must be allocation-free and copy-free: an array, map or
- * struct argument is deep-copied into the caller's arena. Not recognised
- * while function_uses_watermark is scanning a body, so that scan keeps its
- * no-call rule and cannot recurse through callers of each other. */
+ * struct argument is deep-copied into the caller's arena. While
+ * function_uses_watermark is scanning a body, a call back to the function
+ * being scanned is assumed to be on the watermark path (the rest of its body
+ * decides), and a call to any other function still being scanned is not, so
+ * the scan cannot recurse through callers of each other. */
 static bool codegen_call_allocation_free(CodeGen *codegen, AstNode *expression) {
-    if (codegen->watermark_probe) return false;
     AstNode *function_node = expression->data.call.function;
     if (!function_node || function_node->kind != NODE_LABEL) return false;
     AstNode *callee = find_function(codegen, function_node->data.label.value);
@@ -11989,6 +11990,14 @@ static bool codegen_call_allocation_free(CodeGen *codegen, AstNode *expression) 
         AstNode *argument = expression->data.call.arguments[i];
         if (!codegen_expression_allocation_free(codegen, argument)) return false;
         if (!codegen_type_is_copy_free(type_table_get(codegen->type_table, argument))) return false;
+    }
+    if (codegen->watermark_probe) {
+        if (callee == codegen->watermark_probe->function) return true;
+        for (WatermarkProbe *probe = codegen->watermark_probe->outer; probe; probe = probe->outer) {
+            if (probe->function != callee) continue;
+            codegen->watermark_probe_tainted = true;
+            return false;
+        }
     }
     return function_uses_watermark(codegen, callee);
 }
@@ -12072,8 +12081,17 @@ static bool codegen_statement_allocation_free(CodeGen *codegen, AstNode *stateme
             return block_allocation_free(codegen, statement->data.loop_statement.body);
         case NODE_BREAK_STATEMENT: case NODE_CONTINUE_STATEMENT:
             return true;
+        case NODE_RETURN_STATEMENT:
+            /* Scalar values only: a string, array, map or struct is escaped
+             * out of the scope's arena by the return. */
+            for (int i = 0; i < statement->data.return_statement.count; i++) {
+                AstNode *value = statement->data.return_statement.values[i];
+                if (!codegen_expression_allocation_free(codegen, value)) return false;
+                if (!codegen_type_is_copy_free(type_table_get(codegen->type_table, value))) return false;
+            }
+            return true;
         default:
-            /* when / for_each / return / ensure / bare block — keep the arena */
+            /* when / for_each / ensure / bare block — keep the arena */
             return false;
     }
 }
@@ -12087,6 +12105,8 @@ static bool codegen_statement_allocation_free(CodeGen *codegen, AstNode *stateme
  * body touches can escape or dangle when the watermark is restored. */
 static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
     if (!node || node->kind != NODE_FUNCTION_DECLARATION) return false;
+    if (node->data.function_declaration.watermark_state)
+        return node->data.function_declaration.watermark_state == 1;
     if (node->data.function_declaration.return_type_count != 1) return false;
     /* return_names is allocated even for an unnamed return; entry 0 is NULL
      * unless the return value was actually given a name. */
@@ -12110,7 +12130,10 @@ static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
 
     AstNode *body = node->data.function_declaration.body;
     if (!body || body->kind != NODE_BLOCK_STATEMENT) return false;
-    codegen->watermark_probe++;
+    WatermarkProbe probe = { node, codegen->watermark_probe };
+    codegen->watermark_probe = &probe;
+    bool outer_tainted = codegen->watermark_probe_tainted;
+    codegen->watermark_probe_tainted = false;
     bool is_allocation_free = true;
     for (int i = 0; i < body->data.block.count && is_allocation_free; i++) {
         AstNode *statement = body->data.block.statements[i];
@@ -12121,7 +12144,13 @@ static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
             is_allocation_free = codegen_statement_allocation_free(codegen, statement);
         }
     }
-    codegen->watermark_probe--;
+    codegen->watermark_probe = probe.outer;
+    /* A result reached through a call to a function still being scanned
+     * depends on where the scan started, so only the outermost scan, which
+     * is the one that call is relative to, may memoize it. */
+    if (!codegen->watermark_probe_tainted || !probe.outer)
+        node->data.function_declaration.watermark_state = is_allocation_free ? 1 : 2;
+    codegen->watermark_probe_tainted = outer_tainted || codegen->watermark_probe_tainted;
     return is_allocation_free;
 }
 

@@ -395,6 +395,9 @@ struct AstNode {
              * NULL/0 for non-generic functions. */
             const char **instantiations;
             int instantiation_count;
+            /* Codegen's memo of function_uses_watermark: 0 not yet decided,
+             * 1 eligible, 2 not eligible. */
+            int watermark_state;
         } function_declaration;
 
         /* NODE_IMPORT_STATEMENT */

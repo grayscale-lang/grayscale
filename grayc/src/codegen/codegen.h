@@ -21,6 +21,12 @@ typedef struct {
     char saved_variable[32];
 } ScopeArena;
 
+/* One function function_uses_watermark is scanning, linked innermost first. */
+typedef struct WatermarkProbe {
+    AstNode *function;
+    struct WatermarkProbe *outer;
+} WatermarkProbe;
+
 typedef struct {
     StringBuffer output;
     StringBuffer global_initializer; /* Deferred initialization for file-scope arrays */
@@ -60,10 +66,13 @@ typedef struct {
      * so break/continue have no arena pointer to restore. */
     bool is_in_no_arena_loop;
 
-    /* Non-zero while function_uses_watermark scans a body: calls are not
-     * treated as allocation-free there, which stops mutually recursive
-     * functions from recursing through the analysis. */
-    int watermark_probe;
+    /* The functions function_uses_watermark is scanning, innermost first. A
+     * call back to the innermost one is a self-call and is assumed
+     * allocation-free; a call to any other function still being scanned is
+     * mutual recursion and is not, which also taints the result so a
+     * function scanned from inside another's scan is not memoized on it. */
+    WatermarkProbe *watermark_probe;
+    bool watermark_probe_tainted;
 
     /* All function declarations (for mutable param lookup at call sites) */
     AstNode **all_functions;
