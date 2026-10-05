@@ -111,7 +111,6 @@ enum {
 #define GRAY_ERR_SLOT(name) GRAY_ERR_##name,
     GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_SLOT)
 #undef GRAY_ERR_SLOT
-    GRAY_ERR_BUILTIN_COUNT
 };
 
 /* code is an ErrorCode slot number (see error_code_builtins.h); slot 0 is
