@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3040 - multi-return call as the operand of unary -
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do fi() -> (i64, Error) {
+    return 1, nil
+}
+
+do main() {
+    mut z i64 = -fi()
+    println("${z}")
+}

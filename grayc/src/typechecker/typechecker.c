@@ -11230,6 +11230,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
     /* Resolve object type first (sets type table entry for the object) */
     AstNode *object = node->data.member.object;
     const char *member = node->data.member.member;
+    reject_multi_return_in_single_position(checker, object);
 
     /* Handle mod.Enum.VALUE or mod.Struct.field triple chain */
     const char *module_name = NULL, *chain_type = NULL;
@@ -12362,6 +12363,14 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
 
     case NODE_PREFIX_EXPRESSION: {
         GrayType *right = resolve_untyped(checker, node->data.prefix.right);
+        /* A fallible or multi-value operand is already reported; skip the
+         * operand-type check, which would only restate it as a type error. */
+        int errors_before_operand = diagnostic_error_count(checker->diagnostics);
+        reject_multi_return_in_single_position(checker, node->data.prefix.right);
+        if (diagnostic_error_count(checker->diagnostics) > errors_before_operand) {
+            result = &TYPE_UNKNOWN;
+            break;
+        }
         if (right->kind == TYPE_KIND_LITERAL && node->data.prefix.operator != TOKEN_BANG) {
             /* -literal and bit_not literal are literals too; they take a
              * type from context with the rest of the expression. */
@@ -12675,6 +12684,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         GrayType *range_type = &TYPE_I64;
         for (int part_index = 0; part_index < 3; part_index++) {
             if (!parts[part_index]) continue;
+            reject_multi_return_in_single_position(checker, parts[part_index]);
             GrayType *parameter_type = resolve_untyped(checker, parts[part_index]);
             if (parameter_type->name && is_wide_integer_type_name(parameter_type->name) &&
                 integer_type_name_width_rank(parameter_type->name) > integer_type_name_width_rank(range_type->name))
@@ -12713,6 +12723,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
          * is the explicit conversion. */
         GrayType *source_type = is_literal_expression(node->data.cast.value)
             ? NULL : resolve_expression(checker, node->data.cast.value);
+        reject_multi_return_in_single_position(checker, node->data.cast.value);
         /* The cast target is a written type name like any annotation, so it
          * goes through the same resolution: as written, then through aliases.
          * Taken literally, `cast(x, I)` where `alias I = i64` was read as a

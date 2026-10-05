@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3040 - multi-return call as the object of a member access
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+const S struct { n i64 }
+
+do fs() -> (S, Error) {
+    return S{n: 1}, nil
+}
+
+do main() {
+    mut z i64 = fs().n
+    println("${z}")
+}
