@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.11.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.11.2...grayscale-v0.11.3) (2026-10-05)
+
+
+### Bug Fixes
+
+* **codegen:** evaluate named arguments and struct literal fields in the order written ([#2934](https://github.com/grayscale-lang/grayscale/issues/2934)) ([3d79b02](https://github.com/grayscale-lang/grayscale/commit/3d79b022d4b59d937c1a3500372dad6defbea3cd))
+* **codegen:** evaluate range() and arrays.insert_at() arguments left to right ([#2939](https://github.com/grayscale-lang/grayscale/issues/2939)) ([55ff2d3](https://github.com/grayscale-lang/grayscale/commit/55ff2d32f60cec6f8d803e9e40e615251800aff9))
+* **codegen:** evaluate the index before the right-hand side in array element assignment ([#2935](https://github.com/grayscale-lang/grayscale/issues/2935)) ([0ad964b](https://github.com/grayscale-lang/grayscale/commit/0ad964be8e1c6dc6727c3465355e585449e139ff))
+* **codegen:** map each function's signature to its .gray line so coverage is keyed to .gray files ([#2671](https://github.com/grayscale-lang/grayscale/issues/2671)) ([c8a8a28](https://github.com/grayscale-lang/grayscale/commit/c8a8a281e7bcb1483ffb045187504cb851066a21))
+* **codegen:** maps.get_or_default() evaluates its default argument on every call ([#2940](https://github.com/grayscale-lang/grayscale/issues/2940)) ([0ae185e](https://github.com/grayscale-lang/grayscale/commit/0ae185ec9832e2952745d13a0c9ee18e6447aeaa))
+* **codegen:** print an Error field of a struct as its message instead of the internal pointer ([#2942](https://github.com/grayscale-lang/grayscale/issues/2942)) ([04b47f2](https://github.com/grayscale-lang/grayscale/commit/04b47f2b5f720a6a036b764ba1b65beb0e3c3677))
+* **codegen:** store a container element back after a & parameter call so a growing callee's write reaches it ([#2945](https://github.com/grayscale-lang/grayscale/issues/2945)) ([0b543bb](https://github.com/grayscale-lang/grayscale/commit/0b543bb34235a95e7c0cae2d5863ee4597a5aabe))
+* **typechecker:** accept an f32 literal that rounds to the largest finite f32 ([#2947](https://github.com/grayscale-lang/grayscale/issues/2947)) ([cd35e7e](https://github.com/grayscale-lang/grayscale/commit/cd35e7ec91a5deb11737b2e0ffe8702b25dcce46))
+* **typechecker:** ensure with a multi-value call reports E5011 instead of E3040 advice that cannot apply ([#2932](https://github.com/grayscale-lang/grayscale/issues/2932)) ([0530ba3](https://github.com/grayscale-lang/grayscale/commit/0530ba30e67541d3550193f31234d7ae2063fbcb))
+* **typechecker:** reject Error values in array and map literals without a declared type ([#2943](https://github.com/grayscale-lang/grayscale/issues/2943)) ([4ad5f03](https://github.com/grayscale-lang/grayscale/commit/4ad5f03d3256eb9428ed23290a1ca61e2a622079))
+* **typechecker:** reject fallible and multi-value calls as operands of unary operators, range(), cast(), and member access ([#2931](https://github.com/grayscale-lang/grayscale/issues/2931)) ([5ec77b5](https://github.com/grayscale-lang/grayscale/commit/5ec77b5396ae602f10f7699478a3052580bae09f))
+* **typechecker:** reject print and println of a composite containing a tagged enum ([#2938](https://github.com/grayscale-lang/grayscale/issues/2938)) ([d33dd07](https://github.com/grayscale-lang/grayscale/commit/d33dd07734b626f07af9be06a38839815e89f786))
+* **typechecker:** report one error for a multi-value call returned from a multi-value function ([#2933](https://github.com/grayscale-lang/grayscale/issues/2933)) ([57d265e](https://github.com/grayscale-lang/grayscale/commit/57d265ea9b78a779f356d6a8e45713ffd58f3206))
+
+
+### Performance Improvements
+
+* **codegen:** skip per-call arenas for self-recursive and call-composed allocation-free functions ([#2710](https://github.com/grayscale-lang/grayscale/issues/2710)) ([153f0c9](https://github.com/grayscale-lang/grayscale/commit/153f0c98cbf1172f0633b931747b3018a4f0d78a))
+
 ## [0.11.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.11.1...grayscale-v0.11.2) (2026-10-04)
 
 
