@@ -4455,7 +4455,10 @@ static void typechecker_resolve_named_arguments(TypeChecker *checker, AstNode *n
         }
     }
 
-    /* Replace the node's args in-place */
+    /* Replace the node's args in-place, remembering the written order so
+     * codegen can still evaluate them as written. */
+    node->data.call.written_arguments = node->data.call.arguments;
+    node->data.call.written_argument_count = argument_count;
     node->data.call.arguments = new_arguments;
     node->data.call.argument_count = filled;
     node->data.call.argument_names = NULL; /* now positional */

@@ -2585,6 +2585,46 @@ static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_na
     emit(codegen, "}");
 }
 
+/* True when evaluating `node` can run a call, so its position in the order of
+ * evaluation is observable. */
+static bool expression_contains_call(AstNode *node) {
+    if (!node) return false;
+    switch (node->kind) {
+        case NODE_CALL_EXPRESSION: return true;
+        case NODE_INFIX_EXPRESSION:
+            return expression_contains_call(node->data.infix.left) || expression_contains_call(node->data.infix.right);
+        case NODE_PREFIX_EXPRESSION: return expression_contains_call(node->data.prefix.right);
+        case NODE_POSTFIX_EXPRESSION: return expression_contains_call(node->data.postfix.left);
+        case NODE_MEMBER_EXPRESSION: return expression_contains_call(node->data.member.object);
+        case NODE_INDEX_EXPRESSION:
+            return expression_contains_call(node->data.index_expression.left) ||
+                   expression_contains_call(node->data.index_expression.index);
+        case NODE_CAST_EXPRESSION: return expression_contains_call(node->data.cast.value);
+        case NODE_INTERPOLATED_STRING:
+            for (int i = 0; i < node->data.interpolated_string.part_count; i++)
+                if (expression_contains_call(node->data.interpolated_string.parts[i])) return true;
+            return false;
+        default: return false;
+    }
+}
+
+/* A value emitted ahead of its use takes no type context from the slot it
+ * lands in, so literals that need one stay where they are. */
+static bool expression_can_be_hoisted(AstNode *node) {
+    return expression_contains_call(node) && node->kind != NODE_ARRAY_VALUE &&
+           node->kind != NODE_MAP_VALUE && node->kind != NODE_STRUCT_VALUE;
+}
+
+/* A synthetic label naming a temporary, typed as `original`. */
+static AstNode *make_temporary_label(CodeGen *codegen, AstNode *original, const char *name) {
+    AstNode *label = xcalloc(1, sizeof(AstNode));
+    label->kind = NODE_LABEL;
+    label->token = original->token;
+    label->data.label.value = name;
+    type_table_put(codegen->type_table, label, type_table_get(codegen->type_table, original));
+    return label;
+}
+
 static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Struct literal: (GrayStruct_Name){.field = value, ...} */
     /* Resolve ? → concrete binding for type params */
@@ -2608,6 +2648,45 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
         }
         if (!found) {
             struct_name_text = codegen_resolve_type(codegen, struct_name_text);
+        }
+    }
+    /* C initializes the fields of a compound literal in declaration order,
+     * whatever order they are written in. Fields whose values run calls are
+     * evaluated into temporaries first, in the order written, when that
+     * differs from declaration order. */
+    AstNode *hoist_declaration = find_struct_declaration(codegen, struct_name_text);
+    AstNode **original_field_values = NULL;
+    if (hoist_declaration) {
+        int hoistable_count = 0;
+        bool is_out_of_order = false;
+        int previous_index = -1;
+        for (int i = 0; i < node->data.struct_value.count; i++) {
+            if (!expression_can_be_hoisted(node->data.struct_value.field_values[i])) continue;
+            hoistable_count++;
+            int declared_index = -1;
+            for (int field_index = 0; field_index < hoist_declaration->data.struct_declaration.field_count; field_index++) {
+                if (strcmp(hoist_declaration->data.struct_declaration.fields[field_index].name,
+                           node->data.struct_value.field_names[i]) == 0) { declared_index = field_index; break; }
+            }
+            if (declared_index < previous_index) is_out_of_order = true;
+            previous_index = declared_index;
+        }
+        if (hoistable_count >= 2 && is_out_of_order) {
+            int hoist_id = codegen_next_id(codegen);
+            size_t values_size = sizeof(AstNode *) * (size_t)node->data.struct_value.count;
+            original_field_values = xmalloc(values_size);
+            memcpy(original_field_values, node->data.struct_value.field_values, values_size);
+            emit(codegen, "({ ");
+            for (int i = 0; i < node->data.struct_value.count; i++) {
+                AstNode *field_value = original_field_values[i];
+                if (!expression_can_be_hoisted(field_value)) continue;
+                char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+                snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_sf%d_%d", hoist_id, i);
+                emit_formatted(codegen, "__auto_type %s = ", name);
+                emit_expression(codegen, field_value);
+                emit(codegen, "; ");
+                node->data.struct_value.field_values[i] = make_temporary_label(codegen, field_value, name);
+            }
         }
     }
     /* Wrapped in an extra pair of parens: a bare compound literal
@@ -2752,6 +2831,11 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     codegen->current_module = saved_struct_module;
     codegen->current_file = saved_struct_file;
     emit(codegen, "})");
+    if (original_field_values) {
+        memcpy(node->data.struct_value.field_values, original_field_values,
+               sizeof(AstNode *) * (size_t)node->data.struct_value.count);
+        emit(codegen, "; })");
+    }
 }
 
 static void emit_prefix_expression(CodeGen *codegen, AstNode *node) {
@@ -9724,8 +9808,59 @@ static bool emit_element_write_back_call(CodeGen *codegen, AstNode *node, AstNod
     return true;
 }
 
+/* Named arguments are reordered into parameter order for the call, but they
+ * are evaluated in the order written. When that differs, bind the arguments
+ * that run calls to temporaries in written order and pass those. */
+static bool emit_written_order_call(CodeGen *codegen, AstNode *node, AstNode *callee) {
+    int written_count = node->data.call.written_argument_count;
+    if (!node->data.call.written_arguments || written_count < 2) return false;
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    int slots[MAX_WRITE_BACK_ARGUMENTS];
+    int slot_count = 0;
+    int previous_slot = -1;
+    bool is_out_of_order = false;
+    for (int k = 0; k < written_count && slot_count < MAX_WRITE_BACK_ARGUMENTS; k++) {
+        AstNode *written = node->data.call.written_arguments[k];
+        int slot = -1;
+        for (int i = 0; i < node->data.call.argument_count; i++)
+            if (node->data.call.arguments[i] == written) { slot = i; break; }
+        if (slot < 0 || slot >= parameter_count || callee->data.function_declaration.parameters[slot].is_mutable) continue;
+        if (!expression_can_be_hoisted(written)) continue;
+        if (slot < previous_slot) is_out_of_order = true;
+        previous_slot = slot;
+        slots[slot_count++] = slot;
+    }
+    if (slot_count < 2 || !is_out_of_order) return false;
+
+    int unique_id = codegen_next_id(codegen);
+    AstNode *originals[MAX_WRITE_BACK_ARGUMENTS];
+    AstNode **saved_written = node->data.call.written_arguments;
+    emit(codegen, "({ ");
+    for (int s = 0; s < slot_count; s++) {
+        AstNode *argument = node->data.call.arguments[slots[s]];
+        originals[s] = argument;
+        char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+        snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_na%d_%d", unique_id, s);
+        emit_formatted(codegen, "__auto_type %s = ", name);
+        emit_expression(codegen, argument);
+        emit(codegen, "; ");
+        node->data.call.arguments[slots[s]] = make_temporary_label(codegen, argument, name);
+    }
+    node->data.call.written_arguments = NULL;
+    bool has_result = callee->data.function_declaration.return_type_count != 0;
+    if (has_result) emit_formatted(codegen, "__auto_type _gray_nr%d = ", unique_id);
+    emit_call_expression(codegen, node);
+    emit(codegen, "; ");
+    node->data.call.written_arguments = saved_written;
+    for (int s = 0; s < slot_count; s++) node->data.call.arguments[slots[s]] = originals[s];
+    if (has_result) emit_formatted(codegen, "_gray_nr%d; ", unique_id);
+    emit(codegen, "})");
+    return true;
+}
+
 static void emit_call_expression(CodeGen *codegen, AstNode *node) {
     AstNode *named_callee = resolve_called_function(codegen, node);
+    if (named_callee && emit_written_order_call(codegen, node, named_callee)) return;
     if (named_callee && emit_element_write_back_call(codegen, node, named_callee)) return;
     AstNode *callee = codegen->loop_scope_depth > 0 ? named_callee : NULL;
     if (!callee || !function_uses_caller_arena(codegen, callee)) {

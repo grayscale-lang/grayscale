@@ -259,7 +259,12 @@ struct AstNode {
         struct { AstNode *left; TokenType operator; } postfix;
 
         /* NODE_CALL_EXPRESSION */
-        struct { AstNode *function; AstNode **arguments; int argument_count; const char **argument_names; } call;
+        struct {
+            AstNode *function; AstNode **arguments; int argument_count; const char **argument_names;
+            /* Arguments in the order written, kept when named arguments are
+             * reordered into parameter order; NULL otherwise. */
+            AstNode **written_arguments; int written_argument_count;
+        } call;
 
         /* NODE_INDEX_EXPRESSION */
         struct { AstNode *left; AstNode *index; } index_expression;
