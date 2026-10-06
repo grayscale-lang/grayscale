@@ -1,0 +1,35 @@
+import @io
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut _, _ = io.write_file("/tmp/gray_copy_same.txt", "hello")
+
+    mut ok, err = io.copy_file("/tmp/gray_copy_same.txt", "/tmp/gray_copy_same.txt")
+    mut content, _ = io.read_file("/tmp/gray_copy_same.txt")
+    if !ok && err != nil && content == "hello" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: copy_file onto the same path")
+    }
+
+    mut ok2, err2 = io.copy_file("/tmp/gray_copy_same.txt", "/tmp/./gray_copy_same.txt")
+    mut content2, _ = io.read_file("/tmp/gray_copy_same.txt")
+    if !ok2 && err2 != nil && content2 == "hello" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: copy_file onto a different spelling of the same path")
+    }
+
+    mut _, _ = io.delete_file("/tmp/gray_copy_same.txt")
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

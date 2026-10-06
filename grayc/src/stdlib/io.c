@@ -510,8 +510,16 @@ bool gray_io_copy_file(GrayString source, GrayString destination) {
         gray_panic_code("P0089", "io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually");
     FILE *input_file = fopen(source.data, "rb");
     if (!input_file) return false;
-    int output_descriptor = open(destination.data, O_WRONLY | O_CREAT | O_TRUNC, GRAY_IO_FILE_MODE);
+    int output_descriptor = open(destination.data, O_WRONLY | O_CREAT, GRAY_IO_FILE_MODE);
     if (output_descriptor < 0) { fclose(input_file); return false; }
+    struct stat input_info, output_info;
+    if (fstat(fileno(input_file), &input_info) != 0 || fstat(output_descriptor, &output_info) != 0) {
+        close(output_descriptor); fclose(input_file); return false;
+    }
+    if (input_info.st_dev == output_info.st_dev && input_info.st_ino == output_info.st_ino) {
+        close(output_descriptor); fclose(input_file); errno = EINVAL; return false;
+    }
+    if (ftruncate(output_descriptor, 0) != 0) { close(output_descriptor); fclose(input_file); return false; }
     FILE *output_file = fdopen(output_descriptor, "wb");
     if (!output_file) { close(output_descriptor); fclose(input_file); return false; }
     char buffer[GRAY_IO_COPY_BUFFER_SIZE];
