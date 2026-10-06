@@ -5208,16 +5208,20 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
             emitted_specifier = 's';
             was_downgraded_to_string = true;
         }
+        /* A %s of a string with a width or precision is laid out by
+         * gray_fmt_string_field, which counts characters where C counts bytes. */
+        bool is_string_field = specifier == 's' && directive_type && directive_type->kind == TYPE_KIND_STRING &&
+            (width_length > 0 || precision_length > 0);
         /* Emit flags/width/precision, filtered when the directive became %s.
          * A %c field is padded by gray_fmt_char_field (C would count bytes),
          * so its width and '-' are not emitted either. */
-        for (int field_index = 0; field_index < flags_length && specifier != 'c'; field_index++) {
+        for (int field_index = 0; field_index < flags_length && specifier != 'c' && !is_string_field; field_index++) {
             if (was_downgraded_to_string && flags[field_index] != '-') continue;
             append_char_to_buffer(&codegen->output, flags[field_index]);
         }
-        for (int width_index = 0; width_index < width_length && specifier != 'c'; width_index++)
+        for (int width_index = 0; width_index < width_length && specifier != 'c' && !is_string_field; width_index++)
             append_char_to_buffer(&codegen->output, width[width_index]);
-        if (!was_downgraded_to_string) {
+        if (!was_downgraded_to_string && !is_string_field) {
             for (int parameter_index = 0; parameter_index < precision_length; parameter_index++)
                 append_char_to_buffer(&codegen->output, precision[parameter_index]);
             for (int length_index = 0; length_index < length_modifier_length; length_index++)
@@ -5260,6 +5264,7 @@ typedef struct {
     char specifier;  /* '\0' for a NUL byte of the format text, written by %c */
     int32_t width;   /* 0 when none */
     bool left_align; /* the '-' flag */
+    int32_t precision; /* -1 when none */
 } FormatDirective;
 
 /* Record each directive in format_text, and each NUL byte, in the order the
@@ -5273,7 +5278,7 @@ static int scan_format_directives(const char *format_text, int format_length, Fo
     int count = 0;
     while (cursor < format_end) {
         if (*cursor == '\0') {
-            directives[count++] = (FormatDirective){'\0', 0, false};
+            directives[count++] = (FormatDirective){'\0', 0, false, -1};
             cursor++;
             continue;
         }
@@ -5281,14 +5286,21 @@ static int scan_format_directives(const char *format_text, int format_length, Fo
         cursor++;
         if (!*cursor) break;
         if (*cursor == '%') { cursor++; continue; }
-        FormatDirective directive = {0, 0, false};
+        FormatDirective directive = {0, 0, false, -1};
         while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') {
             if (*cursor == '-') directive.left_align = true;
             cursor++;
         }
         /* The typechecker rejects a width above INT32_MAX (E3179). */
         while (*cursor >= '0' && *cursor <= '9') directive.width = directive.width * 10 + (*cursor++ - '0');
-        if (*cursor == '.') { cursor++; while (*cursor >= '0' && *cursor <= '9') cursor++; }
+        if (*cursor == '.') {
+            cursor++;
+            directive.precision = 0;
+            while (*cursor >= '0' && *cursor <= '9') {
+                if (directive.precision < INT32_MAX / 10) directive.precision = directive.precision * 10 + (*cursor - '0');
+                cursor++;
+            }
+        }
         if (*cursor == 'h') { cursor++; if (*cursor == 'h') cursor++; }
         else if (*cursor == 'l') { cursor++; if (*cursor == 'l') cursor++; }
         else if (*cursor == 'L') cursor++;
@@ -5348,7 +5360,11 @@ static void emit_format_value(CodeGen *codegen, GrayType *value_type, FormatDire
             emit(codegen, ").data");
         }
     } else if (value_type && value_type->kind == TYPE_KIND_STRING) {
+        bool is_string_field = specifier == 's' && (directive.width > 0 || directive.precision >= 0);
+        if (is_string_field) emit(codegen, "gray_fmt_string_field(gray_default_arena, ");
         emit_format_operand(codegen, value, element_read);
+        if (is_string_field)
+            emit_formatted(codegen, ", %d, %s, %d)", directive.width, directive.left_align ? "true" : "false", directive.precision);
         emit(codegen, ".data");
     } else if (value_type && value_type->kind == TYPE_KIND_BOOL) {
         emit_format_operand(codegen, value, element_read);

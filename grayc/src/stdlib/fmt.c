@@ -41,8 +41,9 @@ static size_t fmt_pad_buffer_size(int64_t padding, int64_t fixed) {
 }
 
 GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character) {
-    if (string.len >= width) return string;
-    int64_t padding = width - string.len;
+    int64_t character_count = gray_builtin_char_count(string);
+    if (character_count >= width) return string;
+    int64_t padding = width - character_count;
     char *buffer = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(padding, string.len));
     int64_t pad_bytes = fmt_fill_pad_character(arena, buffer, padding, fill_character);
     memcpy(buffer + pad_bytes, string.data, (size_t)string.len);
@@ -50,8 +51,9 @@ GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width,
 }
 
 GrayString gray_fmt_pad_right(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character) {
-    if (string.len >= width) return string;
-    int64_t padding = width - string.len;
+    int64_t character_count = gray_builtin_char_count(string);
+    if (character_count >= width) return string;
+    int64_t padding = width - character_count;
     char *buffer = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(padding, string.len));
     memcpy(buffer, string.data, (size_t)string.len);
     int64_t pad_bytes = fmt_fill_pad_character(arena, buffer + string.len, padding, fill_character);
@@ -70,9 +72,33 @@ GrayString gray_fmt_char_field(GrayArena *arena, int32_t codepoint, int32_t widt
     return (GrayString){buffer, length};
 }
 
+GrayString gray_fmt_string_field(GrayArena *arena, GrayString string, int32_t width, bool left_align, int32_t precision) {
+    int32_t length = string.len;
+    int32_t character_count = 0;
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
+    while (cursor < end_cursor) {
+        if (precision >= 0 && character_count == precision) {
+            length = (int32_t)(cursor - (const uint8_t *)string.data);
+            break;
+        }
+        int32_t codepoint;
+        cursor += gray_builtin_utf8_next(cursor, end_cursor, &codepoint);
+        character_count++;
+    }
+    int32_t padding = width > character_count ? width - character_count : 0;
+    int32_t total = padding + length;
+    char *buffer = (char *)gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
+    memset(left_align ? buffer + length : buffer, ' ', (size_t)padding);
+    memcpy(left_align ? buffer : buffer + padding, string.data, (size_t)length);
+    buffer[total] = '\0';
+    return (GrayString){buffer, total};
+}
+
 GrayString gray_fmt_center(GrayArena *arena, GrayString string, int64_t width, int32_t fill_character) {
-    if (string.len >= width) return string;
-    int64_t total_pad = width - string.len;
+    int64_t character_count = gray_builtin_char_count(string);
+    if (character_count >= width) return string;
+    int64_t total_pad = width - character_count;
     int64_t left_pad = total_pad / 2;
     int64_t right_pad = total_pad - left_pad;
     char *buffer = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(total_pad, string.len));
