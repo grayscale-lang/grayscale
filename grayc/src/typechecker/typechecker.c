@@ -16264,6 +16264,14 @@ static void check_expression_statement(TypeChecker *checker, AstNode *node) {
         pointer_checker_apply_mem_call(checker, expression, node, NULL);
 }
 
+/* True when a condition's type is known and is not a bool. A void call is
+ * reported on its own, and a C function result has no Grayscale type to check. */
+static bool condition_type_is_not_bool(GrayType *condition_type) {
+    return condition_type && condition_type->kind != TYPE_KIND_BOOL &&
+        condition_type->kind != TYPE_KIND_VOID && condition_type->kind != TYPE_KIND_UNKNOWN &&
+        condition_type->kind != TYPE_KIND_C_FUNCTION;
+}
+
 static void check_if_statement(TypeChecker *checker, AstNode *node) {
     GrayType *condition_type = resolve_expression(checker, node->data.if_statement.condition);
     /* E3038 (): void function call as condition. The same check
@@ -16275,10 +16283,7 @@ static void check_if_statement(TypeChecker *checker, AstNode *node) {
         condition_type, "an 'if' condition");
     /* E3040: multi-return calls cannot be used as if condition */
     reject_multi_return_in_single_position(checker, node->data.if_statement.condition);
-    if (condition_type && condition_type->kind != TYPE_KIND_UNKNOWN &&
-        (condition_type->kind == TYPE_KIND_STRING || condition_type->kind == TYPE_KIND_ARRAY ||
-         condition_type->kind == TYPE_KIND_MAP   || condition_type->kind == TYPE_KIND_STRUCT ||
-         condition_type->kind == TYPE_KIND_POINTER)) {
+    if (condition_type_is_not_bool(condition_type)) {
         AstNode *condition = node->data.if_statement.condition;
         diagnostic_error_code_formatted(checker->diagnostics, "E3091", NODE_FILE(checker, condition), condition->token.line, condition->token.column, 0,
             type_display_name(checker, condition_type));
@@ -16508,10 +16513,7 @@ static void check_while_statement(TypeChecker *checker, AstNode *node) {
     /* E3038 (): void function call as 'as_long_as' condition. */
     reject_void_in_context(checker, node->data.while_statement.condition,
         while_condition_type, "an 'as_long_as' condition");
-    if (while_condition_type && while_condition_type->kind != TYPE_KIND_UNKNOWN &&
-        (while_condition_type->kind == TYPE_KIND_STRING || while_condition_type->kind == TYPE_KIND_ARRAY ||
-         while_condition_type->kind == TYPE_KIND_MAP   || while_condition_type->kind == TYPE_KIND_STRUCT ||
-         while_condition_type->kind == TYPE_KIND_POINTER)) {
+    if (condition_type_is_not_bool(while_condition_type)) {
         AstNode *condition = node->data.while_statement.condition;
         diagnostic_error_code_formatted(checker->diagnostics, "E3091", NODE_FILE(checker, condition), condition->token.line, condition->token.column, 0,
             type_display_name(checker, while_condition_type));
