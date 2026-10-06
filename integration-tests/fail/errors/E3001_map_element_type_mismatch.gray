@@ -1,0 +1,5 @@
+do main() {
+    mut m map[string:i64] = {:}
+    m["f"] = 2.9
+    println(m)
+}

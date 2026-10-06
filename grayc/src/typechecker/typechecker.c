@@ -15162,6 +15162,29 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
           target->data.member.object->data.postfix.operator == TOKEN_CARET)) {
         typechecker_error_assign_type(checker, node, "a C interop value", type_display_name(checker, target_type));
     }
+    /* A map element (m[k] = v) or a field reached through an element or a
+     * nested field (xs[i].f, m[k].f): none of the checks above type-check
+     * these targets. */
+    {
+        bool is_map_element = false;
+        if (target->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *indexed_type = resolve_expression(checker, target->data.index_expression.left);
+            is_map_element = indexed_type && indexed_type->kind == TYPE_KIND_MAP;
+        }
+        bool is_indirect_field = target->kind == NODE_MEMBER_EXPRESSION &&
+            target->data.member.object->kind != NODE_LABEL &&
+            !(target->data.member.object->kind == NODE_POSTFIX_EXPRESSION &&
+              target->data.member.object->data.postfix.operator == TOKEN_CARET);
+        if ((is_map_element || is_indirect_field) &&
+            target_type->kind != TYPE_KIND_UNKNOWN && assigned_value_type->kind != TYPE_KIND_UNKNOWN &&
+            assigned_value_type->kind != TYPE_KIND_C_FUNCTION &&
+            !types_assignable(checker, target_type, assigned_value_type) &&
+            !(target_type->kind == TYPE_KIND_ENUM && is_integer_kind(assigned_value_type->kind)) &&
+            !(assigned_value_type->kind == TYPE_KIND_NIL &&
+              (target_type->kind == TYPE_KIND_POINTER || target_type->kind == TYPE_KIND_ERROR))) {
+            typechecker_error_assign_type(checker, node, type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
+        }
+    }
     /* E3163: storing a local's address into memory that outlives it, reached
      * through a pointer parameter, a &ref parameter, or a new() heap object's
      * pointer field. The origin travels through intermediate pointers, so
