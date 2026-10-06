@@ -1,0 +1,4 @@
+const Rect struct {
+    w i64
+    do make(w i64) -> Rect { return Rect{w: w} }
+}

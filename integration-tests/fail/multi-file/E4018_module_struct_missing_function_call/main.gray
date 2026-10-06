@@ -1,0 +1,6 @@
+import "./shapes.gray"
+
+do main() {
+    mut r shapes.Rect = shapes.Rect.make(2)
+    shapes.Rect.missing(r)
+}

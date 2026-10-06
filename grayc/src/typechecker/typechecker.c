@@ -10353,6 +10353,12 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
              * the annotated spelling of the same call was fine. */
             return result;
         } else {
+            char struct_key[MESSAGE_BUFFER_SIZE];
+            module_member_key(checker, module_name, struct_name, struct_key, sizeof(struct_key));
+            if (is_struct_name(checker, struct_key)) {
+                diagnostic_error_code_formatted(checker->diagnostics, "E4018", NODE_FILE(checker, node),
+                    node->token.line, node->token.column, 0, struct_display_name(checker, struct_key), chained_function_name);
+            }
             result = &TYPE_VOID;
         }
     } else if (ast_member_qualifier(function_node) &&
@@ -11531,6 +11537,14 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 diagnostic_error_code_formatted(checker->diagnostics, "E3031",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0, written, written, written);
                 return &TYPE_UNKNOWN;
+            }
+            if (is_struct_name(checker, prefixed_type)) {
+                GrayType *field_type = struct_field_type(checker, prefixed_type, member);
+                if (!field_type || field_type->kind == TYPE_KIND_UNKNOWN) {
+                    diagnostic_error_code_formatted(checker->diagnostics, "E4018", NODE_FILE(checker, node),
+                        node->token.line, node->token.column, 0, struct_display_name(checker, prefixed_type), member);
+                    return &TYPE_UNKNOWN;
+                }
             }
         }
         /* Nested member access: a.b.c; resolve a.b first, then look up .c */
