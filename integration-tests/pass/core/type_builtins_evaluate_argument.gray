@@ -1,0 +1,24 @@
+const Point struct { a i64 }
+
+mut calls i64 = 0
+
+do make_point() -> Point {
+    calls += 1
+    return Point{a: 1}
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut kind = type_of(make_point())
+    if calls == 1 && kind == "Point" { passed += 1 } otherwise { failed += 1 }
+
+    mut names = fields(make_point())
+    if calls == 2 && len(names) == 1 { passed += 1 } otherwise { failed += 1 }
+
+    mut size = size_of(make_point())
+    if calls == 3 && size == 8 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

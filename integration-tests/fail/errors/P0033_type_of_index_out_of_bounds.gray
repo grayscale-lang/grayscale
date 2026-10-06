@@ -1,0 +1,5 @@
+do main() {
+    mut arr [i64] = {1}
+    mut kind = type_of(arr[5])
+    println(kind)
+}

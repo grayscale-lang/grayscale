@@ -1293,6 +1293,19 @@ static bool names_existing_storage(AstNode *value) {
     }
 }
 
+/* type_of, fields and size_of read their argument's type at compile time;
+ * the argument still runs, so its calls and runtime panics are kept. A bare
+ * label (a variable or a type name) or a literal has nothing to run. */
+static bool emit_type_builtin_argument_prefix(CodeGen *codegen, AstNode *argument) {
+    if (argument->kind == NODE_LABEL || argument->kind == NODE_INTEGER_LITERAL ||
+        argument->kind == NODE_FLOATING_POINT_LITERAL || argument->kind == NODE_BOOL_VALUE ||
+        argument->kind == NODE_STRING_VALUE || argument->kind == NODE_CHAR_VALUE) return false;
+    emit(codegen, "({ (void)(");
+    emit_expression(codegen, argument);
+    emit(codegen, "); ");
+    return true;
+}
+
 /* True when moving `value` (of type `gray_tn`) into or out of a container
  * element would leave two homes sharing one backing store. */
 static bool composite_value_aliases(CodeGen *codegen, const char *gray_type_name, AstNode *value) {
@@ -5966,16 +5979,19 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
 
     if (strcmp(function_name, "type_of") == 0 && node->data.call.argument_count == 1) {
         AstNode *argument = node->data.call.arguments[0];
+        bool wrapped = emit_type_builtin_argument_prefix(codegen, argument);
         /* Bigint type_of: return the exact type name */
         const char *wide_integer_type = resolve_wide_integer_type(codegen, argument);
         if (wide_integer_type) {
             emit_formatted(codegen, "gray_string_lit(\"%s\")", wide_integer_type);
+            if (wrapped) emit(codegen, "; })");
             return true;
         }
         GrayType *type = codegen_effective_type(codegen, codegen_type_of(codegen, argument));
         /* A range, literal or stored: type_of(range(0, 5)) → "Range<i64>" */
         if (type && type->kind == TYPE_KIND_RANGE) {
             emit_formatted(codegen, "gray_string_lit(\"%s\")", type->name);
+            if (wrapped) emit(codegen, "; })");
             return true;
         }
         /* Enum member access: type_of(Color.RED) → "Color" */
@@ -5986,6 +6002,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
                 strcmp(object_name, "std") != 0 && strcmp(object_name, "math") != 0 &&
                 strcmp(object_name, "os") != 0) {
                 emit_formatted(codegen, "gray_string_lit(\"%s\")", object_name);
+                if (wrapped) emit(codegen, "; })");
                 return true;
             }
         }
@@ -6007,11 +6024,13 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
             emit_formatted(codegen, "gray_string_lit(\"%s\")",
                 codegen_written_type_name(codegen, type_spelling, written, sizeof(written)));
         }
+        if (wrapped) emit(codegen, "; })");
         return true;
     }
 
     if (strcmp(function_name, "fields") == 0 && node->data.call.argument_count == 1) {
         AstNode *argument = node->data.call.arguments[0];
+        bool wrapped = emit_type_builtin_argument_prefix(codegen, argument);
         GrayType *type = codegen_type_of(codegen, argument);
         const char *struct_name_text = NULL;
         if (type && type->kind == TYPE_KIND_STRUCT && type->name) {
@@ -6035,11 +6054,13 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
         } else {
             emit(codegen, "gray_array_from(gray_default_arena, (GrayString[]){gray_string_lit(\"\")}, sizeof(GrayString), 0, GRAY_ELEM_STRING)");
         }
+        if (wrapped) emit(codegen, "; })");
         return true;
     }
 
     if (strcmp(function_name, "size_of") == 0 && node->data.call.argument_count == 1) {
         AstNode *type_argument = node->data.call.arguments[0];
+        bool wrapped = emit_type_builtin_argument_prefix(codegen, type_argument);
         if (type_argument->kind == NODE_LABEL) {
             emit_formatted(codegen, "(int64_t)sizeof(%s)", gray_type_to_c_codegen(codegen, type_argument->data.label.value));
         } else {
@@ -6067,6 +6088,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
                 emit(codegen, "0");
             }
         }
+        if (wrapped) emit(codegen, "; })");
         return true;
     }
 
