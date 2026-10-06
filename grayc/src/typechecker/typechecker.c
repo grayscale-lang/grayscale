@@ -9292,13 +9292,13 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
             source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
             source_type->kind == TYPE_KIND_STRING || source_type->kind == TYPE_KIND_NIL ||
-            is_tagged_enum_type(checker, source_type)) {
+            source_type->kind == TYPE_KIND_BOOL || is_tagged_enum_type(checker, source_type)) {
             char *message = typechecker_format(checker,
-                "cannot convert %s to %s; only numeric types and bools can be converted",
+                "cannot convert %s to %s; only numeric types can be converted",
                 type_name(source_type), function_name);
             diagnostic_error_help(checker->diagnostics, "E3043", message,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "only numeric and bool conversions are supported");
+                "only numeric conversions are supported");
         }
         result = type_from_name(function_name);
     } else if (strcmp(function_name, "string") == 0 && node->data.call.argument_count == 1) {
