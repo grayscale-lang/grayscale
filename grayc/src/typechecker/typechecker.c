@@ -3586,6 +3586,28 @@ static GrayType *stdlib_first_argument_type(TypeChecker *checker, AstNode *node)
                                          : &TYPE_UNKNOWN;
 }
 
+/* The array type a stdlib call's result is derived from: argument 0's, or,
+ * when argument 0 is an empty literal that has no element type, the type of a
+ * later argument that must match it (arrays.concat({}, {1})). An empty literal
+ * with no such argument leaves nothing to infer from: E3136. */
+static GrayType *stdlib_result_array_type(TypeChecker *checker, const StdlibFunctionMetadata *metadata, AstNode *node) {
+    GrayType *first = stdlib_first_argument_type(checker, node);
+    AstNode *first_argument = node->data.call.argument_count > 0 ? node->data.call.arguments[0] : NULL;
+    if (!first_argument || first_argument->kind != NODE_ARRAY_VALUE || first_argument->data.array_value.count != 0)
+        return first;
+    for (int i = 0; i < metadata->argument_type_count; i++) {
+        int argument_index = metadata->argument_types[i].index;
+        if (metadata->argument_types[i].kind != EXPECTED_ARGUMENT_SAME_AS_FIRST || argument_index >= node->data.call.argument_count) continue;
+        AstNode *argument = node->data.call.arguments[argument_index];
+        if (argument->kind == NODE_ARRAY_VALUE && argument->data.array_value.count == 0) continue;
+        GrayType *type = resolve_expression(checker, argument);
+        if (type->kind == TYPE_KIND_ARRAY) return type;
+    }
+    diagnostic_error_code(checker->diagnostics, "E3136", NODE_FILE(checker, first_argument),
+        first_argument->token.line, first_argument->token.column, 0);
+    return &TYPE_UNKNOWN;
+}
+
 /* The element type of array type `t`, or unknown. */
 static GrayType *array_element_type(TypeChecker *checker, GrayType *type) {
     return type && type->kind == TYPE_KIND_ARRAY && type->element_type
@@ -3609,10 +3631,10 @@ static GrayType *resolve_return_type(TypeChecker *checker, const StdlibFunctionM
     const char *return_type_name = metadata->return_type;
     if (!return_type_name) return NULL;
     if (strcmp(return_type_name, "void") == 0) return &TYPE_VOID;
-    if (strcmp(return_type_name, "$0") == 0) return stdlib_first_argument_type(checker, node);
-    if (strcmp(return_type_name, "$elem0") == 0) return array_element_type(checker, stdlib_first_argument_type(checker, node));
+    if (strcmp(return_type_name, "$0") == 0) return stdlib_result_array_type(checker, metadata, node);
+    if (strcmp(return_type_name, "$elem0") == 0) return array_element_type(checker, stdlib_result_array_type(checker, metadata, node));
     if (strcmp(return_type_name, "[$0]") == 0) {
-        GrayType *first = stdlib_first_argument_type(checker, node);
+        GrayType *first = stdlib_result_array_type(checker, metadata, node);
         return first->kind == TYPE_KIND_UNKNOWN ? first : type_array(type_name(first));
     }
     if (strcmp(return_type_name, "$common") == 0) {

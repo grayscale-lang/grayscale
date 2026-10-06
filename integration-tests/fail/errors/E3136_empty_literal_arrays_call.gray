@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3136 - an empty literal passed to an arrays function that
+ * derives its result type from it
+ * Expected: E3136 error — the result has no element type
+ */
+// expect-error: E3136
+// expect-error-count: 2
+
+import @arrays
+
+do main() {
+    println(arrays.reverse({}))
+    println(arrays.concat({}, {}))
+}

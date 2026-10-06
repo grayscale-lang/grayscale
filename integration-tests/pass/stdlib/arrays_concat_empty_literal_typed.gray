@@ -1,0 +1,21 @@
+/*
+ * Test: arrays.concat with an empty literal first takes its type from the
+ * other argument
+ */
+
+import @arrays
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut joined = arrays.concat({}, {1})
+    joined[0] = 5
+    if joined[0] == 5 && len(joined) == 1 { passed += 1 } otherwise { failed += 1 }
+
+    if "${arrays.concat({}, {7})}" == "{7}" { passed += 1 } otherwise { failed += 1 }
+
+    println("arrays_concat_empty_literal_typed: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}
