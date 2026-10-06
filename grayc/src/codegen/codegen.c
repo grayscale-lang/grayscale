@@ -436,7 +436,32 @@ static bool emit_string_append_through(CodeGen *codegen, AstNode *node, const ch
     return true;
 }
 
+/* Every identifier the program emits under its own spelling. The C headers
+ * the generated file includes define macros (SIGTERM, BUFSIZ, sa_handler, ...)
+ * that the preprocessor would expand inside a declaration using such a name,
+ * so codegen_generate() undefines each of these after the includes. */
+static char **emitted_identifiers = NULL;
+static int emitted_identifier_count = 0;
+static int emitted_identifier_capacity = 0;
+
+static void record_emitted_identifier(const char *name) {
+    for (int i = 0; i < emitted_identifier_count; i++) {
+        if (strcmp(emitted_identifiers[i], name) == 0) return;
+    }
+    if (emitted_identifier_count >= emitted_identifier_capacity) {
+        emitted_identifier_capacity = emitted_identifier_capacity ? emitted_identifier_capacity * 2 : 64;
+        emitted_identifiers = xrealloc(emitted_identifiers, sizeof(char *) * (size_t)emitted_identifier_capacity);
+    }
+    emitted_identifiers[emitted_identifier_count++] = strdup(name);
+}
+
+static void clear_emitted_identifiers(void) {
+    for (int i = 0; i < emitted_identifier_count; i++) free(emitted_identifiers[i]);
+    emitted_identifier_count = 0;
+}
+
 static const char *sanitize_name(const char *name) {
+    if (name && !is_c_keyword(name)) record_emitted_identifier(name);
     if (!name || !is_c_keyword(name)) return name;
     static char buffers[4][MESSAGE_BUFFER_SIZE];
     static int slot_index = 0;
@@ -14032,6 +14057,7 @@ static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *
         }
     }
     emit(codegen, "\n");
+    codegen->preamble_end = codegen->output.length;
     return collection_include_anchor;
 }
 
@@ -14851,6 +14877,7 @@ static void codegen_emit_main(CodeGen *codegen, const TopLevelStatements *top_le
 void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (program->kind != NODE_PROGRAM) return;
 
+    clear_emitted_identifiers();
     TopLevelStatements top_level;
     codegen_collect_top_level(codegen, program, &top_level);
     size_t collection_include_anchor = codegen_emit_preamble(codegen, &top_level);
@@ -14859,6 +14886,25 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     codegen_emit_forward_declarations(codegen, &top_level);
     codegen_emit_bodies(codegen, &top_level);
     codegen_emit_main(codegen, &top_level);
+
+    /* Splice an #undef for every emitted identifier in after the last include,
+     * so a name the headers define as a macro stays an identifier. This sits
+     * after the collection-header anchor, so it is spliced first. */
+    if (emitted_identifier_count > 0) {
+        StringBuffer undefs = buffer_create(256);
+        for (int i = 0; i < emitted_identifier_count; i++) {
+            append_string_to_buffer(&undefs, "#undef ");
+            append_string_to_buffer(&undefs, emitted_identifiers[i]);
+            append_string_to_buffer(&undefs, "\n");
+        }
+        StringBuffer *output = &codegen->output;
+        size_t tail_length = output->length - codegen->preamble_end;
+        append_bytes_to_buffer(output, undefs.data, undefs.length);
+        memmove(output->data + codegen->preamble_end + undefs.length,
+                output->data + codegen->preamble_end, tail_length);
+        memcpy(output->data + codegen->preamble_end, undefs.data, undefs.length);
+        buffer_destroy(&undefs);
+    }
 
     /* Splice the collection headers into the preamble now that body emission
      * has settled which ones are actually used. */

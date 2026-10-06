@@ -162,6 +162,9 @@ typedef struct {
     int resolved_loop_variable_count;
     int resolved_loop_variable_capacity;
 
+    /* Output offset just after the last #include of the preamble. */
+    size_t preamble_end;
+
     /* Struct declarations for composite printing */
     AstNode **struct_declarations;
     int struct_declaration_count;
