@@ -287,7 +287,17 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString string, int64_t coun
 
 GrayString gray_strings_reverse(GrayArena *arena, GrayString string) {
     char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
-    for (int32_t i = 0; i < string.len; i++) buffer[i] = string.data[string.len - 1 - i];
+    /* Reverse by character: each UTF-8 sequence keeps its byte order. */
+    const uint8_t *cursor = (const uint8_t *)string.data;
+    const uint8_t *end_cursor = cursor + string.len;
+    int32_t write_end = string.len;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        int32_t sequence_length = (int32_t)gray_builtin_utf8_next(cursor, end_cursor, &codepoint);
+        write_end -= sequence_length;
+        memcpy(buffer + write_end, cursor, (size_t)sequence_length);
+        cursor += sequence_length;
+    }
     buffer[string.len] = '\0';
     GrayString result = { buffer, string.len };
     return result;
