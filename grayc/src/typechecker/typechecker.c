@@ -11670,7 +11670,6 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                          expected_type->name && value_type->name &&
                          !typechecker_same_enum_type(checker, expected_type->name, value_type->name))) &&
                        !(expected_type->kind == TYPE_KIND_ENUM && is_integer_kind(value_type->kind)) &&
-                       !(expected_type->kind == TYPE_KIND_STRUCT && is_integer_kind(value_type->kind)) &&
                        !(is_integer_kind(expected_type->kind) && value_type->kind == TYPE_KIND_STRUCT) &&
                        /* nil is a valid value for pointer and Error fields */
                        !(value_type->kind == TYPE_KIND_NIL &&
