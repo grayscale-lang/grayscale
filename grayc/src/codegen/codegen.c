@@ -2207,6 +2207,9 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, part);
                 emit(codegen, ") ? gray_string_lit(\"true\") : gray_string_lit(\"false\")");
                 break;
+            case TYPE_KIND_NIL:
+                emit(codegen, "gray_string_lit(\"nil\")");
+                break;
             case TYPE_KIND_FLOATING_POINT:
                 emit(codegen, "gray_builtin_format_floating_point(gray_default_arena, ");
                 emit_expression(codegen, part);
@@ -5870,6 +5873,8 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
         emit(codegen, " ? ");
         emit_expression(codegen, argument);
         emit(codegen, "->msg : gray_string_lit(\"nil\"))");
+    } else if (argument_type && argument_type->kind == TYPE_KIND_NIL) {
+        emit_formatted(codegen, "gray_builtin_%s_str(gray_string_lit(\"nil\"))", variant);
     } else if (argument_type && argument_type->kind == TYPE_KIND_ENUM &&
                codegen_enum_is_error_code(codegen, argument_type->name)) {
         emit_formatted(codegen, "gray_builtin_%s_str(gray_string_lit(gray_error_code_name((int64_t)(", variant);

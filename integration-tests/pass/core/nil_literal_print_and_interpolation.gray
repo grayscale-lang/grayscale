@@ -1,0 +1,23 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut text string = "${nil}"
+    if text == "nil" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: nil interpolated into a string")
+    }
+
+    println(nil)
+    print(nil)
+    println("")
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
