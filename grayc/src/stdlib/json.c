@@ -513,6 +513,14 @@ void gray_json_check_field_quoting(GrayMap *quoted, GrayString key, bool expects
         (int)key.len, key.data, expected, is_string ? "a string" : "not a string");
 }
 
+bool gray_json_field_as_bool(GrayString value, GrayString key, const char *file, int line) {
+    if (value.len == 4 && memcmp(value.data, "true", 4) == 0) return true;
+    if (value.len == 5 && memcmp(value.data, "false", 5) == 0) return false;
+    gray_panic_code_at(file, line, "P0135", "json.parse: field '%.*s' expects %s, but the JSON value is %s",
+        (int)key.len, key.data, "a bool", "not a bool");
+    return false;
+}
+
 /* --- Validator ---
  *
  * Proper recursive descent validator. The old implementation just

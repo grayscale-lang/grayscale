@@ -14483,8 +14483,8 @@ static void codegen_emit_json_helpers(CodeGen *codegen) {
                     codegen->file, statement->token.line);
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_json_key_lookup(codegen, json_key);
-                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a bool\", \"%s\", %d); GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n",
-                    codegen->file, statement->token.line, sanitize_name(field->name));
+                emit_formatted(codegen, "      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a bool\", \"%s\", %d); _r.%s = gray_json_field_as_bool(*(GrayString *)_v, _k, \"%s\", %d); } }\n",
+                    codegen->file, statement->token.line, sanitize_name(field->name), codegen->file, statement->token.line);
             } else {
                 /* Enum field: serialized by backing type. Tagged enums are
                  * rejected on #json structs at typecheck time (E3173), so
