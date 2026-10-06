@@ -23,6 +23,8 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
     GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = csv_string.data;
     const char *end_cursor = cursor + csv_string.len;
+    /* A UTF-8 byte-order mark is not part of the first cell. */
+    if (csv_string.len >= 3 && memcmp(cursor, "\xEF\xBB\xBF", 3) == 0) cursor += 3;
 
     while (cursor < end_cursor) {
         GrayArray row_array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
