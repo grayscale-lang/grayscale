@@ -551,7 +551,8 @@
     GRAY_PANIC("P0135", "json",       "json.parse: field '%s' expects %s, but the JSON value is %s") \
     GRAY_PANIC("P0136", "runtime",    "cannot convert '%s' to %s; value is outside its range") \
     GRAY_PANIC("P0137", "arithmetic", "cannot convert a float to %s; the value is out of range, or NaN") \
-    GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s")
+    GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s") \
+    GRAY_PANIC("P0139", "os",         "environment variable name or value contains an embedded null byte")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

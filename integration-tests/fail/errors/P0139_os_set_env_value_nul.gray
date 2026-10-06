@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0139 - os.set_env value with an embedded null byte */
+import @os
+
+do main() {
+    mut nul string = "\x00"
+    os.set_env("GRAY_V", "val" + nul + "tail")
+}

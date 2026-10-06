@@ -1,0 +1,27 @@
+/*
+ * Test: strconv number parsers reject a string with an embedded NUL byte
+ */
+
+import @strconv
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+    mut nul string = "\x00"
+
+    mut _, e1 = strconv.to_i64("7" + nul + "x")
+    if e1 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut _, e2 = strconv.to_u64("7" + nul + "x")
+    if e2 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut _, e3 = strconv.to_f64("1.5" + nul + "x")
+    if e3 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut v4, e4 = strconv.to_i64("7")
+    if e4 == nil { if v4 == 7 { pass += 1 } otherwise { fail += 1 } } otherwise { fail += 1 }
+
+    println("strconv_embedded_nul: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

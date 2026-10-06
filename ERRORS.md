@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 524 codes** (377 errors, 17 warnings, 130 panics)
+**Total: 525 codes** (377 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -551,6 +551,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0136` | runtime | cannot convert '%s' to %s; value is outside its range |
 | `P0137` | arithmetic | cannot convert a float to %s; the value is out of range, or NaN |
 | `P0138` | arithmetic | cast from %s to %s failed; the value is outside the range of %s |
+| `P0139` | os | environment variable name or value contains an embedded null byte |
 
 ---
 
@@ -575,4 +576,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-05 23:01:50 UTC*
+*Generated on 2026-10-06 01:47:49 UTC*

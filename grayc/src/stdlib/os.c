@@ -71,13 +71,22 @@ GrayArray gray_os_args(GrayArena *arena) {
     return array;
 }
 
+/* getenv/setenv/unsetenv take C strings, so an embedded NUL would silently
+ * cut the name or value short and act on a different variable. */
+static void os_validate_env_string(GrayString string) {
+    if (memchr(string.data, '\0', (size_t)string.len))
+        gray_panic_code("P0139", "environment variable name or value contains an embedded null byte");
+}
+
 GrayString gray_os_get_env(GrayArena *arena, GrayString name) {
+    os_validate_env_string(name);
     const char *value = getenv(name.data);
     if (!value) return gray_string_lit("");
     return gray_string_new(arena, value, (int32_t)strlen(value));
 }
 
 GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
+    os_validate_env_string(name);
     const char *value = getenv(name.data);
     if (!value) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
     return (GrayOsLookupEnvResult){gray_string_new(arena, value, (int32_t)strlen(value)), true};
@@ -102,6 +111,8 @@ GrayArray gray_os_environ(GrayArena *arena) {
 }
 
 void gray_os_set_env(GrayString name, GrayString value) {
+    os_validate_env_string(name);
+    os_validate_env_string(value);
 #if GRAY_RUNTIME_WINDOWS
     /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
      * block that child processes inherit. The two are separate on Windows, so
@@ -114,6 +125,7 @@ void gray_os_set_env(GrayString name, GrayString value) {
 }
 
 void gray_os_unset_env(GrayString name) {
+    os_validate_env_string(name);
 #if GRAY_RUNTIME_WINDOWS
     _putenv_s(name.data, "");
     SetEnvironmentVariableA(name.data, NULL);
