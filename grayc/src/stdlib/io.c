@@ -575,7 +575,11 @@ bool gray_io_make_dir_all(GrayString path) {
             *cursor = '/';
         }
     }
-    return gray_runtime_mkdir(buffer, GRAY_IO_DIRECTORY_MODE) == 0 || errno == EEXIST;
+    if (gray_runtime_mkdir(buffer, GRAY_IO_DIRECTORY_MODE) == 0) return true;
+    if (errno != EEXIST) return false;
+    if (io_path_is_directory(buffer)) return true;
+    errno = EEXIST;
+    return false;
 }
 
 bool gray_io_remove_dir(GrayString path) {
