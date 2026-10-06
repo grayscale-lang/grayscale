@@ -98,6 +98,14 @@ typedef enum {
     JSON_MAP_VAL_BOOL,
 } JsonMapValKind;
 
+/* JSON has no text for inf or nan, so writing one would produce a document
+ * every other consumer rejects. */
+static double json_finite_double(double value) {
+    if (!isfinite(value))
+        gray_panic_code("P0142", "json: a non-finite floating-point value (inf or nan) cannot be written as JSON");
+    return value;
+}
+
 /* Two-pass encoder shared by every gray_json_encode_map* entry point. The only
  * per-type variation is the value's byte budget (pass 1) and how it is written
  * (pass 2); everything else — order walk, tombstone skip, key escaping, comma
@@ -164,7 +172,7 @@ static GrayString json_encode_map_typed(GrayArena *arena, GrayMap *map, JsonMapV
             }
             case JSON_MAP_VAL_FLOAT: {
                 int written = snprintf(buffer + position, need + 1 - (size_t)position, "%g",
-                    gray_elem_to_double(map->value_kind, value));
+                    json_finite_double(gray_elem_to_double(map->value_kind, value)));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)position) position += written;
                 else truncated = true;
                 break;
@@ -232,7 +240,7 @@ GrayString gray_json_encode_array_floating_point(GrayArena *arena, GrayArray *ar
     for (int32_t i = 0; i < array->len; i++) {
         if (i > 0) { buffer[position++] = ','; }
         double value = gray_elem_to_double(array->elem_kind, (char *)array->data + (size_t)i * (size_t)array->elem_size);
-        int written = snprintf(buffer + position, need + 1 - (size_t)position, "%g", value);
+        int written = snprintf(buffer + position, need + 1 - (size_t)position, "%g", json_finite_double(value));
         if (written > 0 && (size_t)written < need + 1 - (size_t)position) position += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
         else { position = (int)need - 1; break; }
@@ -845,7 +853,7 @@ GrayString gray_json_number_text(GrayArena *arena, int32_t kind, const void *val
     case GRAY_ELEM_U256: return gray_u256_to_string(arena, *(const gray_u256 *)value);
     case GRAY_ELEM_F32:
     case GRAY_ELEM_F64:
-        length = snprintf(buffer, sizeof(buffer), "%g", gray_elem_to_double(kind, value));
+        length = snprintf(buffer, sizeof(buffer), "%g", json_finite_double(gray_elem_to_double(kind, value)));
         break;
     case GRAY_ELEM_U8: case GRAY_ELEM_U16: case GRAY_ELEM_U32: case GRAY_ELEM_U64:
         length = snprintf(buffer, sizeof(buffer), "%" PRIu64, gray_elem_to_u64(kind, value));

@@ -1,0 +1,14 @@
+// expect-contains: .gray:
+/* Panic Test: P0142 - json.stringify of a struct with an [f64] field holding nan */
+import @json
+import @strconv
+
+#json
+const Rec struct {
+    values [f64]
+}
+
+do main() {
+    mut nan f64, _ = strconv.to_f64("nan")
+    println(json.stringify(Rec{values: {1.5, nan}}))
+}
