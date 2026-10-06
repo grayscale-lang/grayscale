@@ -1,0 +1,31 @@
+const Box struct { items [i64] }
+const Msg enum {
+    Arr([i64])
+    Mp(map[string:i64])
+    Bx(Box)
+}
+
+do wrap(a [i64]) -> Msg { return Msg.Arr(a) }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut s [i64] = {1, 2}
+    mut m map[string:i64] = {"a": 1}
+    mut b Box = Box{items: {1, 2}}
+    mut from_param Msg = wrap(s)
+    mut from_array Msg = Msg.Arr(s)
+    mut from_map Msg = Msg.Mp(m)
+    mut from_struct Msg = Msg.Bx(b)
+    s[0] = 50
+    m["a"] = 50
+    b.items[0] = 50
+
+    when from_param { is Msg.Arr(d) { if d[0] == 1 { passed += 1 } otherwise { failed += 1 } } default { failed += 1 } }
+    when from_array { is Msg.Arr(d) { if d[0] == 1 { passed += 1 } otherwise { failed += 1 } } default { failed += 1 } }
+    when from_map { is Msg.Mp(d) { if d["a"] == 1 { passed += 1 } otherwise { failed += 1 } } default { failed += 1 } }
+    when from_struct { is Msg.Bx(d) { if d.items[0] == 1 { passed += 1 } otherwise { failed += 1 } } default { failed += 1 } }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

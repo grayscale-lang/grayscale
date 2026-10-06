@@ -8893,6 +8893,20 @@ static bool emit_channels_call(CodeGen *codegen, AstNode *node, const char *func
 
 /* --- Main call dispatcher --- */
 
+/* Emits a tagged variant's payload arguments, copying any array, map or
+ * struct that names existing storage so the variant owns its payload. */
+static void emit_variant_payload_arguments(CodeGen *codegen, AstNode *node, EnumValue *variant) {
+    for (int argument_index = 0; argument_index < node->data.call.argument_count; argument_index++) {
+        if (argument_index > 0) emit(codegen, ", ");
+        AstNode *argument = node->data.call.arguments[argument_index];
+        if (argument_index < variant->payload_count && variant->payload_types[argument_index]) {
+            emit_composite_operand(codegen, variant->payload_types[argument_index], argument);
+        } else {
+            emit_expression(codegen, argument);
+        }
+    }
+}
+
 /* Tagged enum construction: explicit `Shape.Circle(3.14)` or implicit
  * `.Circle(3.14)`. Returns true when it emitted the constructor. */
 static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
@@ -8923,10 +8937,7 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s", resolved_enum_name, resolved_enum_name, variant_name);
             if (matched_variant_index >= 0 && declaration->data.enum_declaration.values[matched_variant_index].payload_count > 0) {
                 emit_formatted(codegen, ", .data.%s = { ", variant_name);
-                for (int argument_index = 0; argument_index < node->data.call.argument_count; argument_index++) {
-                    if (argument_index > 0) emit(codegen, ", ");
-                    emit_expression(codegen, node->data.call.arguments[argument_index]);
-                }
+                emit_variant_payload_arguments(codegen, node, &declaration->data.enum_declaration.values[matched_variant_index]);
                 emit(codegen, " }");
             }
             emit(codegen, " })");
@@ -8949,10 +8960,7 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s", enum_name, enum_name, variant_name);
             if (matched_variant_index >= 0 && declaration->data.enum_declaration.values[matched_variant_index].payload_count > 0) {
                 emit_formatted(codegen, ", .data.%s = { ", variant_name);
-                for (int argument_index = 0; argument_index < node->data.call.argument_count; argument_index++) {
-                    if (argument_index > 0) emit(codegen, ", ");
-                    emit_expression(codegen, node->data.call.arguments[argument_index]);
-                }
+                emit_variant_payload_arguments(codegen, node, &declaration->data.enum_declaration.values[matched_variant_index]);
                 emit(codegen, " }");
             }
             emit(codegen, " })");
