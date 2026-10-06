@@ -1137,7 +1137,7 @@ static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target);
 static void mark_immutable_literal_source(TypeChecker *checker, AstNode *element);
 static AstNode *target_root_module_reference(TypeChecker *checker, AstNode *target);
 static bool report_write_to_module_variable(TypeChecker *checker, AstNode *report_node, AstNode *place);
-static void report_write_to_module_constant(TypeChecker *checker, AstNode *report_node,
+static void report_write_to_const_container(TypeChecker *checker, AstNode *report_node,
                                             AstNode *container, const char *kind);
 static const char *target_root_display(TypeChecker *checker, AstNode *target);
 
@@ -3977,12 +3977,16 @@ static bool report_write_to_module_variable(TypeChecker *checker, AstNode *repor
 }
 
 /* E5007: a mutating array or map function whose container is reached through
- * a qualified module constant (`arrays.append(lib.NUMS, v)`). */
-static void report_write_to_module_constant(TypeChecker *checker, AstNode *report_node,
+ * an immutable binding: a constant, a by-value parameter, or a qualified
+ * module constant, directly (`arrays.append(xs, v)`) or through a field or
+ * index (`arrays.append(s.xs, v)`). A field or index chain rooted at a
+ * pointer is left alone, as the pointed-to memory is independent of the
+ * binding. */
+static void report_write_to_const_container(TypeChecker *checker, AstNode *report_node,
                                             AstNode *container, const char *kind) {
-    AstNode *reference = target_root_module_reference(checker, container);
-    Symbol *symbol = reference ? qualified_module_symbol(checker, reference) : NULL;
+    Symbol *symbol = target_root_symbol(checker, container);
     if (!symbol || symbol->is_mutable) return;
+    if (container->kind != NODE_LABEL && symbol->type && symbol->type->kind == TYPE_KIND_POINTER) return;
     diagnostic_error_code_formatted(checker->diagnostics, "E5007",
         NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
         kind, target_root_display(checker, container));
@@ -6704,16 +6708,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
     if ((strcmp(member_function_name, "clear") == 0 || strcmp(member_function_name, "remove_key") == 0) &&
         node->data.call.argument_count > 0) {
         AstNode *first_argument_node = node->data.call.arguments[0];
-        if (first_argument_node->kind == NODE_LABEL) {
-            Symbol *symbol = scope_lookup(checker->current_scope, first_argument_node->data.label.value);
-            if (symbol && !symbol->is_mutable) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "map", first_argument_node->data.label.value);
-            }
-        } else {
-            report_write_to_module_constant(checker, node, first_argument_node, "map");
-        }
+        report_write_to_const_container(checker, node, first_argument_node, "map");
     }
     return result;
 }
@@ -6732,16 +6727,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
          strcmp(member_function_name, "clear") == 0) &&
         node->data.call.argument_count > 0) {
         AstNode *first_argument = node->data.call.arguments[0];
-        if (first_argument->kind == NODE_LABEL) {
-            Symbol *symbol = scope_lookup(checker->current_scope, first_argument->data.label.value);
-            if (symbol && !symbol->is_mutable) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "array", first_argument->data.label.value);
-            }
-        } else {
-            report_write_to_module_constant(checker, node, first_argument, "array");
-        }
+        report_write_to_const_container(checker, node, first_argument, "array");
     }
     /* E5051: length-changing array functions on a fixed-size struct
      * field, resolved through member-expression chains (o.field,
