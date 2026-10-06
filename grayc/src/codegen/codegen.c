@@ -4144,6 +4144,34 @@ static void emit_index_expression(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* A scalar or wide integer converted to the wide integer `target`, the way
+ * cast() and the i128()/u128()/i256()/u256() constructors do it: a float
+ * truncates and a value outside the target's range panics, a negative signed
+ * value panics for an unsigned target, and a wide source is range-checked. */
+static void emit_wide_integer_target_conversion(CodeGen *codegen, const char *target, AstNode *value,
+                                                GrayType *value_type, TypeKind value_kind,
+                                                const char *source_wide_integer, int line) {
+    if (source_wide_integer) {
+        if (strcmp(source_wide_integer, target) == 0) {
+            emit_expression(codegen, value); /* same-type no-op */
+            return;
+        }
+        emit_formatted(codegen, "gray_cast_%s_to_%s(", source_wide_integer, target);
+        emit_expression(codegen, value);
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, line);
+    } else if (value_kind == TYPE_KIND_FLOATING_POINT) {
+        emit_formatted(codegen, "gray_f64_to_%s((double)(", target);
+        emit_expression(codegen, value);
+        emit_formatted(codegen, "), \"%s\", %d)", codegen->file, line);
+    } else if (target[0] == 'u' && value_kind == TYPE_KIND_SIGNED_INTEGER) {
+        emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)(", target);
+        emit_expression(codegen, value);
+        emit_formatted(codegen, "), \"%s\", %d)", codegen->file, line);
+    } else {
+        emit_scalar_to_wide_integer(codegen, target, value, value_type);
+    }
+}
+
 static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
     /* cast(value, type); dispatch to conversion functions for non-trivial casts */
     const char *target = node->data.cast.target_type;
@@ -4333,20 +4361,8 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
         const char *source_wide_integer = (value_type && value_type->name && is_wide_integer_type_name(value_type->name))
             ? value_type->name : resolve_wide_integer_type(codegen, value);
         if (is_target_wide_integer || source_wide_integer) {
-            if (is_target_wide_integer && !source_wide_integer && value_kind == TYPE_KIND_FLOATING_POINT) {
-                /* float → wide: truncated, range-checked at runtime */
-                emit_formatted(codegen, "gray_f64_to_%s((double)(", target);
-                emit_expression(codegen, value);
-                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
-            } else if (is_target_wide_integer && !source_wide_integer && target[0] == 'u' &&
-                       value_kind == TYPE_KIND_SIGNED_INTEGER) {
-                /* signed scalar → unsigned wide: a negative value panics */
-                emit_formatted(codegen, "gray_cast_i64_to_%s((int64_t)(", target);
-                emit_expression(codegen, value);
-                emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
-            } else if (is_target_wide_integer && !source_wide_integer) {
-                /* scalar → wide: use from_i64 / from_u64 */
-                emit_scalar_to_wide_integer(codegen, target, value, value_type);
+            if (is_target_wide_integer) {
+                emit_wide_integer_target_conversion(codegen, target, value, value_type, value_kind, source_wide_integer, node->token.line);
             } else if (!is_target_wide_integer && source_wide_integer &&
                        (strcmp(target, "f32") == 0 || strcmp(target, "f64") == 0)) {
                 /* wide → float: any wide value is representable as a float */
@@ -4382,15 +4398,6 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
                 } else {
                     emit_formatted(codegen, "(%s)%s_to_i64(", gray_type_to_c_codegen(codegen, target), bounds_prefix);
-                    emit_expression(codegen, value);
-                    emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-                }
-            } else {
-                /* wide → wide: range-checked, the value is kept */
-                if (strcmp(source_wide_integer, target) == 0) {
-                    emit_expression(codegen, value); /* same-type no-op */
-                } else {
-                    emit_formatted(codegen, "gray_cast_%s_to_%s(", source_wide_integer, target);
                     emit_expression(codegen, value);
                     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
                 }
@@ -6344,18 +6351,14 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
     if (node->data.call.argument_count == 1 && is_wide_integer_type_name(function_name)) {
         AstNode *c_string_argument = node->data.call.arguments[0];
         const char *source_wide_integer = resolve_wide_integer_type(codegen, c_string_argument);
-        const char *prefix = wide_integer_prefix(function_name);
         if (source_wide_integer && strcmp(source_wide_integer, function_name) == 0) {
             /* Already the target type: a literal took it, or an identity cast. */
             emit_expression(codegen, c_string_argument);
-        } else if (source_wide_integer) {
-            /* Wide integer→wide integer cast */
-            emit_formatted(codegen, "%s_from_%s(", prefix, source_wide_integer);
-            emit_expression(codegen, c_string_argument);
-            emit(codegen, ")");
         } else {
-            /* Scalar→wide integer: e.g., gray_i128_from_i64(x) */
-            emit_scalar_to_wide_integer(codegen, function_name, c_string_argument, NULL);
+            GrayType *value_type = codegen_effective_type(codegen, codegen_type_of(codegen, c_string_argument));
+            TypeKind value_kind = value_type ? value_type->kind : TYPE_KIND_UNKNOWN;
+            emit_wide_integer_target_conversion(codegen, function_name, c_string_argument, value_type, value_kind,
+                                                source_wide_integer, node->token.line);
         }
         return true;
     }
