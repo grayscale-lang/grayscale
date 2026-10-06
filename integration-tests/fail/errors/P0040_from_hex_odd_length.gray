@@ -1,0 +1,7 @@
+/* Panic Test: P0040 - from_hex input length not even */
+import @encoding
+
+do main() {
+    mut result [u8] = encoding.from_hex("abc")
+    println(result)
+}

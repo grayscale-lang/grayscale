@@ -354,15 +354,8 @@ GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes) {
 }
 
 GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex_text) {
-    int32_t output_length = hex_text.len / 2;
-    GrayArray array = gray_array_new(arena, sizeof(uint8_t), output_length, GRAY_ELEM_U8);
-    for (int32_t i = 0; i < output_length; i++) {
-        unsigned int byte;
-        sscanf(hex_text.data + i * 2, "%02x", &byte);
-        uint8_t byte_value = (uint8_t)byte;
-        GRAY_ARRAY_PUSH(arena, &array, &byte_value);
-    }
-    return array;
+    GrayString decoded = gray_encoding_hex_decode(arena, hex_text);
+    return gray_encoding_from_string(arena, decoded);
 }
 
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes) {

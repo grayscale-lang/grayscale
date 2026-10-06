@@ -1,0 +1,23 @@
+/*
+ * Test: encoding.from_hex decodes valid hex of either case
+ */
+
+import @encoding
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+
+    mut lower [u8] = encoding.from_hex("ff00")
+    if len(lower) == 2 && lower[0] == 255 && lower[1] == 0 { pass += 1 } otherwise { fail += 1 }
+
+    mut upper [u8] = encoding.from_hex("FF")
+    if len(upper) == 1 && upper[0] == 255 { pass += 1 } otherwise { fail += 1 }
+
+    mut empty [u8] = encoding.from_hex("")
+    if len(empty) == 0 { pass += 1 } otherwise { fail += 1 }
+
+    println("encoding_from_hex_valid: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,7 @@
+/* Panic Test: P0041 - from_hex invalid hex character */
+import @encoding
+
+do main() {
+    mut result [u8] = encoding.from_hex("zz")
+    println(result)
+}
