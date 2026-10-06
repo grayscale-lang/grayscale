@@ -88,7 +88,7 @@ static GrayArray sqlite_collect_rows(GrayArena *arena, sqlite3_stmt *statement) 
             const char *value_text = (const char *)sqlite3_column_text(statement, i);
             GrayString value;
             if (value_text) {
-                value = gray_string_new(arena, value_text, (int32_t)strlen(value_text));
+                value = gray_string_new(arena, value_text, (int32_t)sqlite3_column_bytes(statement, i));
             } else {
                 value = gray_string_lit("");
             }
