@@ -1,0 +1,9 @@
+// expect-contains: .gray:
+/* Panic Test: P0143 - csv.write_file with an embedded null byte in the path */
+import @csv
+
+do main() {
+    mut nul string = "\x00"
+    mut rows [[string]] = {{"a"}}
+    mut _, _ = csv.write_file("/tmp/gray_nul_csv" + nul + "x", rows)
+}

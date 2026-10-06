@@ -37,7 +37,11 @@ static bool pattern_has_unsupported_escape(const char *pattern) {
 /* Null-terminate a GrayString into a fresh arena buffer sized to the input.
  * regexec needs a NUL terminator; the fixed 8 KB stack buffer this replaced
  * silently truncated (and produced wrong match counts on) longer text. */
+/* regcomp and regexec take C strings, so an embedded NUL in a pattern or text
+ * would silently cut it short. */
 static char *regex_c_string(GrayArena *arena, GrayString text) {
+    if (memchr(text.data, '\0', (size_t)text.len))
+        gray_panic_code("P0146", "regex: a pattern or text contains an embedded null byte");
     char *buffer = (char *)gray_arena_alloc_uninitialized(arena, (size_t)text.len + 1);
     if (text.len > 0) memcpy(buffer, text.data, (size_t)text.len);
     buffer[text.len] = '\0';
@@ -135,7 +139,6 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *regex, GrayS
 static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayString text, GrayString replacement) {
     char *text_buffer = regex_c_string(arena, text);
 
-    char *replacement_buffer = regex_c_string(arena, replacement);
     int replacement_length = (int)replacement.len;
 
     /* First pass: compute exact output size */
@@ -168,7 +171,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
         memcpy(result + position, cursor, (size_t)prefix_length);
         position += prefix_length;
 
-        memcpy(result + position, replacement_buffer, (size_t)replacement_length);
+        memcpy(result + position, replacement.data, (size_t)replacement_length);
         position += replacement_length;
 
         cursor += match.rm_eo;

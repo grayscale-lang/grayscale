@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0145 - time.parse with an embedded null byte in the layout */
+import @time
+
+do main() {
+    mut nul string = "\x00"
+    mut _, _ = time.parse("2024-01-02", "%Y-%m-%d" + nul + "%H")
+}

@@ -398,7 +398,15 @@ GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
     return gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
 }
 
+/* fopen takes a C string, so an embedded NUL would silently cut the path
+ * short and open a different file. */
+static void csv_validate_path(GrayString path) {
+    if (memchr(path.data, '\0', (size_t)path.len))
+        gray_panic_code("P0143", "csv: a file path contains an embedded null byte");
+}
+
 GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
+    csv_validate_path(path);
     FILE *file = fopen(path.data, "rb");
     if (!file) return gray_array_new(arena, sizeof(GrayArray), 1, GRAY_ELEM_ARRAY);
     GrayString content = gray_io_read_file_impl(arena, file);
@@ -409,6 +417,7 @@ GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
 }
 
 bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
+    csv_validate_path(path);
     GrayString csv_text = gray_csv_stringify(arena, data);
     FILE *file = fopen(path.data, "wb");
     if (!file) return false;
@@ -420,6 +429,7 @@ bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
 /* _result variants */
 
 GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
+    csv_validate_path(path);
     GrayResult_array result;
     FILE *file = fopen(path.data, "rb");
     if (!file) {
