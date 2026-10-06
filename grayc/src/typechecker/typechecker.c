@@ -5277,14 +5277,13 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
 
 /* True when an argument of type `arg_t` cannot be passed to a parameter of
  * type `param_t`. Owns the implicit coercions every call path accepts: an
- * integer for an enum or struct, a bool for an integer, and nil for a pointer
+ * integer for an enum, a bool for an integer, and nil for a pointer
  * or Error. */
 static bool argument_type_mismatches(TypeChecker *checker, GrayType *parameter_type, GrayType *argument_type) {
     return argument_type && parameter_type &&
         argument_type->kind != TYPE_KIND_UNKNOWN && parameter_type->kind != TYPE_KIND_UNKNOWN &&
         !types_assignable(checker, parameter_type, argument_type) &&
         !(parameter_type->kind == TYPE_KIND_ENUM && is_integer_kind(argument_type->kind)) &&
-        !(parameter_type->kind == TYPE_KIND_STRUCT && is_integer_kind(argument_type->kind)) &&
         !(is_integer_kind(parameter_type->kind) && argument_type->kind == TYPE_KIND_BOOL) &&
         !(argument_type->kind == TYPE_KIND_NIL && (parameter_type->kind == TYPE_KIND_POINTER || parameter_type->kind == TYPE_KIND_ERROR));
 }
@@ -15026,7 +15025,6 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             target_type->kind != TYPE_KIND_UNKNOWN &&
             !types_assignable(checker, target_type, assigned_value_type) &&
             !(target_type->kind == TYPE_KIND_ENUM && is_integer_kind(assigned_value_type->kind)) &&
-            !(target_type->kind == TYPE_KIND_STRUCT && is_integer_kind(assigned_value_type->kind)) &&
             !(target_type->kind == TYPE_KIND_POINTER && node->data.assign.value->kind == NODE_LABEL &&
               scope_lookup(checker->current_scope, node->data.assign.value->data.label.value) &&
               scope_lookup(checker->current_scope, node->data.assign.value->data.label.value)->is_reference) &&

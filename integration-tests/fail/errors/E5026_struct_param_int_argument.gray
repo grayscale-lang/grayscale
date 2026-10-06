@@ -1,0 +1,11 @@
+const Point struct {
+    x i64
+    y i64
+}
+
+do take_point(p Point) -> Point { return p }
+
+do main() {
+    mut a Point = take_point(5)
+    println("${a.x}")
+}

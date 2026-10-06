@@ -1,0 +1,11 @@
+const Point struct {
+    x i64
+    y i64
+}
+
+do identity(kind generic, x kind) -> kind { return x }
+
+do main() {
+    mut b = identity(Point, 5)
+    println("${b.x}")
+}
