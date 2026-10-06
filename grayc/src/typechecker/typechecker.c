@@ -8207,6 +8207,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                                         "a constant", "the mutable self parameter",
                                         typechecker_format(checker, "%s.%s", display_struct_name, member_function_name));
+                                } else {
+                                    report_write_through_const_pointer(checker, node, argument);
                                 }
                             } else {
                                 /* User-visible args */
