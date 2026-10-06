@@ -5277,14 +5277,13 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
 
 /* True when an argument of type `arg_t` cannot be passed to a parameter of
  * type `param_t`. Owns the implicit coercions every call path accepts: an
- * integer for an enum, a bool for an integer, and nil for a pointer
+ * integer for an enum, and nil for a pointer
  * or Error. */
 static bool argument_type_mismatches(TypeChecker *checker, GrayType *parameter_type, GrayType *argument_type) {
     return argument_type && parameter_type &&
         argument_type->kind != TYPE_KIND_UNKNOWN && parameter_type->kind != TYPE_KIND_UNKNOWN &&
         !types_assignable(checker, parameter_type, argument_type) &&
         !(parameter_type->kind == TYPE_KIND_ENUM && is_integer_kind(argument_type->kind)) &&
-        !(is_integer_kind(parameter_type->kind) && argument_type->kind == TYPE_KIND_BOOL) &&
         !(argument_type->kind == TYPE_KIND_NIL && (parameter_type->kind == TYPE_KIND_POINTER || parameter_type->kind == TYPE_KIND_ERROR));
 }
 
@@ -11035,13 +11034,22 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         !(is_integer_kind(left->kind) && is_integer_kind(right->kind)) &&
         !(left->kind == TYPE_KIND_STRUCT && is_integer_kind(right->kind)) &&
         !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_STRUCT) &&
-        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_BOOL) &&
-        !(left->kind == TYPE_KIND_BOOL && is_integer_kind(right->kind)) &&
         !(left->kind == TYPE_KIND_ENUM && is_integer_kind(right->kind)) &&
         !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM) &&
         /* String enums can be compared with string literals */
         !(left->kind == TYPE_KIND_ENUM && right->kind == TYPE_KIND_STRING && typechecker_enum_is_string(checker, left->name)) &&
         !(left->kind == TYPE_KIND_STRING && right->kind == TYPE_KIND_ENUM && typechecker_enum_is_string(checker, right->name))) {
+        diagnostic_error_code_formatted(checker->diagnostics, "E3156",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_name(left), type_name(right));
+    }
+
+    /* A bool ordered against a non-bool (n < flag): the C compiler would
+     * compare it as 1 or 0. */
+    if ((operator == TOKEN_LESS_THAN || operator == TOKEN_GREATER_THAN ||
+         operator == TOKEN_LESS_THAN_OR_EQUAL || operator == TOKEN_GREATER_THAN_OR_EQUAL) &&
+        left->kind != TYPE_KIND_UNKNOWN && right->kind != TYPE_KIND_UNKNOWN &&
+        (left->kind == TYPE_KIND_BOOL) != (right->kind == TYPE_KIND_BOOL)) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3156",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             type_name(left), type_name(right));
