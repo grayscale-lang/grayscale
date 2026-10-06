@@ -2741,7 +2741,7 @@ a.bump()           // sugar for Vec.bump(a); '&v' makes it a mutable alias
 
 Both `do f(v Vec)` and `do f(&v Vec)` (mutable receiver) and `do f(v ^Vec)` (pointer receiver) participate in instance dispatch. The mutable-receiver form (`&v`) takes the instance by reference and may modify the caller's variable.
 
-Factory-style functions whose first parameter isn't the struct (e.g. `do make(x i64) -> Vec`) keep requiring the type-namespaced form (`Vec.make(...)`); there is no instance to bind.
+A function whose first parameter isn't the struct (e.g. `do make(x i64) -> Vec`) binds no instance. Called on a variable, `a.make(3)` is the same call as `Vec.make(3)` and `a` is not passed.
 
 Chained struct function calls (`a.f().g()`) are not supported. Assign each intermediate result to a variable.
 
