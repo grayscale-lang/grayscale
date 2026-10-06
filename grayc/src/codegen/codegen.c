@@ -6862,11 +6862,24 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         return true;
     }
     if (strcmp(function_name, "merge") == 0 && node->data.call.argument_count == 2) {
+        GrayType *merge_type = codegen_type_of(codegen, node->data.call.arguments[0]);
+        bool should_copy_merged = merge_type && merge_type->kind == TYPE_KIND_MAP && merge_type->value_type &&
+            type_shares_storage(codegen, merge_type->value_type);
+        int unique_id = codegen_next_id(codegen);
+        if (should_copy_merged) emit_formatted(codegen, "({ GrayMap _mg%d = ", unique_id);
         emit(codegen, "gray_maps_merge(gray_default_arena, ");
         emit_address_of(codegen, node->data.call.arguments[0]);
         emit(codegen, ", ");
         emit_address_of(codegen, node->data.call.arguments[1]);
         emit(codegen, ")");
+        if (should_copy_merged) {
+            /* The merged values still share storage with both sources. */
+            char source_variable[SHORT_VARIABLE_BUFFER_SIZE];
+            snprintf(source_variable, sizeof(source_variable), "_mg%d", unique_id);
+            emit(codegen, "; ");
+            emit_value_deep_copy(codegen, type_name(merge_type), source_variable);
+            emit(codegen, "; })");
+        }
         return true;
     }
     if (strcmp(function_name, "is_equal") == 0 && node->data.call.argument_count == 2) {
@@ -6917,7 +6930,15 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         emit_map_slot_value(codegen, wide_integer_value, node->data.call.arguments[2]);
         emit(codegen, "; void *_gv = gray_map_get(");
         emit_address_of(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &_gk); _gv ? *(__typeof__(_gd) *)_gv : _gd");
+        emit(codegen, ", &_gk); ");
+        if (map_type && map_type->kind == TYPE_KIND_MAP && map_type->value_type &&
+            type_shares_storage(codegen, map_type->value_type)) {
+            /* The value is a composite: copy it out of the map's slot (or the default). */
+            emit(codegen, "__auto_type _gr = _gv ? *(__typeof__(_gd) *)_gv : _gd; ");
+            emit_value_deep_copy(codegen, map_type->value_type, "_gr");
+        } else {
+            emit(codegen, "_gv ? *(__typeof__(_gd) *)_gv : _gd");
+        }
         emit(codegen, "; })");
         return true;
     }
@@ -8060,6 +8081,18 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         emit_formatted(codegen, "{ %s _fv = ", flatten_c_element_type);
         if (!emit_wide_integer_coerced(codegen, flatten_element_type_name, node->data.call.arguments[1]))
             emit_expression(codegen, node->data.call.arguments[1]);
+        if (flatten_element_type_name && type_shares_storage(codegen, flatten_element_type_name)) {
+            /* Every filled slot needs its own copy of the value, or the slots
+             * and the source would all share one backing store. */
+            emit(codegen, "; GrayArray *_fa = ");
+            emit_array_argument_address(codegen, node->data.call.arguments[0]);
+            emit(codegen, "; gray_arrays_fill(gray_default_arena, _fa, &_fv, ");
+            emit_expression(codegen, node->data.call.arguments[2]);
+            emit_formatted(codegen, "); for (int32_t _fi = 0; _fi < _fa->len; _fi++) { ((%s *)_fa->data)[_fi] = ", flatten_c_element_type);
+            emit_value_deep_copy(codegen, flatten_element_type_name, "_fv");
+            emit(codegen, "; } }");
+            return true;
+        }
         emit(codegen, "; gray_arrays_fill(gray_default_arena, ");
         emit_array_argument_address(codegen, node->data.call.arguments[0]);
         emit(codegen, ", &_fv, ");
@@ -8232,6 +8265,16 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         strcmp(function_name, "flatten") == 0 || strcmp(function_name, "split_every") == 0 ||
         strcmp(function_name, "pair") == 0 || strcmp(function_name, "rotate") == 0);
     bool has_reference_arguments = (strcmp(function_name, "concat") == 0 || strcmp(function_name, "pair") == 0);
+    /* These return elements still sharing their nested storage with the
+     * source, so the result is copied out of it. */
+    const char *copied_element = NULL;
+    if (strcmp(function_name, "reverse") == 0 || strcmp(function_name, "slice") == 0 ||
+        strcmp(function_name, "concat") == 0 || strcmp(function_name, "deduplicate") == 0) {
+        const char *source_element = codegen_array_element_type(codegen, node->data.call.arguments[0]);
+        if (source_element && type_shares_storage(codegen, source_element)) copied_element = source_element;
+    }
+    int copied_id = codegen_next_id(codegen);
+    if (copied_element) emit_formatted(codegen, "({ GrayArray _ac%d = ", copied_id);
     emit_formatted(codegen, "gray_arrays_%s(", function_name);
     if (needs_arena) emit(codegen, "gray_default_arena, ");
     emit_array_argument_address(codegen, node->data.call.arguments[0]);
@@ -8257,6 +8300,14 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         }
     }
     emit(codegen, ")");
+    if (copied_element) {
+        char source_variable[SHORT_VARIABLE_BUFFER_SIZE], full_type_name[MESSAGE_BUFFER_SIZE];
+        snprintf(source_variable, sizeof(source_variable), "_ac%d", copied_id);
+        snprintf(full_type_name, sizeof(full_type_name), "[%s]", copied_element);
+        emit(codegen, "; ");
+        emit_value_deep_copy(codegen, full_type_name, source_variable);
+        emit(codegen, "; })");
+    }
     return true;
 }
 
@@ -11832,7 +11883,8 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
                 emit_scratch_arena_unwind(codegen);
                 if (has_mark) emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); ");
             } else {
-                const char *return_type_name = codegen->current_function->data.function_declaration.return_types[0];
+                const char *return_type_name = codegen_effective_type_string(codegen,
+                    codegen->current_function->data.function_declaration.return_types[0]);
                 emit_function_return_escape(codegen, return_type_name);
             }
         }
@@ -11847,7 +11899,8 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "{ __auto_type _ret = %s; ",
                 sanitize_name(codegen->current_function->data.function_declaration.return_names[0]));
             emit_ensure_cleanup(codegen);
-            emit_function_return_escape(codegen, codegen->current_function->data.function_declaration.return_types[0]);
+            emit_function_return_escape(codegen, codegen_effective_type_string(codegen,
+                codegen->current_function->data.function_declaration.return_types[0]));
             emit(codegen, "gray_exit_func(); return _ret; }\n");
         } else {
             emit_indent(codegen);

@@ -1,0 +1,70 @@
+/*
+ * Test: arrays reverse/slice/concat/deduplicate/fill, maps get_or_default/merge
+ * and a generic return give results independent of their source
+ */
+
+import @arrays
+import @maps
+
+const Point struct {
+    tags [string]
+}
+
+do identity(kind generic, x kind) -> kind {
+    return x
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut g [[i64]] = {{5}, {6}}
+    mut reversed [[i64]] = arrays.reverse(g)
+    reversed[0][0] = 8
+    if g[1][0] == 6 { passed += 1 } otherwise { failed += 1 }
+
+    mut sliced [[i64]] = arrays.slice(g, 0, 1)
+    sliced[0][0] = 8
+    if g[0][0] == 5 { passed += 1 } otherwise { failed += 1 }
+
+    mut joined [[i64]] = arrays.concat(g, g)
+    joined[0][0] = 8
+    if g[0][0] == 5 { passed += 1 } otherwise { failed += 1 }
+
+    mut unique [[i64]] = arrays.deduplicate(g)
+    unique[0][0] = 8
+    if g[0][0] == 5 { passed += 1 } otherwise { failed += 1 }
+
+    mut points [Point] = {Point{tags: {"t"}}}
+    mut points_reversed [Point] = arrays.reverse(points)
+    points_reversed[0].tags[0] = "X"
+    if points[0].tags[0] == "t" { passed += 1 } otherwise { failed += 1 }
+
+    mut row [i64] = {1}
+    mut filled [[i64]] = {}
+    arrays.fill(filled, row, 2)
+    filled[0][0] = 9
+    if row[0] == 1 { passed += 1 } otherwise { failed += 1 }
+    if filled[1][0] == 1 { passed += 1 } otherwise { failed += 1 }
+
+    mut lists map[string:[i64]] = {"a": {1}}
+    mut fetched [i64] = maps.get_or_default(lists, "a", {0})
+    fetched[0] = 9
+    if lists["a"][0] == 1 { passed += 1 } otherwise { failed += 1 }
+
+    mut other map[string:[i64]] = {"b": {2}}
+    mut merged map[string:[i64]] = maps.merge(lists, other)
+    merged["a"][0] = 9
+    merged["b"][0] = 9
+    if lists["a"][0] == 1 { passed += 1 } otherwise { failed += 1 }
+    if other["b"][0] == 2 { passed += 1 } otherwise { failed += 1 }
+
+    mut q Point = Point{tags: {"t"}}
+    mut r Point = identity(Point, q)
+    r.tags[0] = "X"
+    if q.tags[0] == "t" { passed += 1 } otherwise { failed += 1 }
+
+    println("arrays_maps_results_independent: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}
