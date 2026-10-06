@@ -78,6 +78,19 @@ static void os_validate_env_string(GrayString string) {
         gray_panic_code("P0139", "environment variable name or value contains an embedded null byte");
 }
 
+/* exec hands the command and each argument to the new process as C strings, so
+ * an embedded NUL would silently cut one short and run something other than
+ * what was asked for. */
+static void os_validate_exec_strings(GrayString command, GrayArray args) {
+    bool has_nul = memchr(command.data, '\0', (size_t)command.len) != NULL;
+    for (int i = 0; i < args.len && !has_nul; i++) {
+        GrayString argument = GRAY_ARRAY_GET(args, GrayString, i);
+        has_nul = memchr(argument.data, '\0', (size_t)argument.len) != NULL;
+    }
+    if (has_nul)
+        gray_panic_code("P0141", "os.exec: the command or an argument contains an embedded null byte");
+}
+
 GrayString gray_os_get_env(GrayArena *arena, GrayString name) {
     os_validate_env_string(name);
     const char *value = getenv(name.data);
@@ -292,6 +305,7 @@ static DWORD WINAPI drain_pipe(LPVOID param) {
 }
 
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
+    os_validate_exec_strings(command, args);
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
@@ -379,6 +393,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray ar
 #else
 
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
+    os_validate_exec_strings(command, args);
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */

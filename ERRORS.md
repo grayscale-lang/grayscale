@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 528 codes** (379 errors, 17 warnings, 132 panics)
+**Total: 529 codes** (379 errors, 17 warnings, 133 panics)
 
 ---
 
@@ -555,6 +555,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0138` | arithmetic | cast from %s to %s failed; the value is outside the range of %s |
 | `P0139` | os | environment variable name or value contains an embedded null byte |
 | `P0140` | time | time: timestamp %lld is outside the range of dates that can be broken into parts |
+| `P0141` | os | os.exec: the command or an argument contains an embedded null byte |
 
 ---
 
@@ -579,4 +580,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-06 02:16:44 UTC*
+*Generated on 2026-10-06 02:22:00 UTC*
