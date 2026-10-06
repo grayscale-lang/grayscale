@@ -243,8 +243,14 @@ void *gray_map_get(GrayMap *map, const void *key) {
 }
 
 void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *value, const char *file, int line) {
-    if (gray_atomic_load32(&map->iterating) > 0)
-        gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
+    if (gray_atomic_load32(&map->iterating) > 0) {
+        /* Updating an existing key's value leaves the key set unchanged. */
+        int32_t existing = find_slot(map, key);
+        if (existing < 0)
+            gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
+        memcpy(value_pointer(map, existing), value, (size_t)map->value_size);
+        return;
+    }
     /* Check load factor */
     if (map->count * GRAY_MAP_LOAD_DENOMINATOR >= map->capacity * GRAY_MAP_LOAD_NUMERATOR) {
         map_rebuild(arena, map, map->capacity * 2);
