@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 525 codes** (377 errors, 17 warnings, 131 panics)
+**Total: 526 codes** (378 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -88,6 +88,7 @@
 | `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line |
 | `E2096` | syntax | 'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables |
 | `E2097` | syntax | a 'generic' parameter cannot have a default value; its argument is the type the caller passes |
+| `E2098` | syntax | imports must come before all other declarations in the file |
 | `E3001` | types | type mismatch: cannot assign %s to %s |
 | `E3002` | types | invalid operands: cannot use '%s' with %s and %s |
 | `E3003` | types | %s index must be an integer, got %s |
@@ -576,4 +577,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-06 01:47:49 UTC*
+*Generated on 2026-10-06 02:01:52 UTC*

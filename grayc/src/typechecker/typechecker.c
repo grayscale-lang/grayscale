@@ -19520,7 +19520,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         }
         if (statement->kind == NODE_IMPORT_STATEMENT) {
             if (has_seen_file_declaration) {
-                diagnostic_error_code(checker->diagnostics, "E2036", NODE_FILE(checker, statement),
+                diagnostic_error_code(checker->diagnostics, "E2098", NODE_FILE(checker, statement),
                     statement->token.line, statement->token.column, 0);
             }
         } else if (statement->kind != NODE_USING_STATEMENT) {

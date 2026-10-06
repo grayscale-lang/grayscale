@@ -100,7 +100,8 @@
     GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
     GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line") \
     GRAY_ERROR("E2096", "syntax", "'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables") \
-    GRAY_ERROR("E2097", "syntax", "a 'generic' parameter cannot have a default value; its argument is the type the caller passes")
+    GRAY_ERROR("E2097", "syntax", "a 'generic' parameter cannot have a default value; its argument is the type the caller passes") \
+    GRAY_ERROR("E2098", "syntax", "imports must come before all other declarations in the file")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
