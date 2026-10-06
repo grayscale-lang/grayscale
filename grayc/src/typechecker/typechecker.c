@@ -603,6 +603,10 @@ static bool typechecker_enum_is_tagged(TypeChecker *checker, const char *name) {
     return i >= 0 && checker->is_enum_tagged[i];
 }
 
+static bool is_tagged_enum_type(TypeChecker *checker, GrayType *type) {
+    return type->kind == TYPE_KIND_ENUM && type->name && typechecker_enum_is_tagged(checker, type->name);
+}
+
 static bool typechecker_enum_is_flags(TypeChecker *checker, const char *name) {
     int i = find_enum_index(checker, name);
     return i >= 0 && checker->is_enum_flags[i];
@@ -9286,13 +9290,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             : resolve_expression(checker, node->data.call.arguments[0]);
         /* E3043: validate source type is convertible to numeric */
         if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
-            source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER) {
+            source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
+            source_type->kind == TYPE_KIND_STRING || is_tagged_enum_type(checker, source_type)) {
             char *message = typechecker_format(checker,
-                "cannot convert %s to %s; only numeric types, strings, and bools can be converted",
+                "cannot convert %s to %s; only numeric types and bools can be converted",
                 type_name(source_type), function_name);
             diagnostic_error_help(checker->diagnostics, "E3043", message,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "only numeric, enum, and string conversions are supported");
+                "only numeric and bool conversions are supported");
         }
         result = type_from_name(function_name);
     } else if (strcmp(function_name, "string") == 0 && node->data.call.argument_count == 1) {
@@ -9303,7 +9308,8 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "value is already a string", "string", "string");
         } else if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
-                   source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER) {
+                   source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
+                   source_type->kind == TYPE_KIND_NIL || is_tagged_enum_type(checker, source_type)) {
             diagnostic_error_code_formatted_help(checker->diagnostics, "E3043",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "use string interpolation or access individual elements",
@@ -9314,7 +9320,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         GrayType *source_type = resolve_expression(checker, node->data.call.arguments[0]);
         if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
             source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
-            source_type->kind == TYPE_KIND_STRING) {
+            source_type->kind == TYPE_KIND_STRING || is_tagged_enum_type(checker, source_type)) {
             diagnostic_error_code_formatted_help(checker->diagnostics, "E3043",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "only numeric types and bools can be converted",
@@ -12662,7 +12668,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             bool allowed = false;
             /* Same kind is always allowed (identity cast) */
             if (source_type->kind == destination_type->kind && source_type->kind != TYPE_KIND_ARRAY &&
-                source_type->kind != TYPE_KIND_MAP && source_type->kind != TYPE_KIND_STRUCT)
+                source_type->kind != TYPE_KIND_MAP && source_type->kind != TYPE_KIND_STRUCT &&
+                source_type->kind != TYPE_KIND_STRING)
                 allowed = true;
             /* A C interop result carries no Grayscale type; cast() to a
              * C-representable scalar is the inline form of the
@@ -12683,9 +12690,6 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
              * type reinterpretation, not fallible string parsing. */
             /* Numeric/Bool -> String (stringification) */
             if ((type_is_numeric(source_type) || source_type->kind == TYPE_KIND_BOOL) && destination_type->kind == TYPE_KIND_STRING)
-                allowed = true;
-            /* String -> String (identity) */
-            if (source_type->kind == TYPE_KIND_STRING && destination_type->kind == TYPE_KIND_STRING)
                 allowed = true;
             /* String -> number: parsed at runtime, panicking on bad input */
             if (source_type->kind == TYPE_KIND_STRING &&
@@ -12720,6 +12724,15 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     allowed = true;
                 }
             }
+            /* A tagged enum is a struct in C: it converts to no other type,
+             * and nothing converts to one. */
+            bool is_source_tagged = source_type->kind == TYPE_KIND_ENUM &&
+                typechecker_enum_is_tagged(checker, source_type->name);
+            bool is_destination_tagged = destination_type->kind == TYPE_KIND_ENUM &&
+                typechecker_enum_is_tagged(checker, destination_type->name);
+            if ((is_source_tagged || is_destination_tagged) &&
+                !(source_type->kind == destination_type->kind && strcmp(source_type->name, destination_type->name) == 0))
+                allowed = false;
             if (!allowed) {
                 char type_name_buffer[TYPE_NAME_MAX];
                 if (source_type->kind == TYPE_KIND_ARRAY && source_type->element_type)
