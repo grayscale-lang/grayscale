@@ -1,0 +1,52 @@
+import @regex
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut dots, _ = regex.find_all(".", "héllo")
+    if len(dots) == 5 && dots[1] == "é" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: '.' matches one whole character")
+    }
+
+    mut word, _ = regex.find("[[:alpha:]]+", "héllo")
+    if word == "héllo" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: [[:alpha:]] matches a non-ASCII letter")
+    }
+
+    mut replaced, _ = regex.replace(".", "é", "x")
+    if replaced == "x" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: replace substitutes once per character")
+    }
+
+    if regex.count(".", "日本語") == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: count counts characters")
+    }
+
+    mut repeated, _ = regex.find("é+", "ééé")
+    if repeated == "ééé" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a quantifier applies to the whole character")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

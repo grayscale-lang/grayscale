@@ -18,6 +18,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+#if !GRAY_RUNTIME_WINDOWS
+#include <locale.h>
+#endif
 
 
 /* POSIX ERE has no \d \w \s \b (or \D \W \S \B). regcomp accepts them and
@@ -56,6 +59,39 @@ static char *regex_c_string(GrayArena *arena, GrayString text) {
  * but one code path is simpler and the lock is uncontended single-threaded.) */
 static pthread_mutex_t gray_regex_lock = PTHREAD_MUTEX_INITIALIZER;
 
+#if !GRAY_RUNTIME_WINDOWS
+/* regcomp and regexec follow the thread's locale. A string is UTF-8 text, so
+ * while the lock is held the calling thread runs in a UTF-8 locale and `.`,
+ * bracket expressions and quantifiers work on whole characters. Created on
+ * first use, under the lock; NULL when the system has no UTF-8 locale. */
+static locale_t gray_regex_locale;
+static bool gray_regex_locale_ready;
+static locale_t gray_regex_previous_locale;
+
+static void regex_enter_utf8_locale(void) {
+    if (!gray_regex_locale_ready) {
+        gray_regex_locale = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+        if (!gray_regex_locale) gray_regex_locale = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", (locale_t)0);
+        gray_regex_locale_ready = true;
+    }
+    if (gray_regex_locale) gray_regex_previous_locale = uselocale(gray_regex_locale);
+}
+
+static void regex_leave_utf8_locale(void) {
+    if (gray_regex_locale) uselocale(gray_regex_previous_locale);
+}
+#else
+static void regex_enter_utf8_locale(void) {}
+static void regex_leave_utf8_locale(void) {}
+#endif
+
+/* The position after the UTF-8 character that starts at `cursor`. */
+static const char *regex_next_character(const char *cursor) {
+    cursor++;
+    while (((unsigned char)*cursor & 0xC0) == 0x80) cursor++;
+    return cursor;
+}
+
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success (with gray_regex_lock held — release it with
  * regex_session_end), non-zero on error (lock not held). */
@@ -66,8 +102,12 @@ static int compile_pattern(GrayString pattern, regex_t *regex, int flags) {
         pthread_mutex_unlock(&gray_regex_lock);
         return REG_BADPAT;
     }
+    regex_enter_utf8_locale();
     int result_code = regcomp(regex, pattern_buffer, flags | REG_EXTENDED);
-    if (result_code != 0) pthread_mutex_unlock(&gray_regex_lock);
+    if (result_code != 0) {
+        regex_leave_utf8_locale();
+        pthread_mutex_unlock(&gray_regex_lock);
+    }
     return result_code;
 }
 
@@ -75,6 +115,7 @@ static int compile_pattern(GrayString pattern, regex_t *regex, int flags) {
  * release the regex engine for other threads. */
 static void regex_session_end(regex_t *regex) {
     regfree(regex);
+    regex_leave_utf8_locale();
     pthread_mutex_unlock(&gray_regex_lock);
 }
 
@@ -128,7 +169,7 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *regex, GrayS
         /* A zero-width match (rm_so == rm_eo) makes no forward progress on its
          * own — step one char or stop, so `$`/`\b` etc. can't re-match in place. */
         if (match.rm_so == match.rm_eo) {
-            if (*cursor) cursor++;
+            if (*cursor) cursor = regex_next_character(cursor);
             else break;
         }
     }
@@ -153,8 +194,11 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
         cursor += match.rm_eo;
         match_count++;
         if (match.rm_so == match.rm_eo) {
-            if (*cursor) { out_size++; cursor++; }
-            else break;
+            if (*cursor) {
+                const char *next_character = regex_next_character(cursor);
+                out_size += (size_t)(next_character - cursor);
+                cursor = next_character;
+            } else break;
         }
     }
     out_size += strlen(cursor);
@@ -176,8 +220,12 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
 
         cursor += match.rm_eo;
         if (match.rm_so == match.rm_eo) {
-            if (*cursor) result[position++] = *cursor++;
-            else break;
+            if (*cursor) {
+                const char *next_character = regex_next_character(cursor);
+                memcpy(result + position, cursor, (size_t)(next_character - cursor));
+                position += (int)(next_character - cursor);
+                cursor = next_character;
+            } else break;
         }
     }
 
@@ -205,7 +253,7 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *regex, GrayStri
         if (match.rm_so == match.rm_eo) {
             cursor += match.rm_eo;
             if (!*cursor) break;
-            cursor++;
+            cursor = regex_next_character(cursor);
             continue;
         }
 
@@ -238,7 +286,7 @@ int64_t gray_regex_count(GrayString pattern, GrayString text) {
         count++;
         cursor += match.rm_eo;
         if (match.rm_so == match.rm_eo) {
-            if (*cursor) cursor++;
+            if (*cursor) cursor = regex_next_character(cursor);
             else break;
         }
     }
@@ -321,7 +369,7 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
 
         cursor += (int)pmatch[0].rm_eo;
         if (pmatch[0].rm_so == pmatch[0].rm_eo) {
-            if (*cursor) cursor++;
+            if (*cursor) cursor = regex_next_character(cursor);
             else break;
         }
     }
