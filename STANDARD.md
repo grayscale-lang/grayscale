@@ -3235,7 +3235,7 @@ running the child so output is not reordered.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. |
+| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. A trailing `\n` or `\r\n` is dropped and embedded NUL bytes are kept. At end of input it returns `""`; use `io.stdin_at_eof()` to tell that from a blank line. |
 
 #### Wide Integer Conversions
 
@@ -3815,6 +3815,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `read_stdin_all` | `() -> string` | Read all of standard input to EOF as one string |
+| `stdin_at_eof` | `() -> bool` | `true` when standard input has no more data; waits for input on an interactive stdin |
 | `read_stdin_bytes` | `() -> [u8]` | Read all of standard input to EOF as a packed byte array |
 
 #### File Writing

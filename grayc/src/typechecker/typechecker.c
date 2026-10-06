@@ -3229,6 +3229,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"io", "read_file",      1, 1, true,  FALLIBLE_TYPE_STRING,       1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "read_lines",     1, 2, true,  FALLIBLE_TYPE_ARRAY_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "[string]"},
     {"io", "read_stdin_all",   0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"string"},
+    {"io", "stdin_at_eof",     0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"bool"},
     {"io", "read_stdin_bytes", 0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"[u8]"},
     {"io", "remove_dir",     1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "remove_dir_all", 1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},

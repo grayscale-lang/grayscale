@@ -87,6 +87,20 @@
  */
 GrayString gray_io_read_stdin_all(GrayArena *arena);
 
+/*@man stdin_at_eof
+ *@module io
+ *@group Standard Input
+ *@sig stdin_at_eof() -> bool
+ *@desc Reports whether standard input has no more data. Waits for input when stdin is interactive and nothing has been typed yet. Use it to tell the end of input from a blank line returned by input().
+ *@example
+ *   import @io
+ *   as_long_as !io.stdin_at_eof() {
+ *       println(input())
+ *   }
+ *@end
+ */
+bool gray_io_stdin_at_eof(void);
+
 /*@man read_stdin_bytes
  *@module io
  *@group Standard Input

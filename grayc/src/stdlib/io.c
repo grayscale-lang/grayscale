@@ -405,6 +405,13 @@ GrayString gray_io_read_stdin_all(GrayArena *arena) {
     return result;
 }
 
+bool gray_io_stdin_at_eof(void) {
+    int character = getc(stdin);
+    if (character == EOF) return true;
+    ungetc(character, stdin);
+    return false;
+}
+
 GrayArray gray_io_read_stdin_bytes(GrayArena *arena) {
     GrayArray array = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0, GRAY_ELEM_U8);
     uint8_t buffer[GRAY_IO_READ_BUFFER_SIZE];

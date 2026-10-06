@@ -1,0 +1,30 @@
+/*
+ * input_line_handling.gray - input() keeps embedded NULs, drops a CRLF
+ * terminator, and io.stdin_at_eof() reports the end of input.
+ *
+ * The pass-test harness never redirects stdin, so the reads are gated behind
+ * GRAY_TEST_STDIN=1. Run with:
+ *   printf 'x\0y\nz\nquit\r\n' | GRAY_TEST_STDIN=1 gray input_line_handling.gray
+ */
+
+import @io
+import @os
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if os.get_env("GRAY_TEST_STDIN") == "1" {
+        mut first string = input()
+        if len(first) == 3 { passed += 1 } otherwise { failed += 1 }
+        mut second string = input()
+        if second == "z" { passed += 1 } otherwise { failed += 1 }
+        mut third string = input()
+        if third == "quit" { passed += 1 } otherwise { failed += 1 }
+        if io.stdin_at_eof() { passed += 1 } otherwise { failed += 1 }
+    } otherwise {
+        passed += 1
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}
