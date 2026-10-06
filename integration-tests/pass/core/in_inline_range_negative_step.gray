@@ -7,6 +7,8 @@ do main() {
     mut negative i64 = -3
     mut wide i128 = 4
     mut step i64 = -2
+    mut wide_step i128 = -2
+    mut unsigned u256 = 6
 
     if x in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
     if y in range(10, 0, -1) { passed += 1 } otherwise { failed += 1 }
@@ -17,6 +19,11 @@ do main() {
     if x not_in range(10, 0, -2) { failed += 1 } otherwise { passed += 1 }
     if 0 in range(10, 0, -2) { failed += 1 } otherwise { passed += 1 }
     if 10 in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
+
+    if wide in range(10, 0, step) { passed += 1 } otherwise { failed += 1 }
+    if wide in range(10, 0, wide_step) { passed += 1 } otherwise { failed += 1 }
+    if unsigned in range(0, 10, 2) { passed += 1 } otherwise { failed += 1 }
+    if unsigned not_in range(0, 10, 4) { passed += 1 } otherwise { failed += 1 }
 
     println("passed: ${passed}, failed: ${failed}")
 }

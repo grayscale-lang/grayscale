@@ -3318,40 +3318,37 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
             if (wide) {
                 const char *prefix = wide_integer_prefix(wide);
                 GrayType *left_operand_type = codegen_type_of(codegen, node->data.infix.left);
-                if (negated) emit(codegen, "!(");
-                bool is_descending = range->data.range_expression.step &&
-                    range->data.range_expression.step->kind == NODE_PREFIX_EXPRESSION &&
-                    range->data.range_expression.step->data.prefix.operator == TOKEN_MINUS;
-                emit_formatted(codegen, "(%s_%s(", prefix, is_descending ? "le" : "ge");
+                int membership_id = codegen_next_id(codegen);
+                AstNode *step = range->data.range_expression.step;
+                if (negated) emit(codegen, "!");
+                /* Each operand is evaluated once; the step's sign picks the
+                 * direction the bounds are compared in. */
+                emit_formatted(codegen, "({ %s _gray_in_value_%d = ", prefix, membership_id);
                 emit_wide_integer_operand(codegen, node->data.infix.left, prefix, wide, left_operand_type);
-                emit(codegen, ", ");
+                emit_formatted(codegen, "; %s _gray_in_start_%d = ", prefix, membership_id);
                 if (range->data.range_expression.start) {
                     emit_wide_integer_operand(codegen, range->data.range_expression.start, prefix, wide, NULL);
                 } else {
                     emit_formatted(codegen, "%s_from_u64(0)", prefix);
                 }
-                emit_formatted(codegen, ") && %s_%s(", prefix, is_descending ? "gt" : "lt");
-                emit_wide_integer_operand(codegen, node->data.infix.left, prefix, wide, left_operand_type);
-                emit(codegen, ", ");
+                emit_formatted(codegen, "; %s _gray_in_end_%d = ", prefix, membership_id);
                 emit_wide_integer_operand(codegen, range->data.range_expression.end, prefix, wide, NULL);
-                emit(codegen, ")");
-                /* Step check: value must be at a step interval from start */
-                if (range->data.range_expression.step) {
-                    emit_formatted(codegen, " && %s_eq(%s_mod(%s_sub(", prefix, prefix, prefix);
-                    emit_wide_integer_operand(codegen, node->data.infix.left, prefix, wide, left_operand_type);
-                    emit(codegen, ", ");
-                    if (range->data.range_expression.start) {
-                        emit_wide_integer_operand(codegen, range->data.range_expression.start, prefix, wide, NULL);
-                    } else {
-                        emit_formatted(codegen, "%s_from_u64(0)", prefix);
-                    }
-                    emit(codegen, "), ");
-                    emit_wide_integer_operand(codegen, range->data.range_expression.step, prefix, wide, NULL);
-                    emit_formatted(codegen, ", \"%s\", %d), %s_from_u64(0))",
-                        codegen->file, node->token.line, prefix);
+                emit(codegen, "; ");
+                if (step) {
+                    emit_formatted(codegen, "%s _gray_in_step_%d = ", prefix, membership_id);
+                    emit_wide_integer_operand(codegen, step, prefix, wide, NULL);
+                    emit_formatted(codegen, "; bool _gray_in_down_%d = %s_lt(_gray_in_step_%d, %s_from_u64(0)); ",
+                        membership_id, prefix, membership_id, prefix);
+                    emit_formatted(codegen, "(_gray_in_down_%d ? (%s_le(_gray_in_value_%d, _gray_in_start_%d) && %s_gt(_gray_in_value_%d, _gray_in_end_%d)) "
+                                            ": (%s_ge(_gray_in_value_%d, _gray_in_start_%d) && %s_lt(_gray_in_value_%d, _gray_in_end_%d))) "
+                                            "&& %s_eq(%s_mod(%s_sub(_gray_in_value_%d, _gray_in_start_%d), _gray_in_step_%d, \"%s\", %d), %s_from_u64(0)); })",
+                        membership_id, prefix, membership_id, membership_id, prefix, membership_id, membership_id,
+                        prefix, membership_id, membership_id, prefix, membership_id, membership_id,
+                        prefix, prefix, prefix, membership_id, membership_id, membership_id, codegen->file, node->token.line, prefix);
+                } else {
+                    emit_formatted(codegen, "%s_ge(_gray_in_value_%d, _gray_in_start_%d) && %s_lt(_gray_in_value_%d, _gray_in_end_%d); })",
+                        prefix, membership_id, membership_id, prefix, membership_id, membership_id);
                 }
-                emit(codegen, ")");
-                if (negated) emit(codegen, ")");
                 return;
             }
             if (negated) emit(codegen, "!(");
