@@ -1,0 +1,22 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut x i64 = 4
+    mut y i64 = 5
+    mut negative i64 = -3
+    mut wide i128 = 4
+    mut step i64 = -2
+
+    if x in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
+    if y in range(10, 0, -1) { passed += 1 } otherwise { failed += 1 }
+    if negative in range(-1, -10, -1) { passed += 1 } otherwise { failed += 1 }
+    if x in range(10, 0, step) { passed += 1 } otherwise { failed += 1 }
+    if wide in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
+    if y not_in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
+    if x not_in range(10, 0, -2) { failed += 1 } otherwise { passed += 1 }
+    if 0 in range(10, 0, -2) { failed += 1 } otherwise { passed += 1 }
+    if 10 in range(10, 0, -2) { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

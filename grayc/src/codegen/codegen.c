@@ -3305,11 +3305,24 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
             if (!wide) wide = resolve_wide_integer_type(codegen, range->data.range_expression.end);
             if (!wide && range->data.range_expression.step)
                 wide = resolve_wide_integer_type(codegen, range->data.range_expression.step);
+            /* A step can run the range downward, so the bounds are compared
+             * the way a held range compares them. */
+            if (!wide && range->data.range_expression.step) {
+                GrayType *inline_range_type = codegen_type_of(codegen, range);
+                if (inline_range_type && inline_range_type->kind == TYPE_KIND_RANGE) {
+                    if (negated) emit(codegen, "!");
+                    emit_stored_range_membership(codegen, node, range, node->data.infix.left, NULL);
+                    return;
+                }
+            }
             if (wide) {
                 const char *prefix = wide_integer_prefix(wide);
                 GrayType *left_operand_type = codegen_type_of(codegen, node->data.infix.left);
                 if (negated) emit(codegen, "!(");
-                emit_formatted(codegen, "(%s_ge(", prefix);
+                bool is_descending = range->data.range_expression.step &&
+                    range->data.range_expression.step->kind == NODE_PREFIX_EXPRESSION &&
+                    range->data.range_expression.step->data.prefix.operator == TOKEN_MINUS;
+                emit_formatted(codegen, "(%s_%s(", prefix, is_descending ? "le" : "ge");
                 emit_wide_integer_operand(codegen, node->data.infix.left, prefix, wide, left_operand_type);
                 emit(codegen, ", ");
                 if (range->data.range_expression.start) {
@@ -3317,7 +3330,7 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
                 } else {
                     emit_formatted(codegen, "%s_from_u64(0)", prefix);
                 }
-                emit_formatted(codegen, ") && %s_lt(", prefix);
+                emit_formatted(codegen, ") && %s_%s(", prefix, is_descending ? "gt" : "lt");
                 emit_wide_integer_operand(codegen, node->data.infix.left, prefix, wide, left_operand_type);
                 emit(codegen, ", ");
                 emit_wide_integer_operand(codegen, range->data.range_expression.end, prefix, wide, NULL);
