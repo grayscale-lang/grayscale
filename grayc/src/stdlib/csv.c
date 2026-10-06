@@ -306,8 +306,10 @@ GrayString gray_csv_to_markdown(GrayArena *arena, GrayArray *data) {
 
 /* RFC 4180 §2.6-2.7: a field must be quoted when it contains the comma
  * delimiter, a double-quote, CR, or LF. Quoting wraps it in double-quotes and
- * doubles every embedded double-quote. */
-static bool csv_field_needs_quote(GrayString field) {
+ * doubles every embedded double-quote. An empty field that is the whole row is
+ * quoted too, since a blank line parses as a row with no cells. */
+static bool csv_field_needs_quote(GrayString field, bool is_only_field) {
+    if (field.len == 0 && is_only_field) return true;
     for (int32_t i = 0; i < field.len; i++) {
         char character = field.data[i];
         if (character == ',' || character == '"' || character == '\r' || character == '\n') return true;
@@ -318,8 +320,8 @@ static bool csv_field_needs_quote(GrayString field) {
 /* Byte length of `field` once encoded: unchanged if it needs no quoting, else
  * the field plus the two surrounding quotes and one extra byte per embedded
  * quote. */
-static int32_t csv_field_encoded_length(GrayString field) {
-    if (!csv_field_needs_quote(field)) return field.len;
+static int32_t csv_field_encoded_length(GrayString field, bool is_only_field) {
+    if (!csv_field_needs_quote(field, is_only_field)) return field.len;
     int32_t length = field.len + 2;
     for (int32_t i = 0; i < field.len; i++)
         if (field.data[i] == '"') length++;
@@ -327,8 +329,8 @@ static int32_t csv_field_encoded_length(GrayString field) {
 }
 
 /* Write the encoded form of `field` at `dst`; returns the bytes written. */
-static int32_t csv_field_encode(char *destination, GrayString field) {
-    if (!csv_field_needs_quote(field)) {
+static int32_t csv_field_encode(char *destination, GrayString field, bool is_only_field) {
+    if (!csv_field_needs_quote(field, is_only_field)) {
         memcpy(destination, field.data, (size_t)field.len);
         return field.len;
     }
@@ -371,7 +373,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         for (int32_t j = 0; j < row_array->len; j++) {
             if (j > 0) total++; /* comma */
             GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
-            total += csv_field_encoded_length(*field);
+            total += csv_field_encoded_length(*field, row_array->len == 1);
         }
         total++; /* newline */
     }
@@ -382,7 +384,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         for (int32_t j = 0; j < row_array->len; j++) {
             if (j > 0) buffer[position++] = ',';
             GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
-            position += csv_field_encode(buffer + position, *field);
+            position += csv_field_encode(buffer + position, *field, row_array->len == 1);
         }
         buffer[position++] = '\n';
     }
