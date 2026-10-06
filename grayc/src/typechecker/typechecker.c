@@ -16208,18 +16208,10 @@ static void pointer_checker_check_mem_escape(TypeChecker *checker, AstNode *expr
         root ? root : arena, arena);
 }
 
-static void check_expression_statement(TypeChecker *checker, AstNode *node) {
-    GrayType *expression_type = resolve_expression(checker, node->data.expression_statement.expression);
-    /* E3081: bare function name used as statement without call */
-    AstNode *expression = node->data.expression_statement.expression;
-    if (expression && expression->kind == NODE_LABEL) {
-        const char *name = expression->data.label.value;
-        if (typechecker_is_builtin(name) || find_function(checker, name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3081",
-                NODE_FILE(checker, expression), expression->token.line, expression->token.column, 0,
-                name, name);
-        }
-    }
+/* E5011: a call whose result is dropped — a bare call statement, or the
+ * call under defer/ensure — must not return a value. */
+static void check_discarded_call_result(TypeChecker *checker, AstNode *node,
+                                        AstNode *expression, GrayType *expression_type) {
     if (expression && expression->kind == NODE_CALL_EXPRESSION && expression_type &&
         expression_type->kind != TYPE_KIND_VOID && expression_type->kind != TYPE_KIND_UNKNOWN &&
         /* An extern. C call as a statement is a side-effect call; C code
@@ -16277,6 +16269,21 @@ static void check_expression_statement(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+}
+
+static void check_expression_statement(TypeChecker *checker, AstNode *node) {
+    GrayType *expression_type = resolve_expression(checker, node->data.expression_statement.expression);
+    /* E3081: bare function name used as statement without call */
+    AstNode *expression = node->data.expression_statement.expression;
+    if (expression && expression->kind == NODE_LABEL) {
+        const char *name = expression->data.label.value;
+        if (typechecker_is_builtin(name) || find_function(checker, name)) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3081",
+                NODE_FILE(checker, expression), expression->token.line, expression->token.column, 0,
+                name, name);
+        }
+    }
+    check_discarded_call_result(checker, node, expression, expression_type);
     /* Pointer checker: a bare @mem lifecycle call as a statement —
      * mem.destroy(a) / mem.reset(a). Updates arena lifetime state and reports
      * E3166 for a repeat destroy/reset. */
@@ -17706,11 +17713,11 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         break;
 
     case NODE_ENSURE_STATEMENT:
-        resolve_expression(checker, node->data.ensure_statement.expression);
-        /* E5011: the deferred call's result is dropped, so a multi-value
-         * or fallible call cannot be deferred. */
-        reject_multi_value_call(checker, node->data.ensure_statement.expression,
-                                node->data.ensure_statement.expression, true);
+        {
+            GrayType *deferred_type = resolve_expression(checker, node->data.ensure_statement.expression);
+            check_discarded_call_result(checker, node->data.ensure_statement.expression,
+                                        node->data.ensure_statement.expression, deferred_type);
+        }
         if (node->data.ensure_statement.expression &&
             node->data.ensure_statement.expression->kind != NODE_CALL_EXPRESSION) {
             diagnostic_error_code(checker->diagnostics, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
