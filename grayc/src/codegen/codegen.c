@@ -11436,7 +11436,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             codegen->current_variable_type = full_type_name;
             emit_expression(codegen, node->data.assign.value);
             codegen->current_variable_type = saved_variable_type;
-            emit(codegen, "; ");
+            emit(codegen, "; if (gray_atomic_load32(&");
+            emit_expression(codegen, node->data.assign.target);
+            emit_formatted(codegen, ".iterating) > 0) { %s; } ", panic_call(codegen, node, "P0034", ""));
             if (codegen->loop_scope_depth > 0) {
                 emit(codegen, "GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
             }
@@ -11466,7 +11468,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             codegen->current_variable_type = target_type->name;
             emit_expression(codegen, node->data.assign.value);
             codegen->current_variable_type = saved_variable_type;
-            emit(codegen, "; ");
+            emit(codegen, "; if (gray_atomic_load32(&");
+            emit_expression(codegen, node->data.assign.target);
+            emit_formatted(codegen, ".iterating) > 0) { %s; } ", panic_call(codegen, node, "P0035", ""));
             if (codegen->loop_scope_depth > 0) {
                 emit(codegen, "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
             }
