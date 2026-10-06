@@ -10028,6 +10028,9 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             find_function(checker, node->data.call.arguments[i]->data.label.value)) {
             continue;
         }
+        if (is_reference_call && node->data.call.arguments[i]->kind == NODE_MEMBER_EXPRESSION &&
+            reference_names_function(checker, node->data.call.arguments[i]))
+            continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
         if (node->data.call.arguments[i]->kind == NODE_IMPLICIT_ENUM)
@@ -11461,10 +11464,16 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 char struct_key[MESSAGE_BUFFER_SIZE], field_lookup_key[MESSAGE_BUFFER_SIZE];
                 snprintf(field_lookup_key, sizeof(field_lookup_key), "%s_%s",
                     checker_resolve_declaration_into(checker, resolved_object, struct_key, sizeof(struct_key)), member);
-                if (!find_function(checker, field_lookup_key)) {
+                FunctionSignature *struct_function = find_function(checker, field_lookup_key);
+                if (!struct_function) {
                     diagnostic_error_code_formatted(checker->diagnostics, "E3141",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         struct_display_name(checker, resolved_object), member);
+                } else {
+                    struct_function->was_used = true;
+                    const char *written = typechecker_format(checker, "%s.%s", struct_display_name(checker, resolved_object), member);
+                    diagnostic_error_code_formatted(checker->diagnostics, "E3031",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0, written, written, written);
                 }
             }
             result = &TYPE_UNKNOWN;
@@ -11482,10 +11491,15 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             !is_struct_name(checker, resolved_object) &&
             !is_enum_name(checker, resolved_object)) {
             ResolveScope member_resolve_scope = checker_scope(checker);
-            if (!module_resolve_qualified(checker->modules, &member_resolve_scope, object_name, member, NULL)) {
+            DeclarationEntry *member_entry = module_resolve_qualified(checker->modules, &member_resolve_scope, object_name, member, NULL);
+            if (!member_entry) {
                 diagnostic_error_code_formatted(checker->diagnostics, "E4024",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     object_name, member);
+            } else if (member_entry->kind == DECLARATION_FUNCTION) {
+                const char *written = typechecker_format(checker, "%s.%s", object_name, member);
+                diagnostic_error_code_formatted(checker->diagnostics, "E3031",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, written, written, written);
             }
         }
     } else if (object->kind == NODE_MEMBER_EXPRESSION) {
@@ -11502,6 +11516,21 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                     mark_import_used(checker, resolved_module_name);
                     return result;
                 }
+            }
+        }
+        /* A module-qualified struct function used as a value: lib.Type.func */
+        if (ast_member_chain(node, &resolved_module_name, &type_name_part) &&
+            typechecker_is_imported_module(checker, resolved_module_name)) {
+            char prefixed_type[MESSAGE_BUFFER_SIZE], function_key[MESSAGE_BUFFER_SIZE];
+            module_member_key(checker, resolved_module_name, type_name_part, prefixed_type, sizeof(prefixed_type));
+            snprintf(function_key, sizeof(function_key), "%s_%s", prefixed_type, member);
+            FunctionSignature *struct_function = find_function(checker, function_key);
+            if (struct_function) {
+                struct_function->was_used = true;
+                const char *written = typechecker_format(checker, "%s.%s.%s", resolved_module_name, type_name_part, member);
+                diagnostic_error_code_formatted(checker->diagnostics, "E3031",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, written, written, written);
+                return &TYPE_UNKNOWN;
             }
         }
         /* Nested member access: a.b.c; resolve a.b first, then look up .c */
@@ -11740,7 +11769,15 @@ static bool reference_names_function(TypeChecker *checker, AstNode *argument) {
     if (argument->kind == NODE_LABEL)
         return find_function(checker, argument->data.label.value) != NULL;
     const char *qualifier = ast_member_qualifier(argument);
-    if (!qualifier) return false;
+    if (!qualifier) {
+        /* mod.Struct.func */
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (!ast_member_chain(argument, &chain_module, &chain_type) || scope_lookup(checker->current_scope, chain_module))
+            return false;
+        char chain_key[MESSAGE_BUFFER_SIZE];
+        snprintf(chain_key, sizeof(chain_key), "%s_%s_%s", chain_module, chain_type, argument->data.member.member);
+        return find_function(checker, chain_key) != NULL;
+    }
     /* An instance's field, not a module's or struct's function. */
     if (scope_lookup(checker->current_scope, qualifier)) return false;
     if (is_stdlib_module_name(typechecker_resolve_alias(checker, qualifier)))
