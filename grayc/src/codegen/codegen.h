@@ -154,6 +154,14 @@ typedef struct {
     int wide_integer_variable_count;
     int wide_integer_variable_capacity;
 
+    /* for_each variables whose element type the main-pass type table left
+     * unknown, with the type they have in the instantiation being emitted
+     * (name -> type). Scoped like the wide integer variables above. */
+    const char **resolved_loop_variable_names;
+    GrayType **resolved_loop_variable_types;
+    int resolved_loop_variable_count;
+    int resolved_loop_variable_capacity;
+
     /* Struct declarations for composite printing */
     AstNode **struct_declarations;
     int struct_declaration_count;
