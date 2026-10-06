@@ -67,7 +67,10 @@ int64_t gray_time_now_ns(void) {
 
 static struct tm *get_time_parts(int64_t timestamp) {
     time_t time_value = (time_t)timestamp;
-    return gmtime(&time_value);
+    struct tm *time_parts = gmtime(&time_value);
+    if (!time_parts)
+        gray_panic_code("P0140", "time: timestamp %lld is outside the range of dates that can be broken into parts", (long long)timestamp);
+    return time_parts;
 }
 
 int64_t gray_time_year(int64_t timestamp) { return get_time_parts(timestamp)->tm_year + 1900; }

@@ -554,7 +554,8 @@
     GRAY_PANIC("P0136", "runtime",    "cannot convert '%s' to %s; value is outside its range") \
     GRAY_PANIC("P0137", "arithmetic", "cannot convert a float to %s; the value is out of range, or NaN") \
     GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s") \
-    GRAY_PANIC("P0139", "os",         "environment variable name or value contains an embedded null byte")
+    GRAY_PANIC("P0139", "os",         "environment variable name or value contains an embedded null byte") \
+    GRAY_PANIC("P0140", "time",       "time: timestamp %lld is outside the range of dates that can be broken into parts")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
