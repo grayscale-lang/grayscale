@@ -68,6 +68,14 @@ static bool strconv_is_hex_float(const char *buffer) {
     return buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X');
 }
 
+/* strtoll/strtoull skip a "0x" prefix in base 16; the documented digits of a
+ * base exclude it. */
+static bool strconv_has_hex_prefix(const char *buffer, int64_t base) {
+    if (base != 16) return false;
+    if (*buffer == '+' || *buffer == '-') buffer++;
+    return buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X');
+}
+
 /* --- Panicking conversions --- */
 
 int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
@@ -75,7 +83,7 @@ int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
         gray_panic_code("P0054", "strconv.to_i64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0])))
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0055", "strconv.to_i64: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
     char *end_cursor = NULL;
     errno = 0;
@@ -90,7 +98,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
         gray_panic_code("P0056", "strconv.to_u64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0])))
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0057", "strconv.to_u64: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
     /* Reject negative numbers */
     for (int i = 0; i < length; i++) {
@@ -109,7 +117,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
 double gray_strconv_to_f64(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || (length > 0 && isspace((unsigned char)buffer[0])))
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || strchr(buffer, '(') || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0059", "strconv.to_f64: cannot convert '%s' to f64", buffer);
     char *end_cursor = NULL;
     errno = 0;
@@ -129,7 +137,7 @@ GrayResult_i64 gray_strconv_to_i64_result(GrayString string, int64_t base) {
     }
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0]))) {
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to i64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_i64){0, error};
@@ -153,7 +161,7 @@ GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
     }
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0]))) {
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to u64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_u64){0, error};
@@ -181,7 +189,7 @@ GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
 GrayResult_f64 gray_strconv_to_f64_result(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || (length > 0 && isspace((unsigned char)buffer[0]))) {
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || strchr(buffer, '(') || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to f64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_f64){0.0, error};
