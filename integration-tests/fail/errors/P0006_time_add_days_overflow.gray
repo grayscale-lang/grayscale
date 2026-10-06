@@ -1,0 +1,6 @@
+import @time
+
+do main() {
+    mut days i64 = 9223372036854775807
+    println(time.add_days(0, days))
+}

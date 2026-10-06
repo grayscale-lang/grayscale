@@ -197,7 +197,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
         if (text.data[position] < '0' || text.data[position] > '9') return false;
         int64_t value = 0;
         while (position < text.len && text.data[position] >= '0' && text.data[position] <= '9') {
-            value = value * 10 + (text.data[position] - '0');
+            if (__builtin_mul_overflow(value, 10, &value) ||
+                __builtin_add_overflow(value, text.data[position] - '0', &value)) return false;
             position++;
         }
         if (position >= text.len) return false; /* trailing number with no unit */
@@ -209,7 +210,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
             case 'd': unit_seconds = SECONDS_PER_DAY; break;
             default: return false;
         }
-        total += value * unit_seconds;
+        if (__builtin_mul_overflow(value, unit_seconds, &value) ||
+            __builtin_add_overflow(total, value, &total)) return false;
         matched_any = true;
     }
     if (!matched_any) return false;
@@ -253,12 +255,12 @@ GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds) {
     return gray_string_new(arena, buffer, position);
 }
 
-int64_t gray_time_add_days(int64_t timestamp, int64_t days)       { return gray_add_check(timestamp, days * SECONDS_PER_DAY, __FILE__, __LINE__); }
-int64_t gray_time_add_hours(int64_t timestamp, int64_t hours)     { return gray_add_check(timestamp, hours * SECONDS_PER_HOUR, __FILE__, __LINE__); }
+int64_t gray_time_add_days(int64_t timestamp, int64_t days)       { return gray_add_check(timestamp, gray_mul_check(days, SECONDS_PER_DAY, __FILE__, __LINE__), __FILE__, __LINE__); }
+int64_t gray_time_add_hours(int64_t timestamp, int64_t hours)     { return gray_add_check(timestamp, gray_mul_check(hours, SECONDS_PER_HOUR, __FILE__, __LINE__), __FILE__, __LINE__); }
 int64_t gray_time_add_seconds(int64_t timestamp, int64_t seconds) { return gray_add_check(timestamp, seconds, __FILE__, __LINE__); }
 
-int64_t gray_time_start_of_day(int64_t timestamp) { return time_floor_divide(timestamp, SECONDS_PER_DAY) * SECONDS_PER_DAY; }
-int64_t gray_time_end_of_day(int64_t timestamp)   { return gray_time_start_of_day(timestamp) + SECONDS_PER_DAY - 1; }
+int64_t gray_time_start_of_day(int64_t timestamp) { return gray_mul_check(time_floor_divide(timestamp, SECONDS_PER_DAY), SECONDS_PER_DAY, __FILE__, __LINE__); }
+int64_t gray_time_end_of_day(int64_t timestamp)   { return gray_add_check(gray_time_start_of_day(timestamp), SECONDS_PER_DAY - 1, __FILE__, __LINE__); }
 
 int64_t gray_time_days_in_month(int64_t year, int64_t month) {
     if (month < 1 || month > 12) {
