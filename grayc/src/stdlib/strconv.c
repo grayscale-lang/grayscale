@@ -61,6 +61,13 @@ static bool strconv_has_nul(GrayString string) {
     return memchr(string.data, '\0', (size_t)string.len) != NULL;
 }
 
+/* strtod also parses C hexadecimal floats ("0x10", "-0x1p3"), which the
+ * documented decimal notation excludes. */
+static bool strconv_is_hex_float(const char *buffer) {
+    if (*buffer == '+' || *buffer == '-') buffer++;
+    return buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X');
+}
+
 /* --- Panicking conversions --- */
 
 int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
@@ -102,7 +109,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
 double gray_strconv_to_f64(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0])))
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0059", "strconv.to_f64: cannot convert '%s' to f64", buffer);
     char *end_cursor = NULL;
     errno = 0;
@@ -174,7 +181,7 @@ GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
 GrayResult_f64 gray_strconv_to_f64_result(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (strconv_has_nul(string) || (length > 0 && isspace((unsigned char)buffer[0]))) {
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to f64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_f64){0.0, error};
