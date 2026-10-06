@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4003 - a local declared with a parameter's name at function-body level
+ * Expected: E4003 error — the parameter and the body share one scope
+ */
+// expect-error: E4003
+// expect-error-count: 1
+
+do f(a i64) -> i64 {
+    mut a i64 = 3
+    return a
+}
+
+do main() {
+    println("${f(1)}")
+}

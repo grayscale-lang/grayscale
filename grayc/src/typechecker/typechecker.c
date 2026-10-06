@@ -14226,11 +14226,13 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
         /* Check for redeclaration in same scope */
         Symbol *existing = scope_lookup_local(checker->current_scope,
             node->data.variable_declaration.name);
-        if (existing && existing->definition_line != 0) {
+        if (existing && (existing->definition_line != 0 || existing->parameter_line != 0)) {
             /* definition_line == 0 means this was pre-registered in Pass 1.5
              * to allow forward references between global constants;
-             * that is not a duplicate declaration. */
-            diagnostic_error_code_formatted(checker->diagnostics, "E4003", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node), existing->definition_line);
+             * that is not a duplicate declaration. A parameter shares the
+             * function body's scope, so redeclaring it is. */
+            diagnostic_error_code_formatted(checker->diagnostics, "E4003", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node),
+                existing->definition_line != 0 ? existing->definition_line : existing->parameter_line);
         }
         /* W2002/W2007: check if variable shadows outer scope */
         if (!existing && checker->current_scope->parent) {
@@ -16732,6 +16734,8 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
             }
         }
         scope_define(function_scope, parameter->name, parameter_type, parameter->is_mutable);
+        Symbol *parameter_symbol = scope_lookup_local(function_scope, parameter->name);
+        if (parameter_symbol) parameter_symbol->parameter_line = node->token.line;
     }
 
     /* Define named return variables in function scope */

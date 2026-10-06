@@ -67,6 +67,7 @@ typedef struct {
     bool was_used;       /* true if variable was read */
     int definition_line;   /* line where variable was defined */
     int definition_column; /* column where variable was defined */
+    int parameter_line;    /* line of the function a parameter belongs to; 0 for a non-parameter */
     GrayType **return_types; /* for multi-return temporaries: all return types */
     int return_count;    /* number of return types */
     bool are_return_types_owned; /* true if return_types was xmalloc'd by the typechecker */
