@@ -1,0 +1,4 @@
+do main() {
+    mut value bool = bool(nil)
+    println(value)
+}
