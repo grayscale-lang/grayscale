@@ -10110,12 +10110,22 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             AstNode *callee_function = node->data.call.function;
             bool opaque = false;
             if (callee_function && callee_function->kind == NODE_INDEX_EXPRESSION) {
-                opaque = true;
+                /* E5064: an element of a [func] array or map has no signature
+                 * to check the call against. */
+                diagnostic_error_code(checker->diagnostics, "E5064", NODE_FILE(checker, node),
+                    node->token.line, node->token.column, 0);
             } else if (callee_function && callee_function->kind == NODE_LABEL) {
                 Symbol *callee_symbol = scope_lookup(checker->current_scope,
                                           callee_function->data.label.value);
                 opaque = callee_symbol && callee_symbol->type && callee_symbol->type->kind == TYPE_KIND_FUNCTION &&
                          !callee_symbol->function_reference_name;
+                /* E5064: so does a bare func variable, such as a for_each
+                 * variable over a [func] array. */
+                if (opaque && !callee_symbol->type->function_signature) {
+                    diagnostic_error_code(checker->diagnostics, "E5064", NODE_FILE(checker, node),
+                        node->token.line, node->token.column, 0);
+                    opaque = false;
+                }
             }
             if (opaque) {
                 for (int i = 0; i < argument_count && i < MAX_TRACKED_PARAMETERS; i++) {
@@ -10171,48 +10181,6 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             inner_name ? inner_name : "function");
         result = &TYPE_UNKNOWN;
         return result;
-    }
-
-    /* [func] array + constant index + literal-of-func-refs origin:
-     * recover the original referenced function's return type so it
-     * survives the trip through void* storage (). */
-    if (function_node && function_node->kind == NODE_INDEX_EXPRESSION &&
-        function_node->data.index_expression.left->kind == NODE_LABEL &&
-        function_node->data.index_expression.index->kind == NODE_INTEGER_LITERAL) {
-        const char *array_name = function_node->data.index_expression.left->data.label.value;
-        Symbol *array_symbol = scope_lookup(checker->current_scope, array_name);
-        int64_t index_value = function_node->data.index_expression.index->data.integer_literal.value;
-        if (array_symbol && array_symbol->function_array_references &&
-            index_value >= 0 && index_value < array_symbol->function_array_reference_count) {
-            const char *reference_name = array_symbol->function_array_references[index_value];
-            if (reference_name) {
-                FunctionSignature *reference_signature = find_function(checker, reference_name);
-                if (reference_signature && reference_signature->return_count > 0) {
-                    result = reference_signature->return_types[0];
-                    return result;
-                }
-            }
-        }
-    }
-
-    /* Fallback for [func(...)->T] arrays: parse the return type from
-     * the array's typed element type. Covers dynamically appended
-     * refs where func_array_refs isn't populated (). */
-    if (function_node && function_node->kind == NODE_INDEX_EXPRESSION &&
-        function_node->data.index_expression.left->kind == NODE_LABEL) {
-        const char *array_name = function_node->data.index_expression.left->data.label.value;
-        Symbol *array_symbol = scope_lookup(checker->current_scope, array_name);
-        if (array_symbol && array_symbol->type && array_symbol->type->kind == TYPE_KIND_ARRAY &&
-            array_symbol->type->element_type &&
-            strncmp(array_symbol->type->element_type, "func(", 5) == 0) {
-            GrayType *element_type = type_from_name(array_symbol->type->element_type);
-            if (element_type && element_type->function_signature &&
-                element_type->function_signature->return_count > 0 &&
-                element_type->function_signature->return_types[0]) {
-                result = type_from_name(element_type->function_signature->return_types[0]);
-                return result;
-            }
-        }
     }
 
     /* Tagged enum construction via implicit selector: .Circle(3.14) */
@@ -14602,39 +14570,6 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                     Symbol *symbol = scope_lookup_local(checker->current_scope,
                         node->data.variable_declaration.name);
                     if (symbol) symbol->function_reference_name = reference_name;
-                }
-            }
-        }
-        /* Per-element tracking for [func] arrays initialised with a
-         * literal of func refs (). Preserves each element's
-         * originating function name so constant-index calls can
-         * recover the real return type (e.g. struct returns) that
-         * would otherwise be erased by the void* storage. */
-        if (node->data.variable_declaration.value &&
-            node->data.variable_declaration.value->kind == NODE_ARRAY_VALUE &&
-            node->data.variable_declaration.type_name &&
-            (strcmp(node->data.variable_declaration.type_name, "[func]") == 0 ||
-             strncmp(node->data.variable_declaration.type_name, "[func(", 6) == 0)) {
-            AstNode *literal = node->data.variable_declaration.value;
-            int count = literal->data.array_value.count;
-            Symbol *symbol = scope_lookup_local(checker->current_scope,
-                node->data.variable_declaration.name);
-            if (symbol && count > 0) {
-                symbol->function_array_references = xcalloc((size_t)count, sizeof(const char *));
-                symbol->function_array_reference_count = count;
-                for (int enum_index = 0; enum_index < count; enum_index++) {
-                    AstNode *element = literal->data.array_value.elements[enum_index];
-                    if (!element || element->kind != NODE_FUNCTION_REFERENCE) continue;
-                    AstNode *function_reference = element->data.function_reference.function;
-                    const char *el_qualifier = ast_member_qualifier(function_reference);
-                    if (function_reference->kind == NODE_LABEL) {
-                        symbol->function_array_references[enum_index] = function_reference->data.label.value;
-                    } else if (el_qualifier) {
-                        char buffer[MESSAGE_BUFFER_SIZE];
-                        symbol->function_array_references[enum_index] = arena_copy_string(checker->arena,
-                            module_member_key(checker, el_qualifier,
-                                function_reference->data.member.member, buffer, sizeof(buffer)));
-                    }
                 }
             }
         }

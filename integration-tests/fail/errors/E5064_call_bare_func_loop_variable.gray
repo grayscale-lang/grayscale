@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5064 - calling the for_each variable of a [func] array
+ * Expected: E5064 error — a bare func element has no signature to check the call against
+ */
+// expect-error: E5064
+// expect-error-count: 1
+
+do double(n i64) -> i64 { return n * 2 }
+
+do main() {
+    mut fns [func] = {()double}
+    for_each f in fns {
+        println(f(5))
+    }
+}

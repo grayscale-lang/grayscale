@@ -2566,7 +2566,7 @@ Inside the function body, call through the parameter the same way: `f(x)`.
 
 #### 7.6.3 Func References in Composite Types
 
-Bare `func` is a valid type in arrays and maps. Elements are untyped function pointers; the cast is reconstructed from context at each call site:
+Bare `func` is a valid type in arrays and maps. Elements are untyped function pointers that can hold a reference of any signature. They can be stored, replaced, counted and compared, but not called: a bare `func` carries no signature to check a call against, so calling a `[func]` or `[func, N]` element, a `map[string:func]` value, or a `for_each` variable over one is E5064. Pass the reference to a function with a typed `func(...) -> T` parameter to call it:
 
 ```gray
 import @arrays
@@ -2577,19 +2577,18 @@ do triple(n i64) -> i64 { return n * 3 }
 // Dynamic array of func refs
 mut arr [func] = {}
 arrays.append(arr, ()double)
-arr[0](5)   // 10
+println(len(arr))   // 1
 
 // Fixed-size array of func refs
 const fns [func, 2] = {()double, ()triple}
-fns[0](5)   // 10
-fns[1](5)   // 15
 
 // Map with func values
 mut m map[string:func] = {:}
 m["dbl"]  = ()double
 m["trpl"] = ()triple
-m["dbl"](5)   // 10
-m["trpl"](5)  // 15
+
+arr[0](5)         // ❌ E5064, a bare func element cannot be called
+m["dbl"](5)       // ❌ E5064
 ```
 
 Typed func signatures as an array element type (e.g. `[func(i64)->i64]`) are not allowed. Use `[func]` or `[func, N]` instead.
@@ -2641,6 +2640,7 @@ if f != h { println("different") }  // different
 | `const f = get_fn()` | ❌ cannot assign func-type return value; use `()func_name` |
 | `get_fn()(5)` | ❌ cannot call a function's return value directly |
 | `[func(i64)->i64]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
+| `arr[0](5)` (arr is `[func]`) | ❌ a bare func element cannot be called (E5064) |
 | `()println` / `ref(println)` | ❌ builtin and stdlib functions cannot be referenced |
 | `()f` (f is a variable) | ❌ `()` only works with named function declarations, not variables |
 | `()f(5)` (f is a variable) | ❌ same restriction; `f(5)` is the only valid call syntax |

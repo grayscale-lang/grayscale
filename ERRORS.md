@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 526 codes** (378 errors, 17 warnings, 131 panics)
+**Total: 527 codes** (379 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -358,6 +358,7 @@
 | `E5061` | arguments | 'csv.filter_rows()' callback must be func([string]) -> bool |
 | `E5062` | arguments | default value for parameter '%s' has wrong type; expected %s, got %s |
 | `E5063` | arguments | 'to_char()' index %lld is out of bounds |
+| `E5064` | arguments | cannot call a bare 'func' value; its signature is not known, so pass it to a function with a typed 'func(...) -> T' parameter instead |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -577,4 +578,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-06 02:01:52 UTC*
+*Generated on 2026-10-06 02:14:30 UTC*
