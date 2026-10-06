@@ -1,0 +1,22 @@
+const Counter struct {
+    n i64
+
+    do inc(&c Counter) { c.n = c.n + 1 }
+}
+
+do bump(c ^Counter) { c.inc() }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a Counter = Counter{n: 0}
+    bump(addr(a))
+    if a.n == 1 { passed += 1 } otherwise { failed += 1 }
+
+    const p ^Counter = addr(a)
+    p.inc()
+    if a.n == 2 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

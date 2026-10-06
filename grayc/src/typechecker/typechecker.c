@@ -8202,7 +8202,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             if (argument_index == 0) {
                                 /* Self argument: synthetic NODE_LABEL with value raw_module_name */
                                 Symbol *self_symbol = scope_lookup(checker->current_scope, raw_module_name);
-                                if (self_symbol && !self_symbol->is_mutable) {
+                                /* A dereferenced pointer receiver mutates the pointee, so the
+                                 * binding itself may be const. */
+                                bool is_dereferenced_receiver = argument->kind == NODE_POSTFIX_EXPRESSION;
+                                if (self_symbol && !self_symbol->is_mutable && !is_dereferenced_receiver) {
                                     diagnostic_error_code_formatted(checker->diagnostics, "E3027",
                                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                                         "a constant", "the mutable self parameter",
