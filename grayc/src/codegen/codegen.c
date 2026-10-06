@@ -10048,6 +10048,17 @@ static bool emit_written_order_call(CodeGen *codegen, AstNode *node, AstNode *ca
 }
 
 static void emit_call_expression(CodeGen *codegen, AstNode *node) {
+    AstNode *ignored_receiver = node->data.call.ignored_receiver;
+    if (ignored_receiver) {
+        node->data.call.ignored_receiver = NULL;
+        emit(codegen, "({ (void)(");
+        emit_expression(codegen, ignored_receiver);
+        emit(codegen, "); ");
+        emit_call_expression(codegen, node);
+        emit(codegen, "; })");
+        node->data.call.ignored_receiver = ignored_receiver;
+        return;
+    }
     AstNode *named_callee = resolve_called_function(codegen, node);
     if (named_callee && emit_written_order_call(codegen, node, named_callee)) return;
     if (named_callee && emit_element_write_back_call(codegen, node, named_callee)) return;

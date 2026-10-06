@@ -263,6 +263,9 @@ struct AstNode {
             /* Arguments in the order written, kept when named arguments are
              * reordered into parameter order; NULL otherwise. */
             AstNode **written_arguments; int written_argument_count;
+            /* The receiver of `recv.f(args)` when `f` takes no self: it binds
+             * to nothing but is still evaluated, before the call. */
+            AstNode *ignored_receiver;
         } call;
 
         /* NODE_INDEX_EXPRESSION */

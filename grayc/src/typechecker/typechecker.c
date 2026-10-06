@@ -9945,16 +9945,22 @@ static void normalize_instance_call_on_expression(TypeChecker *checker, AstNode 
             checker_resolve_declaration_into(checker, struct_name, struct_key, sizeof(struct_key)), member_function_name);
     }
     FunctionSignature *struct_function_signature = find_function(checker, struct_function_name);
-    if (!struct_function_signature || !struct_function_signature->declaration || struct_function_signature->declaration->kind != NODE_FUNCTION_DECLARATION ||
-        struct_function_signature->declaration->data.function_declaration.parameter_count == 0)
+    if (!struct_function_signature || !struct_function_signature->declaration || struct_function_signature->declaration->kind != NODE_FUNCTION_DECLARATION)
         return;
-    const char *first_parameter_type_name = struct_function_signature->declaration->data.function_declaration.parameters[0].type_name;
-    if (!first_parameter_type_name) return;
-    bool is_self_function =
+    const char *first_parameter_type_name = struct_function_signature->declaration->data.function_declaration.parameter_count > 0
+        ? struct_function_signature->declaration->data.function_declaration.parameters[0].type_name : NULL;
+    bool is_self_function = first_parameter_type_name && (
         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name, struct_name) ||
         (first_parameter_type_name[0] == '^' &&
-         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name + 1, struct_name));
-    if (!is_self_function) return;
+         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name + 1, struct_name)));
+    if (!is_self_function) {
+        /* No self parameter: the call is Type.f(args), and the receiver is
+         * evaluated for its effects alone. */
+        struct_function_signature->was_used = true;
+        node->data.call.ignored_receiver = object;
+        retarget_member_object(function_node, struct_name);
+        return;
+    }
 
     /* Rewrite: object becomes the struct type name, receiver is prepended as
      * arg[0]. Auto-deref a pointer receiver when the self parameter takes the
