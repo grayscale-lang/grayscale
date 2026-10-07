@@ -1,0 +1,42 @@
+/*
+ * Test: encoding decode functions return an error on malformed input
+ */
+
+import @encoding
+
+do check(err Error) -> i64 {
+    if err != nil { return 1 }
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+
+    mut b64_length, b64_length_err = encoding.base64_decode("abc")
+    mut b64_early, b64_early_err = encoding.base64_decode("a=bc")
+    mut b64_padding, b64_padding_err = encoding.base64_decode("ab=c")
+    mut b64_char, b64_char_err = encoding.base64_decode("ab!d")
+    mut b64_url, b64_url_err = encoding.base64_url_decode("a!")
+    mut hex_odd, hex_odd_err = encoding.hex_decode("abc")
+    mut hex_char, hex_char_err = encoding.hex_decode("zz")
+    mut url_escape, url_escape_err = encoding.url_decode("%zz")
+    mut from_hex_odd, from_hex_odd_err = encoding.from_hex("abc")
+    mut from_base64_char, from_base64_err = encoding.from_base64("ab!d")
+
+    passed += check(b64_length_err)
+    passed += check(b64_early_err)
+    passed += check(b64_padding_err)
+    passed += check(b64_char_err)
+    passed += check(b64_url_err)
+    passed += check(hex_odd_err)
+    passed += check(hex_char_err)
+    passed += check(url_escape_err)
+    passed += check(from_hex_odd_err)
+    passed += check(from_base64_err)
+
+    if passed == 10 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("FAILED: ${passed} of 10 returned an error")
+    }
+}

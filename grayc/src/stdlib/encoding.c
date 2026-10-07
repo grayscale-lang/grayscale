@@ -43,12 +43,10 @@ static int base64_value(char character) {
     return -1;
 }
 
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string) {
-    if (string.len == 0) return gray_string_lit("");
+GrayResult_string gray_encoding_base64_decode(GrayArena *arena, GrayString string) {
+    if (string.len == 0) return (GrayResult_string){gray_string_lit(""), NULL};
     if (string.len % 4 != 0) {
-        gray_panic_code("P0036",
-            "encoding.base64_decode: input length %d is not a multiple of 4",
-            string.len);
+        return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("base64 input length is not a multiple of 4"))};
     }
 
     /* Padding is only valid in the last quad: 0, 1, or 2 '=' at the end. */
@@ -68,11 +66,10 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string) {
         int is_fourth_padding = (fourth_character == '=');
 
         if ((is_third_padding || is_fourth_padding) && !last_quad) {
-            gray_panic_code("P0037",
-                "encoding.base64_decode: padding character '=' before end of input");
+            return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("base64 padding before the end of input"))};
         }
         if (is_third_padding && !is_fourth_padding) {
-            gray_panic_code("P0038", "encoding.base64_decode: invalid padding");
+            return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid base64 padding"))};
         }
 
         int first_value = base64_value(string.data[i]);
@@ -80,7 +77,7 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string) {
         int third_value = is_third_padding ? 0 : base64_value(third_character);
         int fourth_value = is_fourth_padding ? 0 : base64_value(fourth_character);
         if (first_value < 0 || second_value < 0 || third_value < 0 || fourth_value < 0) {
-            gray_panic_code("P0039", "encoding.base64_decode: invalid character in input");
+            return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid base64 character"))};
         }
 
         uint32_t triple = ((uint32_t)first_value << 18) | ((uint32_t)second_value << 12) |
@@ -90,8 +87,7 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string) {
         if (!is_fourth_padding) output[j++] = (char)(triple & 0xFF);
     }
     output[j] = '\0';
-    GrayString result = { output, j };
-    return result;
+    return (GrayResult_string){{ output, j }, NULL};
 }
 
 GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString string) {
@@ -105,9 +101,9 @@ GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString string) {
     return result;
 }
 
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString string) {
+GrayResult_string gray_encoding_hex_decode(GrayArena *arena, GrayString string) {
     if (string.len % 2 != 0) {
-        gray_panic_code("P0040", "encoding.hex_decode: input length %d is not even", string.len);
+        return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("hex input length is not even"))};
     }
     int32_t output_length = string.len / 2;
     char *output = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
@@ -115,15 +111,14 @@ GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString string) {
         unsigned char high_nibble = (unsigned char)string.data[i * 2];
         unsigned char low_nibble = (unsigned char)string.data[i * 2 + 1];
         if (!isxdigit(high_nibble) || !isxdigit(low_nibble)) {
-            gray_panic_code("P0041", "encoding.hex_decode: invalid hex character at position %d", i * 2);
+            return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid hex character"))};
         }
         int high_value = (high_nibble <= '9') ? high_nibble - '0' : (high_nibble <= 'F') ? high_nibble - 'A' + 10 : high_nibble - 'a' + 10;
         int low_value = (low_nibble <= '9') ? low_nibble - '0' : (low_nibble <= 'F') ? low_nibble - 'A' + 10 : low_nibble - 'a' + 10;
         output[i] = (char)((high_value << 4) | low_value);
     }
     output[output_length] = '\0';
-    GrayString result = { output, output_length };
-    return result;
+    return (GrayResult_string){{ output, output_length }, NULL};
 }
 
 GrayString gray_encoding_url_encode(GrayArena *arena, GrayString string) {
@@ -143,7 +138,7 @@ GrayString gray_encoding_url_encode(GrayArena *arena, GrayString string) {
     return result;
 }
 
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString string) {
+GrayResult_string gray_encoding_url_decode(GrayArena *arena, GrayString string) {
     char *output = gray_arena_alloc_uninitialized(arena, (size_t)string.len + 1);
     int j = 0;
     for (int i = 0; i < string.len; i++) {
@@ -151,7 +146,7 @@ GrayString gray_encoding_url_decode(GrayArena *arena, GrayString string) {
             unsigned char high_nibble = (unsigned char)string.data[i + 1];
             unsigned char low_nibble = (unsigned char)string.data[i + 2];
             if (!isxdigit(high_nibble) || !isxdigit(low_nibble)) {
-                gray_panic_code("P0042", "encoding.url_decode: invalid percent-escape at position %d", i);
+                return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid percent-escape"))};
             }
             int high_value = (high_nibble <= '9') ? high_nibble - '0' : (high_nibble <= 'F') ? high_nibble - 'A' + 10 : high_nibble - 'a' + 10;
             int low_value = (low_nibble <= '9') ? low_nibble - '0' : (low_nibble <= 'F') ? low_nibble - 'A' + 10 : low_nibble - 'a' + 10;
@@ -164,8 +159,7 @@ GrayString gray_encoding_url_decode(GrayArena *arena, GrayString string) {
         }
     }
     output[j] = '\0';
-    GrayString result = { output, (int32_t)j };
-    return result;
+    return (GrayResult_string){{ output, (int32_t)j }, NULL};
 }
 
 GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString string) {
@@ -182,7 +176,7 @@ GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString string) 
     return result;
 }
 
-GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString string) {
+GrayResult_string gray_encoding_base64_url_decode(GrayArena *arena, GrayString string) {
     int32_t padding = (4 - (string.len % 4)) % 4;
     int32_t buffer_length = string.len + padding;
     char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)buffer_length + 1);
@@ -353,9 +347,10 @@ GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes) {
     return gray_string_new(arena, (const char *)bytes->data, bytes->len);
 }
 
-GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex_text) {
-    GrayString decoded = gray_encoding_hex_decode(arena, hex_text);
-    return gray_encoding_from_string(arena, decoded);
+GrayResult_array gray_encoding_from_hex(GrayArena *arena, GrayString hex_text) {
+    GrayResult_string decoded = gray_encoding_hex_decode(arena, hex_text);
+    if (decoded.v1) return (GrayResult_array){{0}, decoded.v1};
+    return (GrayResult_array){gray_encoding_from_string(arena, decoded.v0), NULL};
 }
 
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes) {
@@ -370,9 +365,10 @@ GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes) {
     return result;
 }
 
-GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString base64_text) {
-    GrayString decoded = gray_encoding_base64_decode(arena, base64_text);
-    return gray_encoding_from_string(arena, decoded);
+GrayResult_array gray_encoding_from_base64(GrayArena *arena, GrayString base64_text) {
+    GrayResult_string decoded = gray_encoding_base64_decode(arena, base64_text);
+    if (decoded.v1) return (GrayResult_array){{0}, decoded.v1};
+    return (GrayResult_array){gray_encoding_from_string(arena, decoded.v0), NULL};
 }
 
 GrayString gray_encoding_to_base64(GrayArena *arena, GrayArray *bytes) {

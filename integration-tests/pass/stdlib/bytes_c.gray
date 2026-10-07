@@ -41,7 +41,7 @@ do main() {
     }
 
     // from_hex / to_hex round-trip
-    mut from_hex [u8] = encoding.from_hex("4142")
+    mut from_hex, _ = encoding.from_hex("4142")
     mut from_hex_str string = encoding.to_string(from_hex)
     if from_hex_str == "AB" {
         println("  [PASS] from_hex round-trip")

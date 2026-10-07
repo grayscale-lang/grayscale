@@ -17,20 +17,24 @@ do check(label string, got string, want string) -> i64 {
 
 do main() {
     mut passed i64 = 0
+    mut web_hello, _ = encoding.base64_url_decode("aGVsbG8_")
+    mut web_nopad, _ = encoding.base64_url_decode("aGk")
+    mut web_pad, _ = encoding.base64_url_decode("aGk=")
+    mut web_round, _ = encoding.base64_url_decode(encoding.base64_url_encode("Any carnal pleasure!"))
 
     // base64_url: standard "aGVsbG8/" becomes "aGVsbG8_", unpadded
     passed += check("base64_url_encode", encoding.base64_url_encode("hello?"), "aGVsbG8_")
-    passed += check("base64_url_decode", encoding.base64_url_decode("aGVsbG8_"), "hello?")
+    passed += check("base64_url_decode", web_hello, "hello?")
 
     // padding is dropped on encode and optional on decode
     passed += check("base64_url_encode pad", encoding.base64_url_encode("hi"), "aGk")
-    passed += check("base64_url_decode nopad", encoding.base64_url_decode("aGk"), "hi")
-    passed += check("base64_url_decode pad", encoding.base64_url_decode("aGk="), "hi")
+    passed += check("base64_url_decode nopad", web_nopad, "hi")
+    passed += check("base64_url_decode pad", web_pad, "hi")
 
     // roundtrip through both directions
     mut original string = "Any carnal pleasure!"
     passed += check("base64_url roundtrip",
-        encoding.base64_url_decode(encoding.base64_url_encode(original)), original)
+        web_round, original)
 
     // html_escape covers all five significant characters
     passed += check("html_escape",

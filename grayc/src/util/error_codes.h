@@ -459,13 +459,6 @@
     GRAY_PANIC("P0033", "bounds",     "index out of bounds; tried to access index %lld but the length is %d") \
     GRAY_PANIC("P0034", "iteration",  "cannot modify array during for_each iteration") \
     GRAY_PANIC("P0035", "iteration",  "cannot modify map during for_each iteration") \
-    GRAY_PANIC("P0036", "encoding",   "encoding.base64_decode: input length %d is not a multiple of 4") \
-    GRAY_PANIC("P0037", "encoding",   "encoding.base64_decode: padding character '=' before end of input") \
-    GRAY_PANIC("P0038", "encoding",   "encoding.base64_decode: invalid padding") \
-    GRAY_PANIC("P0039", "encoding",   "encoding.base64_decode: invalid character in input") \
-    GRAY_PANIC("P0040", "encoding",   "encoding.hex_decode: input length %d is not even") \
-    GRAY_PANIC("P0041", "encoding",   "encoding.hex_decode: invalid hex character at position %d") \
-    GRAY_PANIC("P0042", "encoding",   "encoding.url_decode: invalid percent-escape at position %d") \
     GRAY_PANIC("P0043", "bounds",     "arrays.insert_at: index %lld is out of bounds for an array of length %d") \
     GRAY_PANIC("P0044", "bounds",     "arrays.remove_at: index %lld is out of bounds for an array of length %d") \
     GRAY_PANIC("P0045", "bounds",     "arrays.get_first called on an empty array") \

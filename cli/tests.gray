@@ -1288,7 +1288,7 @@ do main() {
         failed++
     }
 
-    mut b64d string = encoding.base64_decode("aGVsbG8=")
+    mut b64d, _ = encoding.base64_decode("aGVsbG8=")
     if b64d == "hello" {
         println("  [PASS] encoding.base64_decode(\"aGVsbG8=\") = \"hello\"")
         passed++
@@ -1306,7 +1306,7 @@ do main() {
         failed++
     }
 
-    mut hexd string = encoding.hex_decode("6869")
+    mut hexd, _ = encoding.hex_decode("6869")
     if hexd == "hi" {
         println("  [PASS] encoding.hex_decode(\"6869\") = \"hi\"")
         passed++
@@ -1623,7 +1623,7 @@ do main() {
 
     mut by3_a [u8] = encoding.from_string("test")
     mut by3_hex string = encoding.to_hex(by3_a)
-    mut by3_b [u8] = encoding.from_hex(by3_hex)
+    mut by3_b, _ = encoding.from_hex(by3_hex)
     mut by3 string = encoding.to_string(by3_b)
     if by3 == "test" {
         println("  [PASS] encoding hex roundtrip \"test\" = \"test\"")
@@ -1643,7 +1643,7 @@ do main() {
         failed++
     }
 
-    mut by5_bytes [u8] = encoding.from_base64("aGVsbG8=")
+    mut by5_bytes, _ = encoding.from_base64("aGVsbG8=")
     mut by5 string = encoding.to_string(by5_bytes)
     if by5 == "hello" {
         println("  [PASS] encoding.to_string(encoding.from_base64(\"aGVsbG8=\")) = \"hello\"")

@@ -904,15 +904,15 @@ static void test_encoding_base64_encode(void) {
 }
 
 static void test_encoding_base64_decode(void) {
-    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("SGVsbG8=")), "Hello");
-    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("SGk=")), "Hi");
-    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("TWFu")), "Man");
+    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("SGVsbG8=")).v0, "Hello");
+    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("SGk=")).v0, "Hi");
+    ASSERT_GRAY_STR(gray_encoding_base64_decode(arena, gray_string_lit("TWFu")).v0, "Man");
 }
 
 static void test_encoding_base64_roundtrip(void) {
     GrayString original = gray_string_lit("Grayscale is awesome!");
     GrayString encoded = gray_encoding_base64_encode(arena, original);
-    GrayString decoded = gray_encoding_base64_decode(arena, encoded);
+    GrayString decoded = gray_encoding_base64_decode(arena, encoded).v0;
     ASSERT(gray_string_eq(decoded, original));
 }
 
@@ -922,14 +922,14 @@ static void test_encoding_hex_encode(void) {
 }
 
 static void test_encoding_hex_decode(void) {
-    ASSERT_GRAY_STR(gray_encoding_hex_decode(arena, gray_string_lit("4869")), "Hi");
-    ASSERT_GRAY_STR(gray_encoding_hex_decode(arena, gray_string_lit("4142")), "AB");
+    ASSERT_GRAY_STR(gray_encoding_hex_decode(arena, gray_string_lit("4869")).v0, "Hi");
+    ASSERT_GRAY_STR(gray_encoding_hex_decode(arena, gray_string_lit("4142")).v0, "AB");
 }
 
 static void test_encoding_hex_roundtrip(void) {
     GrayString original = gray_string_lit("test123");
     GrayString encoded = gray_encoding_hex_encode(arena, original);
-    GrayString decoded = gray_encoding_hex_decode(arena, encoded);
+    GrayString decoded = gray_encoding_hex_decode(arena, encoded).v0;
     ASSERT(gray_string_eq(decoded, original));
 }
 
@@ -939,14 +939,14 @@ static void test_encoding_url_encode(void) {
 }
 
 static void test_encoding_url_decode(void) {
-    ASSERT_GRAY_STR(gray_encoding_url_decode(arena, gray_string_lit("hello%20world")), "hello world");
-    ASSERT_GRAY_STR(gray_encoding_url_decode(arena, gray_string_lit("a+b")), "a b");
+    ASSERT_GRAY_STR(gray_encoding_url_decode(arena, gray_string_lit("hello%20world")).v0, "hello world");
+    ASSERT_GRAY_STR(gray_encoding_url_decode(arena, gray_string_lit("a+b")).v0, "a b");
 }
 
 static void test_encoding_url_roundtrip(void) {
     GrayString original = gray_string_lit("hello world & friends!");
     GrayString encoded = gray_encoding_url_encode(arena, original);
-    GrayString decoded = gray_encoding_url_decode(arena, encoded);
+    GrayString decoded = gray_encoding_url_decode(arena, encoded).v0;
     ASSERT(gray_string_eq(decoded, original));
 }
 

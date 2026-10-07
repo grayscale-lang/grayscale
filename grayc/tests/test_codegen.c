@@ -2672,10 +2672,12 @@ static void test_e2e_encoding_base64_hex(void) {
         "do main() {\n"
         "  mut b string = encoding.base64_encode(\"hello\")\n"
         "  println(b)\n"
-        "  println(encoding.base64_decode(b))\n"
+        "  mut b_decoded, _ = encoding.base64_decode(b)\n"
+        "  println(b_decoded)\n"
         "  mut h string = encoding.hex_encode(\"AB\")\n"
         "  println(h)\n"
-        "  println(encoding.hex_decode(h))\n"
+        "  mut h_decoded, _ = encoding.hex_decode(h)\n"
+        "  println(h_decoded)\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "aGVsbG8=\nhello\n4142\nAB");

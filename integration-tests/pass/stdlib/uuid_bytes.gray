@@ -46,7 +46,7 @@ do main() {
     }
 
     // from_bytes accepts bytes decoded from hex
-    mut hexbytes [u8] = encoding.from_hex("00000000000000000000000000000000")
+    mut hexbytes, _ = encoding.from_hex("00000000000000000000000000000000")
     mut nil_like UUID = uuid.from_bytes(hexbytes)
     if uuid.to_string(nil_like) == "00000000-0000-0000-0000-000000000000" {
         println("  [PASS] from_bytes from hex")

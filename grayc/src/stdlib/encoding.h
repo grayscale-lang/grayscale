@@ -12,6 +12,7 @@
 
 #include "../runtime/runtime.h"
 #include "../runtime/array.h"
+#include "io.h" /* GrayResult_string */
 
 /*@man base64_encode
  *@module encoding
@@ -27,11 +28,11 @@
 /*@man base64_decode
  *@module encoding
  *@group String Encoding
- *@sig base64_decode(s string) -> string
+ *@sig base64_decode(s string) -> (string, Error)
  *@desc Decodes a base64-encoded string.
  *@example
  *   import @encoding
- *   mut decoded string = encoding.base64_decode("aGVsbG8=")
+ *   mut decoded, err = encoding.base64_decode("aGVsbG8=")
  *@end
  */
 
@@ -49,11 +50,11 @@
 /*@man hex_decode
  *@module encoding
  *@group String Encoding
- *@sig hex_decode(s string) -> string
+ *@sig hex_decode(s string) -> (string, Error)
  *@desc Decodes a hex-encoded string.
  *@example
  *   import @encoding
- *   mut decoded string = encoding.hex_decode("4142")
+ *   mut decoded, err = encoding.hex_decode("4142")
  *@end
  */
 
@@ -71,11 +72,11 @@
 /*@man url_decode
  *@module encoding
  *@group String Encoding
- *@sig url_decode(s string) -> string
+ *@sig url_decode(s string) -> (string, Error)
  *@desc Decodes a URL percent-encoded string.
  *@example
  *   import @encoding
- *   mut decoded string = encoding.url_decode("hello%20world")
+ *   mut decoded, err = encoding.url_decode("hello%20world")
  *@end
  */
 
@@ -93,11 +94,11 @@
 /*@man base64_url_decode
  *@module encoding
  *@group String Encoding
- *@sig base64_url_decode(s string) -> string
- *@desc Decodes URL-safe base64, with or without trailing padding. Panics on invalid input.
+ *@sig base64_url_decode(s string) -> (string, Error)
+ *@desc Decodes URL-safe base64, with or without trailing padding. Returns an error on invalid input.
  *@example
  *   import @encoding
- *   mut s string = encoding.base64_url_decode("aGVsbG8_")
+ *   mut s, err = encoding.base64_url_decode("aGVsbG8_")
  *@end
  */
 
@@ -148,22 +149,22 @@
 /*@man from_hex
  *@module encoding
  *@group Byte Conversion
- *@sig from_hex(hex string) -> [u8]
+ *@sig from_hex(hex string) -> ([u8], Error)
  *@desc Decodes a hex-encoded string into a u8 array.
  *@example
  *   import @encoding
- *   mut b [u8] = encoding.from_hex("48656c6c6f")
+ *   mut b, err = encoding.from_hex("48656c6c6f")
  *@end
  */
 
 /*@man from_base64
  *@module encoding
  *@group Byte Conversion
- *@sig from_base64(b64 string) -> [u8]
+ *@sig from_base64(b64 string) -> ([u8], Error)
  *@desc Decodes a base64-encoded string into a u8 array.
  *@example
  *   import @encoding
- *   mut b [u8] = encoding.from_base64("SGVsbG8=")
+ *   mut b, err = encoding.from_base64("SGVsbG8=")
  *@end
  */
 
@@ -205,13 +206,13 @@
 
 /* String encoding functions */
 GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString string);
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString string);
+GrayResult_string gray_encoding_base64_decode(GrayArena *arena, GrayString string);
 GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString string);
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString string);
+GrayResult_string gray_encoding_hex_decode(GrayArena *arena, GrayString string);
 GrayString gray_encoding_url_encode(GrayArena *arena, GrayString string);
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString string);
+GrayResult_string gray_encoding_url_decode(GrayArena *arena, GrayString string);
 GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString string);
-GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString string);
+GrayResult_string gray_encoding_base64_url_decode(GrayArena *arena, GrayString string);
 GrayString gray_encoding_html_escape(GrayArena *arena, GrayString string);
 GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString string);
 GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string);
@@ -219,9 +220,9 @@ GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string);
 /* Byte conversion functions (formerly @bytes module) */
 GrayArray gray_encoding_from_string(GrayArena *arena, GrayString string);
 GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes);
-GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex_text);
+GrayResult_array gray_encoding_from_hex(GrayArena *arena, GrayString hex_text);
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes);
-GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString base64_text);
+GrayResult_array gray_encoding_from_base64(GrayArena *arena, GrayString base64_text);
 GrayString gray_encoding_to_base64(GrayArena *arena, GrayArray *bytes);
 
 #endif

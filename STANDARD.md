@@ -4068,13 +4068,13 @@ HTTP client for making requests. Currently supports HTTP only.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `base64_encode` | `(s string) -> string` | Encode to base64 |
-| `base64_decode` | `(s string) -> string` | Decode from base64 |
+| `base64_decode` | `(s string) -> (string, Error)` | Decode from base64; returns an error on malformed input |
 | `base64_url_encode` | `(s string) -> string` | Encode to unpadded URL-safe base64 (`-_`, no `=`) |
-| `base64_url_decode` | `(s string) -> string` | Decode URL-safe base64, with or without padding |
+| `base64_url_decode` | `(s string) -> (string, Error)` | Decode URL-safe base64, with or without padding; returns an error on malformed input |
 | `hex_encode` | `(s string) -> string` | Encode to hex |
-| `hex_decode` | `(s string) -> string` | Decode from hex |
+| `hex_decode` | `(s string) -> (string, Error)` | Decode from hex; returns an error on malformed input |
 | `url_encode` | `(s string) -> string` | URL percent-encode |
-| `url_decode` | `(s string) -> string` | URL percent-decode |
+| `url_decode` | `(s string) -> (string, Error)` | URL percent-decode; returns an error on a malformed escape |
 | `html_escape` | `(s string) -> string` | Escape `& < > " '` as HTML entities |
 | `html_unescape` | `(s string) -> string` | Resolve named and numeric HTML entities |
 | `shell_escape` | `(s string) -> string` | Quote a string as one POSIX shell argument |
@@ -4084,8 +4084,8 @@ HTTP client for making requests. Currently supports HTTP only.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `from_string` | `(s string) -> [u8]` | Create from UTF-8 string |
-| `from_hex` | `(hex string) -> [u8]` | Decode hex string |
-| `from_base64` | `(b64 string) -> [u8]` | Decode base64 string |
+| `from_hex` | `(hex string) -> ([u8], Error)` | Decode hex string; returns an error on malformed input |
+| `from_base64` | `(b64 string) -> ([u8], Error)` | Decode base64 string; returns an error on malformed input |
 | `to_string` | `(bytes [u8]) -> string` | Convert to UTF-8 string |
 | `to_hex` | `(bytes [u8]) -> string` | Encode to hex string |
 | `to_base64` | `(bytes [u8]) -> string` | Encode to base64 string |

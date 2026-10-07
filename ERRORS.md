@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 534 codes** (379 errors, 17 warnings, 138 panics)
+**Total: 527 codes** (379 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -458,13 +458,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0033` | bounds | index out of bounds; tried to access index %lld but the length is %d |
 | `P0034` | iteration | cannot modify array during for_each iteration |
 | `P0035` | iteration | cannot modify map during for_each iteration |
-| `P0036` | encoding | encoding.base64_decode: input length %d is not a multiple of 4 |
-| `P0037` | encoding | encoding.base64_decode: padding character '=' before end of input |
-| `P0038` | encoding | encoding.base64_decode: invalid padding |
-| `P0039` | encoding | encoding.base64_decode: invalid character in input |
-| `P0040` | encoding | encoding.hex_decode: input length %d is not even |
-| `P0041` | encoding | encoding.hex_decode: invalid hex character at position %d |
-| `P0042` | encoding | encoding.url_decode: invalid percent-escape at position %d |
 | `P0043` | bounds | arrays.insert_at: index %lld is out of bounds for an array of length %d |
 | `P0044` | bounds | arrays.remove_at: index %lld is out of bounds for an array of length %d |
 | `P0045` | bounds | arrays.get_first called on an empty array |
@@ -585,4 +578,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-06 02:25:12 UTC*
+*Generated on 2026-10-07 16:39:20 UTC*
