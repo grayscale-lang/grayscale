@@ -6922,6 +6922,18 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         else emit(codegen, ", &_k); })");
         return true;
     }
+    if (strcmp(function_name, "clear") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_map_clear(");
+        emit_address_of(codegen, node->data.call.arguments[0]);
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+        return true;
+    }
+    if (strcmp(function_name, "is_empty") == 0 && node->data.call.argument_count == 1) {
+        emit(codegen, "gray_maps_is_empty(");
+        emit_address_of(codegen, node->data.call.arguments[0]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(function_name, "merge") == 0 && node->data.call.argument_count == 2) {
         GrayType *merge_type = codegen_type_of(codegen, node->data.call.arguments[0]);
         bool should_copy_merged = merge_type && merge_type->kind == TYPE_KIND_MAP && merge_type->value_type &&
@@ -7958,23 +7970,11 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         emit_arrays_value_call(codegen, "gray_arrays_remove", node->data.call.arguments[0], node->data.call.arguments[1]);
         return true;
     }
-    if (strcmp(function_name, "clear") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_arrays_clear(");
-        emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
-        return true;
-    }
     if ((strcmp(function_name, "sort_asc") == 0 || strcmp(function_name, "sort_desc") == 0) &&
         node->data.call.argument_count == 1) {
         emit(codegen, "gray_arrays_sort(");
         emit_array_argument_address(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, ", %s)", strcmp(function_name, "sort_desc") == 0 ? "true" : "false");
-        return true;
-    }
-    if (strcmp(function_name, "is_empty") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_arrays_is_empty(");
-        emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
         return true;
     }
     if ((strcmp(function_name, "contains") == 0 || strcmp(function_name, "index_of") == 0 ||
