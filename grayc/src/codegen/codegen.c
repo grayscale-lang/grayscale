@@ -10992,6 +10992,17 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
     return count;
 }
 
+/* Open a block that captures the pointer in `_dp`, nil-checked unless it is a
+ * raw variable. The caller closes the block. */
+static void emit_pointer_capture(CodeGen *codegen, AstNode *node, AstNode *pointer_expression) {
+    bool is_raw = pointer_expression->kind == NODE_LABEL &&
+                  is_raw_variable(codegen, pointer_expression->data.label.value);
+    emit(codegen, "{ __auto_type _dp = ");
+    emit_expression(codegen, pointer_expression);
+    if (is_raw) emit(codegen, "; ");
+    else emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
@@ -11109,14 +11120,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         const char *wide_integer_element = (pointer_type && pointer_type->kind == TYPE_KIND_POINTER && pointer_type->element_type &&
                                is_wide_integer_type_name(pointer_type->element_type))
                               ? pointer_type->element_type : NULL;
-        bool _deref_raw = (pointer_node->kind == NODE_LABEL && is_raw_variable(codegen, pointer_node->data.label.value));
-        emit(codegen, "{ __auto_type _dp = ");
-        emit_expression(codegen, pointer_node);
-        if (!_deref_raw) {
-            emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-        } else {
-            emit(codegen, "; ");
-        }
+        emit_pointer_capture(codegen, node, pointer_node);
         if (emit_string_append_through(codegen, node, "*_dp")) {
             emit(codegen, "; }\n");
             return;
@@ -11138,14 +11142,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         node->data.assign.target->data.member.object->data.postfix.operator == TOKEN_CARET) {
         AstNode *pointer_target = node->data.assign.target->data.member.object->data.postfix.left;
         const char *field = node->data.assign.target->data.member.member;
-        bool is_field_raw = (pointer_target->kind == NODE_LABEL && is_raw_variable(codegen, pointer_target->data.label.value));
-        emit(codegen, "{ __auto_type _dp = ");
-        emit_expression(codegen, pointer_target);
-        if (is_field_raw) {
-            emit(codegen, "; ");
-        } else {
-            emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-        }
+        emit_pointer_capture(codegen, node, pointer_target);
         char field_reference[MESSAGE_BUFFER_SIZE];
         snprintf(field_reference, sizeof(field_reference), "_dp->%s", field);
         if (emit_string_append_through(codegen, node, field_reference)) {
@@ -11186,14 +11183,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             current = object;
         }
         if (pointer_root && depth > 1) {
-            bool _nest_raw = (pointer_root->kind == NODE_LABEL && is_raw_variable(codegen, pointer_root->data.label.value));
-            emit(codegen, "{ __auto_type _dp = ");
-            emit_expression(codegen, pointer_root);
-            if (_nest_raw) {
-                emit(codegen, "; ");
-            } else {
-                emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-            }
+            emit_pointer_capture(codegen, node, pointer_root);
             /* Build the field reference string for the chain */
             char index_reference[MESSAGE_BUFFER_SIZE];
             int position = snprintf(index_reference, sizeof(index_reference), "_dp->");
@@ -11217,7 +11207,6 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         AstNode *object = node->data.assign.target->data.member.object;
         GrayType *object_type = codegen_type_of(codegen, object);
         bool is_reference = (object->kind == NODE_LABEL && is_reference_variable(codegen, object->data.label.value));
-        bool is_field_object_raw = (object->kind == NODE_LABEL && is_raw_variable(codegen, object->data.label.value));
         if (!is_reference && object_type && object_type->kind == TYPE_KIND_POINTER) {
             const char *field = node->data.assign.target->data.member.member;
             /* p was assigned from new(): its pointee lives in gray_heap_arena,
@@ -11227,13 +11216,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 is_heap_variable(codegen, object->data.label.value)) {
                 GrayType *field_type = codegen_type_of(codegen, node->data.assign.target);
                 if (field_type_needs_arena_escape(field_type)) {
-                    emit(codegen, "{ __auto_type _dp = ");
-                    emit_expression(codegen, object);
-                    if (is_field_object_raw) {
-                        emit(codegen, "; ");
-                    } else {
-                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-                    }
+                    emit_pointer_capture(codegen, node, object);
                     char reference_holder[MESSAGE_BUFFER_SIZE];
                     snprintf(reference_holder, sizeof(reference_holder), "_dp->%s", sanitize_name(field));
                     emit_heap_escaped_field_assign(codegen, node, reference_holder);
@@ -11249,13 +11232,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (field_type && field_type->kind == TYPE_KIND_ARRAY) {
                     char type_spelling_buffer[MESSAGE_BUFFER_SIZE];
                     snprintf(type_spelling_buffer, sizeof(type_spelling_buffer), "[%s]", field_type->element_type ? field_type->element_type : "");
-                    emit(codegen, "{ __auto_type _dp = ");
-                    emit_expression(codegen, object);
-                    if (is_field_object_raw) {
-                        emit(codegen, "; ");
-                    } else {
-                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-                    }
+                    emit_pointer_capture(codegen, node, object);
                     emit_formatted(codegen, "{ GrayArray _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, "; GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
@@ -11265,13 +11242,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     return;
                 }
                 if (field_type && field_type->kind == TYPE_KIND_STRING) {
-                    emit(codegen, "{ __auto_type _dp = ");
-                    emit_expression(codegen, object);
-                    if (is_field_object_raw) {
-                        emit(codegen, "; ");
-                    } else {
-                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-                    }
+                    emit_pointer_capture(codegen, node, object);
                     emit_formatted(codegen, "{ GrayString _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
                     emit_formatted(codegen, "; _dp->%s = gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len); } }\n",
@@ -11279,13 +11250,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     return;
                 }
             }
-            emit(codegen, "{ __auto_type _dp = ");
-            emit_expression(codegen, object);
-            if (is_field_object_raw) {
-                emit(codegen, "; ");
-            } else {
-                emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
-            }
+            emit_pointer_capture(codegen, node, object);
             char pointer_field_reference[MESSAGE_BUFFER_SIZE];
             snprintf(pointer_field_reference, sizeof(pointer_field_reference), "_dp->%s", sanitize_name(field));
             if (emit_string_append_through(codegen, node, pointer_field_reference)) {
