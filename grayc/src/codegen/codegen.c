@@ -5932,6 +5932,14 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
     }
 }
 
+/* Emit every call argument in order, separated by commas. */
+static void emit_call_arguments(CodeGen *codegen, AstNode *node) {
+    for (int i = 0; i < node->data.call.argument_count; i++) {
+        if (i > 0) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.arguments[i]);
+    }
+}
+
 /* A builtin or stdlib call whose C form is `c_name(arg0, arg1, ...)` with every
  * argument passed through in order. */
 typedef struct {
@@ -5945,10 +5953,7 @@ static bool emit_passthrough_call(CodeGen *codegen, AstNode *node, const char *f
     for (const PassthroughCall *passthrough = table; passthrough->function_name; passthrough++) {
         if (strcmp(function_name, passthrough->function_name) != 0 || node->data.call.argument_count != passthrough->argument_count) continue;
         emit_formatted(codegen, "%s(", passthrough->c_name);
-        for (int i = 0; i < passthrough->argument_count; i++) {
-            if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[i]);
-        }
+        emit_call_arguments(codegen, node);
         emit(codegen, ")");
         return true;
     }
@@ -6680,10 +6685,7 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *function
                                         is_unsigned ? "gray_ucast_check" : "gray_cast_check",
                                         strcmp(suffix, "u64") == 0 ? "_u64" : "");
         emit_formatted(codegen, "gray_math_%s_%s(", function_name, suffix);
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[i]);
-        }
+        emit_call_arguments(codegen, node);
         emit(codegen, ")");
         if (needs_check) {
             emit(codegen, ", ");
@@ -6694,10 +6696,7 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *function
     }
     /* Generic: math.func(args...) → gray_math_func(args...) */
     emit_formatted(codegen, "gray_math_%s(", function_name);
-    for (int i = 0; i < node->data.call.argument_count; i++) {
-        if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[i]);
-    }
+    emit_call_arguments(codegen, node);
     emit(codegen, ")");
     return true;
 }
@@ -7037,20 +7036,14 @@ static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *function
 
     if (is_fallible) {
         emit_formatted(codegen, "gray_time_%s_result(", function_name);
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[i]);
-        }
+        emit_call_arguments(codegen, node);
         emit(codegen, ")");
         return true;
     }
 
     emit_formatted(codegen, "gray_time_%s(", function_name);
     if (needs_arena) emit(codegen, "gray_default_arena, ");
-    for (int i = 0; i < node->data.call.argument_count; i++) {
-        if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[i]);
-    }
+    emit_call_arguments(codegen, node);
     emit(codegen, ")");
     return true;
 }
@@ -7428,10 +7421,7 @@ static bool emit_crypto_call(CodeGen *codegen, AstNode *node, const char *functi
                     strcmp(function_name, "constant_time_equal") == 0;
     emit_formatted(codegen, "gray_crypto_%s(", function_name);
     if (!no_arena) emit(codegen, "gray_default_arena, ");
-    for (int i = 0; i < node->data.call.argument_count; i++) {
-        if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[i]);
-    }
+    emit_call_arguments(codegen, node);
     emit(codegen, ")");
     return true;
 }
@@ -8424,10 +8414,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
     if (is_fallible) {
         emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", function_name);
         if (node->data.call.argument_count > 0) emit(codegen, ", ");
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[i]);
-        }
+        emit_call_arguments(codegen, node);
         if (strcmp(function_name, "read_lines") == 0 && node->data.call.argument_count == 1) {
             emit(codegen, ", 0");
         }
@@ -8441,10 +8428,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
     } else {
         emit_formatted(codegen, "gray_io_%s(", function_name);
     }
-    for (int i = 0; i < node->data.call.argument_count; i++) {
-        if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[i]);
-    }
+    emit_call_arguments(codegen, node);
     emit(codegen, ")");
     return true;
 }
@@ -8699,10 +8683,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *funct
     if (is_fallible) {
         emit_formatted(codegen, "gray_strconv_%s_result(", function_name);
         if (needs_arena) emit(codegen, "gray_default_arena, ");
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[i]);
-        }
+        emit_call_arguments(codegen, node);
         /* Default base=10 for to_i64/to_u64 when not provided */
         if (has_base && node->data.call.argument_count == 1) {
             emit(codegen, ", 10");
@@ -8716,10 +8697,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *funct
     } else {
         emit_formatted(codegen, "gray_strconv_%s(", function_name);
     }
-    for (int i = 0; i < node->data.call.argument_count; i++) {
-        if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[i]);
-    }
+    emit_call_arguments(codegen, node);
     emit(codegen, ")");
     return true;
 }
