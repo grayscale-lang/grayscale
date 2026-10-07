@@ -187,6 +187,25 @@ static bool current_token_is(Parser *parser, TokenType type) {
     return parser->current_token.type == type;
 }
 
+/* The optional ("message") after #deprecated; NULL when absent or malformed. */
+static const char *parse_deprecated_message(Parser *parser) {
+    if (!current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) return NULL;
+    next_token(parser); /* consume ( */
+    const char *message = NULL;
+    if (current_token_is(parser, TOKEN_STRING)) {
+        message = arena_copy_string(parser->arena, parser->current_token.literal);
+        next_token(parser); /* consume string */
+    } else {
+        emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
+    }
+    if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
+        next_token(parser); /* consume ) */
+    } else {
+        emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
+    }
+    return message;
+}
+
 static bool peek_token_is(Parser *parser, TokenType type) {
     return parser->peek_token.type == type;
 }
@@ -2578,21 +2597,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_DEPRECATED, "#deprecated");
             next_token(parser); /* consume #deprecated */
             has_pending_deprecated = true;
-            if (!is_duplicate) pending_deprecated_message = NULL;
-            if (current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-                next_token(parser); /* consume ( */
-                if (current_token_is(parser, TOKEN_STRING)) {
-                    if (!is_duplicate) pending_deprecated_message = arena_copy_string(parser->arena, parser->current_token.literal);
-                    next_token(parser); /* consume string */
-                } else {
-                    emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
-                }
-                if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
-                    next_token(parser); /* consume ) */
-                } else {
-                    emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
-                }
-            }
+            const char *message = parse_deprecated_message(parser);
+            if (!is_duplicate) pending_deprecated_message = message;
             continue;
         }
         /* Check for struct-namespaced function: do func() or private do func() */
@@ -3477,21 +3483,7 @@ static AstNode *parse_statement(Parser *parser) {
          * function, struct, or enum declaration. */
         bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_DEPRECATED, "#deprecated");
         next_token(parser); /* consume #deprecated */
-        const char *message = NULL;
-        if (current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-            next_token(parser); /* consume ( */
-            if (current_token_is(parser, TOKEN_STRING)) {
-                message = arena_copy_string(parser->arena, parser->current_token.literal);
-                next_token(parser); /* consume string */
-            } else {
-                emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
-            }
-            if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
-                next_token(parser); /* consume ) */
-            } else {
-                emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
-            }
-        }
+        const char *message = parse_deprecated_message(parser);
         AstNode *statement = parse_statement(parser);
         if (statement && statement->kind == NODE_FUNCTION_DECLARATION) {
             statement->data.function_declaration.is_deprecated = true;
