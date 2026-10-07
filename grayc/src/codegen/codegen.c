@@ -6899,7 +6899,9 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         }
         return true;
     }
-    if (strcmp(function_name, "has_key") == 0) {
+    if ((strcmp(function_name, "has_key") == 0 || strcmp(function_name, "remove_key") == 0) &&
+        node->data.call.argument_count == 2) {
+        bool is_remove = strcmp(function_name, "remove_key") == 0;
         /* Key buffer must match the map's declared key storage type
          * (gray_map_element_c_type), not whatever C type the argument expression
          * happens to have; otherwise the hash/memcmp compares the wrong
@@ -6908,25 +6910,13 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         GrayType *map_type = codegen_type_of(codegen, node->data.call.arguments[0]);
         if (map_type && map_type->kind == TYPE_KIND_MAP && map_type->key_type)
             c_key_type = gray_map_element_c_type(codegen, map_type->key_type);
-        emit_formatted(codegen, "({ %s _hk = ", c_key_type);
+        emit_formatted(codegen, "({ %s _k = ", c_key_type);
         emit_map_slot_value(codegen, (map_type && map_type->kind == TYPE_KIND_MAP) ? map_type->key_type : NULL,
             node->data.call.arguments[1]);
-        emit(codegen, "; gray_maps_has_key(");
+        emit_formatted(codegen, "; %s(", is_remove ? "gray_map_remove" : "gray_maps_has_key");
         emit_address_of(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", &_hk); })");
-        return true;
-    }
-    if (strcmp(function_name, "remove_key") == 0 && node->data.call.argument_count == 2) {
-        const char *c_key_type = "int64_t";
-        GrayType *map_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        if (map_type && map_type->kind == TYPE_KIND_MAP && map_type->key_type)
-            c_key_type = gray_map_element_c_type(codegen, map_type->key_type);
-        emit_formatted(codegen, "({ %s _rk = ", c_key_type);
-        emit_map_slot_value(codegen, (map_type && map_type->kind == TYPE_KIND_MAP) ? map_type->key_type : NULL,
-            node->data.call.arguments[1]);
-        emit(codegen, "; gray_map_remove(");
-        emit_address_of(codegen, node->data.call.arguments[0]);
-        emit_formatted(codegen, ", &_rk, \"%s\", %d); })", codegen->file, node->token.line);
+        if (is_remove) emit_formatted(codegen, ", &_k, \"%s\", %d); })", codegen->file, node->token.line);
+        else emit(codegen, ", &_k); })");
         return true;
     }
     if (strcmp(function_name, "merge") == 0 && node->data.call.argument_count == 2) {
