@@ -6929,18 +6929,6 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *function
         emit_formatted(codegen, ", &_rk, \"%s\", %d); })", codegen->file, node->token.line);
         return true;
     }
-    if (strcmp(function_name, "clear") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_map_clear(");
-        emit_address_of(codegen, node->data.call.arguments[0]);
-        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-        return true;
-    }
-    if (strcmp(function_name, "is_empty") == 0 && node->data.call.argument_count == 1) {
-        emit(codegen, "gray_maps_is_empty(");
-        emit_address_of(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
-        return true;
-    }
     if (strcmp(function_name, "merge") == 0 && node->data.call.argument_count == 2) {
         GrayType *merge_type = codegen_type_of(codegen, node->data.call.arguments[0]);
         bool should_copy_merged = merge_type && merge_type->kind == TYPE_KIND_MAP && merge_type->value_type &&
@@ -7987,14 +7975,6 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         emit(codegen, ", _ii, &_iv); }");
         return true;
     }
-    if (strcmp(function_name, "remove_at") == 0 && node->data.call.argument_count == 2) {
-        emit(codegen, "gray_arrays_remove_at(");
-        emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ")");
-        return true;
-    }
     if (strcmp(function_name, "remove") == 0 && node->data.call.argument_count == 2) {
         emit_arrays_value_call(codegen, "gray_arrays_remove", node->data.call.arguments[0], node->data.call.arguments[1]);
         return true;
@@ -8245,13 +8225,6 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         snprintf(function_name_buffer, sizeof(function_name_buffer), "gray_arrays_%s", function_name);
         emit_arrays_out_call(codegen, function_name_buffer, node->data.call.arguments[0],
             strcmp(function_name, "get_sum") == 0, node);
-        return true;
-    }
-    if ((strcmp(function_name, "is_sorted") == 0 || strcmp(function_name, "min_index") == 0 ||
-         strcmp(function_name, "max_index") == 0) && node->data.call.argument_count == 1) {
-        emit_formatted(codegen, "gray_arrays_%s(", function_name);
-        emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
         return true;
     }
     if (strcmp(function_name, "binary_search") == 0 && node->data.call.argument_count == 2) {
