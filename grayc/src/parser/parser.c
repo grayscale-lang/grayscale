@@ -2004,6 +2004,11 @@ static AstNode *parse_function_declaration(Parser *parser) {
                         parameter->default_value ? parameter->default_value->token.line : parser->current_token.line,
                         parameter->default_value ? parameter->default_value->token.column : parser->current_token.column, 0);
                 }
+                if (parameter->is_mutable) {
+                    diagnostic_error_code(parser->diagnostics, "E2099", parser->file,
+                        parameter->default_value ? parameter->default_value->token.line : parser->current_token.line,
+                        parameter->default_value ? parameter->default_value->token.column : parser->current_token.column, 0);
+                }
             }
 
             node->data.function_declaration.parameter_count++;

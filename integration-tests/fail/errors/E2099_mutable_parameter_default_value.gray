@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2099 - a mutable (&) parameter modifies the caller's variable,
+ * so it cannot have a default value.
+ */
+// expect-error: E2099
+// expect-error-count: 1
+
+do f(&x i64 = 5) {
+    x += 1
+}
+
+do main() {}

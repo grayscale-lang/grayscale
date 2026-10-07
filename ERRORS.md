@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 527 codes** (379 errors, 17 warnings, 131 panics)
+**Total: 528 codes** (380 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -89,6 +89,7 @@
 | `E2096` | syntax | 'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables |
 | `E2097` | syntax | a 'generic' parameter cannot have a default value; its argument is the type the caller passes |
 | `E2098` | syntax | imports must come before all other declarations in the file |
+| `E2099` | syntax | a mutable (&) parameter cannot have a default value; the caller must pass a variable to modify |
 | `E3001` | types | type mismatch: cannot assign %s to %s |
 | `E3002` | types | invalid operands: cannot use '%s' with %s and %s |
 | `E3003` | types | %s index must be an integer, got %s |
@@ -578,4 +579,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-07 16:39:20 UTC*
+*Generated on 2026-10-07 22:42:02 UTC*
