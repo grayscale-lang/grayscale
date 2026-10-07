@@ -7762,44 +7762,17 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *functi
 
 static const PassthroughCall random_passthrough[] = {
     {"seed", 1, "gray_random_seed"},
+    {"rand_f64", 0, "gray_random_f64_unit"},
+    {"rand_f64", 2, "gray_random_f64_range"},
+    {"rand_i64", 2, "gray_random_i64_range"},
+    {"rand_bool", 0, "gray_random_bool"},
+    {"rand_u8", 0, "gray_random_u8"},
+    {"rand_char", 0, "gray_random_char"},
+    {"rand_char", 2, "gray_random_char_range"},
     {NULL, 0, NULL},
 };
 
 static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    if (strcmp(function_name, "rand_f64") == 0) {
-        if (node->data.call.argument_count == 0) {
-            emit(codegen, "gray_random_f64_unit()");
-        } else if (node->data.call.argument_count == 2) {
-            emit(codegen, "gray_random_f64_range(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[1]);
-            emit(codegen, ")");
-        }
-        return true;
-    }
-    if (strcmp(function_name, "rand_i64") == 0) {
-        emit(codegen, "gray_random_i64_range(");
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "rand_bool") == 0) { emit(codegen, "gray_random_bool()"); return true; }
-    if (strcmp(function_name, "rand_u8") == 0) { emit(codegen, "gray_random_u8()"); return true; }
-    if (strcmp(function_name, "rand_char") == 0) {
-        if (node->data.call.argument_count == 2) {
-            emit(codegen, "gray_random_char_range(");
-            emit_expression(codegen, node->data.call.arguments[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.arguments[1]);
-            emit(codegen, ")");
-        } else {
-            emit(codegen, "gray_random_char()");
-        }
-        return true;
-    }
     if (strcmp(function_name, "rand_string") == 0 && node->data.call.argument_count == 2) {
         emit(codegen, "gray_random_string(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
