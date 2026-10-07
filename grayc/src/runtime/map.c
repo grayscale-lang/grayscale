@@ -234,6 +234,15 @@ void *gray_map_get(GrayMap *map, const void *key) {
     return value_pointer(map, index);
 }
 
+/* Place a new entry in `slot`: state, order entry and count move together. */
+static void map_insert_at(GrayArena *arena, GrayMap *map, int32_t slot, const void *key, const void *value) {
+    store_key(arena, map, slot, key);
+    memcpy(value_pointer(map, slot), value, (size_t)map->value_size);
+    map->states[slot] = 1;
+    if (map->order) { map->order_position[slot] = map->order_len; map->order[map->order_len++] = slot; }
+    map->count++;
+}
+
 void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *value, const char *file, int line) {
     if (gray_atomic_load32(&map->iterating) > 0) {
         /* Updating an existing key's value leaves the key set unchanged. */
@@ -272,11 +281,7 @@ void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *v
         if (map->states[probe] == 0) {
             /* Empty — key definitely not in map; insert at tombstone if seen, else here */
             int32_t slot = (first_tombstone >= 0) ? first_tombstone : probe;
-            store_key(arena, map, slot, key);
-            memcpy(value_pointer(map, slot), value, (size_t)map->value_size);
-            map->states[slot] = 1;
-            if (map->order) { map->order_position[slot] = map->order_len; map->order[map->order_len++] = slot; }
-            map->count++;
+            map_insert_at(arena, map, slot, key, value);
             return;
         }
         if (keys_equal(key_pointer(map, probe), key, map->key_size, map->key_kind)) {
@@ -287,11 +292,7 @@ void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *v
     }
     /* Probe chain full of tombstones and the key was not found — use first tombstone */
     if (first_tombstone >= 0) {
-        store_key(arena, map, first_tombstone, key);
-        memcpy(value_pointer(map, first_tombstone), value, (size_t)map->value_size);
-        map->states[first_tombstone] = 1;
-        if (map->order) { map->order_position[first_tombstone] = map->order_len; map->order[map->order_len++] = first_tombstone; }
-        map->count++;
+        map_insert_at(arena, map, first_tombstone, key, value);
     }
 }
 
