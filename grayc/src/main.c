@@ -210,8 +210,20 @@ static void argument_vector_push_command(ArgumentVector *arguments, Arena *arena
     }
 }
 
+static void argument_vector_push_compiler(ArgumentVector *arguments, Arena *arena, const char *command, bool is_command) {
+    if (is_command) argument_vector_push_command(arguments, arena, command);
+    else argument_vector_push(arguments, command);
+}
+
 static void argument_vector_end(ArgumentVector *arguments) {
     arguments->values[arguments->count] = NULL;
+}
+
+static void argument_vector_end_with_c_source(ArgumentVector *arguments, const char *source_path) {
+    argument_vector_push(arguments, "-x");
+    argument_vector_push(arguments, "c");
+    argument_vector_push(arguments, source_path);
+    argument_vector_end(arguments);
 }
 
 static void argument_vector_print(const ArgumentVector *arguments, FILE *output) {
@@ -438,13 +450,9 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diagnostics, A
                 if (!write_file(stub, body)) { gray_remove_file(stub); continue; }
 
                 ArgumentVector arguments = {0};
-                if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-                else argument_vector_push(&arguments, c_compiler_command);
+                argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
                 argument_vector_push(&arguments, "-fsyntax-only");
-                argument_vector_push(&arguments, "-x");
-                argument_vector_push(&arguments, "c");
-                argument_vector_push(&arguments, stub);
-                argument_vector_end(&arguments);
+                argument_vector_end_with_c_source(&arguments, stub);
                 found = !arguments.has_overflowed && gray_spawn_quiet(arguments.values) == 0;
                 gray_remove_file(stub);
             }
@@ -984,14 +992,10 @@ static bool c_headers_fail_to_compile(AstNode *program, Arena *arena, const char
     if (!capture) { gray_remove_file(stub); return false; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-fsyntax-only");
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     bool failed = !arguments.has_overflowed && gray_spawn_capture_stderr(arguments.values, capture) != 0;
     gray_remove_file(stub);
@@ -1091,16 +1095,12 @@ static char *capture_clang_ast_dump(AstNode *program, Arena *arena, const char *
     if (!capture) { gray_remove_file(stub); return NULL; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-Xclang");
     argument_vector_push(&arguments, "-ast-dump");
     argument_vector_push(&arguments, "-fsyntax-only");
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     bool spawned = !arguments.has_overflowed && gray_spawn_capture_stdout(arguments.values, capture) == 0;
     gray_remove_file(stub);
@@ -1134,15 +1134,11 @@ static int run_c_probe(AstNode *program, Arena *arena, const char *c_compiler_co
     if (!capture) { gray_remove_file(stub); return -1; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-fsyntax-only");
     for (int i = 0; flags[i]; i++) argument_vector_push(&arguments, flags[i]);
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     int status = arguments.has_overflowed ? -1 : gray_spawn_capture_stderr(arguments.values, capture);
     gray_remove_file(stub);
@@ -1350,14 +1346,10 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
             FILE *perr = gray_tmpfile();
             if (perr) {
                 ArgumentVector probe_arguments = {0};
-                if (cc_is_command) argument_vector_push_command(&probe_arguments, arena, c_compiler_command);
-                else argument_vector_push(&probe_arguments, c_compiler_command);
+                argument_vector_push_compiler(&probe_arguments, arena, c_compiler_command, cc_is_command);
                 argument_vector_push(&probe_arguments, "-fsyntax-only");
                 add_local_c_header_dirs(&probe_arguments, arena, program, entry_file);
-                argument_vector_push(&probe_arguments, "-x");
-                argument_vector_push(&probe_arguments, "c");
-                argument_vector_push(&probe_arguments, probe_stub);
-                argument_vector_end(&probe_arguments);
+                argument_vector_end_with_c_source(&probe_arguments, probe_stub);
 
                 if (!probe_arguments.has_overflowed) gray_spawn_capture_stderr(probe_arguments.values, perr);
                 long error_length = ftell(perr);
