@@ -42,7 +42,7 @@ static uint64_t hash_bytes(const void *data, int32_t size) {
     return hash;
 }
 
-/* Float key normalization: -0.0 hashes/compares as +0.0; all NaN
+/* Float key normalization (f32 keys widen to f64 first): -0.0 hashes/compares as +0.0; all NaN
  * payloads collide on a canonical quiet NaN. Matches Grayscale's `==` on
  * floating-point values (which says +0.0 == -0.0) and gives NaN keys a single bucket
  * instead of one per source-of-NaN. */
@@ -64,15 +64,8 @@ static uint64_t hash_f64(const void *key) {
 static uint64_t hash_f32(const void *key) {
     float value;
     memcpy(&value, key, sizeof(value));
-    uint32_t bits;
-    if (value == 0.0f) {
-        bits = 0;
-    } else if (value != value) {
-        bits = 0x7FC00000U;
-    } else {
-        memcpy(&bits, &value, sizeof(bits));
-    }
-    return hash_bytes(&bits, sizeof(bits));
+    double widened = value;
+    return hash_f64(&widened);
 }
 
 static bool floats_equal_f64(const void *left, const void *right) {
@@ -88,9 +81,8 @@ static bool floats_equal_f32(const void *left, const void *right) {
     float left_value, right_value;
     memcpy(&left_value, left, sizeof(left_value));
     memcpy(&right_value, right, sizeof(right_value));
-    if (left_value == 0.0f && right_value == 0.0f) return true;
-    if (left_value != left_value && right_value != right_value) return true;
-    return left_value == right_value;
+    double left_widened = left_value, right_widened = right_value;
+    return floats_equal_f64(&left_widened, &right_widened);
 }
 
 /* Hash a key according to its kind. */
