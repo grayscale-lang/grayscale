@@ -326,13 +326,6 @@ GrayString gray_strconv_quote(GrayArena *arena, GrayString string) {
     return (GrayString){buffer, j};
 }
 
-static int strconv_hex_digit(char character) {
-    if (character >= '0' && character <= '9') return character - '0';
-    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-    return -1;
-}
-
 /* Unquote s into a freshly allocated string. Returns true on success; on
    failure returns false and leaves *out untouched. */
 static bool strconv_unquote_into(GrayArena *arena, GrayString string, GrayString *output) {
@@ -363,8 +356,8 @@ static bool strconv_unquote_into(GrayArena *arena, GrayString string, GrayString
         case '$':  buffer[j++] = '$';  break;
         case 'x': {
             if (i + 2 >= end_index) return false;
-            int high_digit = strconv_hex_digit(string.data[i + 1]);
-            int low_digit = strconv_hex_digit(string.data[i + 2]);
+            int high_digit = gray_hex_digit_value(string.data[i + 1]);
+            int low_digit = gray_hex_digit_value(string.data[i + 2]);
             if (high_digit < 0 || low_digit < 0) return false;
             buffer[j++] = (char)((high_digit << 4) | low_digit);
             i += 2;

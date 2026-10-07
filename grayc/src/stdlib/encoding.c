@@ -110,11 +110,11 @@ GrayResult_string gray_encoding_hex_decode(GrayArena *arena, GrayString string) 
     for (int i = 0; i < output_length; i++) {
         unsigned char high_nibble = (unsigned char)string.data[i * 2];
         unsigned char low_nibble = (unsigned char)string.data[i * 2 + 1];
-        if (!isxdigit(high_nibble) || !isxdigit(low_nibble)) {
+        int high_value = gray_hex_digit_value((char)high_nibble);
+        int low_value = gray_hex_digit_value((char)low_nibble);
+        if (high_value < 0 || low_value < 0) {
             return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid hex character"))};
         }
-        int high_value = (high_nibble <= '9') ? high_nibble - '0' : (high_nibble <= 'F') ? high_nibble - 'A' + 10 : high_nibble - 'a' + 10;
-        int low_value = (low_nibble <= '9') ? low_nibble - '0' : (low_nibble <= 'F') ? low_nibble - 'A' + 10 : low_nibble - 'a' + 10;
         output[i] = (char)((high_value << 4) | low_value);
     }
     output[output_length] = '\0';
@@ -145,11 +145,11 @@ GrayResult_string gray_encoding_url_decode(GrayArena *arena, GrayString string) 
         if (string.data[i] == '%' && i + 2 < string.len) {
             unsigned char high_nibble = (unsigned char)string.data[i + 1];
             unsigned char low_nibble = (unsigned char)string.data[i + 2];
-            if (!isxdigit(high_nibble) || !isxdigit(low_nibble)) {
+            int high_value = gray_hex_digit_value((char)high_nibble);
+            int low_value = gray_hex_digit_value((char)low_nibble);
+            if (high_value < 0 || low_value < 0) {
                 return (GrayResult_string){{"", 0}, gray_error_new(gray_default_arena, GRAY_ERR_EncodingFailure, gray_string_lit("invalid percent-escape"))};
             }
-            int high_value = (high_nibble <= '9') ? high_nibble - '0' : (high_nibble <= 'F') ? high_nibble - 'A' + 10 : high_nibble - 'a' + 10;
-            int low_value = (low_nibble <= '9') ? low_nibble - '0' : (low_nibble <= 'F') ? low_nibble - 'A' + 10 : low_nibble - 'a' + 10;
             output[j++] = (char)((high_value << 4) | low_value);
             i += 2;
         } else if (string.data[i] == '+') {

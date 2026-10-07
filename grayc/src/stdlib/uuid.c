@@ -68,13 +68,6 @@ static void gray_uuid_format_hyphenated(const uint8_t *bytes, char *buffer) {
         bytes[12], bytes[13], bytes[14], bytes[15]);
 }
 
-static int uuid_hex_value(char character) {
-    if (character >= '0' && character <= '9') return character - '0';
-    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-    return 0;
-}
-
 /* Decode the canonical 36-char hyphenated form into 16 bytes. A value that
  * is not 36 chars (failed generate, or the default-zero struct) yields the
  * nil UUID's bytes. */
@@ -86,8 +79,8 @@ static void uuid_to_bytes16(GrayUUID uuid, uint8_t output[16]) {
     int byte_index = 0;
     for (int i = 0; i < GRAY_UUID_LENGTH && byte_index < 16; i++) {
         if (uuid.value.data[i] == '-') continue;
-        output[byte_index++] = (uint8_t)((uuid_hex_value(uuid.value.data[i]) << 4) |
-                             uuid_hex_value(uuid.value.data[i + 1]));
+        output[byte_index++] = (uint8_t)((gray_hex_digit_value(uuid.value.data[i]) << 4) |
+                             gray_hex_digit_value(uuid.value.data[i + 1]));
         i++;
     }
 }

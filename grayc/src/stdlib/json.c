@@ -328,21 +328,13 @@ static void skip_whitespace(const char **cursor, const char *end_cursor) {
     while (*cursor < end_cursor && isspace((unsigned char)**cursor)) (*cursor)++;
 }
 
-/* Value of a hex digit, or -1. */
-static int json_hex_digit(char character) {
-    if (character >= '0' && character <= '9') return character - '0';
-    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-    return -1;
-}
-
 /* The four hex digits at `p` as a code unit, or -1 when fewer than four
  * digits remain before `limit`. */
 static int json_hex4(const char *cursor, const char *limit) {
     if (limit - cursor < 4) return -1;
     int value = 0;
     for (int i = 0; i < 4; i++) {
-        int digit = json_hex_digit(cursor[i]);
+        int digit = gray_hex_digit_value(cursor[i]);
         if (digit < 0) return -1;
         value = value * 16 + digit;
     }

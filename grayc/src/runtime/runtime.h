@@ -184,6 +184,14 @@ static inline bool gray_string_eq(GrayString left, GrayString right) {
     return memcmp(left.data, right.data, (size_t)left.len) == 0;
 }
 
+/* Value of an ASCII hex digit, or -1 when `character` is not one. */
+static inline int gray_hex_digit_value(char character) {
+    if (character >= '0' && character <= '9') return character - '0';
+    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+    return -1;
+}
+
 /* String concatenation */
 GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right);
 
