@@ -7817,6 +7817,13 @@ static const char *codegen_array_element_type(CodeGen *codegen, AstNode *node) {
     return (type && type->kind == TYPE_KIND_ARRAY) ? type->element_type : NULL;
 }
 
+/* Element type name of the array a closure-taking arrays call operates on
+ * (i64 when unknown). */
+static const char *arrays_closure_element_type_name(CodeGen *codegen, AstNode *node) {
+    const char *element_type_name = codegen_array_element_type(codegen, node->data.call.arguments[0]);
+    return element_type_name ? element_type_name : "i64";
+}
+
 /* Emit &arr for arrays.append/prepend/insert_at. Identical to
  * emit_address_of — kept as a name that reads at the call sites. Keeping a
  * second implementation is what let the two drift apart, leaving pointer
@@ -8116,9 +8123,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
 
     /* --- map / filter / reduce: inline loop emission --- */
     if (strcmp(function_name, "map") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _m_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; %s (*_m_fn)(%s) = (void *)", c_element_type, c_element_type);
@@ -8130,9 +8135,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "filter") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _f_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; bool (*_f_fn)(%s) = (void *)", c_element_type);
@@ -8144,9 +8147,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "any") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _a_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; bool (*_a_fn)(%s) = (void *)", c_element_type);
@@ -8157,9 +8158,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "all") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _l_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; bool (*_l_fn)(%s) = (void *)", c_element_type);
@@ -8170,8 +8169,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "reduce") == 0 && node->data.call.argument_count == 3) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
+        const char *element_type_name = arrays_closure_element_type_name(codegen, node);
         const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
         emit(codegen, "({ GrayArray _r_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
@@ -8185,9 +8183,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "find_index") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _fi_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; bool (*_fi_fn)(%s) = (void *)", c_element_type);
@@ -8198,9 +8194,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         return true;
     }
     if (strcmp(function_name, "find") == 0 && node->data.call.argument_count == 2) {
-        GrayType *array_type = codegen_type_of(codegen, node->data.call.arguments[0]);
-        const char *element_type_name = (array_type && array_type->kind == TYPE_KIND_ARRAY) ? array_type->element_type : "i64";
-        const char *c_element_type = gray_type_to_c_codegen(codegen, element_type_name);
+        const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray _fd_src = ");
         emit_expression(codegen, node->data.call.arguments[0]);
         emit_formatted(codegen, "; bool (*_fd_fn)(%s) = (void *)", c_element_type);
