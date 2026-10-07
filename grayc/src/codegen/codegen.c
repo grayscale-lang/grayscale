@@ -86,6 +86,7 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
                                        AstNode **saved_indexes, bool is_scoped);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name);
+static bool codegen_enum_is_string(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_error_code(CodeGen *codegen, const char *name);
 static int codegen_enum_index(CodeGen *codegen, const char *name);
 static void emit_to_string(CodeGen *codegen, AstNode *argument);
@@ -953,6 +954,10 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_ty
     if (codegen && codegen_is_enum(codegen, gray_type_name) &&
         codegen_enum_is_tagged(codegen, gray_type_name))
         return gray_type_to_c_codegen(codegen, gray_type_name);
+    /* A string-backed enum value is a GrayString, not an integer. */
+    if (codegen && codegen_is_enum(codegen, gray_type_name) &&
+        codegen_enum_is_string(codegen, gray_type_name))
+        return "GrayString";
     /* Wide integers are TYPE_KIND_SIGNED_INTEGER/TYPE_KIND_UNSIGNED_INTEGER in the type system but 16/32-byte
      * structs in C; a map slot must use the struct type so its size and the
      * casts on read match, just like a [i128] array element does. */
