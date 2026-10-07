@@ -2621,6 +2621,17 @@ static const char *function_display_name(const FunctionSignature *function_signa
     return function_signature ? function_signature->name : "";
 }
 
+/* How many arguments a call must supply: the parameters without a default. */
+static int signature_minimum_arguments(const FunctionSignature *signature) {
+    if (!signature->declaration || signature->declaration->kind != NODE_FUNCTION_DECLARATION)
+        return signature->parameter_count;
+    int minimum = 0;
+    for (int index = 0; index < signature->declaration->data.function_declaration.parameter_count; index++) {
+        if (!signature->declaration->data.function_declaration.parameters[index].default_value) minimum++;
+    }
+    return minimum;
+}
+
 /* E3163 ("a helper's summary escapes one of its own parameters" — into a
  * global, another parameter's reachable storage, or a container sink) plus
  * the @mem arena-lifecycle propagation, for a call to `csig` against `node`'s
@@ -7823,14 +7834,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             }
             /* E5008: check argument count, accounting for default params */
             {
-                int minimum_parameters = signature->parameter_count;
-                if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_parameters = 0;
-                    for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_parameters++;
-                    }
-                }
+                int minimum_parameters = signature_minimum_arguments(signature);
                 if (node->data.call.argument_count < minimum_parameters ||
                     node->data.call.argument_count > signature->parameter_count) {
                     char *expected_count = minimum_parameters == signature->parameter_count
@@ -7927,14 +7931,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
              * module-qualified call did not, so too few arguments reached
              * codegen and came back as a C compiler error. */
             {
-                int minimum_arguments = signature->parameter_count;
-                if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_arguments = 0;
-                    for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_arguments++;
-                    }
-                }
+                int minimum_arguments = signature_minimum_arguments(signature);
                 if (node->data.call.argument_count < minimum_arguments ||
                     node->data.call.argument_count > signature->parameter_count) {
                     char *expected_count = minimum_arguments == signature->parameter_count
@@ -8132,14 +8129,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * and param_count include self, so they compare
                      * directly. Display counts subtract 1 to hide self. */
                     {
-                        int minimum_parameters = struct_function_signature->parameter_count;
-                        if (struct_function_signature->declaration && struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                            minimum_parameters = 0;
-                            for (int parameter_index = 0; parameter_index < struct_function_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                                if (!struct_function_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                                    minimum_parameters++;
-                            }
-                        }
+                        int minimum_parameters = signature_minimum_arguments(struct_function_signature);
                         if (node->data.call.argument_count < minimum_parameters ||
                             node->data.call.argument_count > struct_function_signature->parameter_count) {
                             int display_got = node->data.call.argument_count - 1;
@@ -8257,14 +8247,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
                     /* Validate argument count */
                     {
-                        int minimum_parameters = struct_function_signature->parameter_count;
-                        if (struct_function_signature->declaration && struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                            minimum_parameters = 0;
-                            for (int parameter_index = 0; parameter_index < struct_function_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                                if (!struct_function_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                                    minimum_parameters++;
-                            }
-                        }
+                        int minimum_parameters = signature_minimum_arguments(struct_function_signature);
                         if (node->data.call.argument_count < minimum_parameters ||
                             node->data.call.argument_count > struct_function_signature->parameter_count) {
                             char *expected_count = minimum_parameters == struct_function_signature->parameter_count
@@ -9434,14 +9417,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             typechecker_resolve_named_arguments(checker, node, signature->declaration, function_name);
         }
         /* Check argument count; account for default parameters */
-        int minimum_arguments = signature->parameter_count;
-        if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-            minimum_arguments = 0;
-            for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                    minimum_arguments++;
-            }
-        }
+        int minimum_arguments = signature_minimum_arguments(signature);
         if (node->data.call.argument_count < minimum_arguments ||
             node->data.call.argument_count > signature->parameter_count) {
             char *expected_count = minimum_arguments == signature->parameter_count
@@ -9568,14 +9544,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             if (reference_signature) {
                 /* compute min arity by counting
                  * params without default values. */
-                int minimum_arity = reference_signature->parameter_count;
-                if (reference_signature->declaration && reference_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_arity = 0;
-                    for (int parameter_index = 0; parameter_index < reference_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!reference_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_arity++;
-                    }
-                }
+                int minimum_arity = signature_minimum_arguments(reference_signature);
                 int argument_count = node->data.call.argument_count;
                 if (argument_count < minimum_arity || argument_count > reference_signature->parameter_count) {
                     char *expected_count = minimum_arity == reference_signature->parameter_count
