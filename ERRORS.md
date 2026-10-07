@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 528 codes** (380 errors, 17 warnings, 131 panics)
+**Total: 529 codes** (380 errors, 17 warnings, 132 panics)
 
 ---
 
@@ -555,6 +555,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0144` | sqlite | sqlite: a database path or SQL statement contains an embedded null byte |
 | `P0145` | time | time: a format, layout or text contains an embedded null byte |
 | `P0146` | regex | regex: a pattern or text contains an embedded null byte |
+| `P0147` | arithmetic | cast to %s failed; value '%.*s' does not match any variant of %s |
 
 ---
 
@@ -579,4 +580,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-07 22:42:02 UTC*
+*Generated on 2026-10-07 22:48:11 UTC*

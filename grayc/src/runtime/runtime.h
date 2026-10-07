@@ -512,6 +512,17 @@ static inline int64_t gray_enum_cast_check(int64_t value, const int64_t *variant
     return value;
 }
 
+/* Safe cast to a string-backed enum: the string must equal a declared variant's value. */
+static inline GrayString gray_enum_cast_check_string(GrayString value, const GrayString *variants, int32_t count,
+    const char *type_name, const char *file, int line) {
+    for (int32_t i = 0; i < count; i++) {
+        if (variants[i].len == value.len && memcmp(variants[i].data, value.data, (size_t)value.len) == 0) return value;
+    }
+    gray_panic_code_at(file, line, "P0147", "cast to %s failed; value '%.*s' does not match any variant of %s",
+        type_name, (int)value.len, value.data, type_name);
+    return value;
+}
+
 /* Safe uint64 → int64 conversion: panics if value exceeds INT64_MAX */
 static inline int64_t gray_u64_to_i64_check(uint64_t value, const char *file, int line) {
     if (value > (uint64_t)9223372036854775807LL)

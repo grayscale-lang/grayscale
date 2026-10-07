@@ -4300,6 +4300,25 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
 
     /* string-backed enum <-> string: both are GrayString at runtime, so the
      * cast is a pure reinterpretation with no conversion. */
+    if (codegen_enum_is_string(codegen, target) && value_kind == TYPE_KIND_STRING) {
+        /* string → string-backed enum: the string has to equal a declared
+         * variant's value. */
+        AstNode *target_enum_declaration = codegen->enum_declarations[codegen_enum_index(codegen, target)];
+        emit(codegen, "gray_enum_cast_check_string(");
+        emit_expression(codegen, value);
+        emit(codegen, ", (const GrayString[]){");
+        for (int variant_index = 0; variant_index < target_enum_declaration->data.enum_declaration.value_count; variant_index++) {
+            if (variant_index > 0) emit(codegen, ", ");
+            emit_formatted(codegen, "GrayEnum_%s_%s", target,
+                target_enum_declaration->data.enum_declaration.values[variant_index].name);
+        }
+        const char *display = target_enum_declaration->data.enum_declaration.original_name
+            ? target_enum_declaration->data.enum_declaration.original_name : target;
+        emit_formatted(codegen, "}, %d, \"%s\", \"%s\", %d)",
+            target_enum_declaration->data.enum_declaration.value_count,
+            display, codegen->file, node->token.line);
+        return;
+    }
     if (codegen_enum_is_string(codegen, target) ||
         (strcmp(target, "string") == 0 && value_type && value_type->name &&
          codegen_enum_is_string(codegen, value_type->name))) {

@@ -1,0 +1,17 @@
+/*
+ * Panic Test: P0147 - cast a string that matches no variant to a string-backed enum
+ *
+ * cast(string_val, EnumType) must panic at runtime when the string equals no
+ * declared variant's value, rather than storing it and matching nothing afterwards.
+ */
+
+const Letter enum {
+    A = "a"
+    B = "b"
+}
+
+do main() {
+    mut text string = "zzz"
+    mut letter Letter = cast(text, Letter)
+    println(letter)
+}

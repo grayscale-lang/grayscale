@@ -1,0 +1,14 @@
+const Letter enum {
+    A = "a"
+    B = "b"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut text string = "b"
+    mut letter Letter = cast(text, Letter)
+    if letter == Letter.B { passed += 1 } otherwise { failed += 1 }
+    if cast(Letter.A, string) == "a" { passed += 1 } otherwise { failed += 1 }
+    println("passed: ${passed}, failed: ${failed}")
+}
