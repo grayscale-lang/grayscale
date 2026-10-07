@@ -5263,12 +5263,6 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
     if (destination_type->kind == TYPE_KIND_RANGE && source_type->kind == TYPE_KIND_RANGE)
         return strcmp(destination_type->name, source_type->name) == 0;
     if (destination_type->kind == source_type->kind) return true;
-    /* Enum → integer (enums are integer-backed) */
-    if (is_integer_kind(destination_type->kind) && source_type->kind == TYPE_KIND_ENUM) return true;
-    /* String enum → string */
-    if (destination_type->kind == TYPE_KIND_STRING && source_type->kind == TYPE_KIND_ENUM &&
-        typechecker_enum_is_string(checker, source_type->name))
-        return true;
     return false;
 }
 
@@ -10782,10 +10776,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         !(left->kind == TYPE_KIND_STRUCT && is_integer_kind(right->kind)) &&
         !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_STRUCT) &&
         !(left->kind == TYPE_KIND_ENUM && is_integer_kind(right->kind)) &&
-        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM) &&
-        /* String enums can be compared with string literals */
-        !(left->kind == TYPE_KIND_ENUM && right->kind == TYPE_KIND_STRING && typechecker_enum_is_string(checker, left->name)) &&
-        !(left->kind == TYPE_KIND_STRING && right->kind == TYPE_KIND_ENUM && typechecker_enum_is_string(checker, right->name))) {
+        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM)) {
         NODE_ERROR_FORMATTED(checker, node, "E3156", type_name(left), type_name(right));
     }
 

@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3001 - an enum value does not convert implicitly to an integer;
+ * cast() is the bridge.
+ */
+// expect-error: E3001
+// expect-error-count: 1
+
+const Dir enum {
+    N
+    E
+    S
+}
+
+do main() {
+    mut d Dir = Dir.S
+    mut x i64 = d
+}

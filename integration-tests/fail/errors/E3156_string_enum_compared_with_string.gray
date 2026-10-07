@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3156 - a string-backed enum value does not compare with a
+ * string; cast() is the bridge.
+ */
+// expect-error: E3156
+// expect-error-count: 1
+
+const Letter enum {
+    A = "a"
+}
+
+do main() {
+    println("${Letter.A == "a"}")
+}

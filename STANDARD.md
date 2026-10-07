@@ -816,7 +816,7 @@ const Foobar enum {
 
 > 💡 **Tip:** Enum variants go on separate lines or, on one line, are separated by `;`, as in `const Color enum { RED; GREEN; BLUE }`.
 
-> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `i64` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status i64 = Direction.NORTH` assigns `0`.
+> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. The same holds in the other direction: an enum value does not convert implicitly to an integer or, for a string-backed enum, to a `string` (assignment, arguments, returns, collection elements, `+=`, and `==` against a `string` are all rejected). Use `cast(Direction.NORTH, i64)` to get the underlying integer value.
 
 > 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, i64) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
 
