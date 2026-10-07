@@ -722,6 +722,11 @@ static const char *resolve_type_alias_codegen(CodeGen *codegen, const char *name
     return name;
 }
 
+/* A function type spelling: bare `func` or `func(...) -> ...`. */
+static bool type_name_is_function(const char *type_name) {
+    return type_name && (strcmp(type_name, "func") == 0 || strncmp(type_name, "func(", 5) == 0);
+}
+
 static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_name) {
     if (!type_name) return "int64_t";
 
@@ -942,7 +947,7 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_ty
     gray_type_name = codegen_effective_type_string(codegen, gray_type_name);
     /* Func references (bare or typed) are stored as void * in maps, same as
      * in arrays and all other composite types. */
-    if (strcmp(gray_type_name, "func") == 0 || strncmp(gray_type_name, "func(", 5) == 0) return "void *";
+    if (type_name_is_function(gray_type_name)) return "void *";
     /* A tagged enum is a C struct, not an integer; storing one in a map has
      * to use its real type so the element size and the casts on read match. */
     if (codegen && codegen_is_enum(codegen, gray_type_name) &&
@@ -1998,9 +2003,7 @@ static void build_function_field_index(CodeGen *codegen) {
         AstNode *struct_declaration = codegen->struct_declarations[struct_index];
         for (int field_index = 0; field_index < struct_declaration->data.struct_declaration.field_count; field_index++) {
             StructField *struct_field = &struct_declaration->data.struct_declaration.fields[field_index];
-            if (struct_field->type_name &&
-                (strcmp(struct_field->type_name, "func") == 0 ||
-                 strncmp(struct_field->type_name, "func(", 5) == 0)) {
+            if (type_name_is_function(struct_field->type_name)) {
                 codegen->function_field_index[codegen->function_field_count].field_name = struct_field->name;
                 codegen->function_field_index[codegen->function_field_count].struct_name = struct_declaration->data.struct_declaration.name;
                 codegen->function_field_count++;
@@ -2476,7 +2479,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
     /* Check for wide integer types first */
     if (wide_integer_element) {
         c_type = wide_integer_prefix(wide_integer_element);
-    } else if (element_type_for_copy && element_type_for_copy->name && (strcmp(element_type_for_copy->name, "func") == 0 || strncmp(element_type_for_copy->name, "func(", 5) == 0)) {
+    } else if (element_type_for_copy && type_name_is_function(element_type_for_copy->name)) {
         /* Function reference elements: store as generic fn ptrs, cast at
          * call sites (mirrors gray_type_to_c_codegen's handling of "func"). */
         c_type = "void *";
@@ -3980,7 +3983,7 @@ static bool index_expression_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
 static const char *array_element_c_type(CodeGen *codegen, const char *element_type_text) {
     const char *c_element_type = "int64_t";
     const char *element_type_name = codegen_effective_type_string(codegen, element_type_text);
-    if (element_type_name && (strcmp(element_type_name, "func") == 0 || strncmp(element_type_name, "func(", 5) == 0)) {
+    if (type_name_is_function(element_type_name)) {
         c_element_type = "void *";
     } else if (element_type_name) {
         GrayType *element_type = type_from_name(element_type_name);
@@ -8954,8 +8957,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             if (struct_declaration) {
                 for (int field_index = 0; field_index < struct_declaration->data.struct_declaration.field_count; field_index++) {
                     StructField *struct_field = &struct_declaration->data.struct_declaration.fields[field_index];
-                    if (strcmp(struct_field->name, member) == 0 && struct_field->type_name &&
-                        (strcmp(struct_field->type_name, "func") == 0 || strncmp(struct_field->type_name, "func(", 5) == 0)) {
+                    if (strcmp(struct_field->name, member) == 0 &&
+                        type_name_is_function(struct_field->type_name)) {
                         emit_function_field_call(codegen, node, object, member, false);
                         return true;
                     }
@@ -9123,8 +9126,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     if (struct_declaration) {
                         for (int field_index = 0; field_index < struct_declaration->data.struct_declaration.field_count; field_index++) {
                             if (strcmp(struct_declaration->data.struct_declaration.fields[field_index].name, member) == 0 &&
-                                struct_declaration->data.struct_declaration.fields[field_index].type_name &&
-                                (strcmp(struct_declaration->data.struct_declaration.fields[field_index].type_name, "func") == 0 || strncmp(struct_declaration->data.struct_declaration.fields[field_index].type_name, "func(", 5) == 0)) {
+                                type_name_is_function(struct_declaration->data.struct_declaration.fields[field_index].type_name)) {
                                 emit_function_field_call(codegen, node, object, member, is_object_pointer);
                                 return true;
                             }
@@ -10043,7 +10045,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
                                 const char *type_name, const char *element_type_spelling) {
     /* [func] with a single func ref initializer: emit as void* (function pointer),
      * not GrayArray. Array-literal inits still use GrayArray. */
-    if ((strcmp(element_type_spelling, "func") == 0 || strncmp(element_type_spelling, "func(", 5) == 0) &&
+    if (type_name_is_function(element_type_spelling) &&
         node->data.variable_declaration.value &&
         node->data.variable_declaration.value->kind == NODE_FUNCTION_REFERENCE) {
         emit_formatted(codegen, "void *%s = ", sanitize_name(node->data.variable_declaration.name));
@@ -10664,7 +10666,7 @@ static void emit_array_element_store(CodeGen *codegen, AstNode *node, GrayType *
 static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *left, GrayType *left_type) {
     const char *c_element_type = "int64_t";
     if (left_type->element_type) {
-        if (strcmp(left_type->element_type, "func") == 0 || strncmp(left_type->element_type, "func(", 5) == 0) {
+        if (type_name_is_function(left_type->element_type)) {
             c_element_type = "void *";
         } else {
             c_element_type = gray_type_to_c_codegen(codegen, left_type->element_type);
