@@ -7562,6 +7562,21 @@ static char json_prim_class(const char *type_name) {
     }
 }
 
+/* json.parse / json.stringify on a #json struct or an array of #json structs
+ * dispatch to the generated per-struct helper. Returns false for any other
+ * type so the caller can fall back to the map path. */
+static bool emit_json_struct_call(CodeGen *codegen, const char *operation, GrayType *type, AstNode *argument) {
+    bool is_array = type && type->kind == TYPE_KIND_ARRAY;
+    const char *struct_name = is_array ? type->element_type : (type && type->kind == TYPE_KIND_STRUCT ? type->name : NULL);
+    if (!struct_name) return false;
+    AstNode *struct_declaration = find_struct_declaration(codegen, struct_name);
+    if (!struct_declaration || !struct_declaration->data.struct_declaration.is_json) return false;
+    emit_formatted(codegen, "gray_json_%s%s_%s(gray_default_arena, ", operation, is_array ? "_array" : "", struct_name);
+    emit_expression(codegen, argument);
+    emit(codegen, ")");
+    return true;
+}
+
 static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function_name_text) {
     if (strcmp(function_name_text, "encode") == 0) {
         AstNode *argument = node->data.call.arguments[0];
@@ -7627,26 +7642,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
      * var_decl handler via ). Falls back to gray_json_decode for
      * the map-based path. */
     if (strcmp(function_name_text, "parse") == 0 && node->data.call.argument_count >= 1) {
-        GrayType *target_type = codegen_type_of(codegen, node);
-        if (target_type && target_type->kind == TYPE_KIND_STRUCT && target_type->name) {
-            AstNode *struct_declaration = find_struct_declaration(codegen, target_type->name);
-            if (struct_declaration && struct_declaration->data.struct_declaration.is_json) {
-                emit_formatted(codegen, "gray_json_parse_%s(gray_default_arena, ", target_type->name);
-                emit_expression(codegen, node->data.call.arguments[0]);
-                emit(codegen, ")");
-                return true;
-            }
-        }
-        /* Array of #json structs: [StructName] */
-        if (target_type && target_type->kind == TYPE_KIND_ARRAY && target_type->element_type) {
-            AstNode *struct_declaration = find_struct_declaration(codegen, target_type->element_type);
-            if (struct_declaration && struct_declaration->data.struct_declaration.is_json) {
-                emit_formatted(codegen, "gray_json_parse_array_%s(gray_default_arena, ", target_type->element_type);
-                emit_expression(codegen, node->data.call.arguments[0]);
-                emit(codegen, ")");
-                return true;
-            }
-        }
+        if (emit_json_struct_call(codegen, "parse", codegen_type_of(codegen, node), node->data.call.arguments[0])) return true;
         /* Fallback: map-based decode */
         emit(codegen, "gray_json_decode(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
@@ -7658,28 +7654,11 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
     if (strcmp(function_name_text, "stringify") == 0 && node->data.call.argument_count >= 1) {
         AstNode *argument = node->data.call.arguments[0];
         GrayType *argument_type = codegen_type_of(codegen, argument);
-        if (argument_type && argument_type->kind == TYPE_KIND_STRUCT && argument_type->name) {
-            AstNode *struct_declaration = find_struct_declaration(codegen, argument_type->name);
-            if (struct_declaration && struct_declaration->data.struct_declaration.is_json) {
-                emit_formatted(codegen, "gray_json_stringify_%s(gray_default_arena, ", argument_type->name);
-                emit_expression(codegen, argument);
-                emit(codegen, ")");
-                return true;
-            }
-        }
-        /* Array of #json structs: [StructName]. Without this, an array
-         * argument fell straight to the map fallback below, which
-         * reinterprets the GrayArray's raw memory as a GrayMap and
-         * segfaults reading its (nonexistent) key/value metadata. */
-        if (argument_type && argument_type->kind == TYPE_KIND_ARRAY && argument_type->element_type) {
-            AstNode *struct_declaration = find_struct_declaration(codegen, argument_type->element_type);
-            if (struct_declaration && struct_declaration->data.struct_declaration.is_json) {
-                emit_formatted(codegen, "gray_json_stringify_array_%s(gray_default_arena, ", argument_type->element_type);
-                emit_expression(codegen, argument);
-                emit(codegen, ")");
-                return true;
-            }
-        }
+        /* Array of #json structs included: without it an array argument fell
+         * straight to the map fallback below, which reinterprets the
+         * GrayArray's raw memory as a GrayMap and segfaults reading its
+         * (nonexistent) key/value metadata. */
+        if (emit_json_struct_call(codegen, "stringify", argument_type, argument)) return true;
         /* Fallback: encode as map */
         emit(codegen, "({ __auto_type _jtmp = ");
         emit_expression(codegen, argument);
