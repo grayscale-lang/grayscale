@@ -7737,64 +7737,21 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *function
 
 /* --- @sqlite module --- */
 
+static const PassthroughCall sqlite_passthrough[] = {
+    {"close", 1, "gray_sqlite_close"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    bool is_fallible = (strcmp(function_name, "open") == 0 || strcmp(function_name, "exec") == 0 ||
-        strcmp(function_name, "query") == 0 || strcmp(function_name, "exec_params") == 0 ||
-        strcmp(function_name, "query_params") == 0);
-    bool is_multi_variable = current_variable_is_result_temporary(codegen);
-    if (strcmp(function_name, "open") == 0) {
-        emit_formatted(codegen, "gray_sqlite_open%s(gray_default_arena, ", (is_fallible && is_multi_variable) ? "_result" : "");
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "close") == 0) {
-        emit(codegen, "gray_sqlite_close(");
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "exec") == 0) {
-        if (is_multi_variable) {
-            emit(codegen, "gray_sqlite_exec_result(gray_default_arena, ");
-        } else {
-            emit(codegen, "gray_sqlite_exec(");
+    if (emit_passthrough_call(codegen, node, function_name, sqlite_passthrough)) return true;
+    static const char *const result_functions[] = {"open", "exec", "exec_params", "query", "query_params"};
+    for (size_t i = 0; i < sizeof(result_functions) / sizeof(result_functions[0]); i++) {
+        if (strcmp(function_name, result_functions[i]) != 0) continue;
+        emit_formatted(codegen, "gray_sqlite_%s_result(gray_default_arena", function_name);
+        for (int argument = 0; argument < node->data.call.argument_count; argument++) {
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.arguments[argument]);
         }
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "exec_params") == 0) {
-        if (is_multi_variable) {
-            emit(codegen, "gray_sqlite_exec_params_result(gray_default_arena, ");
-        } else {
-            emit(codegen, "gray_sqlite_exec_params(");
-        }
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[2]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "query") == 0) {
-        emit(codegen, "gray_sqlite_query_result(gray_default_arena, ");
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(function_name, "query_params") == 0) {
-        emit(codegen, "gray_sqlite_query_params_result(gray_default_arena, ");
-        emit_expression(codegen, node->data.call.arguments[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.arguments[2]);
         emit(codegen, ")");
         return true;
     }

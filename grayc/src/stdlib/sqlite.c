@@ -41,15 +41,6 @@ void gray_sqlite_close(GraySqlite *database) {
     }
 }
 
-bool gray_sqlite_exec(GraySqlite *database, GrayString sql_text) {
-    sqlite_validate_text(sql_text);
-    if (!database || !database->handle) return false;
-    char *error_text = NULL;
-    int result_code =sqlite3_exec((sqlite3 *)database->handle, sql_text.data, NULL, NULL, &error_text);
-    if (error_text) sqlite3_free(error_text);
-    return result_code == SQLITE_OK;
-}
-
 /* Bind all parameters from a [string] array to a prepared statement. */
 static int bind_string_parameters(sqlite3_stmt *statement, GrayArray parameters) {
     for (int32_t i = 0; i < parameters.len; i++) {
@@ -58,19 +49,6 @@ static int bind_string_parameters(sqlite3_stmt *statement, GrayArray parameters)
         if (result_code != SQLITE_OK) return result_code;
     }
     return SQLITE_OK;
-}
-
-bool gray_sqlite_exec_params(GraySqlite *database, GrayString sql_text, GrayArray parameters) {
-    sqlite_validate_text(sql_text);
-    if (!database || !database->handle) return false;
-    sqlite3_stmt *statement = NULL;
-    int result_code = sqlite3_prepare_v2((sqlite3 *)database->handle, sql_text.data, sql_text.len, &statement, NULL);
-    if (result_code != SQLITE_OK || !statement) return false;
-    result_code = bind_string_parameters(statement, parameters);
-    if (result_code != SQLITE_OK) { sqlite3_finalize(statement); return false; }
-    result_code = sqlite3_step(statement);
-    sqlite3_finalize(statement);
-    return result_code == SQLITE_DONE;
 }
 
 /* Step through a prepared statement and collect all result rows into a GrayArray

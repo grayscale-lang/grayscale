@@ -109,12 +109,6 @@ GraySqlite *gray_sqlite_open(GrayArena *arena, GrayString path);
 /* sqlite.close(db) — close database */
 void gray_sqlite_close(GraySqlite *database);
 
-/* sqlite.exec(db, sql) — execute statement, return success */
-bool gray_sqlite_exec(GraySqlite *database, GrayString sql_text);
-
-/* sqlite.exec_params(db, sql, params) — execute parameterized statement */
-bool gray_sqlite_exec_params(GraySqlite *database, GrayString sql_text, GrayArray parameters);
-
 /* sqlite.query(db, sql) — execute query, return array of maps */
 
 /* sqlite.query_params(db, sql, params) — execute parameterized query */
