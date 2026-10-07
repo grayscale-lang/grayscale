@@ -17613,6 +17613,24 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
     literal_flush_pending(checker, literal_start);
 }
 
+/* Append a using entry; returns the module's import index, or -1. */
+static int using_append(TypeChecker *checker, const char *module, const char *file) {
+    if (checker->using_module_count >= checker->using_module_capacity) {
+        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
+        checker->using_modules = xrealloc(checker->using_modules,
+            sizeof(const char *) * (size_t)checker->using_module_capacity);
+        checker->using_module_files = xrealloc(checker->using_module_files,
+            sizeof(const char *) * (size_t)checker->using_module_capacity);
+        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
+            sizeof(int) * (size_t)checker->using_module_capacity);
+    }
+    int import_index = typechecker_find_import_index(checker, module);
+    checker->using_module_files[checker->using_module_count] = file;
+    checker->using_module_import_indices[checker->using_module_count] = import_index;
+    checker->using_modules[checker->using_module_count++] = module;
+    return import_index;
+}
+
 static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     if (!node) return;
 
@@ -17716,19 +17734,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         /* Function-scoped using: add modules to the using list so
          * bare-name resolution works for the rest of this scope. */
         for (int j = 0; j < node->data.using_statement.count; j++) {
-            if (checker->using_module_count >= checker->using_module_capacity) {
-                checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                checker->using_modules = xrealloc(checker->using_modules,
-                    sizeof(const char *) * (size_t)checker->using_module_capacity);
-                checker->using_module_files = xrealloc(checker->using_module_files,
-                    sizeof(const char *) * (size_t)checker->using_module_capacity);
-                checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                    sizeof(int) * (size_t)checker->using_module_capacity);
-            }
-            checker->using_module_files[checker->using_module_count] = node->token.file;
-            checker->using_module_import_indices[checker->using_module_count] =
-                typechecker_find_import_index(checker, node->data.using_statement.modules[j]);
-            checker->using_modules[checker->using_module_count++] = node->data.using_statement.modules[j];
+            using_append(checker, node->data.using_statement.modules[j], node->token.file);
         }
         break;
 
@@ -18915,19 +18921,7 @@ static void using_add(TypeChecker *checker, const char *module, const char *file
         const char *existing_file = checker->using_module_files[i];
         if ((!existing_file && !file) || (existing_file && file && strcmp(existing_file, file) == 0)) return;
     }
-    if (checker->using_module_count >= checker->using_module_capacity) {
-        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-        checker->using_modules = xrealloc(checker->using_modules,
-            sizeof(const char *) * (size_t)checker->using_module_capacity);
-        checker->using_module_files = xrealloc(checker->using_module_files,
-            sizeof(const char *) * (size_t)checker->using_module_capacity);
-        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-            sizeof(int) * (size_t)checker->using_module_capacity);
-    }
-    checker->using_module_files[checker->using_module_count] = file;
-    checker->using_module_import_indices[checker->using_module_count] =
-        typechecker_find_import_index(checker, module);
-    checker->using_modules[checker->using_module_count++] = module;
+    using_append(checker, module, file);
 }
 
 /* Collect `using` and `import and use` before anything resolves a name.
@@ -19415,41 +19409,15 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                 if (!imported_before) {
                     diagnostic_error_code_formatted(checker->diagnostics, "E2010", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, using_module, using_module);
                 }
-                if (checker->using_module_count >= checker->using_module_capacity) {
-                    checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                    checker->using_modules = xrealloc(checker->using_modules,
-                        sizeof(const char *) * (size_t)checker->using_module_capacity);
-                    checker->using_module_files = xrealloc(checker->using_module_files,
-                        sizeof(const char *) * (size_t)checker->using_module_capacity);
-                    checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                        sizeof(int) * (size_t)checker->using_module_capacity);
-                }
-                checker->using_module_files[checker->using_module_count] = statement->token.file;
-                {
-                    int import_index = typechecker_find_import_index(checker, statement->data.using_statement.modules[j]);
-                    checker->using_module_import_indices[checker->using_module_count] = import_index;
-                    if (import_index >= 0) checker->is_import_used[import_index] = true;
-                }
-                checker->using_modules[checker->using_module_count++] = statement->data.using_statement.modules[j];
+                int import_index = using_append(checker, statement->data.using_statement.modules[j], statement->token.file);
+                if (import_index >= 0) checker->is_import_used[import_index] = true;
             }
         }
         if (statement->kind == NODE_IMPORT_STATEMENT && statement->data.import_statement.should_auto_use) {
             for (int j = 0; j < statement->data.import_statement.count; j++) {
                 ImportItem *item = &statement->data.import_statement.items[j];
                 if (item->module) {
-                    if (checker->using_module_count >= checker->using_module_capacity) {
-                        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                        checker->using_modules = xrealloc(checker->using_modules,
-                            sizeof(const char *) * (size_t)checker->using_module_capacity);
-                        checker->using_module_files = xrealloc(checker->using_module_files,
-                            sizeof(const char *) * (size_t)checker->using_module_capacity);
-                        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                            sizeof(int) * (size_t)checker->using_module_capacity);
-                    }
-                    checker->using_module_files[checker->using_module_count] = statement->token.file;
-                    checker->using_module_import_indices[checker->using_module_count] =
-                        typechecker_find_import_index(checker, item->module);
-                    checker->using_modules[checker->using_module_count++] = item->module;
+                    using_append(checker, item->module, statement->token.file);
                 }
             }
         }
