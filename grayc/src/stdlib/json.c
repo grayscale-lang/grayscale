@@ -195,16 +195,21 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map) {
 
 /* --- Array Encoders --- */
 
-GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *array) {
-    /* 21 chars max per int64 + comma, plus brackets + nul */
-    size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
+/* Writes one array element at `buffer` (at most `size` bytes) and returns snprintf's count. */
+typedef int (*JsonFormatElement)(char *buffer, size_t size, const GrayArray *array, const void *element);
+
+/* Shared skeleton for the numeric array encoders. `bytes_per_element` bounds one
+ * element plus its comma. */
+static GrayString json_encode_array_numeric(GrayArena *arena, GrayArray *array, size_t bytes_per_element,
+                                            JsonFormatElement format_element) {
+    size_t need = 2 + (array->len > 0 ? (size_t)array->len * bytes_per_element - 1 : 0);
     char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
     int position = 0;
     buffer[position++] = '[';
     for (int32_t i = 0; i < array->len; i++) {
         if (i > 0) { buffer[position++] = ','; }
-        int64_t value = gray_elem_to_i64(array->elem_kind, (char *)array->data + (size_t)i * (size_t)array->elem_size);
-        int written = snprintf(buffer + position, need + 1 - (size_t)position, "%" PRId64, value);
+        int written = format_element(buffer + position, need + 1 - (size_t)position, array,
+                                     (char *)array->data + (size_t)i * (size_t)array->elem_size);
         if (written > 0 && (size_t)written < need + 1 - (size_t)position) position += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
         else { position = (int)need - 1; break; }
@@ -212,42 +217,31 @@ GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *ar
     buffer[position++] = ']';
     buffer[position] = '\0';
     return (GrayString){ buffer, (int32_t)position };
+}
+
+static int json_format_signed_integer(char *buffer, size_t size, const GrayArray *array, const void *element) {
+    return snprintf(buffer, size, "%" PRId64, gray_elem_to_i64(array->elem_kind, element));
+}
+
+static int json_format_unsigned_integer(char *buffer, size_t size, const GrayArray *array, const void *element) {
+    return snprintf(buffer, size, "%" PRIu64, gray_elem_to_u64(array->elem_kind, element));
+}
+
+static int json_format_floating_point(char *buffer, size_t size, const GrayArray *array, const void *element) {
+    return snprintf(buffer, size, "%g", json_finite_double(gray_elem_to_double(array->elem_kind, element)));
+}
+
+/* 21 chars max per int64 or uint64, 24 per %g double, plus the comma. */
+GrayString gray_json_encode_array_signed_integer(GrayArena *arena, GrayArray *array) {
+    return json_encode_array_numeric(arena, array, 22, json_format_signed_integer);
 }
 
 GrayString gray_json_encode_array_unsigned_integer(GrayArena *arena, GrayArray *array) {
-    size_t need = 2 + (array->len > 0 ? (size_t)array->len * 22 - 1 : 0);
-    char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
-    int position = 0;
-    buffer[position++] = '[';
-    for (int32_t i = 0; i < array->len; i++) {
-        if (i > 0) { buffer[position++] = ','; }
-        uint64_t value = gray_elem_to_u64(array->elem_kind, (char *)array->data + (size_t)i * (size_t)array->elem_size);
-        int written = snprintf(buffer + position, need + 1 - (size_t)position, "%" PRIu64, value);
-        if (written > 0 && (size_t)written < need + 1 - (size_t)position) position += written;
-        else { position = (int)need - 1; break; }
-    }
-    buffer[position++] = ']';
-    buffer[position] = '\0';
-    return (GrayString){ buffer, (int32_t)position };
+    return json_encode_array_numeric(arena, array, 22, json_format_unsigned_integer);
 }
 
 GrayString gray_json_encode_array_floating_point(GrayArena *arena, GrayArray *array) {
-    /* 24 chars max per %g double + comma, plus brackets + nul */
-    size_t need = 2 + (array->len > 0 ? (size_t)array->len * 25 - 1 : 0);
-    char *buffer = gray_arena_alloc_uninitialized(arena, need + 1);
-    int position = 0;
-    buffer[position++] = '[';
-    for (int32_t i = 0; i < array->len; i++) {
-        if (i > 0) { buffer[position++] = ','; }
-        double value = gray_elem_to_double(array->elem_kind, (char *)array->data + (size_t)i * (size_t)array->elem_size);
-        int written = snprintf(buffer + position, need + 1 - (size_t)position, "%g", json_finite_double(value));
-        if (written > 0 && (size_t)written < need + 1 - (size_t)position) position += written;
-        /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
-        else { position = (int)need - 1; break; }
-    }
-    buffer[position++] = ']';
-    buffer[position] = '\0';
-    return (GrayString){ buffer, (int32_t)position };
+    return json_encode_array_numeric(arena, array, 25, json_format_floating_point);
 }
 
 /* Scalar json.encode(string): a single quoted, escaped JSON string. */
