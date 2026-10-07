@@ -380,7 +380,7 @@ No explicit cast is needed. The promotion is lossless for values within the floa
 
 #### 3.1.3 String Type (`string`)
 
-The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint. `len()` returns the byte length, not the character count.
+The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint; the byte is typed `char` and holds the raw byte value. `len()` returns the byte length, not the character count.
 
 For ASCII strings, one byte equals one character, so indexing works as expected:
 
@@ -1634,7 +1634,7 @@ for_each i, item in items {
 // Output: 0: a, 1: b, 2: c
 ```
 
-The index variable is always of type `i64` and is zero-based. It works with both arrays and strings:
+The index variable is always of type `i64` and is zero-based. It works with both arrays and strings. Iterating a string yields one `char` per Unicode codepoint (the same count as `char_count`), and the index is the codepoint position:
 
 ```gray
 for_each i, ch in "hello" {

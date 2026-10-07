@@ -12821,12 +12821,16 @@ static void emit_foreach_string(CodeGen *codegen, AstNode *node, AstNode *coll,
     emit_expression(codegen, coll);
     emit(codegen, ";\n");
     emit_indent(codegen);
-    emit_formatted(codegen, "for (int32_t %s = 0; %s < _gray_str.len; %s++) {\n", index_name, index_name, index_name);
+    emit_formatted(codegen, "const uint8_t *_gray_cursor = (const uint8_t *)_gray_str.data;\n");
+    emit_indent(codegen);
+    emit_formatted(codegen, "const uint8_t *_gray_end_cursor = _gray_cursor + _gray_str.len;\n");
+    emit_indent(codegen);
+    emit_formatted(codegen, "for (int32_t %s = 0; _gray_cursor < _gray_end_cursor; %s++) {\n", index_name, index_name);
     codegen->indent++;
     emit_indent(codegen);
-    /* GrayString.data is char* (signed); widen the byte unsigned so a byte
-     * >= 0x80 matches what s[i] indexing yields, not a negative codepoint. */
-    emit_formatted(codegen, "int32_t %s = (unsigned char)_gray_str.data[%s];\n", sanitize_name(node->data.for_each.variable_name), index_name);
+    emit_formatted(codegen, "int32_t %s;\n", sanitize_name(node->data.for_each.variable_name));
+    emit_indent(codegen);
+    emit_formatted(codegen, "_gray_cursor += gray_builtin_utf8_next(_gray_cursor, _gray_end_cursor, &%s);\n", sanitize_name(node->data.for_each.variable_name));
 }
 
 static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
