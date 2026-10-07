@@ -2986,10 +2986,6 @@ typedef enum {
 
 #define STDLIB_MAX_ARGUMENT_CHECKS 5
 
-/* maximum_arguments sentinel for a variadic stdlib function (sqlite.exec):
- * any argument count at or above minimum_arguments is accepted. */
-#define STDLIB_ARGUMENTS_VARIADIC 99
-
 typedef struct {
     const char *module_name;
     const char *function_name;
@@ -3395,11 +3391,11 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"server", "text",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     /* sqlite */
     {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            1, {{0, EXPECTED_ARGUMENT_DATABASE}}, "void"},
-    {"sqlite", "exec",         2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_BOOL,            0, {{0}},"bool"},
-    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
+    {"sqlite", "exec",         2, 2,  true,  FALLIBLE_TYPE_BOOL,            2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FALLIBLE_TYPE_STRUCT_DATABASE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "Database"},
-    {"sqlite", "query",        2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
-    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
+    {"sqlite", "query",        2, 2,  true,  FALLIBLE_TYPE_ARRAY_MAP,       2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "[map[string:string]]"},
+    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_i64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"strconv", "format_u64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_U64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},

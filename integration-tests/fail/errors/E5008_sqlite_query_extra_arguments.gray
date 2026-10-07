@@ -1,0 +1,9 @@
+// Error Test: E5008 - sqlite_query_extra_arguments.gray
+// expect-error: E5008
+
+import @sqlite
+
+do main() {
+    mut db, open_err = sqlite.open(":memory:")
+    mut ok, exec_err = sqlite.query(db, "SELECT 1", "extra")
+}
