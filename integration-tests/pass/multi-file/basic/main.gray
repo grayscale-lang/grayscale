@@ -72,8 +72,8 @@ do test_models_module() -> TestResult {
         id: 1,
         title: "Learn Grayscale",
         description: "Complete the tutorial",
-        priority: models.Priority.HIGH,
-        status: models.Status.TODO,
+        priority: cast(models.Priority.HIGH, i64),
+        status: cast(models.Status.TODO, string),
         created_at: time.now()
     }
     println("  Task created: #${task.id} - ${task.title}")
@@ -91,7 +91,7 @@ do test_models_module() -> TestResult {
 
     // Test 3: Test with explicit module prefix
     println("  Testing with explicit models. prefix...")
-    mut explicit_priority string = models.get_priority_name(models.Priority.CRITICAL)
+    mut explicit_priority string = models.get_priority_name(cast(models.Priority.CRITICAL, i64))
     println("  Critical priority: ${explicit_priority}")
     passed += 1
     println("")
@@ -156,8 +156,8 @@ do test_cross_module() -> TestResult {
         id: 1,
         title: "Task One",
         description: "First task",
-        priority: models.Priority.LOW,
-        status: models.Status.DONE,
+        priority: cast(models.Priority.LOW, i64),
+        status: cast(models.Status.DONE, string),
         created_at: time.now()
     })
 
@@ -165,8 +165,8 @@ do test_cross_module() -> TestResult {
         id: 2,
         title: "Task Two",
         description: "Second task",
-        priority: models.Priority.HIGH,
-        status: models.Status.IN_PROGRESS,
+        priority: cast(models.Priority.HIGH, i64),
+        status: cast(models.Status.IN_PROGRESS, string),
         created_at: time.now()
     })
 
@@ -174,8 +174,8 @@ do test_cross_module() -> TestResult {
         id: 3,
         title: "Task Three",
         description: "Third task",
-        priority: models.Priority.MEDIUM,
-        status: models.Status.TODO,
+        priority: cast(models.Priority.MEDIUM, i64),
+        status: cast(models.Status.TODO, string),
         created_at: time.now()
     })
 

@@ -20,14 +20,14 @@ const Priority enum {
 }
 
 do get_status() -> string {
-    return Status.ACTIVE
+    return cast(Status.ACTIVE, string)
 }
 
 do describe(s string) -> string {
     when s {
-        is Status.PENDING  { return "waiting" }
-        is Status.ACTIVE   { return "running" }
-        is Status.INACTIVE { return "paused" }
+        is cast(Status.PENDING, string)  { return "waiting" }
+        is cast(Status.ACTIVE, string)   { return "running" }
+        is cast(Status.INACTIVE, string) { return "paused" }
         default            { return "finished" }
     }
 }
@@ -38,7 +38,7 @@ do main() {
     mut failed i64 = 0
 
     // Test 1: string enum comparison with string literal
-    if Status.PENDING == "pending" {
+    if cast(Status.PENDING, string) == "pending" {
         println("  [PASS] Status.PENDING == \"pending\"")
         passed += 1
     } otherwise {
@@ -47,7 +47,7 @@ do main() {
     }
 
     // Test 2: string enum != string literal
-    if Status.ACTIVE != "pending" {
+    if cast(Status.ACTIVE, string) != "pending" {
         println("  [PASS] Status.ACTIVE != \"pending\"")
         passed += 1
     } otherwise {
@@ -56,7 +56,7 @@ do main() {
     }
 
     // Test 3: assign string enum to string variable
-    mut current string = Status.ACTIVE
+    mut current string = cast(Status.ACTIVE, string)
     if current == "active" {
         println("  [PASS] assigned string enum to string variable")
         passed += 1
@@ -67,7 +67,7 @@ do main() {
 
     // Test 4: string enum in array
     mut statuses [Status] = {Status.PENDING, Status.ACTIVE, Status.DONE}
-    if statuses[0] == "pending" && statuses[1] == "active" && statuses[2] == "done" {
+    if cast(statuses[0], string) == "pending" && cast(statuses[1], string) == "active" && cast(statuses[2], string) == "done" {
         println("  [PASS] string enum array access")
         passed += 1
     } otherwise {
@@ -116,8 +116,8 @@ do main() {
     }
 
     // Test 9: multiple string enums, compare values
-    mut p string = Priority.HIGH
-    if p == "high" && Priority.LOW == "low" && Priority.MEDIUM == "medium" {
+    mut p string = cast(Priority.HIGH, string)
+    if p == "high" && cast(Priority.LOW, string) == "low" && cast(Priority.MEDIUM, string) == "medium" {
         println("  [PASS] multiple string enum values")
         passed += 1
     } otherwise {
@@ -127,7 +127,7 @@ do main() {
 
     // Test 10: string enum array element update
     statuses[0] = Status.DONE
-    if statuses[0] == "done" {
+    if cast(statuses[0], string) == "done" {
         println("  [PASS] string enum array element update")
         passed += 1
     } otherwise {

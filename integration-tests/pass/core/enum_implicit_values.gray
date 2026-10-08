@@ -29,9 +29,9 @@ do main() {
     mut failed i64 = 0
 
     // Assign enum values to i64 variables, then compare
-    mut sp i64 = Status.PENDING
-    mut sa i64 = Status.ACTIVE
-    mut sd i64 = Status.DONE
+    mut sp i64 = cast(Status.PENDING, i64)
+    mut sa i64 = cast(Status.ACTIVE, i64)
+    mut sd i64 = cast(Status.DONE, i64)
     if sp == 10 && sa == 11 && sd == 20 {
         println("  [PASS] PENDING=10, ACTIVE=11, DONE=20")
         passed += 1
@@ -40,13 +40,13 @@ do main() {
         failed += 1
     }
 
-    mut ma i64 = Mixed.A
-    mut mb i64 = Mixed.B
-    mut mc i64 = Mixed.C
-    mut md i64 = Mixed.D
-    mut me i64 = Mixed.E
-    mut mf i64 = Mixed.F
-    mut mg i64 = Mixed.G
+    mut ma i64 = cast(Mixed.A, i64)
+    mut mb i64 = cast(Mixed.B, i64)
+    mut mc i64 = cast(Mixed.C, i64)
+    mut md i64 = cast(Mixed.D, i64)
+    mut me i64 = cast(Mixed.E, i64)
+    mut mf i64 = cast(Mixed.F, i64)
+    mut mg i64 = cast(Mixed.G, i64)
     if ma == 0 && mb == 1 && mc == 100 && md == 101 &&
        me == 200 && mf == 201 && mg == 202 {
         println("  [PASS] A=0, B=1, C=100, D=101, E=200, F=201, G=202")

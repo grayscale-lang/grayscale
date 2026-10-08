@@ -28,7 +28,7 @@ do main() {
     }
 
     // Test 3: enum access
-    mut c i64 = helpers.Color.GREEN
+    mut c i64 = cast(helpers.Color.GREEN, i64)
     if c == 1 {
         println("  [PASS] extensionless import enum")
         passed += 1

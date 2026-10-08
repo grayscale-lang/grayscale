@@ -4,7 +4,7 @@ do main() {
     mut passed i64 = 0
 
     // Test 1: unqualified enum access
-    mut p i64 = Priority.HIGH
+    mut p i64 = cast(Priority.HIGH, i64)
     if p == 2 {
         passed += 1
     }
