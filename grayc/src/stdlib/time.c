@@ -197,8 +197,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
         if (text.data[position] < '0' || text.data[position] > '9') return false;
         int64_t value = 0;
         while (position < text.len && text.data[position] >= '0' && text.data[position] <= '9') {
-            if (__builtin_mul_overflow(value, 10, &value) ||
-                __builtin_add_overflow(value, text.data[position] - '0', &value)) return false;
+            if (gray_mul_overflows_i64(value, 10, &value) ||
+                gray_add_overflows_i64(value, text.data[position] - '0', &value)) return false;
             position++;
         }
         if (position >= text.len) return false; /* trailing number with no unit */
@@ -210,8 +210,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
             case 'd': unit_seconds = SECONDS_PER_DAY; break;
             default: return false;
         }
-        if (__builtin_mul_overflow(value, unit_seconds, &value) ||
-            __builtin_add_overflow(total, value, &total)) return false;
+        if (gray_mul_overflows_i64(value, unit_seconds, &value) ||
+            gray_add_overflows_i64(total, value, &total)) return false;
         matched_any = true;
     }
     if (!matched_any) return false;
