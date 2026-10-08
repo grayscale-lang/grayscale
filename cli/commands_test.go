@@ -12,6 +12,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestLangDisplayName(t *testing.T) {
@@ -248,5 +250,51 @@ func TestPrintStdlibModuleIndex_ValidModule(t *testing.T) {
 	})
 	if !strings.Contains(out, mod) {
 		t.Errorf("printStdlibModuleIndex(%q) output missing module name: %q", mod, out)
+	}
+}
+
+func newCompilerFlagCommand(t *testing.T, cc string) *cobra.Command {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("cc", "", "")
+	cmd.Flags().String("output", "", "")
+	cmd.Flags().Bool("emit-c", false, "")
+	cmd.Flags().Bool("time", false, "")
+	cmd.Flags().String("quiet", "", "")
+	cmd.Flags().Bool("no-color", false, "")
+	cmd.Flags().String("arena-limit", "", "")
+	if cc != "" {
+		if err := cmd.Flags().Set("cc", cc); err != nil {
+			t.Fatalf("set --cc: %v", err)
+		}
+	}
+	return cmd
+}
+
+func TestCompilerFlagOverridesEnvironment(t *testing.T) {
+	t.Setenv("GRAY_CC", "tcc")
+	t.Setenv("CC", "clang")
+	if _, err := commonBuildOpts(newCompilerFlagCommand(t, "sh")); err != nil {
+		t.Fatalf("commonBuildOpts: %v", err)
+	}
+	if got := os.Getenv("GRAY_CC"); got != "sh" {
+		t.Errorf("GRAY_CC = %q, want %q", got, "sh")
+	}
+}
+
+func TestCompilerFlagUnsetLeavesEnvironmentInCharge(t *testing.T) {
+	t.Setenv("GRAY_CC", "tcc")
+	if _, err := commonBuildOpts(newCompilerFlagCommand(t, "")); err != nil {
+		t.Fatalf("commonBuildOpts: %v", err)
+	}
+	if got := os.Getenv("GRAY_CC"); got != "tcc" {
+		t.Errorf("GRAY_CC = %q, want %q", got, "tcc")
+	}
+}
+
+func TestCompilerFlagMissingCompiler(t *testing.T) {
+	_, err := commonBuildOpts(newCompilerFlagCommand(t, "no-such-compiler-xyz"))
+	if err == nil || !strings.Contains(err.Error(), "no-such-compiler-xyz") {
+		t.Errorf("error = %v, want one naming no-such-compiler-xyz", err)
 	}
 }

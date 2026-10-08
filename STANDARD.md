@@ -5111,6 +5111,7 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 | `-q, --quiet <codes>` | Suppress warnings. Use `all` to suppress all, or a comma-separated list of warning codes (e.g. `W1001,W1003`; see ERRORS.md). |
 | `--no-color` | Disable colored diagnostic output. |
 | `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics. |
+| `--cc <compiler>` | C compiler for this invocation (see [C Compiler](#c-compiler)). |
 
 ### C Compiler
 
@@ -5118,6 +5119,13 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 
 ```bash
 GRAY_CC=tcc gray main.gray
+```
+
+`--cc <compiler>` on `gray <file.gray>` and `gray build` chooses the compiler for one invocation and takes precedence over `$GRAY_CC` and `$CC`. The value is a compiler name on PATH or a path to a compiler; if it cannot be found, `gray` reports it by name and exits non-zero.
+
+```bash
+gray main.gray --cc tcc
+gray build main.gray -o app --cc /usr/local/bin/clang
 ```
 
 ### 13.1 `gray <file.gray>`
