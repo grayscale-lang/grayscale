@@ -1,0 +1,5 @@
+do main() {
+    as_long_as 5 {
+        break
+    }
+}

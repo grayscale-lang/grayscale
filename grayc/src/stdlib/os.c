@@ -71,13 +71,35 @@ GrayArray gray_os_args(GrayArena *arena) {
     return array;
 }
 
+/* getenv/setenv/unsetenv take C strings, so an embedded NUL would silently
+ * cut the name or value short and act on a different variable. */
+static void os_validate_env_string(GrayString string) {
+    if (memchr(string.data, '\0', (size_t)string.len))
+        gray_panic_code("P0139", "environment variable name or value contains an embedded null byte");
+}
+
+/* exec hands the command and each argument to the new process as C strings, so
+ * an embedded NUL would silently cut one short and run something other than
+ * what was asked for. */
+static void os_validate_exec_strings(GrayString command, GrayArray args) {
+    bool has_nul = memchr(command.data, '\0', (size_t)command.len) != NULL;
+    for (int i = 0; i < args.len && !has_nul; i++) {
+        GrayString argument = GRAY_ARRAY_GET(args, GrayString, i);
+        has_nul = memchr(argument.data, '\0', (size_t)argument.len) != NULL;
+    }
+    if (has_nul)
+        gray_panic_code("P0141", "os.exec: the command or an argument contains an embedded null byte");
+}
+
 GrayString gray_os_get_env(GrayArena *arena, GrayString name) {
+    os_validate_env_string(name);
     const char *value = getenv(name.data);
     if (!value) return gray_string_lit("");
     return gray_string_new(arena, value, (int32_t)strlen(value));
 }
 
 GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
+    os_validate_env_string(name);
     const char *value = getenv(name.data);
     if (!value) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
     return (GrayOsLookupEnvResult){gray_string_new(arena, value, (int32_t)strlen(value)), true};
@@ -102,6 +124,8 @@ GrayArray gray_os_environ(GrayArena *arena) {
 }
 
 void gray_os_set_env(GrayString name, GrayString value) {
+    os_validate_env_string(name);
+    os_validate_env_string(value);
 #if GRAY_RUNTIME_WINDOWS
     /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
      * block that child processes inherit. The two are separate on Windows, so
@@ -114,6 +138,7 @@ void gray_os_set_env(GrayString name, GrayString value) {
 }
 
 void gray_os_unset_env(GrayString name) {
+    os_validate_env_string(name);
 #if GRAY_RUNTIME_WINDOWS
     _putenv_s(name.data, "");
     SetEnvironmentVariableA(name.data, NULL);
@@ -280,6 +305,7 @@ static DWORD WINAPI drain_pipe(LPVOID param) {
 }
 
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
+    os_validate_exec_strings(command, args);
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
@@ -367,6 +393,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray ar
 #else
 
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString command, GrayArray args) {
+    os_validate_exec_strings(command, args);
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
     /* Flush buffered stdout/stderr so it is not interleaved after the child's. */

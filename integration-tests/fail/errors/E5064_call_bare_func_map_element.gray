@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5064 - calling a value of a map[string:func]
+ * Expected: E5064 error — a bare func element has no signature to check the call against
+ */
+// expect-error: E5064
+// expect-error-count: 1
+
+do halve(f f64) -> f64 { return f / 2.0 }
+
+do main() {
+    mut m map[string:func] = {:}
+    m["h"] = ()halve
+    println(m["h"](5.0))
+}

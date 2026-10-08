@@ -80,7 +80,7 @@ do main() {
     passed += 1
 
     // Test 6: enum member assigned directly to i64
-    mut next i64 = Color.GREEN
+    mut next i64 = cast(Color.GREEN, i64)
     if next == 1 {
         println("  [PASS] enum member assigned to i64 (GREEN=1)")
         passed += 1

@@ -1,0 +1,11 @@
+const Counter struct {
+    n i64
+
+    do make(n i64) -> Counter { return Counter{n: n} }
+}
+
+do main() {
+    mut items [Counter] = {Counter{n: 1}}
+    mut made Counter = items[4].make(3)
+    println(made.n)
+}

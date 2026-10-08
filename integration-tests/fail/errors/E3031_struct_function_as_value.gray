@@ -1,0 +1,8 @@
+const Counter struct {
+    n i64
+    do inc(&c Counter) { c.n = c.n + 1 }
+}
+
+do main() {
+    mut f = Counter.inc
+}

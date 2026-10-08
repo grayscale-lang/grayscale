@@ -1,0 +1,16 @@
+/*
+ * Error Test: E5064 - calling an element of a [func] array
+ * Expected: E5064 error — a bare func element has no signature to check the call against
+ */
+// expect-error: E5064
+// expect-error-count: 1
+
+import @arrays
+
+do greet(s string) -> string { return "hi " + s }
+
+do main() {
+    mut arr [func] = {}
+    arrays.append(arr, ()greet)
+    println(arr[0]("bob"))
+}

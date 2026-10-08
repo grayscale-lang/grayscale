@@ -1,0 +1,30 @@
+import @csv
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut rows [[string]] = csv.parse("\xEF\xBB\xBFname,age\nann,3\n")
+    mut headers [string] = csv.headers(rows)
+    if headers[0] == "name" && headers[1] == "age" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: first header carries the byte-order mark")
+    }
+
+    mut names [string] = csv.column(rows, "name")
+    if len(names) == 1 && names[0] == "ann" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: column lookup by the first header name")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

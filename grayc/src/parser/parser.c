@@ -187,6 +187,25 @@ static bool current_token_is(Parser *parser, TokenType type) {
     return parser->current_token.type == type;
 }
 
+/* The optional ("message") after #deprecated; NULL when absent or malformed. */
+static const char *parse_deprecated_message(Parser *parser) {
+    if (!current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) return NULL;
+    next_token(parser); /* consume ( */
+    const char *message = NULL;
+    if (current_token_is(parser, TOKEN_STRING)) {
+        message = arena_copy_string(parser->arena, parser->current_token.literal);
+        next_token(parser); /* consume string */
+    } else {
+        emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
+    }
+    if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
+        next_token(parser); /* consume ) */
+    } else {
+        emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
+    }
+    return message;
+}
+
 static bool peek_token_is(Parser *parser, TokenType type) {
     return parser->peek_token.type == type;
 }
@@ -1885,6 +1904,18 @@ static AstNode *parse_block_statement(Parser *parser) {
     return node;
 }
 
+/* Take the next return-type slot, or report E2060 and return -1 when the
+ * `capacity` slots are used up. */
+static int reserve_return_slot(Parser *parser, AstNode *node, int capacity) {
+    int index = node->data.function_declaration.return_type_count;
+    if (index >= capacity) {
+        diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
+        return -1;
+    }
+    node->data.function_declaration.return_type_count++;
+    return index;
+}
+
 static AstNode *parse_function_declaration(Parser *parser) {
     AstNode *node = ast_allocate(parser->arena, NODE_FUNCTION_DECLARATION, parser->current_token);
 
@@ -1970,6 +2001,11 @@ static AstNode *parse_function_declaration(Parser *parser) {
                 parameter->default_value = parse_expression(parser, PRECEDENCE_LOWEST);
                 if (parameter->is_type_parameter) {
                     diagnostic_error_code(parser->diagnostics, "E2097", parser->file,
+                        parameter->default_value ? parameter->default_value->token.line : parser->current_token.line,
+                        parameter->default_value ? parameter->default_value->token.column : parser->current_token.column, 0);
+                }
+                if (parameter->is_mutable) {
+                    diagnostic_error_code(parser->diagnostics, "E2099", parser->file,
                         parameter->default_value ? parameter->default_value->token.line : parser->current_token.line,
                         parameter->default_value ? parameter->default_value->token.column : parser->current_token.column, 0);
                 }
@@ -2099,14 +2135,10 @@ static AstNode *parse_function_declaration(Parser *parser) {
                      * E2096 report in parse_complex_type) */
                     const char *return_name = parser->current_token.literal;
                     next_token(parser);
-                    int return_index = node->data.function_declaration.return_type_count;
-                    if (return_index >= return_capacity) {
-                        diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
-                        return NULL;
-                    }
+                    int return_index = reserve_return_slot(parser, node, return_capacity);
+                    if (return_index < 0) return NULL;
                     node->data.function_declaration.return_names[return_index] = return_name;
                     node->data.function_declaration.return_types[return_index] = parse_complex_type(parser);
-                    node->data.function_declaration.return_type_count++;
                 } else if (current_token_is(parser, TOKEN_IDENTIFIER) && peek_token_is(parser, TOKEN_COMMA) && !is_type) {
                     /* Shared type: (x, y i64); collect names, assign same type */
                     const char *names[MAX_SHARED_RETURNS];
@@ -2134,49 +2166,33 @@ static AstNode *parse_function_declaration(Parser *parser) {
                     if (peek_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) is_plain_list = true;
                     if (is_plain_list) {
                         for (int shared_index = 0; shared_index < shared; shared_index++) {
-                            int return_index = node->data.function_declaration.return_type_count;
-                            if (return_index >= return_capacity) {
-                                diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
-                                return NULL;
-                            }
+                            int return_index = reserve_return_slot(parser, node, return_capacity);
+                            if (return_index < 0) return NULL;
                             node->data.function_declaration.return_types[return_index] = names[shared_index];
-                            node->data.function_declaration.return_type_count++;
                         }
                         if (has_type_after_names) {
-                            int return_index = node->data.function_declaration.return_type_count;
-                            if (return_index >= return_capacity) {
-                                diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
-                                return NULL;
-                            }
+                            int return_index = reserve_return_slot(parser, node, return_capacity);
+                            if (return_index < 0) return NULL;
                             node->data.function_declaration.return_types[return_index] = parse_complex_type(parser);
-                            node->data.function_declaration.return_type_count++;
                         }
                     } else if (peek_token_is(parser, TOKEN_IDENTIFIER)) {
                         /* the current token is the last name, peek is the shared type */
                         next_token(parser);
                         for (int shared_index = 0; shared_index < shared; shared_index++) {
-                            int return_index = node->data.function_declaration.return_type_count;
-                            if (return_index >= return_capacity) {
-                                diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
-                                return NULL;
-                            }
+                            int return_index = reserve_return_slot(parser, node, return_capacity);
+                            if (return_index < 0) return NULL;
                             node->data.function_declaration.return_names[return_index] = names[shared_index];
                             node->data.function_declaration.return_types[return_index] = read_type_name(parser);
-                            node->data.function_declaration.return_type_count++;
                         }
                     }
                 } else {
                     /* Plain type (no name) — use parse_complex_type to
                      * handle array, map, and pointer return types like
                      * [string], map[K:V], ^T, not just simple idents. */
-                    int return_index = node->data.function_declaration.return_type_count;
-                    if (return_index >= return_capacity) {
-                        diagnostic_error_code_formatted(parser->diagnostics, "E2060", parser->file, parser->current_token.line, parser->current_token.column, 0, MAX_SHARED_RETURNS);
-                        return NULL;
-                    }
+                    int return_index = reserve_return_slot(parser, node, return_capacity);
+                    if (return_index < 0) return NULL;
                     node->data.function_declaration.return_names[return_index] = NULL;
                     node->data.function_declaration.return_types[return_index] = parse_complex_type(parser);
-                    node->data.function_declaration.return_type_count++;
                 }
                 if (peek_token_is(parser, TOKEN_COMMA)) {
                     next_token(parser);
@@ -2578,21 +2594,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_DEPRECATED, "#deprecated");
             next_token(parser); /* consume #deprecated */
             has_pending_deprecated = true;
-            if (!is_duplicate) pending_deprecated_message = NULL;
-            if (current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-                next_token(parser); /* consume ( */
-                if (current_token_is(parser, TOKEN_STRING)) {
-                    if (!is_duplicate) pending_deprecated_message = arena_copy_string(parser->arena, parser->current_token.literal);
-                    next_token(parser); /* consume string */
-                } else {
-                    emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
-                }
-                if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
-                    next_token(parser); /* consume ) */
-                } else {
-                    emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
-                }
-            }
+            const char *message = parse_deprecated_message(parser);
+            if (!is_duplicate) pending_deprecated_message = message;
             continue;
         }
         /* Check for struct-namespaced function: do func() or private do func() */
@@ -3477,21 +3480,7 @@ static AstNode *parse_statement(Parser *parser) {
          * function, struct, or enum declaration. */
         bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_DEPRECATED, "#deprecated");
         next_token(parser); /* consume #deprecated */
-        const char *message = NULL;
-        if (current_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-            next_token(parser); /* consume ( */
-            if (current_token_is(parser, TOKEN_STRING)) {
-                message = arena_copy_string(parser->arena, parser->current_token.literal);
-                next_token(parser); /* consume string */
-            } else {
-                emit_attribute_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->current_token.line, parser->current_token.column);
-            }
-            if (current_token_is(parser, TOKEN_RIGHT_PARENTHESIS)) {
-                next_token(parser); /* consume ) */
-            } else {
-                emit_attribute_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->current_token.line, parser->current_token.column);
-            }
-        }
+        const char *message = parse_deprecated_message(parser);
         AstNode *statement = parse_statement(parser);
         if (statement && statement->kind == NODE_FUNCTION_DECLARATION) {
             statement->data.function_declaration.is_deprecated = true;

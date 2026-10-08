@@ -1,0 +1,44 @@
+/*
+ * Test: identifiers named after C library macros compile in every position
+ */
+
+const Holder struct {
+    BUFSIZ i64
+    sa_handler i64
+}
+
+do take(SIGTERM i64, w_termsig i64) -> i64 {
+    return SIGTERM + w_termsig
+}
+
+do named() -> (SEEK_SET i64) {
+    SEEK_SET = 4
+    return SEEK_SET
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const SIGINT i64 = 15
+    mut EXIT_FAILURE i64 = 2
+    if SIGINT + EXIT_FAILURE == 17 { passed += 1 } otherwise { failed += 1 }
+
+    mut total i64 = 0
+    for RAND_MAX in range(0, 3) { total += RAND_MAX }
+    if total == 3 { passed += 1 } otherwise { failed += 1 }
+
+    mut values [i64] = {7, 8}
+    mut sum i64 = 0
+    for_each SIZE_MAX in values { sum += SIZE_MAX }
+    if sum == 15 { passed += 1 } otherwise { failed += 1 }
+
+    const holder Holder = Holder{BUFSIZ: 1, sa_handler: 2}
+    if holder.BUFSIZ + holder.sa_handler == 3 { passed += 1 } otherwise { failed += 1 }
+    if take(1, 2) == 3 { passed += 1 } otherwise { failed += 1 }
+    if named() == 4 { passed += 1 } otherwise { failed += 1 }
+
+    println("c_macro_names_as_identifiers: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,27 @@
+import @json
+
+#json
+const Flag struct {
+    b bool
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut on Flag = json.parse("{\"b\": true}")
+    mut off Flag = json.parse("{\"b\": false}")
+    if on.b && !off.b {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: true and false bool values")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

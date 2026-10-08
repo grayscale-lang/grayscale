@@ -1,0 +1,17 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut large f64 = 1e20
+    mut large_f32 f32 = 1e20
+    mut negative_large f64 = -1e20
+
+    if "${i128(large)}" == "100000000000000000000" { passed += 1 } otherwise { failed += 1 }
+    if "${i256(large)}" == "100000000000000000000" { passed += 1 } otherwise { failed += 1 }
+    if "${i128(large_f32)}" == "100000002004087734272" { passed += 1 } otherwise { failed += 1 }
+    if "${i128(negative_large)}" == "-100000000000000000000" { passed += 1 } otherwise { failed += 1 }
+    if "${i128(1e20)}" == "100000000000000000000" { passed += 1 } otherwise { failed += 1 }
+    if "${i128(12.75)}" == "12" { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

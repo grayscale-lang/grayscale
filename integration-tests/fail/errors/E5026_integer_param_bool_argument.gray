@@ -1,0 +1,6 @@
+do take64(p i64) -> i64 { return p }
+
+do main() {
+    mut flag bool = true
+    println(take64(flag))
+}

@@ -2672,10 +2672,12 @@ static void test_e2e_encoding_base64_hex(void) {
         "do main() {\n"
         "  mut b string = encoding.base64_encode(\"hello\")\n"
         "  println(b)\n"
-        "  println(encoding.base64_decode(b))\n"
+        "  mut b_decoded, _ = encoding.base64_decode(b)\n"
+        "  println(b_decoded)\n"
         "  mut h string = encoding.hex_encode(\"AB\")\n"
         "  println(h)\n"
-        "  println(encoding.hex_decode(h))\n"
+        "  mut h_decoded, _ = encoding.hex_decode(h)\n"
+        "  println(h_decoded)\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "aGVsbG8=\nhello\n4142\nAB");
@@ -2918,8 +2920,8 @@ static void test_e2e_enum_explicit_values(void) {
         "  NOT_FOUND = 404\n"
         "}\n"
         "do main() {\n"
-        "  mut a i64 = Status.OK\n"
-        "  mut b i64 = Status.CREATED\n"
+        "  mut a i64 = cast(Status.OK, i64)\n"
+        "  mut b i64 = cast(Status.CREATED, i64)\n"
         "  println(a)\n"
         "  println(b)\n"
         "  println(cast(Status.NOT_FOUND, i64))\n"

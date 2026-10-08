@@ -1,0 +1,35 @@
+import @io
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut _, _ = io.write_file("/tmp/gray_make_dir_all_file.txt", "x")
+
+    mut ok, err = io.make_dir_all("/tmp/gray_make_dir_all_file.txt")
+    if !ok && err != nil {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: make_dir_all onto an existing regular file")
+    }
+
+    mut _, _ = io.delete_file("/tmp/gray_make_dir_all_file.txt")
+
+    mut _, _ = io.make_dir_all("/tmp/gray_make_dir_all_dir")
+    mut ok2, err2 = io.make_dir_all("/tmp/gray_make_dir_all_dir")
+    if ok2 && err2 == nil {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: make_dir_all onto an existing directory")
+    }
+    mut _, _ = io.remove_dir("/tmp/gray_make_dir_all_dir")
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

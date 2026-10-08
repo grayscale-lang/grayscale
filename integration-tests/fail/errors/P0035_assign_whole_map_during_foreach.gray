@@ -1,0 +1,7 @@
+do main() {
+    mut m map[string:i64] = {"a": 1, "b": 2}
+    for_each k, v in m {
+        m = {"x": 1, "y": 2, "z": 3}
+        println("visit ${k}")
+    }
+}

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 524 codes** (377 errors, 17 warnings, 130 panics)
+**Total: 529 codes** (380 errors, 17 warnings, 132 panics)
 
 ---
 
@@ -88,6 +88,8 @@
 | `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line |
 | `E2096` | syntax | 'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables |
 | `E2097` | syntax | a 'generic' parameter cannot have a default value; its argument is the type the caller passes |
+| `E2098` | syntax | imports must come before all other declarations in the file |
+| `E2099` | syntax | a mutable (&) parameter cannot have a default value; the caller must pass a variable to modify |
 | `E3001` | types | type mismatch: cannot assign %s to %s |
 | `E3002` | types | invalid operands: cannot use '%s' with %s and %s |
 | `E3003` | types | %s index must be an integer, got %s |
@@ -357,6 +359,7 @@
 | `E5061` | arguments | 'csv.filter_rows()' callback must be func([string]) -> bool |
 | `E5062` | arguments | default value for parameter '%s' has wrong type; expected %s, got %s |
 | `E5063` | arguments | 'to_char()' index %lld is out of bounds |
+| `E5064` | arguments | cannot call a bare 'func' value; its signature is not known, so pass it to a function with a typed 'func(...) -> T' parameter instead |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -456,13 +459,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0033` | bounds | index out of bounds; tried to access index %lld but the length is %d |
 | `P0034` | iteration | cannot modify array during for_each iteration |
 | `P0035` | iteration | cannot modify map during for_each iteration |
-| `P0036` | encoding | encoding.base64_decode: input length %d is not a multiple of 4 |
-| `P0037` | encoding | encoding.base64_decode: padding character '=' before end of input |
-| `P0038` | encoding | encoding.base64_decode: invalid padding |
-| `P0039` | encoding | encoding.base64_decode: invalid character in input |
-| `P0040` | encoding | encoding.hex_decode: input length %d is not even |
-| `P0041` | encoding | encoding.hex_decode: invalid hex character at position %d |
-| `P0042` | encoding | encoding.url_decode: invalid percent-escape at position %d |
 | `P0043` | bounds | arrays.insert_at: index %lld is out of bounds for an array of length %d |
 | `P0044` | bounds | arrays.remove_at: index %lld is out of bounds for an array of length %d |
 | `P0045` | bounds | arrays.get_first called on an empty array |
@@ -551,6 +547,15 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0136` | runtime | cannot convert '%s' to %s; value is outside its range |
 | `P0137` | arithmetic | cannot convert a float to %s; the value is out of range, or NaN |
 | `P0138` | arithmetic | cast from %s to %s failed; the value is outside the range of %s |
+| `P0139` | os | environment variable name or value contains an embedded null byte |
+| `P0140` | time | time: timestamp %lld is outside the range of dates that can be broken into parts |
+| `P0141` | os | os.exec: the command or an argument contains an embedded null byte |
+| `P0142` | json | json: a non-finite floating-point value (inf or nan) cannot be written as JSON |
+| `P0143` | csv | csv: a file path contains an embedded null byte |
+| `P0144` | sqlite | sqlite: a database path or SQL statement contains an embedded null byte |
+| `P0145` | time | time: a format, layout or text contains an embedded null byte |
+| `P0146` | regex | regex: a pattern or text contains an embedded null byte |
+| `P0147` | arithmetic | cast to %s failed; value '%.*s' does not match any variant of %s |
 
 ---
 
@@ -575,4 +580,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-05 23:01:50 UTC*
+*Generated on 2026-10-08 16:55:52 UTC*

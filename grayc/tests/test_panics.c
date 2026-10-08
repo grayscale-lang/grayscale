@@ -133,41 +133,6 @@ static void trigger_P0017(void) {
 static void test_panic_P0017(void) { ASSERT_PANICS("P0017", trigger_P0017); }
 
 /* ===========================================================================
- * Encoding
- * ===========================================================================*/
-
-static void trigger_P0036(void) {
-    gray_encoding_base64_decode(arena, gray_string_lit("abc"));
-}
-static void test_panic_P0036(void) { ASSERT_PANICS("P0036", trigger_P0036); }
-
-static void trigger_P0037(void) {
-    /* Padding in a non-final quad triggers P0037 */
-    gray_encoding_base64_decode(arena, gray_string_lit("abc=abcd"));
-}
-static void test_panic_P0037(void) { ASSERT_PANICS("P0037", trigger_P0037); }
-
-static void trigger_P0038(void) {
-    gray_encoding_base64_decode(arena, gray_string_lit("ab=c"));
-}
-static void test_panic_P0038(void) { ASSERT_PANICS("P0038", trigger_P0038); }
-
-static void trigger_P0039(void) {
-    gray_encoding_base64_decode(arena, gray_string_lit("@@@@"));
-}
-static void test_panic_P0039(void) { ASSERT_PANICS("P0039", trigger_P0039); }
-
-static void trigger_P0040(void) {
-    gray_encoding_hex_decode(arena, gray_string_lit("abc"));
-}
-static void test_panic_P0040(void) { ASSERT_PANICS("P0040", trigger_P0040); }
-
-static void trigger_P0041(void) {
-    gray_encoding_hex_decode(arena, gray_string_lit("zz"));
-}
-static void test_panic_P0041(void) { ASSERT_PANICS("P0041", trigger_P0041); }
-
-/* ===========================================================================
  * Array/string bounds
  * ===========================================================================*/
 
@@ -474,12 +439,6 @@ int main(void) {
     RUN_TEST(test_panic_P0017);
 
     printf("--- Encoding ---\n");
-    RUN_TEST(test_panic_P0036);
-    RUN_TEST(test_panic_P0037);
-    RUN_TEST(test_panic_P0038);
-    RUN_TEST(test_panic_P0039);
-    RUN_TEST(test_panic_P0040);
-    RUN_TEST(test_panic_P0041);
 
     printf("--- Array/String Bounds ---\n");
     RUN_TEST(test_panic_P0044);

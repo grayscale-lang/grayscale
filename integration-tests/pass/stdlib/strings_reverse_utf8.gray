@@ -1,0 +1,20 @@
+/*
+ * Test: strings.reverse reverses by character, keeping multi-byte characters valid
+ */
+
+import @strings
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+
+    if strings.reverse("héllo") == "olléh" { pass += 1 } otherwise { fail += 1 }
+    if len(strings.to_chars(strings.reverse("héllo"))) == 5 { pass += 1 } otherwise { fail += 1 }
+    if strings.reverse("a€😀b") == "b😀€a" { pass += 1 } otherwise { fail += 1 }
+    if strings.reverse("hello") == "olleh" { pass += 1 } otherwise { fail += 1 }
+    if strings.reverse("") == "" { pass += 1 } otherwise { fail += 1 }
+
+    println("strings_reverse_utf8: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

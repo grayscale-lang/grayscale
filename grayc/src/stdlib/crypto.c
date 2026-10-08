@@ -112,7 +112,14 @@ static int sha256_hw_available(void) {
 #endif
 }
 
-__attribute__((target("+sha2")))
+#if defined(__clang__)
+#define SHA256_ARM_TARGET "+sha2"
+#else
+/* GCC rejects the bare "+sha2" form Clang takes. */
+#define SHA256_ARM_TARGET "arch=armv8-a+crypto"
+#endif
+
+__attribute__((target(SHA256_ARM_TARGET)))
 static void sha256_compress_arm(uint32_t h[8], const uint8_t *msg, size_t nblocks) {
     uint32x4_t s0 = vld1q_u32(h), s1 = vld1q_u32(h + 4);
     for (; nblocks > 0; nblocks--, msg += HASH_BLOCK_SIZE) {
@@ -434,7 +441,11 @@ GrayString gray_crypto_totp(GrayArena *arena, GrayString secret, int64_t timesta
     uint32_t one_time_password = binary_code % modulus;
 
     char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)digits + 1);
-    snprintf(buffer, (size_t)digits + 1, "%0*u", (int)digits, one_time_password);
+    for (int64_t i = digits - 1; i >= 0; i--) {
+        buffer[i] = (char)('0' + one_time_password % 10);
+        one_time_password /= 10;
+    }
+    buffer[digits] = '\0';
     return (GrayString){ buffer, (int32_t)digits };
 }
 

@@ -1,6 +1,7 @@
 # Binaries and compiled files
 *.bin
 *.exe
+*.obj
 *.so
 *.dll
 *.dylib

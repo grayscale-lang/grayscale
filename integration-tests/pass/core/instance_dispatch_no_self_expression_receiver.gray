@@ -1,0 +1,27 @@
+const Counter struct {
+    n i64
+
+    do make(n i64) -> Counter { return Counter{n: n} }
+    do hello() -> i64 { return 42 }
+}
+
+mut picks i64 = 0
+
+do pick() -> i64 {
+    picks += 1
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut items [Counter] = {Counter{n: 1}}
+    mut made Counter = items[pick()].make(3)
+    if made.n == 3 && picks == 1 { passed += 1 } otherwise { failed += 1 }
+
+    mut greeting i64 = items[pick()].hello()
+    if greeting == 42 && picks == 2 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

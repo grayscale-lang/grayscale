@@ -1,0 +1,10 @@
+const T enum {
+    A(i64)
+    B
+}
+
+do main() {
+    mut tv T = T.A(1)
+    mut s string = "5"
+    mut value string = string(nil)
+}

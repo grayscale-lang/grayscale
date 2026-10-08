@@ -1,0 +1,5 @@
+import "./helper.gray"
+
+do main() {
+    mut f = helper.helper
+}

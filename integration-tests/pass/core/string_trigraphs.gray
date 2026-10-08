@@ -47,8 +47,8 @@ do main() {
         failed += 1
     }
 
-    mut q string = Tag.Q
-    mut newline string = Tag.N
+    mut q string = cast(Tag.Q, string)
+    mut newline string = cast(Tag.N, string)
     if q == "a??=b" && len(q) == 5 && len(newline) == 3 {
         println("  [PASS] string enum values keep their text and decoded length")
         passed += 1

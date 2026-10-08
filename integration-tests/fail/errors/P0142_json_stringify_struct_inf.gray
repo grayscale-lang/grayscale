@@ -1,0 +1,14 @@
+// expect-contains: .gray:
+/* Panic Test: P0142 - json.stringify of a struct with an inf f64 field */
+import @json
+import @strconv
+
+#json
+const Rec struct {
+    f f64
+}
+
+do main() {
+    mut inf f64, _ = strconv.to_f64("inf")
+    println(json.stringify(Rec{f: inf}))
+}

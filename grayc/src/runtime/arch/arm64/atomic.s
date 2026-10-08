@@ -13,6 +13,7 @@
 #   return = x0
 
 .text
+.p2align 2
 
 # ─────────────────────────────────────────────
 # int64_t gray_atomic_load(int64_t *ptr)

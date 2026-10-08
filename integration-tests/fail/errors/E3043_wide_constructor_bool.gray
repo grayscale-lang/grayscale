@@ -1,0 +1,4 @@
+do main() {
+    mut value i128 = i128(true)
+    println(value)
+}

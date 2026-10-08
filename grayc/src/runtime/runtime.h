@@ -184,6 +184,14 @@ static inline bool gray_string_eq(GrayString left, GrayString right) {
     return memcmp(left.data, right.data, (size_t)left.len) == 0;
 }
 
+/* Value of an ASCII hex digit, or -1 when `character` is not one. */
+static inline int gray_hex_digit_value(char character) {
+    if (character >= '0' && character <= '9') return character - '0';
+    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
+    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
+    return -1;
+}
+
 /* String concatenation */
 GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right);
 
@@ -501,6 +509,17 @@ static inline int64_t gray_enum_cast_check(int64_t value, const int64_t *variant
     }
     gray_panic_code_at(file, line, "P0107", "cast to %s failed; value %lld does not match any variant of %s",
         type_name, (long long)value, type_name);
+    return value;
+}
+
+/* Safe cast to a string-backed enum: the string must equal a declared variant's value. */
+static inline GrayString gray_enum_cast_check_string(GrayString value, const GrayString *variants, int32_t count,
+    const char *type_name, const char *file, int line) {
+    for (int32_t i = 0; i < count; i++) {
+        if (variants[i].len == value.len && memcmp(variants[i].data, value.data, (size_t)value.len) == 0) return value;
+    }
+    gray_panic_code_at(file, line, "P0147", "cast to %s failed; value '%.*s' does not match any variant of %s",
+        type_name, (int)value.len, value.data, type_name);
     return value;
 }
 

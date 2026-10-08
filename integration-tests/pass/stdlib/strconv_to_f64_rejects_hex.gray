@@ -1,0 +1,26 @@
+/*
+ * Test: strconv.to_f64 rejects C hexadecimal float syntax
+ */
+
+import @strconv
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+
+    mut _, e1 = strconv.to_f64("0x10")
+    if e1 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut _, e2 = strconv.to_f64("0x1p3")
+    if e2 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut _, e3 = strconv.to_f64("-0X1p3")
+    if e3 != nil { pass += 1 } otherwise { fail += 1 }
+
+    mut v4, e4 = strconv.to_f64("1.5")
+    if e4 == nil { if v4 > 1.4 { pass += 1 } otherwise { fail += 1 } } otherwise { fail += 1 }
+
+    println("strconv_to_f64_rejects_hex: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

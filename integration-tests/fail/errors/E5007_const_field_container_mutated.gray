@@ -1,0 +1,29 @@
+/*
+ * Error Test: E5007 - mutating arrays/maps functions on a container reached
+ * through a const field or index
+ * Expected: E5007 on each call
+ */
+// expect-error: E5007
+// expect-error-count: 5
+
+import @arrays
+import @maps
+
+const S struct {
+    xs [i64]
+    m map[string:i64]
+    rows [[i64]]
+}
+
+do grow(p S) {
+    arrays.append(p.xs, 9)
+}
+
+do main() {
+    const s S = S{xs: {3, 1, 2}, m: {"a": 1}, rows: {{1}}}
+    arrays.append(s.xs, 2)
+    arrays.sort_asc(s.xs)
+    arrays.append(s.rows[0], 5)
+    maps.remove_key(s.m, "a")
+    grow(s)
+}

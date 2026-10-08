@@ -580,10 +580,10 @@ do main() {
 
     println("  -- i64 enum (auto-increment from 0) --")
 
-    mut north i64 = Direction.NORTH
-    mut east_v i64 = Direction.EAST
-    mut south_v i64 = Direction.SOUTH
-    mut west_v i64 = Direction.WEST
+    mut north i64 = cast(Direction.NORTH, i64)
+    mut east_v i64 = cast(Direction.EAST, i64)
+    mut south_v i64 = cast(Direction.SOUTH, i64)
+    mut west_v i64 = cast(Direction.WEST, i64)
 
     if north == 0 {
         println("  [PASS] Direction.NORTH = 0")
@@ -616,9 +616,9 @@ do main() {
 
     println("  -- flags enum (power-of-2) --")
 
-    mut r_perm i64 = Permission.READ
-    mut w_perm i64 = Permission.WRITE
-    mut e_perm i64 = Permission.EXECUTE
+    mut r_perm i64 = cast(Permission.READ, i64)
+    mut w_perm i64 = cast(Permission.WRITE, i64)
+    mut e_perm i64 = cast(Permission.EXECUTE, i64)
 
     if r_perm == 1 {
         println("  [PASS] Permission.READ = 1")
@@ -644,21 +644,21 @@ do main() {
 
     println("  -- string enum --")
 
-    if Status.TODO == "todo" {
+    if cast(Status.TODO, string) == "todo" {
         println("  [PASS] Status.TODO = \"todo\"")
         passed++
     } otherwise {
         println("  [FAIL] Status.TODO: expected \"todo\", got \"${Status.TODO}\"")
         failed++
     }
-    if Status.ACTIVE == "active" {
+    if cast(Status.ACTIVE, string) == "active" {
         println("  [PASS] Status.ACTIVE = \"active\"")
         passed++
     } otherwise {
         println("  [FAIL] Status.ACTIVE: expected \"active\", got \"${Status.ACTIVE}\"")
         failed++
     }
-    if Status.DONE == "done" {
+    if cast(Status.DONE, string) == "done" {
         println("  [PASS] Status.DONE = \"done\"")
         passed++
     } otherwise {
@@ -1288,7 +1288,7 @@ do main() {
         failed++
     }
 
-    mut b64d string = encoding.base64_decode("aGVsbG8=")
+    mut b64d, _ = encoding.base64_decode("aGVsbG8=")
     if b64d == "hello" {
         println("  [PASS] encoding.base64_decode(\"aGVsbG8=\") = \"hello\"")
         passed++
@@ -1306,7 +1306,7 @@ do main() {
         failed++
     }
 
-    mut hexd string = encoding.hex_decode("6869")
+    mut hexd, _ = encoding.hex_decode("6869")
     if hexd == "hi" {
         println("  [PASS] encoding.hex_decode(\"6869\") = \"hi\"")
         passed++
@@ -1623,7 +1623,7 @@ do main() {
 
     mut by3_a [u8] = encoding.from_string("test")
     mut by3_hex string = encoding.to_hex(by3_a)
-    mut by3_b [u8] = encoding.from_hex(by3_hex)
+    mut by3_b, _ = encoding.from_hex(by3_hex)
     mut by3 string = encoding.to_string(by3_b)
     if by3 == "test" {
         println("  [PASS] encoding hex roundtrip \"test\" = \"test\"")
@@ -1643,7 +1643,7 @@ do main() {
         failed++
     }
 
-    mut by5_bytes [u8] = encoding.from_base64("aGVsbG8=")
+    mut by5_bytes, _ = encoding.from_base64("aGVsbG8=")
     mut by5 string = encoding.to_string(by5_bytes)
     if by5 == "hello" {
         println("  [PASS] encoding.to_string(encoding.from_base64(\"aGVsbG8=\")) = \"hello\"")

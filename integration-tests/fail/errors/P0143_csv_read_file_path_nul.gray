@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0143 - csv.read_file with an embedded null byte in the path */
+import @csv
+
+do main() {
+    mut nul string = "\x00"
+    mut _, _ = csv.read_file("/etc/hosts" + nul + "x")
+}

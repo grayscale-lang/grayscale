@@ -1,0 +1,4 @@
+do main() {
+    mut value f64 = -2.5
+    println("${u128(value)}")
+}

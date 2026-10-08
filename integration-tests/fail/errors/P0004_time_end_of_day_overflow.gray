@@ -1,0 +1,6 @@
+import @time
+
+do main() {
+    mut timestamp i64 = 9223372036854775807
+    println(time.end_of_day(timestamp))
+}

@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0139 - os.get_env name with an embedded null byte */
+import @os
+
+do main() {
+    mut nul string = "\x00"
+    println(os.get_env("HOME" + nul + "zzz"))
+}

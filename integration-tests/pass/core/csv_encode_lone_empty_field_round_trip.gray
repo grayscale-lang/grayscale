@@ -1,0 +1,30 @@
+import @csv
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut data [[string]] = {{"name"}, {"ann"}, {""}, {"bob"}}
+    mut back [[string]] = csv.parse(csv.encode(data))
+    if len(back) == 4 && len(back[2]) == 1 && back[2][0] == "" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a lone empty field survives encode then parse")
+    }
+
+    mut records [map[string:string]] = csv.to_maps(back)
+    if len(records) == 3 && records[1]["name"] == "" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: to_maps keeps the empty value")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

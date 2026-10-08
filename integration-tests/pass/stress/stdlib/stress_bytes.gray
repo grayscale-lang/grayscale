@@ -19,7 +19,7 @@ do main() {
 
     // from_hex / to_hex round-trip
     mut hex string = encoding.to_hex(b)
-    mut b2 [u8] = encoding.from_hex(hex)
+    mut b2, _ = encoding.from_hex(hex)
     mut s2 string = encoding.to_string(b2)
     if s2 == "Hello" {
         println("  [PASS] to_hex/from_hex round-trip")
@@ -28,7 +28,7 @@ do main() {
 
     // from_base64 / to_base64 round-trip
     mut b64 string = encoding.to_base64(b)
-    mut b3 [u8] = encoding.from_base64(b64)
+    mut b3, _ = encoding.from_base64(b64)
     mut s3 string = encoding.to_string(b3)
     if s3 == "Hello" {
         println("  [PASS] to_base64/from_base64 round-trip")

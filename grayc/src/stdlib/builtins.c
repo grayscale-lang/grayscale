@@ -145,22 +145,23 @@ void gray_builtin_flush(void) {
 
 /* --- input --- */
 
+/* Reads one line byte by byte so embedded NULs survive. A "\n" or "\r\n"
+ * terminator is dropped; end of input without a terminator ends the line. */
 GrayString gray_builtin_input(GrayArena *arena) {
-    char buffer[GRAY_INPUT_BUFFER_SIZE];
     fflush(stdout);
-    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
-        return gray_string_lit("");
+    size_t capacity = GRAY_INPUT_BUFFER_SIZE, length = 0;
+    char *buffer = gray_arena_alloc_uninitialized(arena, capacity);
+    int character;
+    while ((character = getc(stdin)) != EOF && character != '\n') {
+        if (length == capacity) {
+            char *grown = gray_arena_alloc_uninitialized(arena, capacity * 2);
+            memcpy(grown, buffer, length);
+            buffer = grown;
+            capacity *= 2;
+        }
+        buffer[length++] = (char)character;
     }
-    size_t length = strlen(buffer);
-    if (length > 0 && buffer[length - 1] == '\n') {
-        length--;
-    } else if (length == GRAY_INPUT_BUFFER_SIZE - 1) {
-        /* Buffer filled without reaching a newline — drain the rest of the
-         * line so the next input() call reads the correct line. */
-        int character;
-        while ((character = getc(stdin)) != '\n' && character != EOF)
-            ;
-    }
+    if (character == '\n' && length > 0 && buffer[length - 1] == '\r') length--;
     return gray_string_new(arena, buffer, (int32_t)length);
 }
 

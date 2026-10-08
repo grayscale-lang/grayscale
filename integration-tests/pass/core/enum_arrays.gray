@@ -66,7 +66,7 @@ do main() {
 
     // Test 4: string enum array declaration and access
     mut colors [Color] = {Color.RED, Color.GREEN, Color.BLUE}
-    if colors[0] == "red" && colors[1] == "green" && colors[2] == "blue" {
+    if cast(colors[0], string) == "red" && cast(colors[1], string) == "green" && cast(colors[2], string) == "blue" {
         println("  [PASS] string enum array access")
         passed += 1
     } otherwise {
@@ -76,7 +76,7 @@ do main() {
 
     // Test 5: string enum array element reassignment
     colors[0] = Color.BLUE
-    if colors[0] == "blue" {
+    if cast(colors[0], string) == "blue" {
         println("  [PASS] string enum array element reassignment")
         passed += 1
     } otherwise {
@@ -88,7 +88,7 @@ do main() {
     mut dirs3 [Direction] = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST}
     mut sum i64 = 0
     for i in range(0, 4) {
-        sum += dirs3[i]
+        sum += cast(dirs3[i], i64)
     }
     // NORTH=0, EAST=1, SOUTH=2, WEST=3 → sum=6
     if sum == 6 {

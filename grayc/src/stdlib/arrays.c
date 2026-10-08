@@ -420,6 +420,8 @@ static void gray_sort_##SUFFIX(void *data, int64_t count) {                     
 }
 
 #define GRAY_SORT_LESS_THAN(left, right) ((left) < (right))
+/* A NaN is greater than every other value, matching gray_elem_compare. */
+#define GRAY_SORT_FLOAT_LESS_THAN(left, right) ((left) < (right) || ((left) == (left) && (right) != (right)))
 
 GRAY_DEFINE_INTROSORT(i8, int8_t, GRAY_SORT_LESS_THAN)
 GRAY_DEFINE_INTROSORT(i16, int16_t, GRAY_SORT_LESS_THAN)
@@ -429,8 +431,8 @@ GRAY_DEFINE_INTROSORT(u8, uint8_t, GRAY_SORT_LESS_THAN)
 GRAY_DEFINE_INTROSORT(u16, uint16_t, GRAY_SORT_LESS_THAN)
 GRAY_DEFINE_INTROSORT(u32, uint32_t, GRAY_SORT_LESS_THAN)
 GRAY_DEFINE_INTROSORT(u64, uint64_t, GRAY_SORT_LESS_THAN)
-GRAY_DEFINE_INTROSORT(f32, float, GRAY_SORT_LESS_THAN)
-GRAY_DEFINE_INTROSORT(f64, double, GRAY_SORT_LESS_THAN)
+GRAY_DEFINE_INTROSORT(f32, float, GRAY_SORT_FLOAT_LESS_THAN)
+GRAY_DEFINE_INTROSORT(f64, double, GRAY_SORT_FLOAT_LESS_THAN)
 GRAY_DEFINE_INTROSORT(str, GrayString, gray_sort_string_less_than)
 
 #define GRAY_DEFINE_WIDE_COMPARE(KIND, WIDE_TYPE)                                       \

@@ -139,7 +139,15 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ### Build from source
 
-Requires Go 1.23+ and a C compiler — GCC 7+ or Clang 5+ (GNU C extensions required).
+Requires Go 1.23+ and a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both.
+
+| Compiler | macOS | Linux | Windows |
+|---|---|---|---|
+| **Clang** | Supported | Supported | Not supported |
+| **GCC** | Supported (Homebrew GCC) | Supported | Supported (MinGW-w64, until TinyCC replaces it) |
+| **TinyCC** | Supported | Not yet supported | Planned |
+
+On macOS, `cc` and `gcc` are both Apple Clang unless GCC is installed separately.
 
 ```bash
 git clone https://github.com/grayscale-lang/grayscale.git
@@ -176,6 +184,7 @@ Source files end in `.gray` or `.grayscale`; both work everywhere and can be mix
 | `gray build <file> -o <name>` | Compile to a distributable binary | `gray build main.gray -o myapp` |
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
 | `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
+| `gray <file> --cc <compiler>` | Compile and run with a chosen C compiler (also on `gray build`) | `gray main.gray --cc tcc` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
 | `gray test [path...]` | Compile and run `#test` functions | `gray test ./src/...` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |

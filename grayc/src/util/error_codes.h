@@ -100,7 +100,9 @@
     GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
     GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line") \
     GRAY_ERROR("E2096", "syntax", "'generic' declares a type parameter and is only valid as the type of a function parameter; it cannot be used in variable declarations, struct fields, enum variants, return types, container element types, tuple positions, or global variables") \
-    GRAY_ERROR("E2097", "syntax", "a 'generic' parameter cannot have a default value; its argument is the type the caller passes")
+    GRAY_ERROR("E2097", "syntax", "a 'generic' parameter cannot have a default value; its argument is the type the caller passes") \
+    GRAY_ERROR("E2098", "syntax", "imports must come before all other declarations in the file") \
+    GRAY_ERROR("E2099", "syntax", "a mutable (&) parameter cannot have a default value; the caller must pass a variable to modify")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -378,7 +380,8 @@
     GRAY_ERROR("E5060", "arguments", "'csv.filter_rows()' requires a function reference") \
     GRAY_ERROR("E5061", "arguments", "'csv.filter_rows()' callback must be func([string]) -> bool") \
     GRAY_ERROR("E5062", "arguments", "default value for parameter '%s' has wrong type; expected %s, got %s") \
-    GRAY_ERROR("E5063", "arguments", "'to_char()' index %lld is out of bounds")
+    GRAY_ERROR("E5063", "arguments", "'to_char()' index %lld is out of bounds") \
+    GRAY_ERROR("E5064", "arguments", "cannot call a bare 'func' value; its signature is not known, so pass it to a function with a typed 'func(...) -> T' parameter instead")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -457,13 +460,6 @@
     GRAY_PANIC("P0033", "bounds",     "index out of bounds; tried to access index %lld but the length is %d") \
     GRAY_PANIC("P0034", "iteration",  "cannot modify array during for_each iteration") \
     GRAY_PANIC("P0035", "iteration",  "cannot modify map during for_each iteration") \
-    GRAY_PANIC("P0036", "encoding",   "encoding.base64_decode: input length %d is not a multiple of 4") \
-    GRAY_PANIC("P0037", "encoding",   "encoding.base64_decode: padding character '=' before end of input") \
-    GRAY_PANIC("P0038", "encoding",   "encoding.base64_decode: invalid padding") \
-    GRAY_PANIC("P0039", "encoding",   "encoding.base64_decode: invalid character in input") \
-    GRAY_PANIC("P0040", "encoding",   "encoding.hex_decode: input length %d is not even") \
-    GRAY_PANIC("P0041", "encoding",   "encoding.hex_decode: invalid hex character at position %d") \
-    GRAY_PANIC("P0042", "encoding",   "encoding.url_decode: invalid percent-escape at position %d") \
     GRAY_PANIC("P0043", "bounds",     "arrays.insert_at: index %lld is out of bounds for an array of length %d") \
     GRAY_PANIC("P0044", "bounds",     "arrays.remove_at: index %lld is out of bounds for an array of length %d") \
     GRAY_PANIC("P0045", "bounds",     "arrays.get_first called on an empty array") \
@@ -551,7 +547,16 @@
     GRAY_PANIC("P0135", "json",       "json.parse: field '%s' expects %s, but the JSON value is %s") \
     GRAY_PANIC("P0136", "runtime",    "cannot convert '%s' to %s; value is outside its range") \
     GRAY_PANIC("P0137", "arithmetic", "cannot convert a float to %s; the value is out of range, or NaN") \
-    GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s")
+    GRAY_PANIC("P0138", "arithmetic", "cast from %s to %s failed; the value is outside the range of %s") \
+    GRAY_PANIC("P0139", "os",         "environment variable name or value contains an embedded null byte") \
+    GRAY_PANIC("P0140", "time",       "time: timestamp %lld is outside the range of dates that can be broken into parts") \
+    GRAY_PANIC("P0141", "os",         "os.exec: the command or an argument contains an embedded null byte") \
+    GRAY_PANIC("P0142", "json",       "json: a non-finite floating-point value (inf or nan) cannot be written as JSON") \
+    GRAY_PANIC("P0143", "csv",        "csv: a file path contains an embedded null byte") \
+    GRAY_PANIC("P0144", "sqlite",     "sqlite: a database path or SQL statement contains an embedded null byte") \
+    GRAY_PANIC("P0145", "time",       "time: a format, layout or text contains an embedded null byte") \
+    GRAY_PANIC("P0146", "regex",      "regex: a pattern or text contains an embedded null byte") \
+    GRAY_PANIC("P0147", "arithmetic", "cast to %s failed; value '%.*s' does not match any variant of %s")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

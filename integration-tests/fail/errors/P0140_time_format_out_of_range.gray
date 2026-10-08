@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0140 - time.format with a timestamp gmtime cannot represent */
+import @time
+
+do main() {
+    println(time.format("%Y", 67768036191676800))
+}

@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5011 - single-return function as a ensure statement
+ * Expected: E5011 error — a deferred call's result is dropped
+ */
+// expect-error: E5011
+// expect-error-count: 1
+
+do val() -> i64 {
+    return 1
+}
+
+do main() {
+    ensure val()
+    println("body")
+}

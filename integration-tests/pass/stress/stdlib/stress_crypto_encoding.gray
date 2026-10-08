@@ -33,7 +33,7 @@ do main() {
 
     // base64 round-trip
     mut b64 string = encoding.base64_encode("Hello, World!")
-    mut decoded string = encoding.base64_decode(b64)
+    mut decoded, _ = encoding.base64_decode(b64)
     if decoded == "Hello, World!" {
         println("  [PASS] base64 encode/decode round-trip")
         passed += 1
@@ -41,7 +41,7 @@ do main() {
 
     // hex round-trip
     mut hex string = encoding.hex_encode("ABC")
-    mut hex_decoded string = encoding.hex_decode(hex)
+    mut hex_decoded, _ = encoding.hex_decode(hex)
     if hex_decoded == "ABC" {
         println("  [PASS] hex encode/decode round-trip")
         passed += 1
@@ -49,7 +49,7 @@ do main() {
 
     // url round-trip
     mut url string = encoding.url_encode("hello world&foo=bar")
-    mut url_decoded string = encoding.url_decode(url)
+    mut url_decoded, _ = encoding.url_decode(url)
     if url_decoded == "hello world&foo=bar" {
         println("  [PASS] url encode/decode round-trip")
         passed += 1

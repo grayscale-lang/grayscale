@@ -1,0 +1,8 @@
+do main() {
+    mut n i64 = 0
+    if n {
+        println("truthy")
+    } otherwise {
+        println("falsy")
+    }
+}

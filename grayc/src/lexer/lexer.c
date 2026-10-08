@@ -472,6 +472,17 @@ Lexer *lexer_create(Arena *arena, const char *input, const char *file) {
     return lexer;
 }
 
+/* A one-character operator that becomes a two-character operator when
+ * followed by `second`. `start` carries the operator's line and column. */
+static Token make_paired_token(Lexer *lexer, Token start, char second, TokenType paired_type,
+                               const char *paired_text, TokenType single_type, const char *single_text) {
+    if (peek_character(lexer) == second) {
+        read_character(lexer);
+        return make_token(paired_type, paired_text, start.line, start.column);
+    }
+    return make_token(single_type, single_text, start.line, start.column);
+}
+
 Token lexer_next_token(Lexer *lexer) {
     Token token;
     lexer->error_code = NULL;
@@ -493,14 +504,7 @@ Token lexer_next_token(Lexer *lexer) {
         token = make_token(TOKEN_END_OF_FILE, "", lexer->line, lexer->column);
         goto done;
 
-    case '=':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_EQUAL, "==", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_ASSIGN, "=", token.line, token.column);
-        }
-        break;
+    case '=': token = make_paired_token(lexer, token, '=', TOKEN_EQUAL, "==", TOKEN_ASSIGN, "="); break;
 
     case '+':
         if (peek_character(lexer) == '=') {
@@ -547,59 +551,17 @@ Token lexer_next_token(Lexer *lexer) {
         }
         break;
 
-    case '*':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_ASTERISK_ASSIGN, "*=", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_ASTERISK, "*", token.line, token.column);
-        }
-        break;
+    case '*': token = make_paired_token(lexer, token, '=', TOKEN_ASTERISK_ASSIGN, "*=", TOKEN_ASTERISK, "*"); break;
 
-    case '/':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_SLASH_ASSIGN, "/=", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_SLASH, "/", token.line, token.column);
-        }
-        break;
+    case '/': token = make_paired_token(lexer, token, '=', TOKEN_SLASH_ASSIGN, "/=", TOKEN_SLASH, "/"); break;
 
-    case '%':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_PERCENT_ASSIGN, "%=", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_PERCENT, "%", token.line, token.column);
-        }
-        break;
+    case '%': token = make_paired_token(lexer, token, '=', TOKEN_PERCENT_ASSIGN, "%=", TOKEN_PERCENT, "%"); break;
 
-    case '<':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_LESS_THAN_OR_EQUAL, "<=", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_LESS_THAN, "<", token.line, token.column);
-        }
-        break;
+    case '<': token = make_paired_token(lexer, token, '=', TOKEN_LESS_THAN_OR_EQUAL, "<=", TOKEN_LESS_THAN, "<"); break;
 
-    case '>':
-        if (peek_character(lexer) == '=') {
-            read_character(lexer);
-            token = make_token(TOKEN_GREATER_THAN_OR_EQUAL, ">=", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_GREATER_THAN, ">", token.line, token.column);
-        }
-        break;
+    case '>': token = make_paired_token(lexer, token, '=', TOKEN_GREATER_THAN_OR_EQUAL, ">=", TOKEN_GREATER_THAN, ">"); break;
 
-    case '&':
-        if (peek_character(lexer) == '&') {
-            read_character(lexer);
-            token = make_token(TOKEN_AND, "&&", token.line, token.column);
-        } else {
-            token = make_token(TOKEN_AMPERSAND, "&", token.line, token.column);
-        }
-        break;
+    case '&': token = make_paired_token(lexer, token, '&', TOKEN_AND, "&&", TOKEN_AMPERSAND, "&"); break;
 
     case '?':
         lexer->error_code = "E1025";

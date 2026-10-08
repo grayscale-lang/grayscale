@@ -86,6 +86,26 @@ make test-ubsan
 make test-asan
 ```
 
+### Testing with a Specific Compiler
+
+Two environment variables choose the compiler, and they apply to different suites:
+
+- `GRAY_CC` is the compiler that builds user programs. It applies to `make test-integration` and `make test-e2e`.
+- `CC` is the compiler that builds `grayc` itself. It applies to `make test-unit` and the sanitizer suites.
+
+```bash
+GRAY_CC=gcc-11 make test-integration
+GRAY_CC=clang  make test-e2e
+GRAY_CC=tcc    make test-integration
+
+CC=gcc-11 make test-unit
+CC=clang  make test-ubsan
+```
+
+Run `make clean` when you switch compilers. Object files built by one compiler do not link with another's, and `make` does not rebuild them when `CC` changes.
+
+TinyCC does not support the sanitizers. Homebrew GCC on macOS does not ship with the sanitizer libraries, so use `clang` for `test-ubsan` and `test-asan` there.
+
 ### Vendored Dependency Checks
 
 `scripts/check_vendor.sh` verifies the recorded SHA256 of every third-party C

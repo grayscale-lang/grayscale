@@ -1,0 +1,22 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut m map[string:i64] = {"a": 1, "b": 2}
+    for_each k, v in m {
+        m[k] = v + 1
+    }
+    if m["a"] == 2 && m["b"] == 3 && len(m) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: update of existing keys during for_each")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

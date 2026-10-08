@@ -355,8 +355,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                 if (gray_source_extension_length(import_path) > 0) {
                     /* Case 1: explicit source file path — direct file import */
                     file_list = arena_allocate(arena, sizeof(char[PATH_BUFFER_SIZE]));
-                    strncpy(file_list[0], import_path, PATH_BUFFER_SIZE - 1);
-                    file_list[0][PATH_BUFFER_SIZE - 1] = '\0';
+                    snprintf(file_list[0], PATH_BUFFER_SIZE, "%s", import_path);
                     file_count = 1;
                 } else {
                     /* Case 2: try appending each source extension (extensionless file import) */
@@ -370,8 +369,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                     }
                     if (candidate_count == 1) {
                         file_list = arena_allocate(arena, sizeof(char[PATH_BUFFER_SIZE]));
-                        strncpy(file_list[0], candidate_file, PATH_BUFFER_SIZE - 1);
-                        file_list[0][PATH_BUFFER_SIZE - 1] = '\0';
+                        snprintf(file_list[0], PATH_BUFFER_SIZE, "%s", candidate_file);
                         file_count = 1;
                         /* Update import_path so collision detection uses the resolved path */
                         strncpy(import_path, candidate_file, sizeof(import_path) - 1);

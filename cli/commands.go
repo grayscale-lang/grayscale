@@ -103,6 +103,21 @@ func quietArgs(cmd *cobra.Command) []string {
 	return nil
 }
 
+// applyCompilerFlag makes --cc the C compiler for this invocation by setting
+// GRAY_CC, which grayc reads ahead of CC. grayc's own --cc flag is not used: it
+// selects a cross-compile target and always builds the runtime from source,
+// where GRAY_CC keeps the host's prebuilt libgrayrt.a.
+func applyCompilerFlag(cmd *cobra.Command) error {
+	cc, _ := cmd.Flags().GetString("cc")
+	if cc == "" {
+		return nil
+	}
+	if _, err := exec.LookPath(cc); err != nil {
+		return fmt.Errorf("error: C compiler '%s' not found", cc)
+	}
+	return os.Setenv("GRAY_CC", cc)
+}
+
 // commonBuildOpts reads the flags shared by build and cross into BuildOpts.
 func commonBuildOpts(cmd *cobra.Command) (driver.BuildOpts, error) {
 	output, _ := cmd.Flags().GetString("output")
@@ -114,6 +129,9 @@ func commonBuildOpts(cmd *cobra.Command) (driver.BuildOpts, error) {
 
 	arenaLimit, err := parseArenaLimit(arenaLimitStr)
 	if err != nil {
+		return driver.BuildOpts{}, err
+	}
+	if err := applyCompilerFlag(cmd); err != nil {
 		return driver.BuildOpts{}, err
 	}
 
@@ -727,6 +745,9 @@ var rootCmd = &cobra.Command{
 			}
 			compilerArgs = append(compilerArgs, fmt.Sprintf("--arena-limit=%d", arenaLimit))
 		}
+		if err := applyCompilerFlag(cmd); err != nil {
+			return err
+		}
 		compilerArgs = append(compilerArgs, extraArgs...)
 
 		code, err := driver.Run(args[0], compilerArgs)
@@ -873,6 +894,7 @@ Flags:
   -q, --quiet string       Suppress warnings ('all' or comma-separated codes like W1001,W1002)
       --no-color           Disable colored output
       --arena-limit size   Max arena memory per program (e.g. 512MB, 1GB; default: 1GB)
+      --cc compiler        C compiler to use (a name on PATH or a path)
 
 Use "gray [command] --help" for more information about a command.
 See the full language standard: https://github.com/grayscale-lang/grayscale/blob/main/STANDARD.md
@@ -888,6 +910,8 @@ See the full language standard: https://github.com/grayscale-lang/grayscale/blob
 	buildCmd.Flags().Bool("emit-c", false, "Emit generated C source to a file (no binary). Uses -o for output path, or defaults to <input>.c")
 	buildCmd.Flags().Bool("time", false, "Show compilation timing")
 	buildCmd.Flags().Bool("no-color", false, "Disable colored output")
+	buildCmd.Flags().String("cc", "", "C compiler to use (a name on PATH or a path); overrides GRAY_CC and CC")
+	rootCmd.Flags().String("cc", "", "C compiler to use (a name on PATH or a path); overrides GRAY_CC and CC")
 	rootCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
 	rootCmd.Flags().Bool("no-color", false, "Disable colored output")
 	rootCmd.Flags().String("arena-limit", "", "Maximum arena memory per program (e.g. 512KB, 256MB, 1GB; default: 1GB)")

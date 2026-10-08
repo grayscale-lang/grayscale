@@ -13,7 +13,15 @@
 #include <string.h>
 #include <stdio.h>
 
+/* SQLite reads a path or statement up to its first NUL, so an embedded one
+ * would silently cut it short: a different file, or only part of the SQL. */
+static void sqlite_validate_text(GrayString text) {
+    if (memchr(text.data, '\0', (size_t)text.len))
+        gray_panic_code("P0144", "sqlite: a database path or SQL statement contains an embedded null byte");
+}
+
 GraySqlite *gray_sqlite_open(GrayArena *arena, GrayString path) {
+    sqlite_validate_text(path);
     GraySqlite *database = (GraySqlite *)gray_arena_alloc(arena, sizeof(GraySqlite));
     sqlite3 *handle = NULL;
     int result_code =sqlite3_open(path.data, &handle);
@@ -33,14 +41,6 @@ void gray_sqlite_close(GraySqlite *database) {
     }
 }
 
-bool gray_sqlite_exec(GraySqlite *database, GrayString sql_text) {
-    if (!database || !database->handle) return false;
-    char *error_text = NULL;
-    int result_code =sqlite3_exec((sqlite3 *)database->handle, sql_text.data, NULL, NULL, &error_text);
-    if (error_text) sqlite3_free(error_text);
-    return result_code == SQLITE_OK;
-}
-
 /* Bind all parameters from a [string] array to a prepared statement. */
 static int bind_string_parameters(sqlite3_stmt *statement, GrayArray parameters) {
     for (int32_t i = 0; i < parameters.len; i++) {
@@ -49,18 +49,6 @@ static int bind_string_parameters(sqlite3_stmt *statement, GrayArray parameters)
         if (result_code != SQLITE_OK) return result_code;
     }
     return SQLITE_OK;
-}
-
-bool gray_sqlite_exec_params(GraySqlite *database, GrayString sql_text, GrayArray parameters) {
-    if (!database || !database->handle) return false;
-    sqlite3_stmt *statement = NULL;
-    int result_code = sqlite3_prepare_v2((sqlite3 *)database->handle, sql_text.data, sql_text.len, &statement, NULL);
-    if (result_code != SQLITE_OK || !statement) return false;
-    result_code = bind_string_parameters(statement, parameters);
-    if (result_code != SQLITE_OK) { sqlite3_finalize(statement); return false; }
-    result_code = sqlite3_step(statement);
-    sqlite3_finalize(statement);
-    return result_code == SQLITE_DONE;
 }
 
 /* Step through a prepared statement and collect all result rows into a GrayArray
@@ -78,7 +66,7 @@ static GrayArray sqlite_collect_rows(GrayArena *arena, sqlite3_stmt *statement) 
             const char *value_text = (const char *)sqlite3_column_text(statement, i);
             GrayString value;
             if (value_text) {
-                value = gray_string_new(arena, value_text, (int32_t)strlen(value_text));
+                value = gray_string_new(arena, value_text, (int32_t)sqlite3_column_bytes(statement, i));
             } else {
                 value = gray_string_lit("");
             }
@@ -106,6 +94,7 @@ GrayResult_sqlite gray_sqlite_open_result(GrayArena *arena, GrayString path) {
 }
 
 GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *database, GrayString sql_text) {
+    sqlite_validate_text(sql_text);
     GrayResult_bool result;
     if (!database || !database->handle) {
         result.v0 = false;
@@ -129,6 +118,7 @@ GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *database, 
 }
 
 GrayResult_bool gray_sqlite_exec_params_result(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters) {
+    sqlite_validate_text(sql_text);
     GrayResult_bool result;
     if (!database || !database->handle) {
         result.v0 = false;
@@ -165,6 +155,7 @@ GrayResult_bool gray_sqlite_exec_params_result(GrayArena *arena, GraySqlite *dat
 }
 
 GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *database, GrayString sql_text) {
+    sqlite_validate_text(sql_text);
     GrayResult_array result;
     if (!database || !database->handle) {
         result.v0 = gray_array_new(arena, sizeof(GrayMap), 0, GRAY_ELEM_MAP);
@@ -186,6 +177,7 @@ GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *database
 }
 
 GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *database, GrayString sql_text, GrayArray parameters) {
+    sqlite_validate_text(sql_text);
     GrayResult_array result;
     if (!database || !database->handle) {
         result.v0 = gray_array_new(arena, sizeof(GrayMap), 0, GRAY_ELEM_MAP);

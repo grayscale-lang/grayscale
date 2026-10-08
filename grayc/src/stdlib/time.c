@@ -67,7 +67,10 @@ int64_t gray_time_now_ns(void) {
 
 static struct tm *get_time_parts(int64_t timestamp) {
     time_t time_value = (time_t)timestamp;
-    return gmtime(&time_value);
+    struct tm *time_parts = gmtime(&time_value);
+    if (!time_parts)
+        gray_panic_code("P0140", "time: timestamp %lld is outside the range of dates that can be broken into parts", (long long)timestamp);
+    return time_parts;
 }
 
 int64_t gray_time_year(int64_t timestamp) { return get_time_parts(timestamp)->tm_year + 1900; }
@@ -82,7 +85,15 @@ bool gray_time_is_leap_year(int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
 }
 
+/* strftime and strptime read their format or layout and the text as C strings,
+ * so an embedded NUL would silently cut one short. */
+static void time_validate_text(GrayString text) {
+    if (memchr(text.data, '\0', (size_t)text.len))
+        gray_panic_code("P0145", "time: a format, layout or text contains an embedded null byte");
+}
+
 GrayString gray_time_format(GrayArena *arena, GrayString format, int64_t timestamp) {
+    time_validate_text(format);
     char buffer[MESSAGE_BUFFER_SIZE];
     struct tm *time_parts = get_time_parts(timestamp);
     int length = (int)strftime(buffer, sizeof(buffer), format.data, time_parts);
@@ -110,6 +121,8 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t timestamp) {
  * real one, so those must be rejected explicitly before converting: month
  * in range, then day against the real length of that month/year. */
 static bool time_parse_to_timestamp(GrayString text, GrayString layout, int64_t *output) {
+    time_validate_text(text);
+    time_validate_text(layout);
     struct tm time_parts;
     memset(&time_parts, 0, sizeof(time_parts));
     char *end_cursor = strptime(text.data, layout.data, &time_parts);
@@ -184,7 +197,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
         if (text.data[position] < '0' || text.data[position] > '9') return false;
         int64_t value = 0;
         while (position < text.len && text.data[position] >= '0' && text.data[position] <= '9') {
-            value = value * 10 + (text.data[position] - '0');
+            if (gray_mul_overflows_i64(value, 10, &value) ||
+                gray_add_overflows_i64(value, text.data[position] - '0', &value)) return false;
             position++;
         }
         if (position >= text.len) return false; /* trailing number with no unit */
@@ -196,7 +210,8 @@ static bool time_parse_duration_implementation(GrayString text, int64_t *output)
             case 'd': unit_seconds = SECONDS_PER_DAY; break;
             default: return false;
         }
-        total += value * unit_seconds;
+        if (gray_mul_overflows_i64(value, unit_seconds, &value) ||
+            gray_add_overflows_i64(total, value, &total)) return false;
         matched_any = true;
     }
     if (!matched_any) return false;
@@ -240,12 +255,12 @@ GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds) {
     return gray_string_new(arena, buffer, position);
 }
 
-int64_t gray_time_add_days(int64_t timestamp, int64_t days)       { return gray_add_check(timestamp, days * SECONDS_PER_DAY, __FILE__, __LINE__); }
-int64_t gray_time_add_hours(int64_t timestamp, int64_t hours)     { return gray_add_check(timestamp, hours * SECONDS_PER_HOUR, __FILE__, __LINE__); }
+int64_t gray_time_add_days(int64_t timestamp, int64_t days)       { return gray_add_check(timestamp, gray_mul_check(days, SECONDS_PER_DAY, __FILE__, __LINE__), __FILE__, __LINE__); }
+int64_t gray_time_add_hours(int64_t timestamp, int64_t hours)     { return gray_add_check(timestamp, gray_mul_check(hours, SECONDS_PER_HOUR, __FILE__, __LINE__), __FILE__, __LINE__); }
 int64_t gray_time_add_seconds(int64_t timestamp, int64_t seconds) { return gray_add_check(timestamp, seconds, __FILE__, __LINE__); }
 
-int64_t gray_time_start_of_day(int64_t timestamp) { return time_floor_divide(timestamp, SECONDS_PER_DAY) * SECONDS_PER_DAY; }
-int64_t gray_time_end_of_day(int64_t timestamp)   { return gray_time_start_of_day(timestamp) + SECONDS_PER_DAY - 1; }
+int64_t gray_time_start_of_day(int64_t timestamp) { return gray_mul_check(time_floor_divide(timestamp, SECONDS_PER_DAY), SECONDS_PER_DAY, __FILE__, __LINE__); }
+int64_t gray_time_end_of_day(int64_t timestamp)   { return gray_add_check(gray_time_start_of_day(timestamp), SECONDS_PER_DAY - 1, __FILE__, __LINE__); }
 
 int64_t gray_time_days_in_month(int64_t year, int64_t month) {
     if (month < 1 || month > 12) {

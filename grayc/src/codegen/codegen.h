@@ -62,6 +62,10 @@ typedef struct {
      * scoped loop and container mutations need escape-copy logic. */
     int loop_scope_depth;
 
+    /* True while emitting the store that puts a `&`-parameter element
+     * temporary back; that store skips the for_each mutation check. */
+    bool is_element_write_back;
+
     /* True while emitting the body of a loop that opens no iteration arena,
      * so break/continue have no arena pointer to restore. */
     bool is_in_no_arena_loop;
@@ -149,6 +153,17 @@ typedef struct {
     const char **wide_integer_variable_types;
     int wide_integer_variable_count;
     int wide_integer_variable_capacity;
+
+    /* for_each variables whose element type the main-pass type table left
+     * unknown, with the type they have in the instantiation being emitted
+     * (name -> type). Scoped like the wide integer variables above. */
+    const char **resolved_loop_variable_names;
+    GrayType **resolved_loop_variable_types;
+    int resolved_loop_variable_count;
+    int resolved_loop_variable_capacity;
+
+    /* Output offset just after the last #include of the preamble. */
+    size_t preamble_end;
 
     /* Struct declarations for composite printing */
     AstNode **struct_declarations;

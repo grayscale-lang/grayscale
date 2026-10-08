@@ -1,0 +1,13 @@
+const Point struct {
+    x i64
+    y i64
+}
+const Line struct {
+    a Point
+    b Point
+}
+
+do main() {
+    mut l Line = Line { a: 5, b: Point { x: 1, y: 2 } }
+    println("${l.a.x}")
+}

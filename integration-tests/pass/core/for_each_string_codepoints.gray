@@ -1,0 +1,19 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut src string = "héllo 日本"
+    mut out string = ""
+    for_each c in src {
+        out += "${c}"
+    }
+    if out == src { passed += 1 } otherwise { failed += 1 }
+    mut n i64 = 0
+    mut last i64 = 0
+    for_each i, c in src {
+        n += 1
+        last = i
+    }
+    if n == char_count(src) { passed += 1 } otherwise { failed += 1 }
+    if last == 7 { passed += 1 } otherwise { failed += 1 }
+    println("passed: ${passed}, failed: ${failed}")
+}

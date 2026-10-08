@@ -1,0 +1,9 @@
+const Item struct {
+    n i64
+}
+
+do main() {
+    mut items [Item] = {Item { n: 1 }}
+    items[0].n = 9.7
+    println(items[0].n)
+}

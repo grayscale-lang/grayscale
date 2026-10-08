@@ -61,7 +61,7 @@ const Color enum { RED; GREEN; BLUE }
 do add(a i64, b i64) -> i64 { mut sum i64 = a + b; return sum }
 ```
 
-Two struct fields or enum variants on the same line without a `;` between them are an error (E2069).
+Struct fields or enum variants on the same line are separated by `;`.
 
 ### 2.3 Comments
 
@@ -98,7 +98,7 @@ Identifiers must:
 - Contain only ASCII letters, digits, and underscores
 - Not be a reserved keyword
 - Not use the reserved prefixes `gray_`, `_gray_`, or `Gray` (reserved for the compiler)
-- Not be `main`, except as the name of the top-level entry-point function (E4026)
+- Not be `main`, except as the name of the top-level entry-point function
 
 The standalone `_` is the blank identifier (see §4.5) and is not a valid variable or function name.
 
@@ -166,7 +166,7 @@ Some keywords have shorter or more familiar aliases. Both forms are identical an
 | `!in`    | `not_in`       | Non-membership test   |
 
 Each pair is tracked independently, so one file may write `while` and `fn` while another writes
-`as_long_as` and `do`. Mixing the two spellings of a single pair within one file is an `E2088` error.
+`as_long_as` and `do`. A single pair is spelled one way throughout a file.
 
 **Joint pairs.** Two of the pairs span two keywords each, and both words move together — a file must
 take both from the same side or neither:
@@ -179,11 +179,9 @@ take both from the same side or neither:
 ```gray
 switch x { case 1 { } default { } }    // ok
 when x   { is 1 { } default { } }      // ok
-switch x { is 1 { } default { } }      // E2088 — crossed dialects
 
 if a { } elif b { } else { }           // ok
 if a { } or b { } otherwise { }        // ok
-if a { } elif b { } otherwise { }      // E2088 — crossed dialects
 ```
 
 `if` and `default` are spelled the same in both dialects and never vary.
@@ -294,10 +292,9 @@ Escape sequences:
 | `\xNN` | codepoint U+00NN — exactly two hex digits |
 | `\u{H…}` | codepoint from 1–6 hex digits (U+0000–U+10FFFF) |
 
-- A character literal must contain exactly one codepoint. `''` and `'ab'` are `E1018`.
-- The bytes between the quotes are decoded as UTF-8; a malformed sequence is `E1018`.
+- A character literal contains exactly one codepoint.
+- The bytes between the quotes are decoded as UTF-8.
 - In a character literal `\xNN` is codepoint U+00NN, not a raw byte (unlike a string literal, where `\xNN` is a byte). For sub-codepoint byte values use `u8`.
-- An unterminated literal is `E1005`; an unknown escape is `E1007`; a malformed `\x` or `\u{}` is `E1006`.
 
 #### 2.7.6 Boolean Literals
 
@@ -380,7 +377,7 @@ No explicit cast is needed. The promotion is lossless for values within the floa
 
 #### 3.1.3 String Type (`string`)
 
-The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint. `len()` returns the byte length, not the character count.
+The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint; the byte is typed `char` and holds the raw byte value. `len()` returns the byte length, not the character count.
 
 For ASCII strings, one byte equals one character, so indexing works as expected:
 
@@ -453,7 +450,6 @@ mut s string = string(c)     // convert to string
 
 Wide integers use the same overflow-checked arithmetic as `i64` and `u64`; overflow produces a runtime panic.
 
-A negative literal assigned to `u128` or `u256` is rejected with `E3036`, the same as for `u64`.
 
 #### 3.1.7 Pointer Type (`^Type`)
 
@@ -545,10 +541,9 @@ built only from number literals, such as `200 + 100 - 50` or
 Otherwise it becomes an `i64`, or an `f64` if it contains a decimal literal.
 An expression made only of literals is computed exactly (up to 256 bits)
 before it takes its type, so `mut a u8 = 200 + 100 - 50` stores `250`. A literal
-whose value does not fit the type it takes is `E3036`: `mut b u8 = 300`,
-`mut n u8 = -1`, `mut f f32 = 1.0e300`, `mut a u8 = 1 bit_shift_left 9`. An
-integer literal no integer type can hold (at or above 2^256, or below -2^255)
-is `E3046`. An array, map or struct literal passes its element, key, value and
+must fit the type it takes, so `mut b u8 = 300`, `mut n u8 = -1`, and
+`mut f f32 = 1.0e300` do not compile. An integer literal fits in the range
+-2^255 up to 2^256 - 1. An array, map or struct literal passes its element, key, value and
 field types down to each entry, so `mut xs [i8] = {a, 7}` makes `7` an `i8`.
 
 **Every slot converts a value the same way.** A slot is any place a value is
@@ -568,8 +563,8 @@ bounds). A value of type `S` stored into a slot of type `T`:
 | wider, same signedness | `i32` to `i64`, `u8` to `u16`, `f32` to `f64` | allowed |
 | unsigned to strictly wider signed | `u32` to `i64` | allowed |
 | integer to float | `i64` to `f64` | allowed |
-| narrower | `i64` to `i32`, `u64` to `u8`, `i64` to `u8`, `f64` to `f32`, `i128` to `i64` | `E3155` |
-| other signedness, same or greater width | `i64` to `u64`, `u8` to `i8`, `i8` to `u64` | `E3019` |
+| narrower | `i64` to `i32`, `u64` to `u8`, `i64` to `u8`, `f64` to `f32`, `i128` to `i64` | needs `cast` |
+| other signedness, same or greater width | `i64` to `u64`, `u8` to `i8`, `i8` to `u64` | needs `cast` |
 | float to integer | `f64` to `i64` | the position's type mismatch error |
 
 An array or map never converts its elements: a `[i64]` value is not a `[u8]`.
@@ -582,8 +577,8 @@ operators and the comparisons:
 - operands of one signedness and different widths compute at the wider type: `i8 + i32` is `i32`, `i128 + i256` is `i256`;
 - a literal operand takes the other operand's type: `x == 0.1` with `x f32` compares as `f32`;
 - two literals give a literal (computed exactly, as above);
-- `bit_shift_left` and `bit_shift_right` take a count of any integer type, and the result has the left operand's type; a count outside `[0, width - 1]` of that type panics (`P0092`);
-- any other pair of typed operands — `i64 + u8`, `i64 + f64`, `u64 == i64` — is an error (`E3002`, or `E3156` for a comparison); convert one side with `cast`.
+- `bit_shift_left` and `bit_shift_right` take a count of any integer type, and the result has the left operand's type; a count outside `[0, width - 1]` of that type panics;
+- any other pair of typed operands — `i64 + u8`, `i64 + f64`, `u64 == i64` — needs one side converted with `cast`.
 
 Arithmetic is overflow-checked at the result type, whatever expression or
 compound assignment it appears in: `xs[0] += 10` on a `[u8]` holding 250 panics,
@@ -703,7 +698,7 @@ const Person struct {
 
 > 💡 **Tip:** Struct and enum declarations must be at the top level of a file, never inside a function or block. Fields go on separate lines or, on one line, are separated by `;`. This is intentional. Unlike functions and control flow, structs and enums define *types*, not logic. Types belong where they are visible, nameable, and reusable. Burying a type inside a function makes it invisible to the rest of your program and harder to find when reading code.
 
-A field may be a fixed-size array (`[T,N]`), the same spelling used for a local `const f [T,N]`. Its length never changes: `arrays.append`, `prepend`, `insert_at`, `remove`, `remove_at`, `remove_first`, `remove_last`, `clear`, and `deduplicate` are all rejected on it, whether called directly or through a member-expression chain like `o.inner.items`. Reading and writing individual elements works as long as the containing instance is `mut`. A struct literal that under-initializes the field zero-fills the rest (`W3003`); over-initializing it is an error (`E3052`) — the same rules as a local fixed-size array.
+A field may be a fixed-size array (`[T,N]`), the same spelling used for a local `const f [T,N]`. Its length never changes: `arrays.append`, `prepend`, `insert_at`, `remove`, `remove_at`, `remove_first`, `remove_last`, `clear`, and `deduplicate` are not available on it, whether called directly or through a member-expression chain like `o.inner.items`. Reading and writing individual elements works as long as the containing instance is `mut`. A struct literal that under-initializes the field zero-fills the rest; it cannot hold more entries than its length — the same rules as a local fixed-size array.
 
 ```gray
 const Buffer struct {
@@ -816,7 +811,7 @@ const Foobar enum {
 
 > 💡 **Tip:** Enum variants go on separate lines or, on one line, are separated by `;`, as in `const Color enum { RED; GREEN; BLUE }`.
 
-> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `i64` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status i64 = Direction.NORTH` assigns `0`.
+> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. The same holds in the other direction: an enum value does not convert implicitly to an integer or, for a string-backed enum, to a `string` (assignment, arguments, returns, collection elements, `+=`, and `==` against a `string` are all rejected). Use `cast(Direction.NORTH, i64)` to get the underlying integer value.
 
 > 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, i64) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
 
@@ -854,7 +849,7 @@ const Permissions enum {
 }
 ```
 
-A `#flags` enum may have at most 63 variants — one per usable bit of `int64` (bit 63 is the sign bit). More is rejected (E3143).
+A `#flags` enum may have at most 63 variants — one per usable bit of `int64` (bit 63 is the sign bit).
 
 Enum values are accessed using dot notation:
 
@@ -1069,7 +1064,7 @@ mut text string = cast(123, string)    // "123"
 mut parsed i64 = cast("42", i64)       // 42
 ```
 
-A string cast to an integer or float type is parsed at runtime; a string that is not a number panics (`P0084` for an integer target, `P0085` for a float target).
+A string cast to an integer or float type is parsed at runtime; a string that is not a number panics.
 
 For array conversions, `cast` converts each element to the target element type:
 
@@ -1162,14 +1157,14 @@ Variables declared this way:
 - Can be reassigned after declaration
 - Are scoped to their containing block
 
-A declaration with a type annotation but no value is allowed and zero-initializes the variable (`0`, `0.0`, `""`, `false`, and so on). Because a dropped `= value` is easy to miss, the compiler emits `W1004` in that case:
+A declaration with a type annotation but no value is allowed and zero-initializes the variable (`0`, `0.0`, `""`, `false`, and so on). Because a dropped `= value` is easy to miss, the compiler emits a warning in that case:
 
 ```gray
-count i64          // warning[W1004]: 'count' declared with no value — defaults to 0
+count i64          // warning: 'count' declared with no value — defaults to 0
 count i64 = 0      // no warning; the zero value is explicit
 ```
 
-Like all warnings, `W1004` can be suppressed with `-q W1004` or `-q all`. `const` declarations must always have a value (`E2011`).
+Like all warnings, it can be suppressed with `-q W1004` or `-q all`. `const` declarations always have a value.
 
 ### 4.2 Constant Declarations
 
@@ -1228,7 +1223,7 @@ if true {
 
 #### Fallible Functions
 
-Some functions return a `(T, Error)` tuple; these are **fallible functions**. They require destructuring. Assigning the result to a single variable is a compile-time error (`E3089`); the compiler forces you to make the choice — inspect the error or explicitly discard it — visible in the code:
+Some functions return a `(T, Error)` tuple; these are **fallible functions**. They require destructuring. Destructuring makes the choice — inspect the error or explicitly discard it — visible in the code:
 
 ```gray
 // Correct: handle the error
@@ -1241,7 +1236,7 @@ if err != nil {
 mut content, _ = io.read_file("data.txt")
 
 // Wrong: single-var assignment from a fallible function
-mut content = io.read_file("data.txt")  // error[E3089]: use destructuring for fallible functions
+mut content = io.read_file("data.txt")  // error: use destructuring for fallible functions
 ```
 
 #### Blank Identifier
@@ -1501,18 +1496,18 @@ A `for` loop over a range gives its variable the type `i64`. When any bound is a
 integer (`i128`, `u128`, `i256`, `u256`), the range runs in the widest of them, every
 bound and the step are checked as that type (see [Sized Types](#318-sized-types)), and
 the loop variable has that type. A `u64` bound of an `i64` range, or a `u128` bound of an
-`i128` range, crosses signedness and is `E3019`.
+`i128` range, crosses signedness and needs a `cast`.
 
 **Step validation rules:**
 - Positive step (or omitted) expects start ≤ end; negative step expects start ≥ end.
   A range that violates this (its step points away from end, e.g. `range(0, 10, -1)`)
   yields no elements.
 - When such a range is written entirely with integer **literals** and drives a `for`
-  loop (`for _ in range(0, 10, -1)`), the compiler rejects it up front with `E9005`.
+  loop (`for _ in range(0, 10, -1)`), the compiler rejects it up front.
   If any operand is a variable, there is no diagnostic — the loop body just never runs.
 - `start == end` is always a valid empty range.
-- A literal zero step is `E3206`. A zero step that comes from a variable panics at
-  runtime with `P0090`, where the range is used.
+- The step is never zero: a literal zero step is rejected, and a zero step that comes from a variable panics at
+  runtime where the range is used.
 
 **Storing a range.** `range()` produces a value of type `Range<i64>` (`Range<i128>`,
 `Range<u128>`, `Range<i256>` or `Range<u256>` for a wide range) that a local variable
@@ -1541,8 +1536,7 @@ a `Range<i64>`, and the same wide type for a wide range.
 
 `Range<T>` cannot be written as a type. A range cannot be passed to or returned from a
 function, stored in a struct field, array or map, indexed, printed, interpolated, compared
-or used in arithmetic: every use other than the ones above is `E3205`. `for x in` over
-anything that is not a range is `E3204`.
+or used in arithmetic. `for x in` takes only a range.
 
 ---
 
@@ -1634,7 +1628,7 @@ for_each i, item in items {
 // Output: 0: a, 1: b, 2: c
 ```
 
-The index variable is always of type `i64` and is zero-based. It works with both arrays and strings:
+The index variable is always of type `i64` and is zero-based. It works with both arrays and strings. Iterating a string yields one `char` per Unicode codepoint (the same count as `char_count`), and the index is the codepoint position:
 
 ```gray
 for_each i, ch in "hello" {
@@ -1905,7 +1899,7 @@ do main() {
 **Rules:**
 - `&` goes before the parameter name in the function signature: `do f(&x i64)`.
 - At the call site, pass the variable directly — no `&` prefix: `f(val)`.
-- Only `mut` variables can be passed to `&` parameters. Passing a `const` variable is a compile-time error (E3027).
+- Only `mut` variables can be passed to `&` parameters. A `const` variable cannot be passed.
 - `&` parameters also accept struct fields (`increment(point.x)`), array elements (`increment(arr[0])`), and map values (`increment(map["key"])`).
 
 #### 7.2.3 Grouped Parameters
@@ -2097,13 +2091,13 @@ do get_info() -> (name, city string, age i64) {
 
 Named return values must be enclosed in parentheses.
 
-**The `return` statement must reference the named variable itself, not merely an equal or same-typed expression.** Once a return position is named, `return` in that position accepts only the variable declared under that exact name — assigning an equivalent value to a differently-named variable and returning that instead is a compile-time error (`E3080`):
+**The `return` statement must reference the named variable itself, not merely an equal or same-typed expression.** Once a return position is named, `return` in that position accepts only the variable declared under that exact name — assigning an equivalent value to a differently-named variable and returning that instead is a compile-time error:
 
 ```gray
 do square(x i64) -> (result i64) {
     mut result i64 = x * x
     mut other i64 = result
-    return other        // error[E3080]: function must return named variable 'result', not a different expression
+    return other        // error: function must return named variable 'result', not a different expression
 }
 ```
 
@@ -2194,7 +2188,7 @@ const Person struct {
 
 - Attributes may be stacked one per line, or written as a single-line `#[a, b, c]` list (see 7.5.6). The stacked and container forms are equivalent and may be mixed on the same declaration. Same-line stacking without the container (`#doc("x") #json`) is not supported.
 - Order is irrelevant. `#doc` then `#json` and `#json` then `#doc` produce identical results.
-- A given attribute may appear at most once per declaration; a repeat is rejected (E2090).
+- A given attribute may appear at most once per declaration; do not repeat one.
 - Blank lines between attributes and the declaration are allowed.
 - Each attribute applies to the immediately following declaration only. It does not skip ahead to find a compatible declaration further down the file.
 - Misapplied attributes are rejected. For example, `#json` on a function produces an error; `#json` can only be applied to struct declarations.
@@ -2208,8 +2202,8 @@ const Person struct {
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#error_code` | enums | Contributes the enum's variants to the open `ErrorCode` set (see 10.5) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
-| `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
-| `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
+| `#discard` | functions | Allows callers to ignore the return value without a "return value not used" error |
+| `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns at every reference to the item, with an optional replacement message |
 | `#test` | functions | Marks a test function, run by `gray test` and stripped from normal builds |
 
 #### 7.5.1 `#doc` Attribute
@@ -2303,25 +2297,25 @@ do main() {
 }
 ```
 
-A JSON value that names no variant of the field's enum is a `json.parse()` failure (`P0129`), the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is rejected on a `#json` struct at compile time (E3173).
+A JSON value that names no variant of the field's enum is a `json.parse()` failure the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is not allowed on a `#json` struct.
 
-A `#json` struct field may be a number type, `string`, `bool`, an enum, another `#json` struct, or an array of a number type, `string`, `bool`, or `#json` struct. Any other field type (a non-`#json` struct, an array of arrays, a map) is rejected at compile time (E3140).
+A `#json` struct field may be a number type, `string`, `bool`, an enum, another `#json` struct, or an array of a number type, `string`, `bool`, or `#json` struct. Any other field type (a non-`#json` struct, an array of arrays, a map) is not allowed.
 
 **Rules:**
 
 - Without a tag, a field's JSON key must match the struct field name exactly.
 - A tag is written `` `json:"Name"` `` immediately after the field's type, before any default value. The key can be any non-empty text but cannot contain a `"` or a backslash.
-- A tag cannot be shared across a comma-grouped field list (`x, y i64 \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
-- A `#json` struct's fields are either all tagged or all untagged — mixing the two within one struct is rejected (E3171). This is scoped per struct, not per file: a file that aggregates many structs is free to tag some and leave others untagged, as long as each struct is internally consistent.
-- Two fields of the same `#json` struct cannot serialize under the same key (E3172).
-- A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
+- A tag cannot be shared across a comma-grouped field list (`x, y i64 \`json:"V"\`` is not allowed); give each field its own line and its own tag.
+- A `#json` struct's fields are either all tagged or all untagged — mixing the two within one struct is not allowed. This is scoped per struct, not per file: a file that aggregates many structs is free to tag some and leave others untagged, as long as each struct is internally consistent.
+- Two fields of the same `#json` struct serialize under distinct keys.
+- A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module.
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `i64`, `u64`, `f64`, `string`, `bool`, and non-tagged enums (serialized by backing type).
 - `json.parse()` into an array of a `#json` struct (`[Task]`) parses each element independently, so an enum field works there with no extra handling.
 
 #### 7.5.3 `#discard` Attribute
 
-The `#discard` attribute marks a function whose return value may safely be ignored by callers. Without `#discard`, calling a non-void function as a bare statement produces E5011 ("return value not used"). With `#discard`, callers may call the function without capturing the return value, and the compiler will not emit E5011.
+The `#discard` attribute marks a function whose return value may safely be ignored by callers. Without `#discard`, calling a non-void function as a bare statement produces a "return value not used" error. With `#discard`, callers may call the function without capturing the return value.
 
 ```gray
 #discard
@@ -2331,7 +2325,7 @@ do tryInsert(value i64) -> bool {
 }
 
 do main() {
-    tryInsert(42)               // OK — no E5011
+    tryInsert(42)               // OK
     mut ok bool = tryInsert(7)  // also OK — capturing is still allowed
 }
 ```
@@ -2351,12 +2345,12 @@ const List struct {
 
 **Rules:**
 
-- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2094).
-- `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
+- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error.
+- `#discard` cannot be applied to void functions — there is no return value to discard.
 
 #### 7.5.4 `#deprecated` Attribute
 
-The `#deprecated` attribute marks a function, struct, or enum as deprecated. The compiler emits a `W3007` warning at every reference to the marked item — every call, every struct-literal construction, every `EnumName.VARIANT` access, and every place its name appears as a declared type (variable, parameter, return type, or struct field). A replacement message is optional:
+The `#deprecated` attribute marks a function, struct, or enum as deprecated. The compiler emits a warning at every reference to the marked item — every call, every struct-literal construction, every `EnumName.VARIANT` access, and every place its name appears as a declared type (variable, parameter, return type, or struct field). A replacement message is optional:
 
 ```gray
 do new_format(s string) -> string {
@@ -2404,12 +2398,12 @@ const Container struct {
 
 **Rules:**
 
-- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2094).
+- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error.
 - The message argument, when present, must be a string literal: `#deprecated("...")`.
 - A deprecated function's own recursive calls to itself do not trigger the warning, and code inside a deprecated struct's own struct-functions can reference that struct's type without warning. A struct-function calling a *different* deprecated struct-function or referencing a *different* deprecated type still warns normally.
 - Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
 - `#deprecated` can be stacked with other attributes (including `#discard`) on the same declaration, in any order.
-- Like all warnings, `W3007` can be suppressed with `-q W3007` or `-q all`.
+- Like all warnings, it can be suppressed with `-q W3007` or `-q all`.
 
 #### 7.5.5 `#test` Attribute
 
@@ -2452,9 +2446,9 @@ fails or any file fails to compile.
 **Rules:**
 
 - `#test` can only be applied to top-level function declarations. Applying it to
-  a struct function, enum, variable, or anything else is a parse error (E2094).
-- A `#test` function must take no parameters and declare no return type (E5046).
-- A `#test` function cannot be called or referenced from other code (E5047) —
+  a struct function, enum, variable, or anything else is a parse error.
+- A `#test` function must take no parameters and declare no return type.
+- A `#test` function cannot be called or referenced from other code —
   it is invoked only by the test runner. Factor shared logic into a normal
   helper function.
 - `#test` can be stacked with `#doc` in either order.
@@ -2487,15 +2481,14 @@ do something() { }
   `deprecated("...")`).
 - A one-element list (`#[test]`) is legal and equivalent to the bare `#test`
   line.
-- The list must sit on a single physical line (E2092). It cannot be empty, carry
-  a trailing comma, or contain an inner `#` (E2093). An unrecognized name is
-  E2091.
+- The list sits on a single physical line. It is not empty, carries
+  no trailing comma, and contains no inner `#`. Every name is a recognized attribute.
 - Every entry is validated against the following declaration exactly as if it
-  had been stacked: order is irrelevant, a repeated attribute is E2090, and a
+  had been stacked: order is irrelevant, and a
   misapplied attribute produces the same error the stacked form would (e.g.
-  `#[json]` on a function is E2094).
+  `#[json]` on a function).
 - The container and the stacked form may be mixed on the same declaration.
-- Not supported on struct functions yet — stack the attributes there (E2094).
+- Not supported on struct functions yet — stack the attributes there.
 
 ### 7.6 Function References
 
@@ -2566,7 +2559,7 @@ Inside the function body, call through the parameter the same way: `f(x)`.
 
 #### 7.6.3 Func References in Composite Types
 
-Bare `func` is a valid type in arrays and maps. Elements are untyped function pointers; the cast is reconstructed from context at each call site:
+Bare `func` is a valid type in arrays and maps. Elements are untyped function pointers that can hold a reference of any signature. They can be stored, replaced, counted and compared, but not called: a bare `func` carries no signature to check a call against, so calling a `[func]` or `[func, N]` element, a `map[string:func]` value, or a `for_each` variable over one is an error. Pass the reference to a function with a typed `func(...) -> T` parameter to call it:
 
 ```gray
 import @arrays
@@ -2577,19 +2570,18 @@ do triple(n i64) -> i64 { return n * 3 }
 // Dynamic array of func refs
 mut arr [func] = {}
 arrays.append(arr, ()double)
-arr[0](5)   // 10
+println(len(arr))   // 1
 
 // Fixed-size array of func refs
 const fns [func, 2] = {()double, ()triple}
-fns[0](5)   // 10
-fns[1](5)   // 15
 
 // Map with func values
 mut m map[string:func] = {:}
 m["dbl"]  = ()double
 m["trpl"] = ()triple
-m["dbl"](5)   // 10
-m["trpl"](5)  // 15
+
+arr[0](5)         // ❌ a bare func element cannot be called
+m["dbl"](5)       // ❌
 ```
 
 Typed func signatures as an array element type (e.g. `[func(i64)->i64]`) are not allowed. Use `[func]` or `[func, N]` instead.
@@ -2641,6 +2633,7 @@ if f != h { println("different") }  // different
 | `const f = get_fn()` | ❌ cannot assign func-type return value; use `()func_name` |
 | `get_fn()(5)` | ❌ cannot call a function's return value directly |
 | `[func(i64)->i64]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
+| `arr[0](5)` (arr is `[func]`) | ❌ a bare func element cannot be called |
 | `()println` / `ref(println)` | ❌ builtin and stdlib functions cannot be referenced |
 | `()f` (f is a variable) | ❌ `()` only works with named function declarations, not variables |
 | `()f(5)` (f is a variable) | ❌ same restriction; `f(5)` is the only valid call syntax |
@@ -2709,9 +2702,9 @@ A bare call inside a struct function body resolves in this order:
 
 1. A top-level function of that name, if one exists.
 2. Otherwise, the enclosing struct's namespace.
-3. Otherwise, `E4002: undefined function`.
+3. Otherwise, the call is an undefined-function error.
 
-A struct function may not share a name with a top-level function — that is a compile-time error (`E4022`), because the bare name would silently resolve to the top-level function and leave the struct's own function reachable only as `StructName.func_name(...)`. With that rejected, the order above is never ambiguous in a program that compiles.
+A struct function may not share a name with a top-level function — that is a compile-time error, because the bare name would silently resolve to the top-level function and leave the struct's own function reachable only as `StructName.func_name(...)`. With that rejected, the order above is never ambiguous in a program that compiles.
 
 #### Instance Dispatch
 
@@ -2741,7 +2734,7 @@ a.bump()           // sugar for Vec.bump(a); '&v' makes it a mutable alias
 
 Both `do f(v Vec)` and `do f(&v Vec)` (mutable receiver) and `do f(v ^Vec)` (pointer receiver) participate in instance dispatch. The mutable-receiver form (`&v`) takes the instance by reference and may modify the caller's variable.
 
-Factory-style functions whose first parameter isn't the struct (e.g. `do make(x i64) -> Vec`) keep requiring the type-namespaced form (`Vec.make(...)`); there is no instance to bind.
+A function whose first parameter isn't the struct (e.g. `do make(x i64) -> Vec`) binds no instance. Called on a variable, `a.make(3)` is the same call as `Vec.make(3)` and `a` is not passed.
 
 Chained struct function calls (`a.f().g()`) are not supported. Assign each intermediate result to a variable.
 
@@ -2792,7 +2785,7 @@ Type and value parameters mix freely in one signature. The type is always passed
 
 #### Where `generic` is allowed
 
-`generic` is valid **only** as the type of a function parameter, including the parameters of struct functions. It is rejected everywhere else (`E2096`):
+`generic` is valid **only** as the type of a function parameter, including the parameters of struct functions. It is rejected everywhere else:
 
 | Usage | Result |
 |-------|--------|
@@ -2803,44 +2796,44 @@ Type and value parameters mix freely in one signature. The type is always passed
 | Enum variant payload | Rejected |
 | Return type, including named and tuple returns | Rejected |
 | Array or map element type (`[generic]`) | Rejected |
-| Alias target (`alias X = generic`) | Rejected (`E3135`) |
+| Alias target (`alias X = generic`) | Rejected |
 
 A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(kind)`, `size_of(kind)`, `kind{...}`).
 
 #### Rules
 
-- **Declared before use.** A `generic` parameter must be declared before any parameter type that uses its name (`E4039`). Return types follow the parameter list, so they can use every one.
-- **No default value.** A `generic` parameter's argument is the type the caller passes (`E2097`).
-- **The argument is a type name.** A struct, enum, primitive, alias of any of those, or module-qualified type name. A name that names no type is `E4016`; anything else is `E3128`:
+- **Declared before use.** A `generic` parameter must be declared before any parameter type that uses its name Return types follow the parameter list, so they can use every one.
+- **No default value.** A `generic` parameter's argument is the type the caller passes.
+- **The argument is a type name.** A struct, enum, primitive, alias of any of those, or module-qualified type name. A name that names no type, or anything else, is an error:
 
 ```gray
 mut a = make(Point)       // OK — struct
 mut b = make(Color)       // OK — enum
 mut c = make(i64)         // OK — primitive
-mut d = make(1 + 2)       // Error E3128 — not a type name
-mut e = make(Nonexistent) // Error E4016 — names no type
+mut d = make(1 + 2)       // Error — not a type name
+mut e = make(Nonexistent) // Error — names no type
 ```
 
-- **Arguments are checked against the bound types.** An argument whose parameter is typed by a `generic` name must have the type that name is bound to (`E3159`), and an argument for a container of it must have the matching shape (`E3199`):
+- **Arguments are checked against the bound types.** An argument whose parameter is typed by a `generic` name must have the type that name is bound to, and an argument for a container of it must have the matching shape:
 
 ```gray
-mut x = identity(i64, "hello")   // Error E3159 — kind is i64, argument 2 is string
-mut y = first(i64, 5)            // Error E3199 — argument 2 is not an [i64]
+mut x = identity(i64, "hello")   // Error — kind is i64, argument 2 is string
+mut y = first(i64, 5)            // Error — argument 2 is not an [i64]
 ```
 
-- **A `kind{...}` body constrains the function to structs (`E3127`).** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal, and `E3058` names the call site that bound it:
+- **A `kind{...}` body constrains the function to structs.** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal and names the call site that bound it:
 
 ```gray
 do make_stack(kind generic) -> kind {
-    return kind{}          // Error E3127 when kind is bound to a non-struct
+    return kind{}          // Error when kind is bound to a non-struct
 }
 
 mut s = make_stack(Point)  // OK
-mut n = make_stack(i64)    // Error E3127 — kind is used as a struct literal
+mut n = make_stack(i64)    // Error — kind is used as a struct literal
 ```
 
-- **`return nil` is rejected** from a function whose return type contains a `generic` name (`E3071`); `nil` is not a value every type argument can hold.
-- **No function references.** A function with a `generic` parameter cannot be referenced with `()name` (`E4032`); call it directly with its type arguments.
+- **`return nil` is rejected** from a function whose return type contains a `generic` name; `nil` is not a value every type argument can hold.
+- **No function references.** A function with a `generic` parameter cannot be referenced with `()name`; call it directly with its type arguments.
 
 #### Monomorphization
 
@@ -2852,7 +2845,7 @@ do wrap(kind generic) -> ^kind {
 }
 ```
 
-Each instantiation's body is checked with its type arguments bound. An error found there is reported at the call that asked for the instantiation (`E3058`).
+Each instantiation's body is checked with its type arguments bound. An error found there is reported at the call that asked for the instantiation.
 
 #### Across module boundaries
 
@@ -2871,7 +2864,7 @@ do main() {
 }
 ```
 
-The type argument may be written bare or module-qualified. A module-qualified name (`utils.make(types.Point)`) parses as a member expression, but as long as it names a real type it is accepted exactly as the bare spelling is. A qualified name that resolves to no type is still rejected with E3128.
+The type argument may be written bare or module-qualified. A module-qualified name (`utils.make(types.Point)`) parses as a member expression, but as long as it names a real type it is accepted exactly as the bare spelling is. A qualified name that resolves to no type is still rejected.
 
 ---
 
@@ -2910,7 +2903,7 @@ import @arrays, @maps, @strings
 **Local imports** use relative string paths. The compiler resolves them in order:
 
 1. If the path ends in `.gray` or `.grayscale`, import that file directly.
-2. If the path has no extension, try appending `.gray` and `.grayscale`. If exactly one file exists, import it. If both exist, the import is rejected (E6017); import one by its full file name.
+2. If the path has no extension, try appending `.gray` and `.grayscale`. If exactly one file exists, import it. If both exist, the import is rejected; import one by its full file name.
 3. If the path (without extension) is a directory, scan it for all `.gray` and `.grayscale` files and merge them into one module.
 4. If none of the above match, the import is rejected as unresolvable.
 
@@ -3033,7 +3026,7 @@ using arrays, strings
 ```
 
 If two modules in scope both provide a name (for example `arrays.contains` and
-`strings.contains`), calling it unqualified is an error (`E4031`) — write the
+`strings.contains`), calling it unqualified is an error — write the
 call with its module prefix.
 
 ### 8.5 Module Member Access
@@ -3150,7 +3143,7 @@ do main() {
 
 The pointer addresses a NUL-terminated copy that lives for the rest of the program, so it stays valid after the string, loop iteration, or function that created it is gone; writing through it does not change the string.
 
-**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
+**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected.
 
 **Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
@@ -3235,7 +3228,7 @@ running the child so output is not reordered.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. |
+| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. A trailing `\n` or `\r\n` is dropped and embedded NUL bytes are kept. At end of input it returns `""`; use `io.stdin_at_eof()` to tell that from a blank line. |
 
 #### Wide Integer Conversions
 
@@ -3258,7 +3251,7 @@ running the child so output is not reordered.
 | `addr` | `(variable T) -> ^T` | Get memory address of a variable |
 | `raw` | `(variable T) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
 | `error` | `(code ErrorCode, message string = "") -> Error` | Create error value |
-| `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
+| `assert` | `(condition bool, message string = "")` | Terminate if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code i64)` | Exit program with code |
 | `range` | `(start i64, end i64, step i64 = 1)` | Create integer range; `step` defaults to 1. Only valid as the source of a `for` loop; `Range` cannot be written as a type. The loop variable is `i64`, or the widest wide integer type among the bounds |
@@ -3305,7 +3298,7 @@ println(r2[4])        // Prints 6 - r2 sees the change
 
 **`assert()` — runtime assertion**
 
-`assert()` checks a condition at runtime. If the condition is `false`, the program terminates immediately with error code `P0075` and prints `"panic[P0075]: assertion failed"` to stderr. An optional second argument provides a message appended to the output.
+`assert()` checks a condition at runtime. If the condition is `false`, the program terminates immediately and prints an assertion-failed panic to stderr. An optional second argument provides a message appended to the output.
 
 ```gray
 assert(x > 0, "x must be positive")
@@ -3316,11 +3309,9 @@ assert(connected)  // message is optional
 `assert()` is a global builtin — no import required.
 
 **Rules:**
-- The condition must be a `bool`. Passing a non-bool is a compile-time error (E5026).
-- The optional message must be a `string`. Passing any other type is a compile-time error (E5026).
+- The condition must be a `bool`. Passing a non-bool is a compile-time error.
+- The optional message must be a `string`. Passing any other type is a compile-time error.
 - If the condition is `true`, the program continues normally. `assert()` has no return value.
-
-**Runtime error code:** `P0075`
 
 #### Sleep Functions
 
@@ -3531,10 +3522,10 @@ keeps the allocated capacity, so a builder can be reused across frames of a loop
 without reallocating.
 
 Every operation on a `Builder` mutates it, so it must be declared `mut` — a `const`
-builder is a compile error (E3062). The `builder_append*` calls take the builder by
+builder is a compile error. The `builder_append*` calls take the builder by
 reference with no `&` at the call site, but — like an array — a function that appends
 to a builder passed in by the caller must take it as `&b Builder`; appending through a
-plain (immutable) parameter is a compile error (E5007).
+plain (immutable) parameter is a compile error.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -3673,14 +3664,14 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `is_nan` | `(n f64) -> bool` | Check if NaN |
 | `is_finite` | `(n f64) -> bool` | Check if finite (not infinite or NaN) |
 | `is_power_of_two` | `(n i64) -> bool` | Check if a positive power of two; zero and negatives are not |
-| `next_power_of_two` | `(n i64) -> i64` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_I64` |
+| `next_power_of_two` | `(n i64) -> i64` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics above 2^62, where the result would exceed `MAX_I64` |
 
 #### Utility
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `lerp` | `(a T, b T, t T) -> f64` | Linear interpolation between a and b by factor t |
-| `remap` | `(v f64, in_lo f64, in_hi f64, out_lo f64, out_hi f64) -> f64` | Linearly map `v` from `[in_lo, in_hi]` onto `[out_lo, out_hi]` without clamping; panics (`P0122`) if `in_lo == in_hi` |
+| `remap` | `(v f64, in_lo f64, in_hi f64, out_lo f64, out_hi f64) -> f64` | Linearly map `v` from `[in_lo, in_hi]` onto `[out_lo, out_hi]` without clamping; panics if `in_lo == in_hi` |
 | `approx_equal` | `(a f64, b f64, epsilon f64) -> bool` | True if `abs(a - b) <= epsilon` |
 | `distance` | `(x1 T, y1 T, x2 T, y2 T) -> f64` | Euclidean distance between two 2D points |
 
@@ -3725,7 +3716,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `weekday_name` | `(timestamp i64) -> string` | English weekday name (`"Sunday"`..`"Saturday"`), matching `weekday()` numbering |
 | `month_name` | `(timestamp i64) -> string` | English month name (`"January"`..`"December"`) |
 | `day_of_year` | `(timestamp i64) -> i64` | Day of the year, 1–366 |
-| `days_in_month` | `(year i64, month i64) -> i64` | Days in `month` (1–12) of `year`, leap-year aware; panics (`P0128`) if `month` is outside 1–12 |
+| `days_in_month` | `(year i64, month i64) -> i64` | Days in `month` (1–12) of `year`, leap-year aware; panics if `month` is outside 1–12 |
 | `is_leap_year` | `(year i64) -> bool` | Check if year is a leap year |
 
 #### Formatting
@@ -3747,7 +3738,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `parse_duration` | `(s string) -> (i64, Error)` | Parse `"1h30m"`, `"90s"`, `"2d"`, `"1h30m15s"` (units `s m h d`) into total seconds; bad input yields a non-nil error and `0` |
 
 **Behavior:**
-- `parse` and `parse_duration` are fallible functions. Single-variable assignment (`mut ts i64 = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
+- `parse` and `parse_duration` are fallible functions. Destructure the result (`mut ts, err = time.parse(...)`).
 - `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
 - `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
@@ -3775,13 +3766,13 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `rand_f64` | `() -> f64` | Random f64 [0.0, 1.0) |
-| `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max); panics (`P0134`) if `min` is not less than `max` |
-| `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max); panics (`P0134`) if `min` is not less than `max` |
+| `rand_f64` | `(min f64, max f64) -> f64` | Random f64 [min, max); panics if `min` is not less than `max` |
+| `rand_i64` | `(min i64, max i64) -> i64` | Random i64 [min, max); panics if `min` is not less than `max` |
 | `rand_bool` | `() -> bool` | Random boolean |
 | `rand_u8` | `() -> u8` | Random u8 [0, 255] |
 | `rand_char` | `() -> char` | Random printable char |
-| `rand_char` | `(min char, max char) -> char` | Random char [min, max); panics (`P0134`) if `min` is not less than `max` |
-| `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
+| `rand_char` | `(min char, max char) -> char` | Random char [min, max); panics if `min` is not less than `max` |
+| `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics if `alphabet` is empty and `length > 0` |
 | `choice` | `(arr [T]) -> T` | Random element from array |
 | `shuffle` | `(arr [T]) -> [T]` | Return shuffled copy |
 | `sample` | `(arr [T], n i64) -> [T]` | Return n unique random elements |
@@ -3798,7 +3789,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `pretty_print` | `(m map[K:V], indent i64) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
-`decode` is fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut m, err = ...` or `mut m, _ = ...`).
+`decode` is fallible: destructure the result (`mut m, err = ...` or `mut m, _ = ...`).
 
 ### 9.9 IO Module (`@io`)
 
@@ -3808,13 +3799,14 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 |----------|-----------|-------------|
 | `read_file` | `(path string) -> string` | Read entire file as a string |
 | `read_bytes` | `(path string) -> [u8]` | Read entire file as a byte array |
-| `read_lines` | `(path string, limit i64 = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
+| `read_lines` | `(path string, limit i64 = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error. |
 
 #### Standard Input
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `read_stdin_all` | `() -> string` | Read all of standard input to EOF as one string |
+| `stdin_at_eof` | `() -> bool` | `true` when standard input has no more data; waits for input on an interactive stdin |
 | `read_stdin_bytes` | `() -> [u8]` | Read all of standard input to EOF as a packed byte array |
 
 #### File Writing
@@ -3876,7 +3868,7 @@ mut q string = io.path_join({"a/b", "/abs"})            // "/abs", absolute repl
 
 #### Fallible Functions
 
-The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (`E3089`). See [Section 4.5](#45-return-value-handling).
+The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) See [Section 4.5](#45-return-value-handling).
 
 | Function | Full signature returns |
 |----------|------------------------|
@@ -4032,7 +4024,7 @@ HTTP client for making requests. Currently supports HTTP only.
 | `delete` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | DELETE request — always use destructuring |
 | `head` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | HEAD request — always use destructuring |
 
-`get`, `post`, `put`, `patch`, `delete`, and `head` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut resp, err = ...` or `mut resp, _ = ...`).
+`get`, `post`, `put`, `patch`, `delete`, and `head` are fallible: destructure the result (`mut resp, err = ...` or `mut resp, _ = ...`).
 
 #### HttpResponse Type
 
@@ -4057,7 +4049,7 @@ HTTP client for making requests. Currently supports HTTP only.
 | `constant_time_equal` | `(a string, b string) -> bool` | Compare without an early return on mismatch; a length difference is folded into the result |
 | `crc32` | `(data string) -> u64` | IEEE CRC-32 checksum (polynomial `0xEDB88320`). A checksum, not a cryptographic hash |
 | `entropy` | `(data string) -> f64` | Shannon entropy of `data` in bits per byte (0.0–8.0); `""` returns `0.0` |
-| `totp` | `(secret string, timestamp i64, digits i64) -> string` | RFC 6238 TOTP over the raw secret bytes (SHA-1, 30 s step), zero-padded to `digits`; panics (`P0126`) if `digits` is outside 1–9 |
+| `totp` | `(secret string, timestamp i64, digits i64) -> string` | RFC 6238 TOTP over the raw secret bytes (SHA-1, 30 s step), zero-padded to `digits`; panics if `digits` is outside 1–9 |
 | `random_hex` | `(length i64) -> string` | Cryptographically secure random hex string |
 
 ### 9.13 Encoding Module (`@encoding`)
@@ -4067,13 +4059,13 @@ HTTP client for making requests. Currently supports HTTP only.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `base64_encode` | `(s string) -> string` | Encode to base64 |
-| `base64_decode` | `(s string) -> string` | Decode from base64 |
+| `base64_decode` | `(s string) -> (string, Error)` | Decode from base64; returns an error on malformed input |
 | `base64_url_encode` | `(s string) -> string` | Encode to unpadded URL-safe base64 (`-_`, no `=`) |
-| `base64_url_decode` | `(s string) -> string` | Decode URL-safe base64, with or without padding |
+| `base64_url_decode` | `(s string) -> (string, Error)` | Decode URL-safe base64, with or without padding; returns an error on malformed input |
 | `hex_encode` | `(s string) -> string` | Encode to hex |
-| `hex_decode` | `(s string) -> string` | Decode from hex |
+| `hex_decode` | `(s string) -> (string, Error)` | Decode from hex; returns an error on malformed input |
 | `url_encode` | `(s string) -> string` | URL percent-encode |
-| `url_decode` | `(s string) -> string` | URL percent-decode |
+| `url_decode` | `(s string) -> (string, Error)` | URL percent-decode; returns an error on a malformed escape |
 | `html_escape` | `(s string) -> string` | Escape `& < > " '` as HTML entities |
 | `html_unescape` | `(s string) -> string` | Resolve named and numeric HTML entities |
 | `shell_escape` | `(s string) -> string` | Quote a string as one POSIX shell argument |
@@ -4083,8 +4075,8 @@ HTTP client for making requests. Currently supports HTTP only.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `from_string` | `(s string) -> [u8]` | Create from UTF-8 string |
-| `from_hex` | `(hex string) -> [u8]` | Decode hex string |
-| `from_base64` | `(b64 string) -> [u8]` | Decode base64 string |
+| `from_hex` | `(hex string) -> ([u8], Error)` | Decode hex string; returns an error on malformed input |
+| `from_base64` | `(b64 string) -> ([u8], Error)` | Decode base64 string; returns an error on malformed input |
 | `to_string` | `(bytes [u8]) -> string` | Convert to UTF-8 string |
 | `to_hex` | `(bytes [u8]) -> string` | Encode to hex string |
 | `to_base64` | `(bytes [u8]) -> string` | Encode to base64 string |
@@ -4180,7 +4172,7 @@ SQLite database access for persistent storage.
 | `query` | `(db Database, sql string) -> ([map[string:string]], Error)` | Execute a SELECT query, returns array of row maps |
 | `query_params` | `(db Database, sql string, params [string]) -> ([map[string:string]], Error)` | Execute a parameterized SELECT query; bind values for `?` placeholders |
 
-`open`, `exec`, `exec_params`, `query`, and `query_params` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
+`open`, `exec`, `exec_params`, `query`, and `query_params` are fallible: destructure the result (`mut v, err = ...` or `mut v, _ = ...`).
 
 > 💡 **Tip:** For any user-supplied value, use `exec_params` / `query_params` with `?` placeholders rather than interpolating into the SQL string — parameter binding prevents SQL injection.
 
@@ -4225,7 +4217,7 @@ An HTTP server module with dynamic handlers and path parameters.
 | `html` | `(status i64, body string) -> HttpResponse` | Response with `headers["Content-Type"]` set to `text/html` |
 | `redirect` | `(status i64, url string) -> HttpResponse` | Response with an empty body and `headers["Location"]` set to `url` |
 
-A handler returns an `HttpResponse` (see the HttpResponse Type under `@http`). The server sends every entry in its `headers` map, and sets `Content-Length` and `Connection` itself: a `Content-Length`, `Transfer-Encoding` or `Connection` entry in the map is not sent. A header key or value containing CR or LF panics with `P0132`.
+A handler returns an `HttpResponse` (see the HttpResponse Type under `@http`). The server sends every entry in its `headers` map, and sets `Content-Length` and `Connection` itself: a `Content-Length`, `Transfer-Encoding` or `Connection` entry in the map is not sent. A header key or value containing CR or LF panics.
 
 #### Request Type
 
@@ -4280,7 +4272,7 @@ Regular expression operations using POSIX extended regex syntax.
 | `count` | `(pattern string, text string) -> i64` | Number of non-overlapping matches; 0 for an invalid pattern |
 | `escape` | `(s string) -> string` | Backslash-escape regex metacharacters so `s` matches literally |
 
-`find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
+`find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, and `split` are fallible: destructure the result (`mut v, err = ...` or `mut v, _ = ...`).
 
 POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`.
 
@@ -4299,10 +4291,10 @@ Reading and writing CSV (Comma-Separated Values) data.
 | `headers` | `(data [[string]]) -> [string]` | Extract header row from parsed CSV data |
 | `to_maps` | `(data [[string]]) -> [map[string:string]]` | Rows 1..N as maps keyed by header name (short row omits keys, long row drops extras); `<= 1` row gives an empty array |
 | `from_maps` | `(rows [map[string:string]]) -> [[string]]` | Inverse of `to_maps`; header is the union of keys in first-seen order, a missing key becomes `""` |
-| `column` | `(data [[string]], name string) -> [string]` | Values under header `name`, excluding the header cell; panics (`P0125`) if `name` is not a header |
-| `select` | `(data [[string]], names [string]) -> [[string]]` | Project the named columns in order, keeping the header row; panics (`P0125`) on an unknown name |
+| `column` | `(data [[string]], name string) -> [string]` | Values under header `name`, excluding the header cell; panics if `name` is not a header |
+| `select` | `(data [[string]], names [string]) -> [[string]]` | Project the named columns in order, keeping the header row; panics on an unknown name |
 | `filter_rows` | `(data [[string]], predicate func([string]) -> bool) -> [[string]]` | Keep row 0 unconditionally and each later row where `predicate` is true; the header is never passed to `predicate` |
-| `sort_by_column` | `(data [[string]], name string) -> [[string]]` | New array with data rows stably sorted ascending lexicographically by column `name`; header stays first; panics (`P0125`) on an unknown name |
+| `sort_by_column` | `(data [[string]], name string) -> [[string]]` | New array with data rows stably sorted ascending lexicographically by column `name`; header stays first; panics on an unknown name |
 | `to_json` | `(data [[string]]) -> string` | Compact JSON array of objects (via `to_maps`); every value is a JSON string |
 | `to_markdown` | `(data [[string]]) -> string` | GitHub-flavored Markdown table; row 0 is the header plus a `---` separator, `\|` in a cell is escaped, trailing newline |
 
@@ -4321,7 +4313,7 @@ TCP sockets and DNS resolution.
 | `set_timeout` | `(sock Socket, ms i64)` | Set read/write timeout in milliseconds |
 | `resolve` | `(hostname string) -> (string, Error)` | Resolve a hostname to an IP address — always use destructuring |
 
-`connect`, `listen`, `accept`, `send`, `receive`, and `resolve` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
+`connect`, `listen`, `accept`, `send`, `receive`, and `resolve` are fallible: destructure the result (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.21 Threads Module (`@threads`)
 
@@ -4468,7 +4460,7 @@ Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf
 | `%s` | `-` | yes (maximum bytes) |
 | `%c`, `%b` | `-` | no |
 
-Any other flag or a precision where the table has none is a compile error (`E3178`). C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted (`E3177`): each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error (`E3179`); C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Any other flag or a precision where the table has none is a compile error. C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted: each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error; C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
@@ -4518,7 +4510,7 @@ String-to-type and type-to-string conversion functions with proper error handlin
 | `to_bool` | `(s string) -> (bool, Error)` | Parse string as boolean |
 
 **Behavior:**
-- These are fallible functions. Single-variable assignment (`mut n i64 = strconv.to_i64("42")`) is a compile-time error (`E3089`); the result must be destructured.
+- These are fallible functions. Destructure the result (`mut n, err = strconv.to_i64("42")`).
 - `mut n, err = strconv.to_i64(s)` — inspect `err` (non-nil on invalid input).
 - `mut n, _ = strconv.to_i64(s)` — discard the error; on invalid input `n` is the zero value (`0`), no panic.
 
@@ -4972,16 +4964,16 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Division by zero | Runtime panic |
 | Integer overflow | Runtime panic (checked arithmetic) |
 | Stack overflow (deep recursion) | Detected and reported |
-| Double-`destroy` on a `@mem` arena the checker can't trace to a named arena parameter | Runtime panic (`P0002`) |
-| Allocating (`mem.init()`/`mem.alloc()`) from a `@mem` arena the checker can't trace as already destroyed | Runtime panic (`P0001`) |
-| Dereferencing a `@mem` pointer after its arena was `destroy()`ed, when the checker can't trace the arena at compile time | Runtime panic (`P0117`) whenever the variable holding the pointer was itself directly assigned from `mem.init()`/`mem.alloc()` — the same arena expression used at that call is re-checked at every dereference of that variable, however the arena is reached (global, struct field, chained pointer deref). Not caught this way if the pointer is copied into another variable, struct field, or container before being dereferenced there instead — see "Not checked" below |
+| Double-`destroy` on a `@mem` arena the checker can't trace to a named arena parameter | Runtime panic |
+| Allocating (`mem.init()`/`mem.alloc()`) from a `@mem` arena the checker can't trace as already destroyed | Runtime panic |
+| Dereferencing a `@mem` pointer after its arena was `destroy()`ed, when the checker can't trace the arena at compile time | Runtime panic whenever the variable holding the pointer was itself directly assigned from `mem.init()`/`mem.alloc()` — the same arena expression used at that call is re-checked at every dereference of that variable, however the arena is reached (global, struct field, chained pointer deref). Not caught this way if the pointer is copied into another variable, struct field, or container before being dereferenced there instead — see "Not checked" below |
 
 **Not checked (programmer responsibility):**
 
 | Hazard | When It Can Happen |
 |--------|-------------------|
 | An arena reached through an array/map element, or through a global whose value came from a call result | The compile-time trace follows a plain parameter, a struct field, and a pointer-dereference chain of those; an arena reached by indexing a container, or produced by a function call, is not traced. Falls back to the runtime checks below rather than a compile error |
-| A `@mem` pointer copied into another variable, struct field, or container before being dereferenced | Both the compile-time trace and the runtime dereference check (`P0117`) follow the variable a `mem.init()`/`mem.alloc()` result was directly assigned to. Assign that pointer to a second variable, store it in a struct field or container, and dereference it from there instead, and neither catches a subsequent use after the arena is destroyed |
+| A `@mem` pointer copied into another variable, struct field, or container before being dereferenced | Both the compile-time trace and the runtime dereference check follow the variable a `mem.init()`/`mem.alloc()` result was directly assigned to. Assign that pointer to a second variable, store it in a struct field or container, and dereference it from there instead, and neither catches a subsequent use after the arena is destroyed |
 | Use of a `@mem` pointer after `mem.reset()` (as opposed to `mem.destroy()`) on a path the compile-time checker can't trace | The runtime dereference check only inspects an arena's `destroyed` flag, which `mem.reset()` does not set. A pointer taken before a reset the checker couldn't trace, then dereferenced after it, is not caught at compile time or at runtime — the memory may already have been handed out again by a later allocation |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
@@ -5029,7 +5021,7 @@ When `return`, `break`, or `continue` exits through nested scopes, the runtime u
 
 Arenas start at a fixed size but are not limited by it. If an allocation exceeds the remaining space, the arena chains a new, larger block automatically. An arena never fails due to its initial size being too small.
 
-By default, the runtime's managed arenas (default and heap) are capped at **1 GB** each. If a program attempts to grow beyond this limit, it panics with `P0104`. Use the `--arena-limit` flag to adjust the cap:
+By default, the runtime's managed arenas (default and heap) are capped at **1 GB** each. If a program attempts to grow beyond this limit, it panics. Use the `--arena-limit` flag to adjust the cap:
 
 ```bash
 gray build main.gray --arena-limit=256MB   # restrict to 256 MB
@@ -5116,9 +5108,10 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 
 | Flag | Description |
 |------|-------------|
-| `-q, --quiet <codes>` | Suppress warnings. Use `all` to suppress all, or a comma-separated list of codes (e.g. `W1001,W1003`). |
+| `-q, --quiet <codes>` | Suppress warnings. Use `all` to suppress all, or a comma-separated list of warning codes (e.g. `W1001,W1003`; see ERRORS.md). |
 | `--no-color` | Disable colored diagnostic output. |
-| `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics with `P0104`. |
+| `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics. |
+| `--cc <compiler>` | C compiler for this invocation (see [C Compiler](#c-compiler)). |
 
 ### C Compiler
 
@@ -5126,6 +5119,13 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 
 ```bash
 GRAY_CC=tcc gray main.gray
+```
+
+`--cc <compiler>` on `gray <file.gray>` and `gray build` chooses the compiler for one invocation and takes precedence over `$GRAY_CC` and `$CC`. The value is a compiler name on PATH or a path to a compiler; if it cannot be found, `gray` reports it by name and exits non-zero.
+
+```bash
+gray main.gray --cc tcc
+gray build main.gray -o app --cc /usr/local/bin/clang
 ```
 
 ### 13.1 `gray <file.gray>`

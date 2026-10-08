@@ -22,7 +22,7 @@ do main() {
     }
 
     // base64_decode
-    mut b64_dec string = encoding.base64_decode(b64)
+    mut b64_dec, _ = encoding.base64_decode(b64)
     if b64_dec == "Hello, World!" {
         println("  [PASS] base64_decode")
         passed += 1
@@ -33,7 +33,7 @@ do main() {
 
     // base64 round-trip with different data
     mut b64_2 string = encoding.base64_encode("Grayscale lang")
-    mut b64_dec2 string = encoding.base64_decode(b64_2)
+    mut b64_dec2, _ = encoding.base64_decode(b64_2)
     if b64_dec2 == "Grayscale lang" {
         println("  [PASS] base64 round-trip")
         passed += 1
@@ -63,7 +63,7 @@ do main() {
     }
 
     // hex_decode
-    mut hex_dec string = encoding.hex_decode(hex)
+    mut hex_dec, _ = encoding.hex_decode(hex)
     if hex_dec == "AB" {
         println("  [PASS] hex_decode")
         passed += 1
@@ -74,7 +74,7 @@ do main() {
 
     // hex round-trip
     mut hex2 string = encoding.hex_encode("hello")
-    mut hex_dec2 string = encoding.hex_decode(hex2)
+    mut hex_dec2, _ = encoding.hex_decode(hex2)
     if hex_dec2 == "hello" {
         println("  [PASS] hex round-trip")
         passed += 1
@@ -94,7 +94,7 @@ do main() {
     }
 
     // url_decode
-    mut url_dec string = encoding.url_decode(url)
+    mut url_dec, _ = encoding.url_decode(url)
     if url_dec == "hello world&foo=bar" {
         println("  [PASS] url_decode")
         passed += 1
@@ -105,7 +105,7 @@ do main() {
 
     // url round-trip with special chars
     mut url2 string = encoding.url_encode("a+b=c&d/e")
-    mut url_dec2 string = encoding.url_decode(url2)
+    mut url_dec2, _ = encoding.url_decode(url2)
     if url_dec2 == "a+b=c&d/e" {
         println("  [PASS] url round-trip")
         passed += 1

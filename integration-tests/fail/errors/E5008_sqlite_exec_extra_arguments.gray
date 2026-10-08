@@ -1,0 +1,9 @@
+// Error Test: E5008 - sqlite_exec_extra_arguments.gray
+// expect-error: E5008
+
+import @sqlite
+
+do main() {
+    mut db, open_err = sqlite.open(":memory:")
+    mut ok, exec_err = sqlite.exec(db, "CREATE TABLE t (x TEXT)", "extra")
+}

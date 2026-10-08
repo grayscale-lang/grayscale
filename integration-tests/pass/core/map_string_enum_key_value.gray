@@ -1,0 +1,26 @@
+const SE enum {
+    A = "a"
+    B = "b"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut keyed map[SE:i64] = {SE.A: 1}
+    keyed[SE.B] = 2
+    if keyed[SE.A] == 1 && keyed[SE.B] == 2 { passed += 1 } otherwise { failed += 1 }
+    if len(keyed) == 2 { passed += 1 } otherwise { failed += 1 }
+
+    mut valued map[string:SE] = {"k": SE.A}
+    valued["j"] = SE.B
+    if valued["k"] == SE.A && valued["j"] == SE.B { passed += 1 } otherwise { failed += 1 }
+
+    mut total i64 = 0
+    for_each key, value in keyed {
+        if key == SE.A { total += value }
+    }
+    if total == 1 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0140 - time.to_iso with the lowest timestamp gmtime cannot represent */
+import @time
+
+do main() {
+    println(time.to_iso(-9223372036854775807))
+}

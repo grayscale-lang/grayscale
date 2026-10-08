@@ -17,6 +17,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <time.h>
+#if defined(__APPLE__)
+#include <sys/stat.h>
+#endif
 #include <ctype.h>
 
 #include "util/arena.h"
@@ -210,8 +213,20 @@ static void argument_vector_push_command(ArgumentVector *arguments, Arena *arena
     }
 }
 
+static void argument_vector_push_compiler(ArgumentVector *arguments, Arena *arena, const char *command, bool is_command) {
+    if (is_command) argument_vector_push_command(arguments, arena, command);
+    else argument_vector_push(arguments, command);
+}
+
 static void argument_vector_end(ArgumentVector *arguments) {
     arguments->values[arguments->count] = NULL;
+}
+
+static void argument_vector_end_with_c_source(ArgumentVector *arguments, const char *source_path) {
+    argument_vector_push(arguments, "-x");
+    argument_vector_push(arguments, "c");
+    argument_vector_push(arguments, source_path);
+    argument_vector_end(arguments);
 }
 
 static void argument_vector_print(const ArgumentVector *arguments, FILE *output) {
@@ -251,9 +266,63 @@ static size_t skip_c_comment(const char *text, size_t start) {
     return text[index] ? index + 2 : index;
 }
 
+/* TinyCC treats every textual `struct { ... }` as a new type, so an initializer
+ * that names an anonymous struct (a multi-return call through a function
+ * pointer) has a different type in each of the two copies lowered below.
+ * Replace each outermost anonymous struct in text[0, length) with a typedef name
+ * and append the typedefs to `typedefs`; both copies then share one type.
+ * Returns the rewritten text, malloc'd. */
+static char *hoist_anonymous_structs(const char *text, size_t length, StringBuffer *typedefs) {
+    static int next_anonymous_struct = 0;
+    StringBuffer rewritten = buffer_create(length + 1);
+    size_t index = 0;
+    while (index < length) {
+        size_t literal_end = text[index] == '"' || text[index] == '\'' ? skip_c_literal(text, index)
+                                                                     : skip_c_comment(text, index);
+        if (literal_end > index) {
+            append_bytes_to_buffer(&rewritten, text + index, literal_end - index);
+            index = literal_end;
+            continue;
+        }
+        size_t brace = index + 6;
+        while (brace < length && isspace((unsigned char)text[brace])) brace++;
+        bool at_anonymous_struct = strncmp(text + index, "struct", 6) == 0 &&
+                                   (index == 0 || !(isalnum((unsigned char)text[index - 1]) || text[index - 1] == '_')) &&
+                                   brace < length && text[brace] == '{';
+        if (!at_anonymous_struct) {
+            append_char_to_buffer(&rewritten, text[index]);
+            index++;
+            continue;
+        }
+        size_t body_end = brace;
+        int depth = 0;
+        while (body_end < length) {
+            size_t skipped = text[body_end] == '"' || text[body_end] == '\'' ? skip_c_literal(text, body_end)
+                                                                           : skip_c_comment(text, body_end);
+            if (skipped > body_end) { body_end = skipped; continue; }
+            if (text[body_end] == '{') depth++;
+            if (text[body_end] == '}' && --depth == 0) { body_end++; break; }
+            body_end++;
+        }
+        append_format_to_buffer(typedefs, "typedef ");
+        append_bytes_to_buffer(typedefs, text + index, body_end - index);
+        append_format_to_buffer(typedefs, " gray_tcc_anonymous_%d; ", next_anonymous_struct);
+        append_format_to_buffer(&rewritten, "gray_tcc_anonymous_%d", next_anonymous_struct++);
+        index = body_end;
+    }
+    char *result = strdup(buffer_to_string(&rewritten));
+    buffer_destroy(&rewritten);
+    return result;
+}
+
 /* TinyCC has no __auto_type. `__auto_type name = init;` becomes
  * `__typeof__(init) name = init;`: typeof does not evaluate its operand, so
- * the initializer runs once, and both copies are lowered in turn. */
+ * the initializer runs once, and both copies are lowered in turn. A bare
+ * identifier may name a function, which __auto_type decays to a function
+ * pointer but a plain typeof would declare as a function, so that one case
+ * goes through a conditional, which decays it. Any other initializer stays
+ * plain: a conditional over a call returning an anonymous struct compares two
+ * distinct struct types and fails. */
 static void lower_auto_type_range(const char *text, size_t begin, size_t end, StringBuffer *output) {
     static const char keyword[] = "__auto_type";
     const size_t keyword_length = sizeof(keyword) - 1;
@@ -293,12 +362,42 @@ static void lower_auto_type_range(const char *text, size_t begin, size_t end, St
             if (scanned == ')' || scanned == ']' || scanned == '}') depth--;
             initializer_end++;
         }
-        append_string_to_buffer(output, "__typeof__(");
-        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        /* The typedefs go in front of the declaration, so only where a
+         * statement can start. */
+        StringBuffer typedefs = buffer_create(1);
+        char *initializer = hoist_anonymous_structs(text + initializer_begin, initializer_end - initializer_begin, &typedefs);
+        size_t before = output->length;
+        while (before > 0 && isspace((unsigned char)output->data[before - 1])) before--;
+        bool can_hoist = typedefs.length > 0 && (before == 0 || strchr(";{}", output->data[before - 1]) != NULL);
+        if (can_hoist) append_bytes_to_buffer(output, typedefs.data, typedefs.length);
+        else {
+            free(initializer);
+            initializer = malloc(initializer_end - initializer_begin + 1);
+            memcpy(initializer, text + initializer_begin, initializer_end - initializer_begin);
+            initializer[initializer_end - initializer_begin] = '\0';
+        }
+        buffer_destroy(&typedefs);
+        size_t initializer_length = strlen(initializer);
+
+        size_t identifier_begin = 0;
+        while (identifier_begin < initializer_length && isspace((unsigned char)initializer[identifier_begin])) identifier_begin++;
+        size_t identifier_end = identifier_begin;
+        while (identifier_end < initializer_length && (isalnum((unsigned char)initializer[identifier_end]) || initializer[identifier_end] == '_')) identifier_end++;
+        size_t trailing_end = identifier_end;
+        while (trailing_end < initializer_length && isspace((unsigned char)initializer[trailing_end])) trailing_end++;
+        bool is_bare_identifier = identifier_end > identifier_begin && trailing_end == initializer_length;
+        append_string_to_buffer(output, is_bare_identifier ? "__typeof__(1 ? (" : "__typeof__(");
+        lower_auto_type_range(initializer, 0, initializer_length, output);
+        if (is_bare_identifier) {
+            append_string_to_buffer(output, ") : (");
+            lower_auto_type_range(initializer, 0, initializer_length, output);
+            append_string_to_buffer(output, ")");
+        }
         append_string_to_buffer(output, ") ");
         append_bytes_to_buffer(output, text + name_begin, name_end - name_begin);
         append_string_to_buffer(output, " =");
-        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        lower_auto_type_range(initializer, 0, initializer_length, output);
+        free(initializer);
         index = initializer_end;
     }
 }
@@ -322,6 +421,164 @@ static bool c_compiler_is_tinycc(const char *c_compiler) {
     }
     return strcmp(name, "tcc") == 0 || strcmp(name, "tcc.exe") == 0;
 }
+
+/* Every runtime and stdlib .c file, relative to the runtime directory. Mirrors
+ * RT_SRC in grayc/Makefile; atomic_builtin.c stands in for the per-architecture
+ * assembly, which is written for the host. */
+static const char *const RUNTIME_SOURCES[] = {
+    "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
+    "runtime/test.c", "runtime/atomic_builtin.c",
+};
+static const char *const STDLIB_SOURCES[] = {
+    "stdlib/arrays.c",   "stdlib/binary.c",   "stdlib/builtins.c",
+    "stdlib/chars.c",    "stdlib/channels.c", "stdlib/crypto.c",
+    "stdlib/csv.c",      "stdlib/encoding.c", "stdlib/fmt.c",
+    "stdlib/http.c",     "stdlib/io.c",       "stdlib/json.c",
+    "stdlib/maps.c",     "stdlib/math.c",     "stdlib/mem.c",
+    "stdlib/net.c",      "stdlib/os.c",       "stdlib/random.c",
+    "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
+    "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
+    "stdlib/threads.c",  "stdlib/runtime_mod.c",
+    "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
+    "vendor/sqlite3.c"
+};
+
+#if defined(__APPLE__)
+/* The first line of `<compiler> --version`, or an empty string. */
+static void c_compiler_banner(const char *c_compiler, bool is_command, char *banner, size_t banner_size) {
+    banner[0] = '\0';
+    Arena *arena = arena_create(PATH_BUFFER_SIZE);
+    ArgumentVector arguments = {0};
+    argument_vector_push_compiler(&arguments, arena, c_compiler, is_command);
+    argument_vector_push(&arguments, "--version");
+    argument_vector_end(&arguments);
+    FILE *capture = gray_tmpfile();
+    if (capture && !arguments.has_overflowed && gray_spawn_capture_stdout(arguments.values, capture) == 0) {
+        rewind(capture);
+        size_t length = fread(banner, 1, banner_size - 1, capture);
+        banner[length] = '\0';
+        char *line_end = strchr(banner, '\n');
+        if (line_end) *line_end = '\0';
+    }
+    if (capture) fclose(capture);
+    arena_destroy(arena);
+}
+#endif
+
+/* libgrayrt.a is built by the system Clang. On macOS a different compiler
+ * (Homebrew GCC) lays out thread-local variables differently and cannot link
+ * it. Asks the compiler itself, since /usr/bin/gcc is Clang. */
+static bool c_compiler_cannot_link_archive(const char *c_compiler, bool is_command) {
+#if defined(__APPLE__)
+    if (c_compiler_is_tinycc(c_compiler)) return false;
+    char banner[256];
+    c_compiler_banner(c_compiler, is_command, banner, sizeof(banner));
+    return banner[0] && strstr(banner, "clang") == NULL;
+#else
+    (void)c_compiler;
+    (void)is_command;
+    return false;
+#endif
+}
+
+#if defined(__APPLE__)
+typedef struct {
+    const char *directory;
+    time_t archive_modified;
+    bool is_stale;
+} ArchiveStaleness;
+
+static bool note_newer_runtime_file(const char *name, void *context) {
+    ArchiveStaleness *staleness = context;
+    char path[PATH_BUFFER_SIZE];
+    struct stat file_status;
+    gray_path_join(path, sizeof(path), staleness->directory, name);
+    if (stat(path, &file_status) == 0 && file_status.st_mtime > staleness->archive_modified)
+        staleness->is_stale = true;
+    return !staleness->is_stale;
+}
+
+/* A compiler that cannot link the prebuilt libgrayrt.a would otherwise rebuild
+ * the whole runtime on every compile (tens of seconds). Build it once with that
+ * compiler into the temp directory, keyed by the compiler's version banner and
+ * the runtime directory, and rebuild when any runtime or stdlib file is newer.
+ * SQLite stays out of the archive (a program that uses it builds from source).
+ * Returns false, leaving the from-source build to run, if anything fails. */
+static bool ensure_runtime_archive(const char *c_compiler, bool is_command, const char *runtime_directory,
+                                   char *archive_path, size_t archive_path_size) {
+    char banner[256];
+    c_compiler_banner(c_compiler, is_command, banner, sizeof(banner));
+    uint64_t key = 14695981039346656037ULL;
+    const char *const key_parts[] = {banner, runtime_directory};
+    for (size_t part = 0; part < 2; part++)
+        for (const char *cursor = key_parts[part]; *cursor; cursor++)
+            key = (key ^ (unsigned char)*cursor) * 1099511628211ULL;
+    snprintf(archive_path, archive_path_size, "%s/gray-runtime-%016llx.a", gray_temporary_directory(),
+             (unsigned long long)key);
+
+    struct stat archive_status;
+    if (stat(archive_path, &archive_status) == 0) {
+        ArchiveStaleness staleness = {NULL, archive_status.st_mtime, false};
+        static const char *const watched[] = {"runtime", "stdlib"};
+        for (size_t i = 0; i < 2 && !staleness.is_stale; i++) {
+            char directory[PATH_BUFFER_SIZE];
+            gray_path_join(directory, sizeof(directory), runtime_directory, watched[i]);
+            staleness.directory = directory;
+            gray_scandir(directory, note_newer_runtime_file, &staleness);
+        }
+        if (!staleness.is_stale) return true;
+    }
+
+    Arena *arena = arena_create(PATH_BUFFER_SIZE);
+    ArgumentVector archiver = {0};
+    char temporary_archive[PATH_BUFFER_SIZE];
+    gray_temporary_path(temporary_archive, sizeof(temporary_archive), "gray_rt_", ".a");
+    argument_vector_push(&archiver, "ar");
+    argument_vector_push(&archiver, "rcs");
+    argument_vector_push(&archiver, temporary_archive);
+
+    char objects[48][PATH_BUFFER_SIZE];
+    int object_count = 0;
+    bool is_built = true;
+    for (size_t i = 0; i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0]) + sizeof(STDLIB_SOURCES) / sizeof(STDLIB_SOURCES[0]) && is_built; i++) {
+        const char *source = i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0])
+                                 ? RUNTIME_SOURCES[i]
+                                 : STDLIB_SOURCES[i - sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0])];
+        if (strstr(source, "sqlite")) continue;
+        if (object_count >= 48) { is_built = false; break; }
+        gray_temporary_path(objects[object_count], PATH_BUFFER_SIZE, "gray_rt_", ".o");
+
+        ArgumentVector compile = {0};
+        argument_vector_push_compiler(&compile, arena, c_compiler, is_command);
+        argument_vector_push(&compile, "-c");
+        argument_vector_push(&compile, "-std=c11");
+        argument_vector_push(&compile, "-D_POSIX_C_SOURCE=200809L");
+        argument_vector_push(&compile, "-D_DARWIN_C_SOURCE");
+        argument_vector_push(&compile, "-O2");
+        argument_vector_push(&compile, "-w");
+        argument_vector_push(&compile, "-ffunction-sections");
+        argument_vector_push(&compile, "-fdata-sections");
+        argument_vector_push(&compile, "-I");
+        argument_vector_push(&compile, runtime_directory);
+        argument_vector_push(&compile, "-o");
+        argument_vector_push(&compile, objects[object_count]);
+        argument_vector_push_formatted(&compile, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, source);
+        argument_vector_end(&compile);
+        is_built = !compile.has_overflowed && gray_spawn_quiet(compile.values) == 0;
+        argument_vector_push(&archiver, objects[object_count]);
+        object_count++;
+    }
+    argument_vector_end(&archiver);
+    is_built = is_built && !archiver.has_overflowed && gray_spawn_quiet(archiver.values) == 0;
+    /* Renamed into place so a concurrent compile never reads a partial archive. */
+    is_built = is_built && rename(temporary_archive, archive_path) == 0;
+
+    for (int i = 0; i < object_count; i++) gray_remove_file(objects[i]);
+    if (!is_built) gray_remove_file(temporary_archive);
+    arena_destroy(arena);
+    return is_built;
+}
+#endif
 
 static const char *detect_c_compiler(void) {
     /* GRAY_CC / CC are checked, not trusted: a stale CC=cc from a profile must
@@ -438,13 +695,9 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diagnostics, A
                 if (!write_file(stub, body)) { gray_remove_file(stub); continue; }
 
                 ArgumentVector arguments = {0};
-                if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-                else argument_vector_push(&arguments, c_compiler_command);
+                argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
                 argument_vector_push(&arguments, "-fsyntax-only");
-                argument_vector_push(&arguments, "-x");
-                argument_vector_push(&arguments, "c");
-                argument_vector_push(&arguments, stub);
-                argument_vector_end(&arguments);
+                argument_vector_end_with_c_source(&arguments, stub);
                 found = !arguments.has_overflowed && gray_spawn_quiet(arguments.values) == 0;
                 gray_remove_file(stub);
             }
@@ -503,7 +756,8 @@ static void add_local_c_header_dirs(ArgumentVector *c_compiler_arguments, Arena 
             const char *kept = arena_copy_string(arena, directory);
             if (seen_count < MAX_C_COMPILER_ARGUMENTS) seen[seen_count++] = kept;
 
-            argument_vector_push(c_compiler_arguments, "-iquote");
+            /* TinyCC has no -iquote; -I is its nearest equivalent. */
+            argument_vector_push(c_compiler_arguments, c_compiler_is_tinycc(c_compiler_arguments->values[0]) ? "-I" : "-iquote");
             argument_vector_push(c_compiler_arguments, kept);
         }
     }
@@ -561,7 +815,7 @@ static void append_c_header_includes(const ImportItem *const *headers, int count
 
     for (int i = 0; i < count; i++) {
         const ImportItem *item = headers[i];
-        char line[PATH_BUFFER_SIZE];
+        char line[PATH_BUFFER_SIZE + sizeof("#include \"\"\n")];
         if (c_header_is_local(item->path)) {
             char resolved[PATH_BUFFER_SIZE];
             char canonical[PATH_BUFFER_SIZE];
@@ -984,14 +1238,10 @@ static bool c_headers_fail_to_compile(AstNode *program, Arena *arena, const char
     if (!capture) { gray_remove_file(stub); return false; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-fsyntax-only");
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     bool failed = !arguments.has_overflowed && gray_spawn_capture_stderr(arguments.values, capture) != 0;
     gray_remove_file(stub);
@@ -1091,16 +1341,12 @@ static char *capture_clang_ast_dump(AstNode *program, Arena *arena, const char *
     if (!capture) { gray_remove_file(stub); return NULL; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-Xclang");
     argument_vector_push(&arguments, "-ast-dump");
     argument_vector_push(&arguments, "-fsyntax-only");
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     bool spawned = !arguments.has_overflowed && gray_spawn_capture_stdout(arguments.values, capture) == 0;
     gray_remove_file(stub);
@@ -1134,15 +1380,11 @@ static int run_c_probe(AstNode *program, Arena *arena, const char *c_compiler_co
     if (!capture) { gray_remove_file(stub); return -1; }
 
     ArgumentVector arguments = {0};
-    if (cc_is_command) argument_vector_push_command(&arguments, arena, c_compiler_command);
-    else argument_vector_push(&arguments, c_compiler_command);
+    argument_vector_push_compiler(&arguments, arena, c_compiler_command, cc_is_command);
     argument_vector_push(&arguments, "-fsyntax-only");
     for (int i = 0; flags[i]; i++) argument_vector_push(&arguments, flags[i]);
     add_local_c_header_dirs(&arguments, arena, program, entry_file);
-    argument_vector_push(&arguments, "-x");
-    argument_vector_push(&arguments, "c");
-    argument_vector_push(&arguments, stub);
-    argument_vector_end(&arguments);
+    argument_vector_end_with_c_source(&arguments, stub);
 
     int status = arguments.has_overflowed ? -1 : gray_spawn_capture_stderr(arguments.values, capture);
     gray_remove_file(stub);
@@ -1323,6 +1565,19 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                                          DiagnosticList *diagnostics, Arena *arena,
                                          const char *c_compiler_command, bool cc_is_command,
                                          const char *entry_file) {
+    /* TinyCC has no AST dump or -aux-info to read a C signature from, so the
+     * checks below would all be skipped; ask a compiler that has them. They
+     * only parse the headers, so the compiler that builds the program is
+     * not required to be the one that answers. */
+    if (c_compiler_is_tinycc(c_compiler_command)) {
+        static const char *const introspection_compilers[] = {"cc", "gcc", "clang"};
+        for (size_t i = 0; i < sizeof(introspection_compilers) / sizeof(introspection_compilers[0]); i++) {
+            if (!c_compiler_available(introspection_compilers[i])) continue;
+            c_compiler_command = introspection_compilers[i];
+            cc_is_command = false;
+            break;
+        }
+    }
     if (report_c_header_conflicts(program, diagnostics, arena, c_compiler_command, cc_is_command, entry_file))
         return;
 
@@ -1350,14 +1605,10 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
             FILE *perr = gray_tmpfile();
             if (perr) {
                 ArgumentVector probe_arguments = {0};
-                if (cc_is_command) argument_vector_push_command(&probe_arguments, arena, c_compiler_command);
-                else argument_vector_push(&probe_arguments, c_compiler_command);
+                argument_vector_push_compiler(&probe_arguments, arena, c_compiler_command, cc_is_command);
                 argument_vector_push(&probe_arguments, "-fsyntax-only");
                 add_local_c_header_dirs(&probe_arguments, arena, program, entry_file);
-                argument_vector_push(&probe_arguments, "-x");
-                argument_vector_push(&probe_arguments, "c");
-                argument_vector_push(&probe_arguments, probe_stub);
-                argument_vector_end(&probe_arguments);
+                argument_vector_end_with_c_source(&probe_arguments, probe_stub);
 
                 if (!probe_arguments.has_overflowed) gray_spawn_capture_stderr(probe_arguments.values, perr);
                 long error_length = ftell(perr);
@@ -1963,6 +2214,11 @@ int main(int argc, char **argv) {
         /* fall through to the from-source build below; TinyCC also cannot
          * link objects another compiler built, or share its thread-local
          * layout (see gray_thread_state in runtime.h) */
+    } else if (c_compiler_cannot_link_archive(c_compiler_command, false)) {
+#if defined(__APPLE__)
+        has_archive = !strstr(c_source, "#include \"sqlite.h\"") &&
+                      ensure_runtime_archive(c_compiler_command, false, runtime_directory, lib_path, sizeof(lib_path));
+#endif
     } else if (gray_file_readable(lib_path)) {
         has_archive = true;
     } else {
@@ -2061,39 +2317,26 @@ int main(int argc, char **argv) {
     if (has_archive) {
         argument_vector_push(&c_compiler_arguments, lib_path);
     } else {
-        /* Build source list from all runtime and stdlib .c files. Mirrors
-         * RT_SRC in grayc/Makefile; atomic_builtin.c stands in for the
-         * per-architecture assembly, which is written for the host. */
-        static const char *runtime_srcs[] = {
-            "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
-            "runtime/test.c", "runtime/atomic_builtin.c",
-        };
-        static const char *stdlib_srcs[] = {
-            "stdlib/arrays.c",   "stdlib/binary.c",   "stdlib/builtins.c",
-            "stdlib/chars.c",    "stdlib/channels.c", "stdlib/crypto.c",
-            "stdlib/csv.c",      "stdlib/encoding.c", "stdlib/fmt.c",
-            "stdlib/http.c",     "stdlib/io.c",       "stdlib/json.c",
-            "stdlib/maps.c",     "stdlib/math.c",     "stdlib/mem.c",
-            "stdlib/net.c",      "stdlib/os.c",       "stdlib/random.c",
-            "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
-            "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
-            "stdlib/threads.c",  "stdlib/runtime_mod.c",
-            "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
-            "vendor/sqlite3.c"
-        };
-        for (size_t i = 0; i < sizeof(runtime_srcs) / sizeof(runtime_srcs[0]); i++) {
-            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, runtime_srcs[i]);
+        for (size_t i = 0; i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0]); i++) {
+            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, RUNTIME_SOURCES[i]);
         }
         /* The vendored SQLite amalgamation is not part of the extracted
          * runtime a release binary carries; without it sqlite.c cannot build. */
         char vendor_probe[PATH_BUFFER_SIZE];
         gray_path_join(vendor_probe, sizeof(vendor_probe), runtime_directory, "vendor/sqlite3.c");
-        bool has_vendor = gray_file_readable(vendor_probe);
-        for (size_t i = 0; i < sizeof(stdlib_srcs) / sizeof(stdlib_srcs[0]); i++) {
-            if (!has_vendor && (strcmp(stdlib_srcs[i], "stdlib/sqlite.c") == 0 ||
-                                strcmp(stdlib_srcs[i], "vendor/sqlite3.c") == 0))
+        /* The SQLite amalgamation is by far the slowest file to compile, and
+         * TinyCC's Mach-O linker rejects it outright (it takes the address of
+         * close() while the rest of the program calls it). TinyCC and a
+         * compiler that cannot link the archive therefore include SQLite only
+         * for a program that uses it; any other --cc compiler is unchanged. */
+        bool skips_unused_sqlite = is_tinycc || c_compiler_cannot_link_archive(c_compiler_command, options.c_compiler_override != NULL);
+        bool has_vendor = gray_file_readable(vendor_probe) &&
+                          (!skips_unused_sqlite || strstr(c_source, "#include \"sqlite.h\"") != NULL);
+        for (size_t i = 0; i < sizeof(STDLIB_SOURCES) / sizeof(STDLIB_SOURCES[0]); i++) {
+            if (!has_vendor && (strcmp(STDLIB_SOURCES[i], "stdlib/sqlite.c") == 0 ||
+                                strcmp(STDLIB_SOURCES[i], "vendor/sqlite3.c") == 0))
                 continue;
-            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, stdlib_srcs[i]);
+            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, STDLIB_SOURCES[i]);
         }
     }
 
@@ -2218,7 +2461,7 @@ int main(int argc, char **argv) {
         } else if (term_signal) {
             fflush(stdout);
             fprintf(stderr, "gray: program crashed: signal %d (%s)\n",
-                    term_signal, strsignal(term_signal));
+                    term_signal, gray_signal_name(term_signal));
         }
         ran_program = true;
         gray_remove_file(options.output_file);

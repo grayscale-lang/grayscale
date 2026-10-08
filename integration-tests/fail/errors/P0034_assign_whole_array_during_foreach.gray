@@ -1,0 +1,11 @@
+import @arrays
+
+do not_two(v i64) -> bool { return v != 2 }
+
+do main() {
+    mut a [i64] = {1, 2, 3, 4}
+    for_each x in a {
+        a = arrays.filter(a, ()not_two)
+        println("visit ${x}")
+    }
+}

@@ -1,0 +1,4 @@
+const Rect struct {
+    w i64
+    do area(r Rect) -> i64 { return r.w * r.w }
+}

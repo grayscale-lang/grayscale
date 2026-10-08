@@ -1,0 +1,12 @@
+const Counter struct {
+    n i64
+
+    do inc(&c Counter) { c.n = c.n + 1 }
+}
+
+do main() {
+    const k Counter = Counter{n: 100}
+    mut p ^Counter = addr(k)
+    p.inc()
+    println("${k.n}")
+}

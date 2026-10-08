@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0146 - regex.is_match with an embedded null byte in the pattern */
+import @regex
+
+do main() {
+    mut nul string = "\x00"
+    println(regex.is_match("a" + nul + "b", "a"))
+}

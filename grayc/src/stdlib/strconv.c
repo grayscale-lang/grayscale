@@ -55,6 +55,27 @@ static int strconv_prepare(GrayString string, char *buffer, size_t buffer_size) 
     return length;
 }
 
+/* strtoll/strtoull/strtod stop at the first NUL, so a string with an embedded
+ * one would parse as its prefix. Such a string is never a number. */
+static bool strconv_has_nul(GrayString string) {
+    return memchr(string.data, '\0', (size_t)string.len) != NULL;
+}
+
+/* strtod also parses C hexadecimal floats ("0x10", "-0x1p3"), which the
+ * documented decimal notation excludes. */
+static bool strconv_is_hex_float(const char *buffer) {
+    if (*buffer == '+' || *buffer == '-') buffer++;
+    return buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X');
+}
+
+/* strtoll/strtoull skip a "0x" prefix in base 16; the documented digits of a
+ * base exclude it. */
+static bool strconv_has_hex_prefix(const char *buffer, int64_t base) {
+    if (base != 16) return false;
+    if (*buffer == '+' || *buffer == '-') buffer++;
+    return buffer[0] == '0' && (buffer[1] == 'x' || buffer[1] == 'X');
+}
+
 /* --- Panicking conversions --- */
 
 int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
@@ -62,7 +83,7 @@ int64_t gray_strconv_to_i64(GrayString string, int64_t base) {
         gray_panic_code("P0054", "strconv.to_i64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0]))
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0055", "strconv.to_i64: cannot convert '%s' to i64 (base %lld)", buffer, (long long)base);
     char *end_cursor = NULL;
     errno = 0;
@@ -77,7 +98,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
         gray_panic_code("P0056", "strconv.to_u64: invalid base %lld; must be between 2 and 36", (long long)base);
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0]))
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0057", "strconv.to_u64: cannot convert '%s' to u64 (base %lld)", buffer, (long long)base);
     /* Reject negative numbers */
     for (int i = 0; i < length; i++) {
@@ -96,7 +117,7 @@ uint64_t gray_strconv_to_u64(GrayString string, int64_t base) {
 double gray_strconv_to_f64(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0]))
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || strchr(buffer, '(') || (length > 0 && isspace((unsigned char)buffer[0])))
         gray_panic_code("P0059", "strconv.to_f64: cannot convert '%s' to f64", buffer);
     char *end_cursor = NULL;
     errno = 0;
@@ -116,7 +137,7 @@ GrayResult_i64 gray_strconv_to_i64_result(GrayString string, int64_t base) {
     }
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0])) {
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to i64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_i64){0, error};
@@ -140,7 +161,7 @@ GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
     }
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0])) {
+    if (strconv_has_nul(string) || strconv_has_hex_prefix(buffer, base) || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to u64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_u64){0, error};
@@ -168,7 +189,7 @@ GrayResult_u64 gray_strconv_to_u64_result(GrayString string, int64_t base) {
 GrayResult_f64 gray_strconv_to_f64_result(GrayString string) {
     char buffer[STRCONV_BUFFER_SIZE];
     int length = strconv_prepare(string, buffer, sizeof(buffer));
-    if (length > 0 && isspace((unsigned char)buffer[0])) {
+    if (strconv_has_nul(string) || strconv_is_hex_float(buffer) || strchr(buffer, '(') || (length > 0 && isspace((unsigned char)buffer[0]))) {
         GrayString message = gray_string_lit("cannot convert string to f64");
         GrayError *error = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, message);
         return (GrayResult_f64){0.0, error};
@@ -305,13 +326,6 @@ GrayString gray_strconv_quote(GrayArena *arena, GrayString string) {
     return (GrayString){buffer, j};
 }
 
-static int strconv_hex_digit(char character) {
-    if (character >= '0' && character <= '9') return character - '0';
-    if (character >= 'a' && character <= 'f') return character - 'a' + 10;
-    if (character >= 'A' && character <= 'F') return character - 'A' + 10;
-    return -1;
-}
-
 /* Unquote s into a freshly allocated string. Returns true on success; on
    failure returns false and leaves *out untouched. */
 static bool strconv_unquote_into(GrayArena *arena, GrayString string, GrayString *output) {
@@ -342,8 +356,8 @@ static bool strconv_unquote_into(GrayArena *arena, GrayString string, GrayString
         case '$':  buffer[j++] = '$';  break;
         case 'x': {
             if (i + 2 >= end_index) return false;
-            int high_digit = strconv_hex_digit(string.data[i + 1]);
-            int low_digit = strconv_hex_digit(string.data[i + 2]);
+            int high_digit = gray_hex_digit_value(string.data[i + 1]);
+            int low_digit = gray_hex_digit_value(string.data[i + 2]);
             if (high_digit < 0 || low_digit < 0) return false;
             buffer[j++] = (char)((high_digit << 4) | low_digit);
             i += 2;

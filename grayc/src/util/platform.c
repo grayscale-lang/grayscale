@@ -9,6 +9,12 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+#if defined(__linux__)
+/* glibc declares realpath() only under _XOPEN_SOURCE >= 500 (or _DEFAULT_SOURCE),
+ * which -D_POSIX_C_SOURCE=200809L alone does not enable. */
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "platform.h"
 #include "xalloc.h"
 
@@ -481,6 +487,15 @@ int gray_spawn_path(const char *const *argv) {
 int gray_spawn_exact(const char *const *argv, int *termination_signal) {
     if (termination_signal) *termination_signal = 0;
     return spawn_child(argv, false, termination_signal);
+}
+
+const char *gray_signal_name(int signal_number) {
+#if GRAY_OS_WINDOWS
+    (void)signal_number;
+    return "unknown signal";
+#else
+    return strsignal(signal_number);
+#endif
 }
 
 int gray_spawn_quiet(const char *const *argv) {

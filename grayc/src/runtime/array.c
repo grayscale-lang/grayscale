@@ -107,6 +107,14 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *source) {
 
 #define GRAY_ORDER(a, b) (((a) > (b)) - ((a) < (b)))
 
+/* A NaN orders after every other value and equal to another NaN, so the
+ * ordering is total and independent of where a NaN sits. */
+static int float_order(double left, double right) {
+    if (left != left) return right != right ? 0 : 1;
+    if (right != right) return -1;
+    return GRAY_ORDER(left, right);
+}
+
 static int string_order(const GrayString *left, const GrayString *right) {
     int32_t shorter = left->len < right->len ? left->len : right->len;
     int bytes = shorter > 0 ? memcmp(left->data, right->data, (size_t)shorter) : 0;
@@ -126,8 +134,8 @@ int gray_elem_compare(int32_t kind, int32_t size, const void *left, const void *
     case GRAY_ELEM_U16:  return GRAY_ORDER(*(const uint16_t *)left, *(const uint16_t *)right);
     case GRAY_ELEM_U32:  return GRAY_ORDER(*(const uint32_t *)left, *(const uint32_t *)right);
     case GRAY_ELEM_U64:  return GRAY_ORDER(*(const uint64_t *)left, *(const uint64_t *)right);
-    case GRAY_ELEM_F32:  return GRAY_ORDER(*(const float *)left, *(const float *)right);
-    case GRAY_ELEM_F64:  return GRAY_ORDER(*(const double *)left, *(const double *)right);
+    case GRAY_ELEM_F32:  return float_order(*(const float *)left, *(const float *)right);
+    case GRAY_ELEM_F64:  return float_order(*(const double *)left, *(const double *)right);
     case GRAY_ELEM_I128: return gray_i128_lt(*(const gray_i128 *)left, *(const gray_i128 *)right) ? -1 :
                                 gray_i128_lt(*(const gray_i128 *)right, *(const gray_i128 *)left) ? 1 : 0;
     case GRAY_ELEM_U128: return gray_u128_lt(*(const gray_u128 *)left, *(const gray_u128 *)right) ? -1 :

@@ -23,6 +23,8 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
     GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = csv_string.data;
     const char *end_cursor = cursor + csv_string.len;
+    /* A UTF-8 byte-order mark is not part of the first cell. */
+    if (csv_string.len >= 3 && memcmp(cursor, "\xEF\xBB\xBF", 3) == 0) cursor += 3;
 
     while (cursor < end_cursor) {
         GrayArray row_array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
@@ -306,8 +308,10 @@ GrayString gray_csv_to_markdown(GrayArena *arena, GrayArray *data) {
 
 /* RFC 4180 §2.6-2.7: a field must be quoted when it contains the comma
  * delimiter, a double-quote, CR, or LF. Quoting wraps it in double-quotes and
- * doubles every embedded double-quote. */
-static bool csv_field_needs_quote(GrayString field) {
+ * doubles every embedded double-quote. An empty field that is the whole row is
+ * quoted too, since a blank line parses as a row with no cells. */
+static bool csv_field_needs_quote(GrayString field, bool is_only_field) {
+    if (field.len == 0 && is_only_field) return true;
     for (int32_t i = 0; i < field.len; i++) {
         char character = field.data[i];
         if (character == ',' || character == '"' || character == '\r' || character == '\n') return true;
@@ -318,8 +322,8 @@ static bool csv_field_needs_quote(GrayString field) {
 /* Byte length of `field` once encoded: unchanged if it needs no quoting, else
  * the field plus the two surrounding quotes and one extra byte per embedded
  * quote. */
-static int32_t csv_field_encoded_length(GrayString field) {
-    if (!csv_field_needs_quote(field)) return field.len;
+static int32_t csv_field_encoded_length(GrayString field, bool is_only_field) {
+    if (!csv_field_needs_quote(field, is_only_field)) return field.len;
     int32_t length = field.len + 2;
     for (int32_t i = 0; i < field.len; i++)
         if (field.data[i] == '"') length++;
@@ -327,8 +331,8 @@ static int32_t csv_field_encoded_length(GrayString field) {
 }
 
 /* Write the encoded form of `field` at `dst`; returns the bytes written. */
-static int32_t csv_field_encode(char *destination, GrayString field) {
-    if (!csv_field_needs_quote(field)) {
+static int32_t csv_field_encode(char *destination, GrayString field, bool is_only_field) {
+    if (!csv_field_needs_quote(field, is_only_field)) {
         memcpy(destination, field.data, (size_t)field.len);
         return field.len;
     }
@@ -371,7 +375,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         for (int32_t j = 0; j < row_array->len; j++) {
             if (j > 0) total++; /* comma */
             GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
-            total += csv_field_encoded_length(*field);
+            total += csv_field_encoded_length(*field, row_array->len == 1);
         }
         total++; /* newline */
     }
@@ -382,7 +386,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         for (int32_t j = 0; j < row_array->len; j++) {
             if (j > 0) buffer[position++] = ',';
             GrayString *field = (GrayString *)((char *)row_array->data + (size_t)j * sizeof(GrayString));
-            position += csv_field_encode(buffer + position, *field);
+            position += csv_field_encode(buffer + position, *field, row_array->len == 1);
         }
         buffer[position++] = '\n';
     }
@@ -398,7 +402,15 @@ GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
     return gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
 }
 
+/* fopen takes a C string, so an embedded NUL would silently cut the path
+ * short and open a different file. */
+static void csv_validate_path(GrayString path) {
+    if (memchr(path.data, '\0', (size_t)path.len))
+        gray_panic_code("P0143", "csv: a file path contains an embedded null byte");
+}
+
 GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
+    csv_validate_path(path);
     FILE *file = fopen(path.data, "rb");
     if (!file) return gray_array_new(arena, sizeof(GrayArray), 1, GRAY_ELEM_ARRAY);
     GrayString content = gray_io_read_file_impl(arena, file);
@@ -409,6 +421,7 @@ GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
 }
 
 bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
+    csv_validate_path(path);
     GrayString csv_text = gray_csv_stringify(arena, data);
     FILE *file = fopen(path.data, "wb");
     if (!file) return false;
@@ -420,6 +433,7 @@ bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
 /* _result variants */
 
 GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
+    csv_validate_path(path);
     GrayResult_array result;
     FILE *file = fopen(path.data, "rb");
     if (!file) {

@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0139 - os.lookup_env name with an embedded null byte */
+import @os
+
+do main() {
+    mut nul string = "\x00"
+    mut _, _ = os.lookup_env("HOME" + nul + "zzz")
+}

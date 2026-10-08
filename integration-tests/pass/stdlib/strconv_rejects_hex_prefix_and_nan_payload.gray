@@ -1,0 +1,32 @@
+/*
+ * Test: strconv.to_i64 and to_u64 reject a 0x prefix in base 16; to_f64 rejects nan(...)
+ */
+
+import @strconv
+
+do main() {
+    mut pass i64 = 0
+    mut fail i64 = 0
+
+    mut a, ea = strconv.to_i64("0x1f", 16)
+    if ea != nil && a == 0 { pass += 1 } otherwise { fail += 1 }
+
+    mut b, eb = strconv.to_i64("-0X1F", 16)
+    if eb != nil && b == 0 { pass += 1 } otherwise { fail += 1 }
+
+    mut c, ec = strconv.to_u64("0xff", 16)
+    if ec != nil && c == 0 { pass += 1 } otherwise { fail += 1 }
+
+    mut d, ed = strconv.to_f64("nan(abc)")
+    if ed != nil && d == 0.0 { pass += 1 } otherwise { fail += 1 }
+
+    mut e, ee = strconv.to_i64("-1f", 16)
+    if ee == nil && e == -31 { pass += 1 } otherwise { fail += 1 }
+
+    mut _, ef = strconv.to_i64("0x1f", 36)
+    if ef == nil { pass += 1 } otherwise { fail += 1 }
+
+    println("strconv_rejects_hex_prefix_and_nan_payload: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

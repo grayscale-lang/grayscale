@@ -1,0 +1,9 @@
+import @strconv
+
+do main() {
+    mut value, err = strconv.to_i64("x")
+    if err {
+        println("failed")
+    }
+    println(value)
+}

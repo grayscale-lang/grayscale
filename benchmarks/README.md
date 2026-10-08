@@ -7,7 +7,19 @@ make benchmark
 ```
 
 This builds `gray`, generates input fixtures, compiles and runs each workload,
-prints a table, and writes `benchmarks/results.json`.
+prints the results, and writes `benchmarks/results.json`.
+
+When a saved `benchmarks/results.json` exists, three tables print in this order:
+
+1. **Prior to Latest**: the saved run's medians, printed before the suite starts.
+2. **Latest Run**: the run that just executed, printed row by row as each workload
+   completes.
+3. **Difference (Latest subtracted by Prior to Latest)**: per workload, the
+   absolute difference and percentage for `compile_ms`, `run_ms` and `bin_kb`,
+   for example `-7.7 (-4.0%)`. A negative value means Latest is faster or smaller.
+
+With no saved `results.json`, only the Latest Run table prints, followed by
+`No run prior to Latest`. All three tables use medians.
 
 These are **Grayscale-only absolute numbers** — how fast the compiled binaries
 run, how long `grayc` takes to compile them, and how big the binaries are.
@@ -31,12 +43,12 @@ POSIX only; the `make` target prints a notice and exits 0 on Windows.
 ```
 benchmarks/
   README.md      this file
-  run.sh         orchestrator: builds, times, writes results.json, prints the table
+  run.sh         orchestrator: builds, times, writes results.json, prints the tables
   gen.sh         writes deterministic fixtures into .gen/
   runner.c       ~90-line CLOCK_MONOTONIC stopwatch, compiled once by run.sh
   workloads/     the workload .gray sources (git-tracked)
   .gen/          generated fixtures + built binaries (gitignored)
-  results.json   latest run (gitignored)
+  results.json   latest run, read as Prior to Latest by the next run (gitignored)
 ```
 
 `runner.c` runs a command `K` times after one discarded warmup and reports

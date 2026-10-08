@@ -1,0 +1,51 @@
+/*
+ * Test: a field read through a generic-typed value has the field's declared
+ * type in each instantiation
+ */
+
+const Inner struct {
+    tags [string]
+}
+
+const Point struct {
+    f f64
+    b bool
+    s string
+    tags [string]
+    m map[string:i64]
+    inner Inner
+}
+
+const Label struct {
+    f string
+}
+
+do float_text(kind generic, x kind) -> string {
+    return "${x.f}"
+}
+
+do bool_text(kind generic, x kind) -> string {
+    return "${x.b}"
+}
+
+do joined(kind generic, x kind) -> string {
+    mut out string = ""
+    for_each t in x.tags { out = out + t }
+    return out + x.tags[0] + x.inner.tags[0] + "${x.m["k"]}" + x.s + "!"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    const point Point = Point{f: 2.5, b: true, s: "s", tags: {"a", "b"}, m: {"k": 7}, inner: Inner{tags: {"i"}}}
+
+    if float_text(Point, point) == "2.5" { passed += 1 } otherwise { failed += 1 }
+    const label Label = Label{f: "text"}
+    if float_text(Label, label) == "text" { passed += 1 } otherwise { failed += 1 }
+    if bool_text(Point, point) == "true" { passed += 1 } otherwise { failed += 1 }
+    if joined(Point, point) == "abai7s!" { passed += 1 } otherwise { failed += 1 }
+
+    println("generic_field_read_typed: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

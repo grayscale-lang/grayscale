@@ -31,7 +31,7 @@ do main() {
     }
 
     // Round-trip survives.
-    mut decoded string = encoding.url_decode(encoded)
+    mut decoded, _ = encoding.url_decode(encoded)
     if decoded == "café" {
         println("  [PASS] url_decode round-trips high-bit bytes")
         passed += 1

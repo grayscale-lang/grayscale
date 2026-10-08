@@ -50,6 +50,21 @@ static bool path_within_directory(const char *path, const char *directory) {
  * Imported nodes carry their original file path in token.file; main-file nodes have NULL. */
 #define NODE_FILE(checker, node) ((node)->token.file ? (node)->token.file : (checker)->file)
 
+/* Report a registry diagnostic at an AST node, with an end column of 0. The node
+ * argument is evaluated several times, so it must be a plain variable or field path. */
+#define NODE_ERROR(checker, node, code) \
+    diagnostic_error_code((checker)->diagnostics, code, NODE_FILE(checker, node), \
+        (node)->token.line, (node)->token.column, 0)
+#define NODE_ERROR_FORMATTED(checker, node, code, ...) \
+    diagnostic_error_code_formatted((checker)->diagnostics, code, NODE_FILE(checker, node), \
+        (node)->token.line, (node)->token.column, 0, __VA_ARGS__)
+#define NODE_ERROR_HELP(checker, node, code, help) \
+    diagnostic_error_code_help((checker)->diagnostics, code, NODE_FILE(checker, node), \
+        (node)->token.line, (node)->token.column, 0, help)
+#define NODE_ERROR_FORMATTED_HELP(checker, node, code, help, ...) \
+    diagnostic_error_code_formatted_help((checker)->diagnostics, code, NODE_FILE(checker, node), \
+        (node)->token.line, (node)->token.column, 0, help, __VA_ARGS__)
+
 /* Check if using_modules[using_index] is accessible from the current file being checked.
  * A using-module entry is accessible only if it was declared in the same file
  * that is currently being validated (prevents transitive import type leaking). */
@@ -603,6 +618,10 @@ static bool typechecker_enum_is_tagged(TypeChecker *checker, const char *name) {
     return i >= 0 && checker->is_enum_tagged[i];
 }
 
+static bool is_tagged_enum_type(TypeChecker *checker, GrayType *type) {
+    return type->kind == TYPE_KIND_ENUM && type->name && typechecker_enum_is_tagged(checker, type->name);
+}
+
 static bool typechecker_enum_is_flags(TypeChecker *checker, const char *name) {
     int i = find_enum_index(checker, name);
     return i >= 0 && checker->is_enum_flags[i];
@@ -918,11 +937,9 @@ static char *removed_type_help(TypeChecker *checker, const char *name) {
 static void typechecker_error_undefined_type(TypeChecker *checker, AstNode *node, const char *name) {
     char *help = removed_type_help(checker, name);
     if (help)
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E4016",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, help, name);
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E4016", help, name);
     else
-        diagnostic_error_code_formatted(checker->diagnostics, "E4016",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+        NODE_ERROR_FORMATTED(checker, node, "E4016", name);
 }
 
 /* Emit helpers for the three codes with too many sites to spell out in full.
@@ -1137,7 +1154,7 @@ static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target);
 static void mark_immutable_literal_source(TypeChecker *checker, AstNode *element);
 static AstNode *target_root_module_reference(TypeChecker *checker, AstNode *target);
 static bool report_write_to_module_variable(TypeChecker *checker, AstNode *report_node, AstNode *place);
-static void report_write_to_module_constant(TypeChecker *checker, AstNode *report_node,
+static void report_write_to_const_container(TypeChecker *checker, AstNode *report_node,
                                             AstNode *container, const char *kind);
 static const char *target_root_display(TypeChecker *checker, AstNode *target);
 
@@ -2152,12 +2169,9 @@ static bool report_write_through_const_pointer(TypeChecker *checker,
     AstNode *pointer_expression = place_derefs_const_pointer(checker, place);
     if (!pointer_expression) return false;
     if (pointer_expression->kind == NODE_LABEL)
-        diagnostic_error_code_formatted(checker->diagnostics, "E3122",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-            pointer_expression->data.label.value);
+        NODE_ERROR_FORMATTED(checker, report_node, "E3122", pointer_expression->data.label.value);
     else
-        diagnostic_error_code(checker->diagnostics, "E3192",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0);
+        NODE_ERROR(checker, report_node, "E3192");
     return true;
 }
 
@@ -2617,6 +2631,17 @@ static const char *function_display_name(const FunctionSignature *function_signa
     return function_signature ? function_signature->name : "";
 }
 
+/* How many arguments a call must supply: the parameters without a default. */
+static int signature_minimum_arguments(const FunctionSignature *signature) {
+    if (!signature->declaration || signature->declaration->kind != NODE_FUNCTION_DECLARATION)
+        return signature->parameter_count;
+    int minimum = 0;
+    for (int index = 0; index < signature->declaration->data.function_declaration.parameter_count; index++) {
+        if (!signature->declaration->data.function_declaration.parameters[index].default_value) minimum++;
+    }
+    return minimum;
+}
+
 /* E3163 ("a helper's summary escapes one of its own parameters" — into a
  * global, another parameter's reachable storage, or a container sink) plus
  * the @mem arena-lifecycle propagation, for a call to `csig` against `node`'s
@@ -2699,9 +2724,7 @@ static void apply_call_parameter_escape_and_mem_effects(TypeChecker *checker,
             sink_name = destination_root ? destination_root : original_name;
         }
         if (origin_depth > sink_depth)
-            diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                NODE_FILE(checker, argument), argument->token.line,
-                argument->token.column, 0, sink_name, original_name);
+            NODE_ERROR_FORMATTED(checker, argument, "E3163", sink_name, original_name);
     }
     /* Pointer checker: a call to a helper that destroys/resets one of its own
      * @mem arena parameters — the parameter itself, or a field of it
@@ -2746,9 +2769,7 @@ static void apply_call_parameter_extern_effects(TypeChecker *checker,
         const char *root = NULL;
         int origin_depth = expression_origin(checker, argument, &root);
         if (origin_depth > 0 && origin_depth >= checker->current_function_scope_depth && root) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3154",
-                NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-                root);
+            NODE_ERROR_FORMATTED(checker, argument, "E3154", root);
         }
     }
 }
@@ -2770,10 +2791,8 @@ static void apply_call_parameter_write_effects(TypeChecker *checker,
         AstNode *argument = node->data.call.arguments[argument_index];
         if (is_pointer_to_pointer(const_walk_expression_type(checker, argument))) continue;
         if (!expression_points_to_const(checker, argument)) continue;
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3193",
-            NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-            "the function modifies the value through it",
-            callee_signature->declaration->data.function_declaration.parameters[argument_index].name, FUNCTION_DISPLAY_NAME(callee_signature->declaration));
+        NODE_ERROR_FORMATTED_HELP(checker, argument, "E3193",
+            "the function modifies the value through it", callee_signature->declaration->data.function_declaration.parameters[argument_index].name, FUNCTION_DISPLAY_NAME(callee_signature->declaration));
     }
 }
 
@@ -2809,9 +2828,7 @@ static void warn_if_function_deprecated(TypeChecker *checker, AstNode *node, Fun
 static void reject_test_function_reference(TypeChecker *checker, AstNode *node, FunctionSignature *signature) {
     if (!signature || !signature->declaration || signature->declaration->kind != NODE_FUNCTION_DECLARATION) return;
     if (!signature->declaration->data.function_declaration.is_test) return;
-    diagnostic_error_code_formatted(checker->diagnostics, "E5047",
-        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-        function_display_name(signature));
+    NODE_ERROR_FORMATTED(checker, node, "E5047", function_display_name(signature));
 }
 
 /* Exempt references to a deprecated struct's own type from within its own
@@ -2982,10 +2999,6 @@ typedef enum {
 
 #define STDLIB_MAX_ARGUMENT_CHECKS 5
 
-/* maximum_arguments sentinel for a variadic stdlib function (sqlite.exec):
- * any argument count at or above minimum_arguments is accepted. */
-#define STDLIB_ARGUMENTS_VARIADIC 99
-
 typedef struct {
     const char *module_name;
     const char *function_name;
@@ -3116,8 +3129,8 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"binary", "encode_u64_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "[u8]"},
     {"binary", "encode_u8",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}}, "[u8]"},
     /* encoding — byte conversion (formerly @bytes) */
-    {"encoding", "from_base64", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
-    {"encoding", "from_hex",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
+    {"encoding", "from_base64", 1, 1, true,  FALLIBLE_TYPE_ARRAY_U8, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
+    {"encoding", "from_hex",    1, 1, true,  FALLIBLE_TYPE_ARRAY_U8, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
     {"encoding", "from_string", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
     {"encoding", "to_base64",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "string"},
     {"encoding", "to_hex",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "string"},
@@ -3170,16 +3183,16 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"csv", "to_markdown", 1, 1, false, FALLIBLE_TYPE_NONE,               1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
     {"csv", "write_file", 2, 2, true,  FALLIBLE_TYPE_BOOL,                2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
     /* encoding */
-    {"encoding", "base64_decode", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"encoding", "base64_decode", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "base64_encode", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"encoding", "base64_url_decode", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"encoding", "base64_url_decode", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "base64_url_encode", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "html_escape",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "html_unescape", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"encoding", "hex_decode",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"encoding", "hex_decode",    1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "hex_encode",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "shell_escape",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"encoding", "url_decode",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"encoding", "url_decode",    1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "url_encode",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* fmt */
     {"fmt", "center",        3, 3,  false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
@@ -3229,6 +3242,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"io", "read_file",      1, 1, true,  FALLIBLE_TYPE_STRING,       1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "read_lines",     1, 2, true,  FALLIBLE_TYPE_ARRAY_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "[string]"},
     {"io", "read_stdin_all",   0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"string"},
+    {"io", "stdin_at_eof",     0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"bool"},
     {"io", "read_stdin_bytes", 0, 0, false, FALLIBLE_TYPE_NONE,       0, {{0}},"[u8]"},
     {"io", "remove_dir",     1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "remove_dir_all", 1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
@@ -3390,11 +3404,11 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"server", "text",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_STRING}}, "HttpResponse"},
     /* sqlite */
     {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            1, {{0, EXPECTED_ARGUMENT_DATABASE}}, "void"},
-    {"sqlite", "exec",         2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_BOOL,            0, {{0}},"bool"},
-    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
+    {"sqlite", "exec",         2, 2,  true,  FALLIBLE_TYPE_BOOL,            2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FALLIBLE_TYPE_STRUCT_DATABASE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "Database"},
-    {"sqlite", "query",        2, STDLIB_ARGUMENTS_VARIADIC, true,  FALLIBLE_TYPE_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
-    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       1, {{2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
+    {"sqlite", "query",        2, 2,  true,  FALLIBLE_TYPE_ARRAY_MAP,       2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "[map[string:string]]"},
+    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_i64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"strconv", "format_u64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_U64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
@@ -3586,6 +3600,27 @@ static GrayType *stdlib_first_argument_type(TypeChecker *checker, AstNode *node)
                                          : &TYPE_UNKNOWN;
 }
 
+/* The array type a stdlib call's result is derived from: argument 0's, or,
+ * when argument 0 is an empty literal that has no element type, the type of a
+ * later argument that must match it (arrays.concat({}, {1})). An empty literal
+ * with no such argument leaves nothing to infer from: E3136. */
+static GrayType *stdlib_result_array_type(TypeChecker *checker, const StdlibFunctionMetadata *metadata, AstNode *node) {
+    GrayType *first = stdlib_first_argument_type(checker, node);
+    AstNode *first_argument = node->data.call.argument_count > 0 ? node->data.call.arguments[0] : NULL;
+    if (!first_argument || first_argument->kind != NODE_ARRAY_VALUE || first_argument->data.array_value.count != 0)
+        return first;
+    for (int i = 0; i < metadata->argument_type_count; i++) {
+        int argument_index = metadata->argument_types[i].index;
+        if (metadata->argument_types[i].kind != EXPECTED_ARGUMENT_SAME_AS_FIRST || argument_index >= node->data.call.argument_count) continue;
+        AstNode *argument = node->data.call.arguments[argument_index];
+        if (argument->kind == NODE_ARRAY_VALUE && argument->data.array_value.count == 0) continue;
+        GrayType *type = resolve_expression(checker, argument);
+        if (type->kind == TYPE_KIND_ARRAY) return type;
+    }
+    NODE_ERROR(checker, first_argument, "E3136");
+    return &TYPE_UNKNOWN;
+}
+
 /* The element type of array type `t`, or unknown. */
 static GrayType *array_element_type(TypeChecker *checker, GrayType *type) {
     return type && type->kind == TYPE_KIND_ARRAY && type->element_type
@@ -3609,10 +3644,10 @@ static GrayType *resolve_return_type(TypeChecker *checker, const StdlibFunctionM
     const char *return_type_name = metadata->return_type;
     if (!return_type_name) return NULL;
     if (strcmp(return_type_name, "void") == 0) return &TYPE_VOID;
-    if (strcmp(return_type_name, "$0") == 0) return stdlib_first_argument_type(checker, node);
-    if (strcmp(return_type_name, "$elem0") == 0) return array_element_type(checker, stdlib_first_argument_type(checker, node));
+    if (strcmp(return_type_name, "$0") == 0) return stdlib_result_array_type(checker, metadata, node);
+    if (strcmp(return_type_name, "$elem0") == 0) return array_element_type(checker, stdlib_result_array_type(checker, metadata, node));
     if (strcmp(return_type_name, "[$0]") == 0) {
-        GrayType *first = stdlib_first_argument_type(checker, node);
+        GrayType *first = stdlib_result_array_type(checker, metadata, node);
         return first->kind == TYPE_KIND_UNKNOWN ? first : type_array(type_name(first));
     }
     if (strcmp(return_type_name, "$common") == 0) {
@@ -3693,9 +3728,7 @@ static void typechecker_check_strconv_base(TypeChecker *checker, const char *mod
     if (base_argument->kind != NODE_INTEGER_LITERAL) return;
     int64_t base = base_argument->data.integer_literal.value;
     if (base < 2 || base > 36) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5009",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            (long long)base, function_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5009", (long long)base, function_name);
     }
 }
 
@@ -3740,9 +3773,7 @@ static void check_function_argument_signature(TypeChecker *checker, AstNode *arg
     }
     if (argument_type->name && strcmp(argument_type->name, "func") != 0 &&
         strcmp(argument_type->name, expected_signature) != 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-            NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-            expected_signature, type_display_name(checker, argument_type));
+        NODE_ERROR_FORMATTED(checker, argument, "E3066", expected_signature, type_display_name(checker, argument_type));
     }
 }
 
@@ -3767,9 +3798,8 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
                     !type_argument_names_a_type(checker, argument->data.label.value)) {
                     char *help = argument->kind == NODE_LABEL
                         ? removed_type_help(checker, argument->data.label.value) : NULL;
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E4037",
-                        NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0, help,
-                        module_name, function_name, argument_index + 1);
+                    NODE_ERROR_FORMATTED_HELP(checker, argument, "E4037",
+                        help, module_name, function_name, argument_index + 1);
                 }
                 continue;
             }
@@ -3791,10 +3821,8 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
                     slot = stdlib_common_number_type(checker, metadata, node);
                     if (!slot) {
                         if (!was_common_number_reported)
-                            diagnostic_error_code_formatted_help(checker->diagnostics, "E5057",
-                                NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                                "convert one with cast()",
-                                module_name, function_name);
+                            NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E5057",
+                                "convert one with cast()", module_name, function_name);
                         was_common_number_reported = true;
                         slot = &TYPE_UNKNOWN;
                     }
@@ -3823,7 +3851,7 @@ static int levenshtein(const char *left, const char *right) {
     int left_length = (int)strlen(left), right_length = (int)strlen(right);
     if (left_length == 0) return right_length;
     if (right_length == 0) return left_length;
-    int stack_row[256];
+    int stack_row[256] = {0};
     int *distance_row = right_length < 256 ? stack_row : xmalloc(sizeof(int) * (right_length + 1));
     for (int j = 0; j <= right_length; j++) distance_row[j] = j;
     for (int i = 1; i <= left_length; i++) {
@@ -3970,22 +3998,23 @@ static bool report_write_to_module_variable(TypeChecker *checker, AstNode *repor
     }
     Symbol *symbol = qualified_module_symbol(checker, reference);
     if (!symbol || !symbol->is_mutable) return false;
-    diagnostic_error_code_formatted(checker->diagnostics, "E6008",
-        NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
+    NODE_ERROR_FORMATTED(checker, report_node, "E6008",
         reference->data.member.object->data.label.value, reference->data.member.member, "variable");
     return true;
 }
 
 /* E5007: a mutating array or map function whose container is reached through
- * a qualified module constant (`arrays.append(lib.NUMS, v)`). */
-static void report_write_to_module_constant(TypeChecker *checker, AstNode *report_node,
+ * an immutable binding: a constant, a by-value parameter, or a qualified
+ * module constant, directly (`arrays.append(xs, v)`) or through a field or
+ * index (`arrays.append(s.xs, v)`). A field or index chain rooted at a
+ * pointer is left alone, as the pointed-to memory is independent of the
+ * binding. */
+static void report_write_to_const_container(TypeChecker *checker, AstNode *report_node,
                                             AstNode *container, const char *kind) {
-    AstNode *reference = target_root_module_reference(checker, container);
-    Symbol *symbol = reference ? qualified_module_symbol(checker, reference) : NULL;
+    Symbol *symbol = target_root_symbol(checker, container);
     if (!symbol || symbol->is_mutable) return;
-    diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-        NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-        kind, target_root_display(checker, container));
+    if (container->kind != NODE_LABEL && symbol->type && symbol->type->kind == TYPE_KIND_POINTER) return;
+    NODE_ERROR_FORMATTED(checker, report_node, "E5007", kind, target_root_display(checker, container));
 }
 
 /* Nearest imported module name to `name`, or NULL. Kept separate from
@@ -4616,8 +4645,7 @@ static DeclarationEntry *checker_cache_resolution(TypeChecker *checker, AstNode 
         const char *second_module = NULL;
         module_resolve_unqualified(checker->modules, &scope, written, &second_module);
         if (second_module) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4031",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E4031",
                 written, entry->module_name, second_module, entry->module_name, written);
             mark_import_used(checker, second_module);
         }
@@ -4642,8 +4670,7 @@ static bool reject_if_private(TypeChecker *checker, AstNode *node,
     DeclarationEntry *entry = module_resolve_qualified(checker->modules, &scope, module_name, name, &status);
     if (status != RESOLVE_PRIVATE) return false;
     const char *code = entry->kind == DECLARATION_ALIAS ? "E4021" : "E4015";
-    diagnostic_error_code_formatted(checker->diagnostics, code,
-        NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+    NODE_ERROR_FORMATTED(checker, node, code, name);
     return true;
 }
 
@@ -4658,8 +4685,7 @@ static bool reject_private_bare_use(TypeChecker *checker, AstNode *node,
         return false;
     ResolveScope scope = checker_scope(checker);
     if (is_module_declaration_visible(&scope, entry)) return false;
-    diagnostic_error_code_formatted(checker->diagnostics, "E4015",
-        NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
+    NODE_ERROR_FORMATTED(checker, node, "E4015", entry->name);
     return true;
 }
 
@@ -4915,9 +4941,7 @@ static DeclarationEntry *private_target_leaf(TypeChecker *checker, const char *w
 static void reject_private_type(TypeChecker *checker, AstNode *node, const char *written) {
     DeclarationEntry *entry = private_type_leaf(checker, written);
     if (!entry) return;
-    diagnostic_error_code_formatted(checker->diagnostics,
-        entry->kind == DECLARATION_ALIAS ? "E4021" : "E4015",
-        NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
+    NODE_ERROR_FORMATTED(checker, node, entry->kind == DECLARATION_ALIAS ? "E4021" : "E4015", entry->name);
 }
 
 /* `mod.Type` written inside an expression — a call, a member access — names
@@ -4959,8 +4983,7 @@ static bool error_type_in_container(const char *written, bool in_container) {
 static void reject_error_in_container(TypeChecker *checker, AstNode *node,
                                       const char *written) {
     if (error_type_in_container(resolve_type_alias(checker, written), false)) {
-        diagnostic_error_code(checker->diagnostics, "E3153",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3153");
     }
 }
 
@@ -5240,26 +5263,18 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
     if (destination_type->kind == TYPE_KIND_RANGE && source_type->kind == TYPE_KIND_RANGE)
         return strcmp(destination_type->name, source_type->name) == 0;
     if (destination_type->kind == source_type->kind) return true;
-    /* Enum → integer (enums are integer-backed) */
-    if (is_integer_kind(destination_type->kind) && source_type->kind == TYPE_KIND_ENUM) return true;
-    /* String enum → string */
-    if (destination_type->kind == TYPE_KIND_STRING && source_type->kind == TYPE_KIND_ENUM &&
-        typechecker_enum_is_string(checker, source_type->name))
-        return true;
     return false;
 }
 
 /* True when an argument of type `arg_t` cannot be passed to a parameter of
  * type `param_t`. Owns the implicit coercions every call path accepts: an
- * integer for an enum or struct, a bool for an integer, and nil for a pointer
+ * integer for an enum, and nil for a pointer
  * or Error. */
 static bool argument_type_mismatches(TypeChecker *checker, GrayType *parameter_type, GrayType *argument_type) {
     return argument_type && parameter_type &&
         argument_type->kind != TYPE_KIND_UNKNOWN && parameter_type->kind != TYPE_KIND_UNKNOWN &&
         !types_assignable(checker, parameter_type, argument_type) &&
         !(parameter_type->kind == TYPE_KIND_ENUM && is_integer_kind(argument_type->kind)) &&
-        !(parameter_type->kind == TYPE_KIND_STRUCT && is_integer_kind(argument_type->kind)) &&
-        !(is_integer_kind(parameter_type->kind) && argument_type->kind == TYPE_KIND_BOOL) &&
         !(argument_type->kind == TYPE_KIND_NIL && (parameter_type->kind == TYPE_KIND_POINTER || parameter_type->kind == TYPE_KIND_ERROR));
 }
 
@@ -5907,7 +5922,7 @@ static void check_map_literal_duplicate_keys(TypeChecker *checker, AstNode *node
                 is_duplicate = true;
             }
             if (is_duplicate) {
-                diagnostic_error_code(checker->diagnostics, "E12006", NODE_FILE(checker, right_key), right_key->token.line, right_key->token.column, 0);
+                NODE_ERROR(checker, right_key, "E12006");
             }
         }
     }
@@ -5927,9 +5942,7 @@ static void check_fixed_array_element_size(TypeChecker *checker, const char *ele
     if (!try_get_static_array_length(checker, element, &actual_length)) {
         element->runtime_fixed_length = fixed_size;
     } else if (actual_length > fixed_size) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3052",
-            NODE_FILE(checker, element), element->token.line, element->token.column, 0,
-            fixed_size, actual_length);
+        NODE_ERROR_FORMATTED(checker, element, "E3052", fixed_size, actual_length);
     } else if (actual_length < fixed_size) {
         element->zero_fill_length = fixed_size;
         diagnostic_warning_code_formatted(checker->diagnostics, "W3003",
@@ -5949,9 +5962,8 @@ static GrayType *check_array_literal_as(TypeChecker *checker, AstNode *node, Gra
         reject_multi_return_in_single_position(checker, element);
         mark_immutable_literal_source(checker, element);
         if (literal_entry_mismatches(checker, element_type, entry_type)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3053", NODE_FILE(checker, element),
-                element->token.line, element->token.column, 0, "a collection literal",
-                type_display_name(checker, element_type), type_display_name(checker, entry_type));
+            NODE_ERROR_FORMATTED(checker, element, "E3053",
+                "a collection literal", type_display_name(checker, element_type), type_display_name(checker, entry_type));
         }
     }
     if (!checker->should_suppress_type_table_writes) typetable_set(checker->type_table, node, target);
@@ -5974,13 +5986,11 @@ static GrayType *check_map_literal_as(TypeChecker *checker, AstNode *node, GrayT
         reject_multi_return_in_single_position(checker, value_node);
         mark_immutable_literal_source(checker, value_node);
         if (literal_entry_mismatches(checker, key_type, checked_key_type)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                NODE_FILE(checker, key_node), key_node->token.line, key_node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, key_node, "E3053",
                 "a map literal key", type_display_name(checker, key_type), type_display_name(checker, checked_key_type));
         }
         if (literal_entry_mismatches(checker, value_type, checked_value_type)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, value_node, "E3053",
                 "a map literal value", type_display_name(checker, value_type), type_display_name(checker, checked_value_type));
         }
     }
@@ -6015,20 +6025,16 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
             char *text = literal_text(checker, &folded);
             const char *minimum_text = NULL, *maximum_bound_text = NULL;
             if (!folded.is_decimal && !literal_fits_some_integer(&folded)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3046", NODE_FILE(checker, value),
-                    value->token.line, value->token.column, 0, text);
+                NODE_ERROR_FORMATTED(checker, value, "E3046", text);
             } else if (take->kind == TYPE_KIND_FLOATING_POINT) {
                 double limit = strcmp(take->name, "f32") == 0 ? (double)FLT_MAX : DBL_MAX;
                 char *maximum_limit_text = decimal_text(checker, limit);
-                diagnostic_error_code_formatted(checker->diagnostics, "E3036",
-                    NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, value, "E3036",
                     text, take->name, typechecker_format(checker, "-%s", maximum_limit_text), maximum_limit_text);
             } else if (integer_type_range(take->name, &minimum_text, &maximum_bound_text)) {
                 bool is_unsigned_negative = take->kind == TYPE_KIND_UNSIGNED_INTEGER && folded.is_negative;
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3036",
-                    NODE_FILE(checker, value), value->token.line, value->token.column, 0,
-                    is_unsigned_negative ? "unsigned types cannot hold negative values" : NULL,
-                    text, take->name, minimum_text, maximum_bound_text);
+                NODE_ERROR_FORMATTED_HELP(checker, value, "E3036",
+                    is_unsigned_negative ? "unsigned types cannot hold negative values" : NULL, text, take->name, minimum_text, maximum_bound_text);
             }
         }
         return take;
@@ -6058,11 +6064,9 @@ static GrayType *check_expression_as(TypeChecker *checker, AstNode *value, GrayT
             is_wide_integer_type_name(type->name) && !checker->should_suppress_type_table_writes)
             value->widen_to = target->name;
         if (conversion == CONVERSION_NARROW) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3155", NODE_FILE(checker, value),
-                value->token.line, value->token.column, 0, type->name, target->name, target->name);
+            NODE_ERROR_FORMATTED(checker, value, "E3155", type->name, target->name, target->name);
         } else if (conversion == CONVERSION_SIGN_CROSS) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3019", NODE_FILE(checker, value),
-                value->token.line, value->token.column, 0, type->name, target->name);
+            NODE_ERROR_FORMATTED(checker, value, "E3019", type->name, target->name);
         }
     }
     return type;
@@ -6312,8 +6316,7 @@ static void reject_void_in_context(TypeChecker *checker, AstNode *expression,
         expression->data.call.function->kind == NODE_LABEL)
         help = typechecker_format(checker, "'%s' does not return a value",
             expression->data.call.function->data.label.value);
-    diagnostic_error_code_formatted_help(checker->diagnostics, "E3187",
-        NODE_FILE(checker, expression), expression->token.line, expression->token.column, 0, help, context);
+    NODE_ERROR_FORMATTED_HELP(checker, expression, "E3187", help, context);
 }
 
 /* Classify a call whose result is multiple values and emit the right
@@ -6392,7 +6395,7 @@ static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode
  * hiding the real bug. */
 static void emit_unknown_stdlib_function(TypeChecker *checker, const char *module_name,
                                     const char *member_function_name, AstNode *node) {
-    diagnostic_error_code_formatted(checker->diagnostics, "E4005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, module_name, member_function_name);
+    NODE_ERROR_FORMATTED(checker, node, "E4005", module_name, member_function_name);
 }
 
 /* Resolve .VARIANT implicit enum selector using expected type context.
@@ -6403,9 +6406,7 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
 
     /* No type context — emit E3110 */
     if (!expected || expected->kind != TYPE_KIND_ENUM || !expected->name) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3110",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            variant, variant);
+        NODE_ERROR_FORMATTED(checker, node, "E3110", variant, variant);
         return &TYPE_UNKNOWN;
     }
 
@@ -6429,9 +6430,7 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
     }
 
     if (!found) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3047",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            enum_name, variant);
+        NODE_ERROR_FORMATTED(checker, node, "E3047", enum_name, variant);
         return &TYPE_UNKNOWN;
     }
 
@@ -6467,14 +6466,10 @@ static void check_mutable_argument(TypeChecker *checker, AstNode *argument,
     if (argument->kind == NODE_LABEL) {
         Symbol *symbol = scope_lookup(checker->current_scope, argument->data.label.value);
         if (symbol && !symbol->is_mutable) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3027",
-                NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-                "a constant", parameter_description, function_display);
+            NODE_ERROR_FORMATTED(checker, argument, "E3027", "a constant", parameter_description, function_display);
         }
     } else if (qualifier && is_enum_name(checker, qualifier)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3027",
-            NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-            "an enum constant", parameter_description, function_display);
+        NODE_ERROR_FORMATTED(checker, argument, "E3027", "an enum constant", parameter_description, function_display);
     } else if (argument->kind == NODE_MEMBER_EXPRESSION || argument->kind == NODE_INDEX_EXPRESSION) {
         /* A field or element of a const is as immutable as the const itself.
          * Walk the member/index chain to its root symbol — the same const
@@ -6486,8 +6481,7 @@ static void check_mutable_argument(TypeChecker *checker, AstNode *argument,
             Symbol *symbol = target_root_symbol(checker, argument);
             if (symbol && !symbol->is_mutable &&
                 !(symbol->type && symbol->type->kind == TYPE_KIND_POINTER)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3027",
-                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, argument, "E3027",
                     "a field or element of a constant", parameter_description, function_display);
             }
         }
@@ -6500,8 +6494,7 @@ static void check_mutable_argument(TypeChecker *checker, AstNode *argument,
                argument->kind != NODE_INDEX_EXPRESSION) {
         /* Anything else — a literal, an arithmetic or logical expression, a
          * prefix expression (-x, !x, ~x) — is not a mutable target. */
-        diagnostic_error_code_formatted(checker->diagnostics, "E3027",
-            NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, argument, "E3027",
             "a literal or expression", parameter_description, function_display);
     }
 }
@@ -6616,9 +6609,7 @@ static void reject_non_json_parse_target(TypeChecker *checker, AstNode *node,
     if (call_is_stdlib_function(checker, value, "json", "parse") &&
         target_type && target_type->kind != TYPE_KIND_UNKNOWN &&
         !type_is_json_struct_or_array(checker, target_type)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3174",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            type_display_name(checker, target_type), "parse");
+        NODE_ERROR_FORMATTED(checker, node, "E3174", type_display_name(checker, target_type), "parse");
     }
 }
 
@@ -6656,7 +6647,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
         AstNode *first_argument_node = node->data.call.arguments[0];
         GrayType *first_argument_type = resolve_expression(checker, first_argument_node);
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E12001", NODE_FILE(checker, first_argument_node), first_argument_node->token.line, first_argument_node->token.column, 0, member_function_name);
+            NODE_ERROR_FORMATTED(checker, first_argument_node, "E12001", member_function_name);
         }
     }
     if (strcmp(member_function_name, "is_equal") == 0 && node->data.call.argument_count >= 2) {
@@ -6670,8 +6661,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
             bool is_value_match = first_map_type->value_type && second_argument_type->value_type &&
                 strcmp(first_map_type->value_type, second_argument_type->value_type) == 0;
             if (!key_match || !is_value_match) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3195",
-                    NODE_FILE(checker, second_argument), second_argument->token.line, second_argument->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, second_argument, "E3195",
                     first_map_type->key_type ? first_map_type->key_type : "?", first_map_type->value_type ? first_map_type->value_type : "?", second_argument_type->key_type ? second_argument_type->key_type : "?", second_argument_type->value_type ? second_argument_type->value_type : "?");
             }
             const char *bad_member = NULL;
@@ -6681,10 +6671,8 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
                     bad_member = first_map_type->value_type;
             }
             if (bad_member) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E5058",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
-                    "only primitive and string element types are supported",
-                    "maps", "map values", bad_member);
+                NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
+                    "only primitive and string element types are supported", "maps", "map values", bad_member);
             }
         }
     }
@@ -6694,9 +6682,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
         if (first_map_type && first_map_type->kind == TYPE_KIND_MAP && first_map_type->value_type) {
             GrayType *value_type = type_from_name(first_map_type->value_type);
             if (value_type->kind == TYPE_KIND_ARRAY || value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_STRUCT) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E12007",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
-                    first_map_type->value_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E12007", first_map_type->value_type);
             }
         }
     }
@@ -6704,16 +6690,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
     if ((strcmp(member_function_name, "clear") == 0 || strcmp(member_function_name, "remove_key") == 0) &&
         node->data.call.argument_count > 0) {
         AstNode *first_argument_node = node->data.call.arguments[0];
-        if (first_argument_node->kind == NODE_LABEL) {
-            Symbol *symbol = scope_lookup(checker->current_scope, first_argument_node->data.label.value);
-            if (symbol && !symbol->is_mutable) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "map", first_argument_node->data.label.value);
-            }
-        } else {
-            report_write_to_module_constant(checker, node, first_argument_node, "map");
-        }
+        report_write_to_const_container(checker, node, first_argument_node, "map");
     }
     return result;
 }
@@ -6732,16 +6709,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
          strcmp(member_function_name, "clear") == 0) &&
         node->data.call.argument_count > 0) {
         AstNode *first_argument = node->data.call.arguments[0];
-        if (first_argument->kind == NODE_LABEL) {
-            Symbol *symbol = scope_lookup(checker->current_scope, first_argument->data.label.value);
-            if (symbol && !symbol->is_mutable) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "array", first_argument->data.label.value);
-            }
-        } else {
-            report_write_to_module_constant(checker, node, first_argument, "array");
-        }
+        report_write_to_const_container(checker, node, first_argument, "array");
     }
     /* E5051: length-changing array functions on a fixed-size struct
      * field, resolved through member-expression chains (o.field,
@@ -6755,9 +6723,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         node->data.call.argument_count > 0) {
         AstNode *first_argument = node->data.call.arguments[0];
         if (first_argument->kind == NODE_MEMBER_EXPRESSION && member_expression_is_fixed_array_field(checker, first_argument)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5051",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                member_function_name, first_argument->data.member.member);
+            NODE_ERROR_FORMATTED(checker, node, "E5051", member_function_name, first_argument->data.member.member);
         }
     }
     /* E5051: 'fill' is length-changing too — gray_arrays_fill clears the
@@ -6776,9 +6742,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool count_matches = literal_i64_value(node->data.call.arguments[2], &count_literal) &&
                 count_literal == fixed_size;
             if (!count_matches) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5051",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    member_function_name, first_argument->data.member.member);
+                NODE_ERROR_FORMATTED(checker, node, "E5051", member_function_name, first_argument->data.member.member);
             }
         }
     }
@@ -6806,7 +6770,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool is_integer_enum = element_type->kind == TYPE_KIND_ENUM && element_type->name &&
                 !typechecker_enum_is_string(checker, element_type->name);
             if (!type_is_numeric(element_type) && !is_integer_enum) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E9002", NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0, member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, array_type->element_type);
             }
         }
     }
@@ -6829,9 +6793,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool orderable = type_is_numeric(element_type) || element_type->kind == TYPE_KIND_STRING ||
                               element_type->kind == TYPE_KIND_BOOL || element_type->kind == TYPE_KIND_ENUM;
             if (!orderable) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E9007",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
-                    member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9007", member_function_name, array_type->element_type);
             }
         }
     }
@@ -6844,7 +6806,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         if (array_type && array_type->kind == TYPE_KIND_ARRAY && array_type->element_type) {
             GrayType *element_type = type_from_name(array_type->element_type);
             if (!type_is_numeric(element_type)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E9002", NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0, member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, array_type->element_type);
             }
         }
     }
@@ -6854,10 +6816,8 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
             if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E5058",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
-                    "only primitive and string element types are supported",
-                    "arrays", "array elements", first_argument_type->element_type);
+                NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
+                    "only primitive and string element types are supported", "arrays", "array elements", first_argument_type->element_type);
             }
         }
     }
@@ -6867,9 +6827,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
             if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E9006",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
-                    first_argument_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", first_argument_type->element_type);
             }
         }
     }
@@ -6885,9 +6843,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
                 !(callback_argument->kind == NODE_CALL_EXPRESSION &&
                   callback_argument->data.call.function->kind == NODE_LABEL &&
                   strcmp(callback_argument->data.call.function->data.label.value, "ref") == 0)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E9003",
-                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                    member_function_name);
+                NODE_ERROR_FORMATTED(checker, callback_argument, "E9003", member_function_name);
             } else {
                 const char *reference_name = NULL;
                 if (callback_argument->kind == NODE_FUNCTION_REFERENCE &&
@@ -6907,30 +6863,23 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
                                 char *message = typechecker_format(checker,
                                     "map callback must take 1 parameter, got %d",
                                     callback_function_signature->parameter_count);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (callback_function_signature->return_count < 1) {
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004",
                                     member_function_name, "map callback must return a value");
                             } else if (element_type_name && callback_function_signature->parameter_types[0] &&
                                        strcmp(type_name(callback_function_signature->parameter_types[0]), element_type_name) != 0) {
                                 char *message = typechecker_format(checker,
                                     "map callback takes '%s' but array element type is '%s'",
                                     type_name(callback_function_signature->parameter_types[0]), element_type_name);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (element_type_name && callback_function_signature->return_count >= 1 &&
                                        callback_function_signature->return_types[0] &&
                                        strcmp(type_name(callback_function_signature->return_types[0]), element_type_name) != 0) {
                                 char *message = typechecker_format(checker,
                                     "map callback must return the same type as the array element type (%s), got '%s'",
                                     element_type_name, type_name(callback_function_signature->return_types[0]));
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             }
                         } else if (strcmp(member_function_name, "filter") == 0 ||
                                    strcmp(member_function_name, "any") == 0 ||
@@ -6941,45 +6890,34 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
                                 char *message = typechecker_format(checker,
                                     "%s callback must take 1 parameter, got %d",
                                     member_function_name, callback_function_signature->parameter_count);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (callback_function_signature->return_count < 1 ||
                                        callback_function_signature->return_types[0]->kind != TYPE_KIND_BOOL) {
                                 char *message = typechecker_format(checker,
                                     "%s callback must return bool", member_function_name);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (element_type_name && callback_function_signature->parameter_types[0] &&
                                        strcmp(type_name(callback_function_signature->parameter_types[0]), element_type_name) != 0) {
                                 char *message = typechecker_format(checker,
                                     "%s callback takes '%s' but array element type is '%s'",
                                     member_function_name, type_name(callback_function_signature->parameter_types[0]), element_type_name);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             }
                         } else { /* reduce */
                             if (callback_function_signature->parameter_count != 2) {
                                 char *message = typechecker_format(checker,
                                     "reduce callback must take 2 parameters, got %d",
                                     callback_function_signature->parameter_count);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (callback_function_signature->return_count < 1) {
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004",
                                     member_function_name, "reduce callback must return a value");
                             } else if (element_type_name && callback_function_signature->parameter_types[1] &&
                                        strcmp(type_name(callback_function_signature->parameter_types[1]), element_type_name) != 0) {
                                 char *message = typechecker_format(checker,
                                     "reduce callback's element parameter takes '%s' but array element type is '%s'",
                                     type_name(callback_function_signature->parameter_types[1]), element_type_name);
-                                diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                                    member_function_name, message);
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004", member_function_name, message);
                             } else if (callback_function_signature->return_count >= 1 && callback_function_signature->return_types[0] &&
                                        node->data.call.argument_count > 1) {
                                 AstNode *initializer_argument = node->data.call.arguments[1];
@@ -7008,8 +6946,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
                                         char *message = typechecker_format(checker,
                                             "reduce callback must return the same type as the accumulator (%s)",
                                             initializer_type_name);
-                                        diagnostic_error_code_formatted(checker->diagnostics, "E9004",
-                                            NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
+                                        NODE_ERROR_FORMATTED(checker, callback_argument, "E9004",
                                             member_function_name, message);
                                     }
                                 }
@@ -7088,8 +7025,7 @@ static void check_format_value_is_primitive(TypeChecker *checker, const char *me
         strncpy(type_name_buffer, type_name(value_type), sizeof(type_name_buffer) - 1);
         type_name_buffer[sizeof(type_name_buffer) - 1] = '\0';
     }
-    diagnostic_error_code_formatted(checker->diagnostics, "E3017", NODE_FILE(checker, value), value->token.line,
-        value->token.column, 0, member_function_name, type_name_buffer);
+    NODE_ERROR_FORMATTED(checker, value, "E3017", member_function_name, type_name_buffer);
 }
 
 /* printf family: fmt.printf(format string, args [T]). The format string must
@@ -7121,9 +7057,7 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
     char *specifiers = arena_allocate(checker->arena, (size_t)format_length + 1);
     int directive_count = 0;
     if (!is_format_literal) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3086",
-            NODE_FILE(checker, format_argument), format_argument->token.line,
-            format_argument->token.column, 0, member_function_name);
+        NODE_ERROR_FORMATTED(checker, format_argument, "E3086", member_function_name);
     }
     const char *cursor = format_text;
     while (cursor < format_end) {
@@ -7131,9 +7065,7 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
         cursor++;
         if (!*cursor) {
             /* Dangling % at the end of the format string or before a NUL */
-            diagnostic_error_code_formatted(checker->diagnostics, "E3106",
-                NODE_FILE(checker, format_argument), format_argument->token.line,
-                format_argument->token.column, 0, member_function_name);
+            NODE_ERROR_FORMATTED(checker, format_argument, "E3106", member_function_name);
             continue;
         }
         if (*cursor == '%') { cursor++; continue; }
@@ -7166,11 +7098,8 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
                 cursor++;
             }
             if (amount > INT32_MAX) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3179",
-                    NODE_FILE(checker, format_argument), format_argument->token.line,
-                    format_argument->token.column, 0, member_function_name,
-                    part == 0 ? "width" : "precision",
-                    typechecker_format(checker, "%.*s", (int)(cursor - digits), digits));
+                NODE_ERROR_FORMATTED(checker, format_argument, "E3179",
+                    member_function_name, part == 0 ? "width" : "precision", typechecker_format(checker, "%.*s", (int)(cursor - digits), digits));
             }
         }
         const char *length_modifier = cursor;
@@ -7180,23 +7109,17 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
         int length_modifier_length = (int)(cursor - length_modifier);
         char specifier = *cursor ? *cursor++ : 0;
         if (!specifier) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3106",
-                NODE_FILE(checker, format_argument), format_argument->token.line,
-                format_argument->token.column, 0, member_function_name);
+            NODE_ERROR_FORMATTED(checker, format_argument, "E3106", member_function_name);
             continue;
         }
         if (!strchr("diuxXofgeGEscb", specifier)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3105",
-                NODE_FILE(checker, format_argument), format_argument->token.line,
-                format_argument->token.column, 0, member_function_name, specifier);
+            NODE_ERROR_FORMATTED(checker, format_argument, "E3105", member_function_name, specifier);
             specifier = 0;
         } else if (length_modifier_length > 0) {
             /* Codegen sizes every value from its type; a C length modifier
              * would make C read the value at a different width. */
-            diagnostic_error_code_formatted(checker->diagnostics, "E3177",
-                NODE_FILE(checker, format_argument), format_argument->token.line,
-                format_argument->token.column, 0, member_function_name,
-                typechecker_format(checker, "%.*s", length_modifier_length, length_modifier));
+            NODE_ERROR_FORMATTED(checker, format_argument, "E3177",
+                member_function_name, typechecker_format(checker, "%.*s", length_modifier_length, length_modifier));
         } else {
             /* Flags and precision a conversion gives no meaning to (C leaves
              * most of them undefined) are rejected rather than passed on. */
@@ -7208,16 +7131,12 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
             bool allows_precision = !strchr("cb", specifier);
             for (int flag_index = 0; flag_index < flag_count; flag_index++) {
                 if (strchr(allowed_flags, flags[flag_index])) continue;
-                diagnostic_error_code_formatted(checker->diagnostics, "E3178",
-                    NODE_FILE(checker, format_argument), format_argument->token.line,
-                    format_argument->token.column, 0, member_function_name,
-                    typechecker_format(checker, "the '%c' flag", flags[flag_index]), specifier);
+                NODE_ERROR_FORMATTED(checker, format_argument, "E3178",
+                    member_function_name, typechecker_format(checker, "the '%c' flag", flags[flag_index]), specifier);
                 break;
             }
             if (has_precision && !allows_precision) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3178",
-                    NODE_FILE(checker, format_argument), format_argument->token.line,
-                    format_argument->token.column, 0, member_function_name, "a precision", specifier);
+                NODE_ERROR_FORMATTED(checker, format_argument, "E3178", member_function_name, "a precision", specifier);
             }
         }
         specifiers[directive_count++] = specifier;
@@ -7248,8 +7167,7 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
                 checker_resolve_type_name(checker, values_type->element_type)));
             check_format_value_is_primitive(checker, member_function_name, values_argument, variable_element_type);
         } else if (values_type && values_type->kind != TYPE_KIND_UNKNOWN) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5026",
-                NODE_FILE(checker, values_argument), values_argument->token.line, values_argument->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, values_argument, "E5026",
                 2, typechecker_format(checker, "fmt.%s", member_function_name), "an array of values", type_display_name(checker, values_type));
         }
     }
@@ -7273,22 +7191,15 @@ static void check_printf_call(TypeChecker *checker, AstNode *node, const char *m
         const char *expected = format_directive_mismatch(specifier, value_type);
         if (expected) {
             char specifier_text[2] = { specifier, '\0' };
-            diagnostic_error_code_formatted(checker->diagnostics, "E3088",
-                NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, value, "E3088",
                 member_function_name, specifier_text, expected, element_index, type_name(value_type));
         }
     }
     /* A literal's element count must match the directive count. */
     if (is_literal && element_count < directive_count) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3107",
-            NODE_FILE(checker, format_argument), format_argument->token.line,
-            format_argument->token.column, 0,
-            member_function_name, directive_count, element_count);
+        NODE_ERROR_FORMATTED(checker, format_argument, "E3107", member_function_name, directive_count, element_count);
     } else if (is_literal && element_count > directive_count) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3108",
-            NODE_FILE(checker, format_argument), format_argument->token.line,
-            format_argument->token.column, 0,
-            member_function_name, directive_count, element_count);
+        NODE_ERROR_FORMATTED(checker, format_argument, "E3108", member_function_name, directive_count, element_count);
     }
 }
 
@@ -7313,9 +7224,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     if (typechecker_has_named_arguments(node)) {
         char qualified_function_name[MESSAGE_BUFFER_SIZE];
         snprintf(qualified_function_name, sizeof(qualified_function_name), "%s.%s", module_name, member_function_name);
-        diagnostic_error_code_formatted(checker->diagnostics, "E5034",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            qualified_function_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5034", qualified_function_name);
     }
     /* Validate argument count for stdlib function calls */
     typechecker_check_stdlib_argument_count(checker, module_name, member_function_name, node);
@@ -7364,8 +7273,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         if (strcmp(member_function_name, "neg") == 0 && node->data.call.argument_count > 0 &&
             result && result->name && is_unsigned_integer_type_name(result->name)) {
             AstNode *first_argument_node = node->data.call.arguments[0];
-            diagnostic_error_code_formatted(checker->diagnostics, "E3096", NODE_FILE(checker, first_argument_node),
-                first_argument_node->token.line, first_argument_node->token.column, 0, result->name);
+            NODE_ERROR_FORMATTED(checker, first_argument_node, "E3096", result->name);
         }
     } else if (strcmp(module_name, "arrays") == 0) {
         result = resolve_arrays_call(checker, node, member_function_name, result);
@@ -7384,8 +7292,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (first_argument_node->kind == NODE_LABEL) {
                 Symbol *symbol = scope_lookup(checker->current_scope, first_argument_node->data.label.value);
                 if (symbol && !symbol->is_mutable) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E5007",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    NODE_ERROR_FORMATTED(checker, node, "E5007",
                         "string builder", first_argument_node->data.label.value);
                 }
             }
@@ -7398,8 +7305,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 !(first_argument_node->kind == NODE_CALL_EXPRESSION &&
                   first_argument_node->data.call.function->kind == NODE_LABEL &&
                   strcmp(first_argument_node->data.call.function->data.label.value, "ref") == 0)) {
-                diagnostic_error_code(checker->diagnostics, "E7006",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E7006");
             }
             else {
                 check_function_argument_signature(checker, first_argument_node, "threads", member_function_name, 1,
@@ -7451,8 +7357,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             AstNode *first_argument = node->data.call.arguments[0];
             GrayType *first_argument_type = resolve_expression(checker, first_argument);
             if (first_argument_type && first_argument_type->kind != TYPE_KIND_UNKNOWN && !type_is_json_struct_or_array(checker, first_argument_type)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3174",
-                    NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, first_argument, "E3174",
                     type_display_name(checker, first_argument_type), "stringify");
             }
         }
@@ -7474,17 +7379,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 callback_argument->data.call.function->kind == NODE_LABEL &&
                 strcmp(callback_argument->data.call.function->data.label.value, "ref") == 0;
             if (callback_argument->kind != NODE_FUNCTION_REFERENCE && !is_reference_call) {
-                diagnostic_error_code_help(checker->diagnostics, "E5060",
-                    NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0,
-                    "use '()func_name' to pass a function");
+                NODE_ERROR_HELP(checker, callback_argument, "E5060", "use '()func_name' to pass a function");
             } else if (callback_argument->kind == NODE_FUNCTION_REFERENCE &&
                        callback_argument->data.function_reference.function->kind == NODE_LABEL) {
                 FunctionSignature *callback_function_signature = find_function(checker,
                     callback_argument->data.function_reference.function->data.label.value);
                 if (callback_function_signature && (callback_function_signature->parameter_count != 1 || callback_function_signature->return_count < 1 ||
                               callback_function_signature->return_types[0]->kind != TYPE_KIND_BOOL)) {
-                    diagnostic_error_code(checker->diagnostics, "E5061",
-                        NODE_FILE(checker, callback_argument), callback_argument->token.line, callback_argument->token.column, 0);
+                    NODE_ERROR(checker, callback_argument, "E5061");
                 }
             }
         }
@@ -7616,8 +7518,7 @@ static const char *resolve_type_argument(TypeChecker *checker, AstNode *node, in
         }
     }
     if (type_argument->kind != NODE_LABEL) {
-        diagnostic_error_code(checker->diagnostics, "E3128", NODE_FILE(checker, type_argument),
-            type_argument->token.line, type_argument->token.column, 0);
+        NODE_ERROR(checker, type_argument, "E3128");
         return NULL;
     }
     const char *label = type_argument->data.label.value;
@@ -7629,8 +7530,7 @@ static const char *resolve_type_argument(TypeChecker *checker, AstNode *node, in
     }
     /* Must not be a variable in scope */
     if (scope_lookup(checker->current_scope, label)) {
-        diagnostic_error_code(checker->diagnostics, "E3128", NODE_FILE(checker, type_argument),
-            type_argument->token.line, type_argument->token.column, 0);
+        NODE_ERROR(checker, type_argument, "E3128");
         return NULL;
     }
     /* Must name a type. Which types the function actually accepts is decided by
@@ -7712,15 +7612,11 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             if (!generic_argument_conflicts(checker, expected_type, argument_type)) continue;
             int generic_index = generic_bindings_find(call_bindings, parameter->type_name);
             if (generic_index >= 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, is_struct_function ? "E3200" : "E3159",
-                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-                    parameter->type_name, function_name, call_bindings->types[generic_index],
-                    argument_index + 1, type_display_name(checker, argument_type));
+                NODE_ERROR_FORMATTED(checker, argument, is_struct_function ? "E3200" : "E3159",
+                    parameter->type_name, function_name, call_bindings->types[generic_index], argument_index + 1, type_display_name(checker, argument_type));
             } else {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3199",
-                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-                    argument_index + 1, function_name, type_display_name(checker, expected_type),
-                    type_display_name(checker, argument_type));
+                NODE_ERROR_FORMATTED(checker, argument, "E3199",
+                    argument_index + 1, function_name, type_display_name(checker, expected_type), type_display_name(checker, argument_type));
             }
         }
         if (declaration->data.function_declaration.return_type_count > 0) {
@@ -7798,8 +7694,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             /* E4017: private struct function called from outside the struct */
             if (signature->is_private &&
                 !(checker->current_struct_name && strcmp(checker->current_struct_name, module_name) == 0)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4017", NODE_FILE(checker, node),
-                    node->token.line, node->token.column, 0, display_module, member_function_name);
+                NODE_ERROR_FORMATTED(checker, node, "E4017", display_module, member_function_name);
             }
             /* A generic struct function records its instantiation and
              * substitutes the type arguments into the return type. */
@@ -7816,14 +7711,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             }
             /* E5008: check argument count, accounting for default params */
             {
-                int minimum_parameters = signature->parameter_count;
-                if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_parameters = 0;
-                    for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_parameters++;
-                    }
-                }
+                int minimum_parameters = signature_minimum_arguments(signature);
                 if (node->data.call.argument_count < minimum_parameters ||
                     node->data.call.argument_count > signature->parameter_count) {
                     char *expected_count = minimum_parameters == signature->parameter_count
@@ -7897,8 +7785,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             }
         } else {
             /* E4018: struct has no function with this name */
-            diagnostic_error_code_formatted(checker->diagnostics, "E4018", NODE_FILE(checker, node),
-                node->token.line, node->token.column, 0, display_module, member_function_name);
+            NODE_ERROR_FORMATTED(checker, node, "E4018", display_module, member_function_name);
             result = &TYPE_VOID;
         }
     } else {
@@ -7920,14 +7807,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
              * module-qualified call did not, so too few arguments reached
              * codegen and came back as a C compiler error. */
             {
-                int minimum_arguments = signature->parameter_count;
-                if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_arguments = 0;
-                    for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_arguments++;
-                    }
-                }
+                int minimum_arguments = signature_minimum_arguments(signature);
                 if (node->data.call.argument_count < minimum_arguments ||
                     node->data.call.argument_count > signature->parameter_count) {
                     char *expected_count = minimum_arguments == signature->parameter_count
@@ -8046,8 +7926,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     /* E4017: private struct function via instance dispatch */
                     if (struct_function_signature->is_private &&
                         !(checker->current_struct_name && strcmp(checker->current_struct_name, struct_name) == 0)) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E4017", NODE_FILE(checker, node),
-                            node->token.line, node->token.column, 0, display_struct_name, member_function_name);
+                        NODE_ERROR_FORMATTED(checker, node, "E4017", display_struct_name, member_function_name);
                     }
                     /* Resolve named arguments before AST rewrite.
                      * User-visible params start at index 1 (after self),
@@ -8125,14 +8004,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * and param_count include self, so they compare
                      * directly. Display counts subtract 1 to hide self. */
                     {
-                        int minimum_parameters = struct_function_signature->parameter_count;
-                        if (struct_function_signature->declaration && struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                            minimum_parameters = 0;
-                            for (int parameter_index = 0; parameter_index < struct_function_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                                if (!struct_function_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                                    minimum_parameters++;
-                            }
-                        }
+                        int minimum_parameters = signature_minimum_arguments(struct_function_signature);
                         if (node->data.call.argument_count < minimum_parameters ||
                             node->data.call.argument_count > struct_function_signature->parameter_count) {
                             int display_got = node->data.call.argument_count - 1;
@@ -8191,11 +8063,14 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             if (argument_index == 0) {
                                 /* Self argument: synthetic NODE_LABEL with value raw_module_name */
                                 Symbol *self_symbol = scope_lookup(checker->current_scope, raw_module_name);
-                                if (self_symbol && !self_symbol->is_mutable) {
-                                    diagnostic_error_code_formatted(checker->diagnostics, "E3027",
-                                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                                        "a constant", "the mutable self parameter",
-                                        typechecker_format(checker, "%s.%s", display_struct_name, member_function_name));
+                                /* A dereferenced pointer receiver mutates the pointee, so the
+                                 * binding itself may be const. */
+                                bool is_dereferenced_receiver = argument->kind == NODE_POSTFIX_EXPRESSION;
+                                if (self_symbol && !self_symbol->is_mutable && !is_dereferenced_receiver) {
+                                    NODE_ERROR_FORMATTED(checker, node, "E3027",
+                                        "a constant", "the mutable self parameter", typechecker_format(checker, "%s.%s", display_struct_name, member_function_name));
+                                } else {
+                                    report_write_through_const_pointer(checker, node, argument);
                                 }
                             } else {
                                 /* User-visible args */
@@ -8228,8 +8103,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     /* E4017: private struct function via instance dispatch */
                     if (struct_function_signature->is_private &&
                         !(checker->current_struct_name && strcmp(checker->current_struct_name, struct_name) == 0)) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E4017", NODE_FILE(checker, node),
-                            node->token.line, node->token.column, 0, display_struct_name, member_function_name);
+                        NODE_ERROR_FORMATTED(checker, node, "E4017", display_struct_name, member_function_name);
                     }
                     /* Resolve named arguments if present */
                     if (struct_function_signature->declaration && struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION &&
@@ -8245,14 +8119,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
                     /* Validate argument count */
                     {
-                        int minimum_parameters = struct_function_signature->parameter_count;
-                        if (struct_function_signature->declaration && struct_function_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                            minimum_parameters = 0;
-                            for (int parameter_index = 0; parameter_index < struct_function_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                                if (!struct_function_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                                    minimum_parameters++;
-                            }
-                        }
+                        int minimum_parameters = signature_minimum_arguments(struct_function_signature);
                         if (node->data.call.argument_count < minimum_parameters ||
                             node->data.call.argument_count > struct_function_signature->parameter_count) {
                             char *expected_count = minimum_parameters == struct_function_signature->parameter_count
@@ -8304,16 +8171,12 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     apply_call_parameter_extern_effects(checker, node, struct_function_signature);
                     apply_call_parameter_write_effects(checker, node, struct_function_signature);
                 } else {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E4018",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        display_struct_name, member_function_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E4018", display_struct_name, member_function_name);
                     result = &TYPE_UNKNOWN;
                 }
             } else if (symbol && symbol->type &&
                        symbol->type->kind != TYPE_KIND_UNKNOWN && symbol->type->kind != TYPE_KIND_VOID) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3186",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    type_name(symbol->type));
+                NODE_ERROR_FORMATTED(checker, node, "E3186", type_name(symbol->type));
                 result = &TYPE_UNKNOWN;
             } else if (symbol) {
                 /* A variable whose type never resolved; whatever went wrong
@@ -8331,13 +8194,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     if (near) {
                         char help[MESSAGE_BUFFER_SIZE];
                         snprintf(help, sizeof(help), "did you mean '%s.%s'?", raw_module_name, near);
-                        diagnostic_error_code_formatted_help(checker->diagnostics, "E4023",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        NODE_ERROR_FORMATTED_HELP(checker, node, "E4023",
                             arena_copy_string(checker->arena, help), raw_module_name, member_function_name);
                     } else {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E4023",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            raw_module_name, member_function_name);
+                        NODE_ERROR_FORMATTED(checker, node, "E4023", raw_module_name, member_function_name);
                     }
                 } else {
                     /* The module name is the mistake, so point at it rather
@@ -8348,13 +8208,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     if (near) {
                         char help[MESSAGE_BUFFER_SIZE];
                         snprintf(help, sizeof(help), "did you mean '%s'?", near);
-                        diagnostic_error_code_formatted_help(checker->diagnostics, "E6010",
-                            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
+                        NODE_ERROR_FORMATTED_HELP(checker, report_node, "E6010",
                             arena_copy_string(checker->arena, help), raw_module_name);
                     } else {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E6010",
-                            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-                            raw_module_name);
+                        NODE_ERROR_FORMATTED(checker, report_node, "E6010", raw_module_name);
                     }
                 }
                 result = &TYPE_UNKNOWN;
@@ -8492,9 +8349,7 @@ static void check_fixed_array_field_size(TypeChecker *checker, const char *field
         return;
     }
     if (actual_length > fixed_size) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3052",
-            NODE_FILE(checker, value), value->token.line, value->token.column, 0,
-            fixed_size, actual_length);
+        NODE_ERROR_FORMATTED(checker, value, "E3052", fixed_size, actual_length);
     } else if (actual_length < fixed_size) {
         value->zero_fill_length = fixed_size;
         diagnostic_warning_code_formatted(checker->diagnostics, "W3003",
@@ -8653,22 +8508,16 @@ static void reject_unstable_address_target(TypeChecker *checker, AstNode *node,
     const char *action = strcmp(builtin_name, "ref") == 0
         ? "take a reference to" : "take the address of";
     if (path_contains_map_index(checker, argument)) {
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3161",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "map values may relocate on rehash",
-            builtin_name, action, "a map index expression");
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E3161",
+            "map values may relocate on rehash", builtin_name, action, "a map index expression");
     }
     if (path_contains_dynamic_array_index(checker, argument)) {
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3161",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "the backing store may relocate when the array grows",
-            builtin_name, action, "a dynamic array index expression");
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E3161",
+            "the backing store may relocate when the array grows", builtin_name, action, "a dynamic array index expression");
     }
     if (path_contains_string_index(checker, argument)) {
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3161",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "string bytes are immutable",
-            builtin_name, action, "a string index expression");
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E3161",
+            "string bytes are immutable", builtin_name, action, "a string index expression");
     }
 }
 
@@ -8701,25 +8550,18 @@ static void check_print_argument(TypeChecker *checker, AstNode *node, const char
     if (node->data.call.argument_count < 1) return;
     GrayType *argument_type = resolve_expression(checker, node->data.call.arguments[0]);
     if (argument_type->kind == TYPE_KIND_C_FUNCTION) {
-        diagnostic_error_code(checker->diagnostics, "E3168",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3168");
     }
     if (argument_type->kind == TYPE_KIND_FUNCTION) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5028",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            function_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5028", function_name);
     }
     if (argument_type->kind == TYPE_KIND_ENUM && argument_type->name && typechecker_enum_is_tagged(checker, argument_type->name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5038",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            enum_display_name(checker, argument_type->name), function_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5038", enum_display_name(checker, argument_type->name), function_name);
     }
     if (argument_type->kind != TYPE_KIND_ENUM) {
         const char *nested_tagged_enum = tagged_enum_in_printed_type(checker, argument_type, 0);
         if (nested_tagged_enum)
-            diagnostic_error_code_formatted(checker->diagnostics, "E5038",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                enum_display_name(checker, nested_tagged_enum), function_name);
+            NODE_ERROR_FORMATTED(checker, node, "E5038", enum_display_name(checker, nested_tagged_enum), function_name);
     }
     char context[TYPE_NAME_MAX];
     snprintf(context, sizeof(context), "'%s()' argument", function_name);
@@ -8731,9 +8573,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
     if (typechecker_is_builtin(function_name)) {
         /* E5034: named arguments are not supported for builtins */
         if (typechecker_has_named_arguments(node)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5034",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                function_name);
+            NODE_ERROR_FORMATTED(checker, node, "E5034", function_name);
         }
     }
     /* Check built-in functions first */
@@ -8745,9 +8585,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
          * '&(rvalue)' to clang. */
         reject_unstable_address_target(checker, node, argument, "addr");
         if (!is_assignment_target(checker, argument)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3012",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "addr", "the address");
+            NODE_ERROR_FORMATTED(checker, node, "E3012", "addr", "the address");
         }
         GrayType *argument_type = resolve_expression(checker, argument);
         result = type_pointer(type_name(argument_type));
@@ -8755,9 +8593,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         AstNode *argument = node->data.call.arguments[0];
         reject_unstable_address_target(checker, node, argument, "raw");
         if (!is_assignment_target(checker, argument)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3012",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "raw", "the address");
+            NODE_ERROR_FORMATTED(checker, node, "E3012", "raw", "the address");
         }
         GrayType *argument_type = resolve_expression(checker, argument);
         result = type_pointer(type_name(argument_type));
@@ -8804,9 +8640,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
              * and produced opaque generated-C errors. */
             reject_unstable_address_target(checker, node, argument, "ref");
             if (!is_assignment_target(checker, argument)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3012",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "ref", "a reference");
+                NODE_ERROR_FORMATTED(checker, node, "E3012", "ref", "a reference");
             }
             /* Build a pointer type that preserves the full source type.
              * For arrays, type_name returns the element type ("i64"),
@@ -8839,8 +8673,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (first_argument_type && first_argument_type->kind != TYPE_KIND_UNKNOWN && first_argument_type->kind != TYPE_KIND_VOID &&
                 first_argument_type->kind != TYPE_KIND_STRING && first_argument_type->kind != TYPE_KIND_ARRAY &&
                 first_argument_type->kind != TYPE_KIND_MAP) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E7015", NODE_FILE(checker, node->data.call.arguments[0]), node->data.call.arguments[0]->token.line,
-                    node->data.call.arguments[0]->token.column, 0, type_name(first_argument_type));
+                NODE_ERROR_FORMATTED(checker, node->data.call.arguments[0], "E7015", type_name(first_argument_type));
             }
         }
         result = &TYPE_I64;
@@ -8859,9 +8692,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 const char *argument_name = argument->data.label.value;
                 Symbol *symbol = scope_lookup(checker->current_scope, argument_name);
                 if (!symbol && (is_struct_name(checker, argument_name) || is_enum_name(checker, argument_name))) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3084",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        argument_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E3084", argument_name);
                     result = &TYPE_STRING;
                     return result;
                 }
@@ -8882,9 +8713,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
             GrayType *argument_type = resolve_expression(checker, node->data.call.arguments[0]);
             if (argument_type->kind == TYPE_KIND_VOID) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3187",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "the argument of type_of()");
+                NODE_ERROR_FORMATTED(checker, node, "E3187", "the argument of type_of()");
             }
         }
         result = &TYPE_STRING;
@@ -8918,10 +8747,8 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             const char *resolved = resolve_type_alias(checker,
                 checker_resolve_type_name(checker, argument_name));
             if (!symbol && (is_struct_name(checker, resolved) || is_enum_name(checker, resolved))) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E5043",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "a type name was passed; use 'fields(instance)' instead",
-                    argument_name);
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E5043",
+                    "a type name was passed; use 'fields(instance)' instead", argument_name);
                 result = type_array("string");
                 return result;
             }
@@ -8935,9 +8762,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         /* E5043: fields() requires a struct */
         if (argument_type && argument_type->kind != TYPE_KIND_STRUCT && argument_type->kind != TYPE_KIND_UNKNOWN) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5043",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_name(argument_type));
+            NODE_ERROR_FORMATTED(checker, node, "E5043", type_name(argument_type));
         }
         result = type_array("string");
     } else if (strcmp(function_name, "size_of") == 0) {
@@ -8951,8 +8776,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             Symbol *argument_symbol = argument->kind == NODE_LABEL
                 ? scope_lookup(checker->current_scope, argument->data.label.value) : NULL;
             if (argument_symbol && argument_symbol->type && argument_symbol->type->kind == TYPE_KIND_RANGE) {
-                diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, argument),
-                    argument->token.line, argument->token.column, 0);
+                NODE_ERROR(checker, argument, "E3205");
                 result = &TYPE_I64;
                 return result;
             }
@@ -9040,9 +8864,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             GrayType *first_argument_value_type = resolve_expression(checker, node->data.call.arguments[0]);
             if (first_argument_value_type && first_argument_value_type->kind != TYPE_KIND_POINTER && first_argument_value_type->kind != TYPE_KIND_UNKNOWN &&
                 first_argument_value_type->kind != TYPE_KIND_C_FUNCTION) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3083",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    type_name(first_argument_value_type));
+                NODE_ERROR_FORMATTED(checker, node, "E3083", type_name(first_argument_value_type));
             }
             /* A C call result has no Grayscale type, so it passes the check
              * above. Assert it is a pointer for main.c to verify against the
@@ -9073,8 +8895,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "here") == 0) {
         if (node->data.call.argument_count != 0) {
-            diagnostic_error_code(checker->diagnostics, "E5014",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E5014");
         }
         result = type_struct("SourceLocation");
     } else if (strcmp(function_name, "embed") == 0) {
@@ -9083,8 +8904,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         } else {
             AstNode *argument = node->data.call.arguments[0];
             if (argument->kind != NODE_STRING_VALUE) {
-                diagnostic_error_code(checker->diagnostics, "E5017",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E5017");
             } else {
                 /* Resolve file path relative to source file directory */
                 const char *embed_path = argument->data.string_value.value;
@@ -9120,16 +8940,13 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                         if (has_directory && path_within_directory(real_embed, real_source_directory)) escaped = false;
                     }
                     if (escaped) {
-                        diagnostic_error_code(checker->diagnostics, "E5027",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                        NODE_ERROR(checker, node, "E5027");
                         goto embed_done;
                     }
                 }
                 FILE *embed_file = fopen(resolved, "r");
                 if (!embed_file) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E5018",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        embed_path);
+                    NODE_ERROR_FORMATTED(checker, node, "E5018", embed_path);
                 } else {
                     fclose(embed_file);
                 }
@@ -9163,16 +8980,13 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             const char *actual = is_extern
                 ? typechecker_format(checker, "'extern.%s', a C interop constant", code_argument->data.member.member)
                 : typechecker_format(checker, "'%s'", type_display_name(checker, code_argument_type));
-            diagnostic_error_code_formatted(checker->diagnostics, "E5026",
-                NODE_FILE(checker, code_argument), code_argument->token.line, code_argument->token.column, 0,
-                1, "error", "an ErrorCode", actual);
+            NODE_ERROR_FORMATTED(checker, code_argument, "E5026", 1, "error", "an ErrorCode", actual);
         }
         if (argument_count == 2) {
             AstNode *message_argument = node->data.call.arguments[1];
             GrayType *message_argument_type = resolve_expression(checker, message_argument);
             if (message_argument_type && message_argument_type->kind != TYPE_KIND_STRING && message_argument_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5026",
-                    NODE_FILE(checker, message_argument), message_argument->token.line, message_argument->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, message_argument, "E5026",
                     2, "error", "a string", type_display_name(checker, message_argument_type));
             }
         }
@@ -9243,12 +9057,10 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
     } else if (strcmp(function_name, "copy") == 0 && node->data.call.argument_count == 1) {
         result = resolve_expression(checker, node->data.call.arguments[0]);
         if (result->kind == TYPE_KIND_FUNCTION) {
-            diagnostic_error_code(checker->diagnostics, "E5029",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E5029");
             result = &TYPE_UNKNOWN;
         } else if (result->kind == TYPE_KIND_POINTER) {
-            diagnostic_error_code(checker->diagnostics, "E5037",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E5037");
             result = &TYPE_UNKNOWN;
         }
     } else if (strcmp(function_name, "char") == 0) {
@@ -9261,7 +9073,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         /* E7014: char() with a constant outside U+0000–U+10FFFF */
         int64_t literal_value;
         if (literal_i64_value(node->data.call.arguments[0], &literal_value) && (literal_value < 0 || literal_value > 0x10FFFF)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)literal_value);
+            NODE_ERROR_FORMATTED(checker, node, "E7014", (long long)literal_value);
         }
         /* E5026: char() converts an integer codepoint; reject any non-integer
          * argument (a length-1 string still reaches codegen otherwise and
@@ -9279,39 +9091,37 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             : resolve_expression(checker, node->data.call.arguments[0]);
         /* E3043: validate source type is convertible to numeric */
         if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
-            source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER) {
+            source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
+            source_type->kind == TYPE_KIND_STRING || source_type->kind == TYPE_KIND_NIL ||
+            source_type->kind == TYPE_KIND_BOOL || is_tagged_enum_type(checker, source_type)) {
             char *message = typechecker_format(checker,
-                "cannot convert %s to %s; only numeric types, strings, and bools can be converted",
+                "cannot convert %s to %s; only numeric types can be converted",
                 type_name(source_type), function_name);
             diagnostic_error_help(checker->diagnostics, "E3043", message,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "only numeric, enum, and string conversions are supported");
+                "only numeric conversions are supported");
         }
         result = type_from_name(function_name);
     } else if (strcmp(function_name, "string") == 0 && node->data.call.argument_count == 1) {
         /* E3043: validate source type is convertible to string */
         GrayType *source_type = resolve_expression(checker, node->data.call.arguments[0]);
         if (source_type->kind == TYPE_KIND_STRING) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E3043",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "value is already a string", "string", "string");
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E3043", "value is already a string", "string", "string");
         } else if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
-                   source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E3043",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "use string interpolation or access individual elements",
-                type_name(source_type), "string");
+                   source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
+                   source_type->kind == TYPE_KIND_NIL || is_tagged_enum_type(checker, source_type)) {
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E3043",
+                "use string interpolation or access individual elements", type_name(source_type), "string");
         }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "bool") == 0 && node->data.call.argument_count == 1) {
         GrayType *source_type = resolve_expression(checker, node->data.call.arguments[0]);
         if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
             source_type->kind == TYPE_KIND_STRUCT || source_type->kind == TYPE_KIND_POINTER ||
-            source_type->kind == TYPE_KIND_STRING) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E3043",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "only numeric types and bools can be converted",
-                type_name(source_type), "bool");
+            source_type->kind == TYPE_KIND_STRING || source_type->kind == TYPE_KIND_NIL ||
+            is_tagged_enum_type(checker, source_type)) {
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E3043",
+                "only numeric types and bools can be converted", type_name(source_type), "bool");
         }
         result = &TYPE_BOOL;
     } else if ((strcmp(function_name, "i8") == 0 || strcmp(function_name, "i16") == 0 ||
@@ -9319,8 +9129,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 strcmp(function_name, "u8") == 0 || strcmp(function_name, "u16") == 0 ||
                 strcmp(function_name, "u32") == 0 || strcmp(function_name, "u64") == 0 ||
                 strcmp(function_name, "f32") == 0 || strcmp(function_name, "f64") == 0)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5036", NODE_FILE(checker, node),
-            node->token.line, node->token.column, 0, function_name, function_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5036", function_name, function_name);
         result = type_from_name(function_name);
     } else if (typechecker_is_builtin(function_name)) {
         /* Builtin name matched but argument count was wrong — the specific handler
@@ -9418,14 +9227,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             typechecker_resolve_named_arguments(checker, node, signature->declaration, function_name);
         }
         /* Check argument count; account for default parameters */
-        int minimum_arguments = signature->parameter_count;
-        if (signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-            minimum_arguments = 0;
-            for (int parameter_index = 0; parameter_index < signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                if (!signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                    minimum_arguments++;
-            }
-        }
+        int minimum_arguments = signature_minimum_arguments(signature);
         if (node->data.call.argument_count < minimum_arguments ||
             node->data.call.argument_count > signature->parameter_count) {
             char *expected_count = minimum_arguments == signature->parameter_count
@@ -9484,8 +9286,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             }
             /* E3066: typed-func signatures must match exactly */
             if (function_types_mismatch(checker, argument_type, parameter_type)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-                    NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node->data.call.arguments[argument_index], "E3066",
                     type_display_name(checker, parameter_type), type_display_name(checker, argument_type));
             }
             /* E3027: non-assignable or const passed to mutable (&) param.
@@ -9514,8 +9315,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 function_declaration->data.function_declaration.body,
                                 function_declaration->data.function_declaration.parameters[argument_index].name,
                                 &offending_member_function_name)) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E5051",
-                                NODE_FILE(checker, first_argument), first_argument->token.line, first_argument->token.column, 0,
+                            NODE_ERROR_FORMATTED(checker, first_argument, "E5051",
                                 offending_member_function_name, first_argument->data.member.member);
                         }
                     }
@@ -9552,14 +9352,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             if (reference_signature) {
                 /* compute min arity by counting
                  * params without default values. */
-                int minimum_arity = reference_signature->parameter_count;
-                if (reference_signature->declaration && reference_signature->declaration->kind == NODE_FUNCTION_DECLARATION) {
-                    minimum_arity = 0;
-                    for (int parameter_index = 0; parameter_index < reference_signature->declaration->data.function_declaration.parameter_count; parameter_index++) {
-                        if (!reference_signature->declaration->data.function_declaration.parameters[parameter_index].default_value)
-                            minimum_arity++;
-                    }
-                }
+                int minimum_arity = signature_minimum_arguments(reference_signature);
                 int argument_count = node->data.call.argument_count;
                 if (argument_count < minimum_arity || argument_count > reference_signature->parameter_count) {
                     char *expected_count = minimum_arity == reference_signature->parameter_count
@@ -9640,7 +9433,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             }
         } else if (function_symbol && function_symbol->type) {
             /* Variable exists but is not a function */
-            diagnostic_error_code_formatted(checker->diagnostics, "E3015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, function_name, type_display_name(checker, function_symbol->type));
+            NODE_ERROR_FORMATTED(checker, node, "E3015",
+                function_name, type_display_name(checker, function_symbol->type));
         } else if (!typechecker_is_builtin(function_name)) {
             /* Check if it's a function from a 'using' module */
             bool found_in_using = false;
@@ -9925,16 +9719,22 @@ static void normalize_instance_call_on_expression(TypeChecker *checker, AstNode 
             checker_resolve_declaration_into(checker, struct_name, struct_key, sizeof(struct_key)), member_function_name);
     }
     FunctionSignature *struct_function_signature = find_function(checker, struct_function_name);
-    if (!struct_function_signature || !struct_function_signature->declaration || struct_function_signature->declaration->kind != NODE_FUNCTION_DECLARATION ||
-        struct_function_signature->declaration->data.function_declaration.parameter_count == 0)
+    if (!struct_function_signature || !struct_function_signature->declaration || struct_function_signature->declaration->kind != NODE_FUNCTION_DECLARATION)
         return;
-    const char *first_parameter_type_name = struct_function_signature->declaration->data.function_declaration.parameters[0].type_name;
-    if (!first_parameter_type_name) return;
-    bool is_self_function =
+    const char *first_parameter_type_name = struct_function_signature->declaration->data.function_declaration.parameter_count > 0
+        ? struct_function_signature->declaration->data.function_declaration.parameters[0].type_name : NULL;
+    bool is_self_function = first_parameter_type_name && (
         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name, struct_name) ||
         (first_parameter_type_name[0] == '^' &&
-         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name + 1, struct_name));
-    if (!is_self_function) return;
+         self_parameter_names_struct(checker, struct_function_signature->declaration, first_parameter_type_name + 1, struct_name)));
+    if (!is_self_function) {
+        /* No self parameter: the call is Type.f(args), and the receiver is
+         * evaluated for its effects alone. */
+        struct_function_signature->was_used = true;
+        node->data.call.ignored_receiver = object;
+        retarget_member_object(function_node, struct_name);
+        return;
+    }
 
     /* Rewrite: object becomes the struct type name, receiver is prepended as
      * arg[0]. Auto-deref a pointer receiver when the self parameter takes the
@@ -10008,6 +9808,9 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             find_function(checker, node->data.call.arguments[i]->data.label.value)) {
             continue;
         }
+        if (is_reference_call && node->data.call.arguments[i]->kind == NODE_MEMBER_EXPRESSION &&
+            reference_names_function(checker, node->data.call.arguments[i]))
+            continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
         if (node->data.call.arguments[i]->kind == NODE_IMPLICIT_ENUM)
@@ -10064,9 +9867,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (outer_argument_name) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                    NODE_FILE(checker, argument), argument->token.line, argument->token.column, 0,
-                    outer_argument_name, addr_variable);
+                NODE_ERROR_FORMATTED(checker, argument, "E3163", outer_argument_name, addr_variable);
                 reported_argument_bits |= 1ull << i;
             }
         }
@@ -10099,9 +9900,8 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             const char *original_name = NULL;
             int origin_depth = expression_origin(checker, argument, &original_name);
             if (origin_depth > 0 && origin_depth > destination_depth)
-                diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                    NODE_FILE(checker, argument), argument->token.line,
-                    argument->token.column, 0, destination_root ? destination_root : original_name, original_name);
+                NODE_ERROR_FORMATTED(checker, argument, "E3163",
+                    destination_root ? destination_root : original_name, original_name);
         }
         /* user helper whose summary escapes one of its parameters. For
          * instance dispatch (s.stash(addr(y))) resolve_call_signature() finds
@@ -10124,12 +9924,20 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
             AstNode *callee_function = node->data.call.function;
             bool opaque = false;
             if (callee_function && callee_function->kind == NODE_INDEX_EXPRESSION) {
-                opaque = true;
+                /* E5064: an element of a [func] array or map has no signature
+                 * to check the call against. */
+                NODE_ERROR(checker, node, "E5064");
             } else if (callee_function && callee_function->kind == NODE_LABEL) {
                 Symbol *callee_symbol = scope_lookup(checker->current_scope,
                                           callee_function->data.label.value);
                 opaque = callee_symbol && callee_symbol->type && callee_symbol->type->kind == TYPE_KIND_FUNCTION &&
                          !callee_symbol->function_reference_name;
+                /* E5064: so does a bare func variable, such as a for_each
+                 * variable over a [func] array. */
+                if (opaque && !callee_symbol->type->function_signature) {
+                    NODE_ERROR(checker, node, "E5064");
+                    opaque = false;
+                }
             }
             if (opaque) {
                 for (int i = 0; i < argument_count && i < MAX_TRACKED_PARAMETERS; i++) {
@@ -10142,9 +9950,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                          * so unlike the other E3163 sites there is no real
                          * destination name to report — using original_name for both
                          * slots would print the same name twice. */
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                            NODE_FILE(checker, argument), argument->token.line,
-                            argument->token.column, 0, "a global", original_name);
+                        NODE_ERROR_FORMATTED(checker, argument, "E3163", "a global", original_name);
                         reported_argument_bits |= 1ull << i;
                     }
                 }
@@ -10180,53 +9986,9 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                 inner_qualifier, inner_function->data.member.member);
             inner_name = inner_buffer;
         }
-        diagnostic_error_code_formatted(checker->diagnostics, "E5030",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            inner_name ? inner_name : "function");
+        NODE_ERROR_FORMATTED(checker, node, "E5030", inner_name ? inner_name : "function");
         result = &TYPE_UNKNOWN;
         return result;
-    }
-
-    /* [func] array + constant index + literal-of-func-refs origin:
-     * recover the original referenced function's return type so it
-     * survives the trip through void* storage (). */
-    if (function_node && function_node->kind == NODE_INDEX_EXPRESSION &&
-        function_node->data.index_expression.left->kind == NODE_LABEL &&
-        function_node->data.index_expression.index->kind == NODE_INTEGER_LITERAL) {
-        const char *array_name = function_node->data.index_expression.left->data.label.value;
-        Symbol *array_symbol = scope_lookup(checker->current_scope, array_name);
-        int64_t index_value = function_node->data.index_expression.index->data.integer_literal.value;
-        if (array_symbol && array_symbol->function_array_references &&
-            index_value >= 0 && index_value < array_symbol->function_array_reference_count) {
-            const char *reference_name = array_symbol->function_array_references[index_value];
-            if (reference_name) {
-                FunctionSignature *reference_signature = find_function(checker, reference_name);
-                if (reference_signature && reference_signature->return_count > 0) {
-                    result = reference_signature->return_types[0];
-                    return result;
-                }
-            }
-        }
-    }
-
-    /* Fallback for [func(...)->T] arrays: parse the return type from
-     * the array's typed element type. Covers dynamically appended
-     * refs where func_array_refs isn't populated (). */
-    if (function_node && function_node->kind == NODE_INDEX_EXPRESSION &&
-        function_node->data.index_expression.left->kind == NODE_LABEL) {
-        const char *array_name = function_node->data.index_expression.left->data.label.value;
-        Symbol *array_symbol = scope_lookup(checker->current_scope, array_name);
-        if (array_symbol && array_symbol->type && array_symbol->type->kind == TYPE_KIND_ARRAY &&
-            array_symbol->type->element_type &&
-            strncmp(array_symbol->type->element_type, "func(", 5) == 0) {
-            GrayType *element_type = type_from_name(array_symbol->type->element_type);
-            if (element_type && element_type->function_signature &&
-                element_type->function_signature->return_count > 0 &&
-                element_type->function_signature->return_types[0]) {
-                result = type_from_name(element_type->function_signature->return_types[0]);
-                return result;
-            }
-        }
     }
 
     /* Tagged enum construction via implicit selector: .Circle(3.14) */
@@ -10246,14 +10008,16 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                     if (strcmp(checker->enum_values[matched_enum_index][variant_index], variant_name) == 0) { matched_variant_index = variant_index; break; }
                 }
                 if (matched_variant_index < 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, expected_enum_type->name, variant_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E3047", expected_enum_type->name, variant_name);
                 } else if (checker->is_enum_tagged[matched_enum_index]) {
                     int expected_payload_count = checker->enum_payload_counts[matched_enum_index][matched_variant_index];
                     int provided_argument_count = node->data.call.argument_count;
                     if (expected_payload_count == 0 && provided_argument_count > 0) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3114", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variant_name, checker->enum_display_names[matched_enum_index]);
+                        NODE_ERROR_FORMATTED(checker, node, "E3114",
+                            variant_name, checker->enum_display_names[matched_enum_index]);
                     } else if (expected_payload_count != provided_argument_count) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3113", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variant_name, checker->enum_display_names[matched_enum_index], expected_payload_count, provided_argument_count);
+                        NODE_ERROR_FORMATTED(checker, node, "E3113",
+                            variant_name, checker->enum_display_names[matched_enum_index], expected_payload_count, provided_argument_count);
                     } else {
                         for (int argument_index = 0; argument_index < provided_argument_count; argument_index++) {
                             GrayType *expected_type = typechecker_type_from_name(checker, checker->enum_payload_types[matched_enum_index][matched_variant_index][argument_index]);
@@ -10268,12 +10032,13 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                         }
                     }
                 } else {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3115", NODE_FILE(checker, node), node->token.line, node->token.column, 0, checker->enum_display_names[matched_enum_index], variant_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E3115",
+                        checker->enum_display_names[matched_enum_index], variant_name);
                 }
             }
             result = type_enum(expected_enum_type->name);
         } else {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3110", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variant_name, variant_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3110", variant_name, variant_name);
             result = &TYPE_UNKNOWN;
         }
         return result;
@@ -10305,9 +10070,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                 snprintf(struct_key, sizeof(struct_key), "%s_%s", module_name, struct_name);
                 if (!(checker->current_struct_name &&
                       strcmp(checker->current_struct_name, struct_key) == 0)) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E4017",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        struct_name, chained_function_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E4017", struct_name, chained_function_name);
                 }
             }
             result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
@@ -10362,6 +10125,12 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
              * the annotated spelling of the same call was fine. */
             return result;
         } else {
+            char struct_key[MESSAGE_BUFFER_SIZE];
+            module_member_key(checker, module_name, struct_name, struct_key, sizeof(struct_key));
+            if (is_struct_name(checker, struct_key)) {
+                NODE_ERROR_FORMATTED(checker, node, "E4018",
+                    struct_display_name(checker, struct_key), chained_function_name);
+            }
             result = &TYPE_VOID;
         }
     } else if (ast_member_qualifier(function_node) &&
@@ -10381,23 +10150,25 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                 if (strcmp(checker->enum_values[matched_enum_index][variant_index], variant_name) == 0) { matched_variant_index = variant_index; break; }
             }
             if (matched_variant_index < 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, enum_name, variant_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", enum_name, variant_name);
                 result = &TYPE_UNKNOWN;
                 return result;
             }
             if (!checker->is_enum_tagged[matched_enum_index]) {
                 /* E3115: plain enum, can't call */
                 const char *display_name = checker->enum_display_names[matched_enum_index];
-                diagnostic_error_code_formatted(checker->diagnostics, "E3115", NODE_FILE(checker, node), node->token.line, node->token.column, 0, display_name, variant_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3115", display_name, variant_name);
                 result = type_enum(checker_resolve_enum_key(checker, enum_name));
                 return result;
             }
             int expected_payload_count = checker->enum_payload_counts[matched_enum_index][matched_variant_index];
             int provided_argument_count = node->data.call.argument_count;
             if (expected_payload_count == 0 && provided_argument_count > 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3114", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variant_name, checker->enum_display_names[matched_enum_index]);
+                NODE_ERROR_FORMATTED(checker, node, "E3114",
+                    variant_name, checker->enum_display_names[matched_enum_index]);
             } else if (expected_payload_count != provided_argument_count) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3113", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variant_name, checker->enum_display_names[matched_enum_index], expected_payload_count, provided_argument_count);
+                NODE_ERROR_FORMATTED(checker, node, "E3113",
+                    variant_name, checker->enum_display_names[matched_enum_index], expected_payload_count, provided_argument_count);
             } else {
                 /* Validate each argument type against payload type */
                 for (int argument_index = 0; argument_index < provided_argument_count; argument_index++) {
@@ -10441,15 +10212,11 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
         bool is_module_imported = mark_import_used(checker, raw_module_name) ||
                             mark_import_used(checker, resolved_module_name);
         if (!is_module_imported && is_stdlib_module_name(resolved_module_name)) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E4033",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                typechecker_format(checker, "add 'import @%s' at the top of the file", resolved_module_name),
-                resolved_module_name);
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E4033",
+                typechecker_format(checker, "add 'import @%s' at the top of the file", resolved_module_name), resolved_module_name);
         } else if (!is_module_imported && is_unimported_user_module(checker, raw_module_name, resolved_module_name)) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E4033",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add an import for it at the top of the file",
-                raw_module_name);
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E4033",
+                "add an import for it at the top of the file", raw_module_name);
         }
         /* extern.func() without extern import "..."; but only if "extern" isn't a
          * local variable. A variable named `extern` with a struct type
@@ -10457,9 +10224,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
          * be treated as the C interop module (). */
         if (!is_module_imported && strcmp(resolved_module_name, "extern") == 0 &&
             !scope_lookup(checker->current_scope, "extern")) {
-            diagnostic_error_code_help(checker->diagnostics, "E4034",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add extern import \"header.h\" at the top of the file");
+            NODE_ERROR_HELP(checker, node, "E4034", "add extern import \"header.h\" at the top of the file");
             result = &TYPE_UNKNOWN;
             return result;
         }
@@ -10471,9 +10236,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
              * C signature, so a label would be silently dropped and the
              * arguments passed in written order. Reject before codegen. */
             if (typechecker_has_named_arguments(node)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5055",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    member_function_name);
+                NODE_ERROR_FORMATTED(checker, node, "E5055", member_function_name);
             }
             /* E4030: codegen emits `member_function_name(...)` unqualified. A local or parameter
              * named `member_function_name` is emitted with its source name and shadows the C
@@ -10486,9 +10249,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                     while (declaration_scope->parent && !scope_lookup_local(declaration_scope, member_function_name))
                         declaration_scope = declaration_scope->parent;
                     if (declaration_scope->parent != NULL) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E4030",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            member_function_name, member_function_name);
+                        NODE_ERROR_FORMATTED(checker, node, "E4030", member_function_name, member_function_name);
                     }
                 }
             }
@@ -10511,9 +10272,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                     const char *root = NULL;
                     int origin_depth = expression_origin(checker, call_argument, &root);
                     if (origin_depth > 0 && origin_depth >= checker->current_function_scope_depth && root) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3154",
-                            NODE_FILE(checker, call_argument), call_argument->token.line, call_argument->token.column, 0,
-                            root);
+                        NODE_ERROR_FORMATTED(checker, call_argument, "E3154", root);
                     }
                 }
                 /* E3158: a Grayscale function passed as a C callback must lower
@@ -10549,9 +10308,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                         else if (callback_parameter_type->kind == TYPE_KIND_STRUCT && callback_parameter_type->name &&
                                  is_struct_name(checker, callback_parameter_type->name)) callback_bad_kind = "struct";
                         if (callback_bad_kind) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E3197",
-                                NODE_FILE(checker, call_argument), call_argument->token.line, call_argument->token.column, 0,
-                                callback_target, callback_bad_kind);
+                            NODE_ERROR_FORMATTED(checker, call_argument, "E3197", callback_target, callback_bad_kind);
                             break;
                         }
                     }
@@ -10567,8 +10324,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                         else if (callback_return_type->kind == TYPE_KIND_STRUCT && callback_return_type->name &&
                                  is_struct_name(checker, callback_return_type->name)) callback_bad_return_kind = "struct";
                         if (callback_bad_return_kind) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E3198",
-                                NODE_FILE(checker, call_argument), call_argument->token.line, call_argument->token.column, 0,
+                            NODE_ERROR_FORMATTED(checker, call_argument, "E3198",
                                 callback_target, callback_bad_return_kind);
                         }
                     }
@@ -10580,42 +10336,32 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
                 if (argument_type->name &&
                     (strcmp(argument_type->name, "i128") == 0 || strcmp(argument_type->name, "i256") == 0 ||
                      strcmp(argument_type->name, "u128") == 0 || strcmp(argument_type->name, "u256") == 0)) {
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3158",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                        "C has no 128/256-bit integer types",
-                        argument_type->name);
+                    NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E3158",
+                        "C has no 128/256-bit integer types", argument_type->name);
                 }
                 /* Reject Grayscale-specific composite types */
                 if (argument_type->kind == TYPE_KIND_ARRAY || argument_type->kind == TYPE_KIND_MAP) {
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3158",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                        "use individual elements instead",
-                        argument_type->kind == TYPE_KIND_ARRAY ? "an array" : "a map");
+                    NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E3158",
+                        "use individual elements instead", argument_type->kind == TYPE_KIND_ARRAY ? "an array" : "a map");
                 }
                 /* Reject Grayscale structs (registered in typechecker) */
                 if (argument_type->kind == TYPE_KIND_STRUCT && argument_type->name &&
                     is_struct_name(checker, argument_type->name)) {
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3158",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                        "pass individual fields instead",
-                        type_display_name(checker, argument_type));
+                    NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E3158",
+                        "pass individual fields instead", type_display_name(checker, argument_type));
                 }
                 /* Reject tagged (payload) enums — they compile to a tag+union C
                  * struct with no stable layout a C function could expect, and
                  * pass silently by value producing a garbage payload. */
                 if (argument_type->kind == TYPE_KIND_ENUM && argument_type->name &&
                     typechecker_enum_is_tagged(checker, argument_type->name)) {
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3158",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                        "destructure it with when/is and pass the payload",
-                        enum_display_name(checker, argument_type->name));
+                    NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E3158",
+                        "destructure it with when/is and pass the payload", enum_display_name(checker, argument_type->name));
                 }
                 /* Reject Error — a Grayscale-runtime type with no C meaning. */
                 if (argument_type->kind == TYPE_KIND_ERROR) {
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3158",
-                        NODE_FILE(checker, node->data.call.arguments[argument_index]), node->data.call.arguments[argument_index]->token.line, node->data.call.arguments[argument_index]->token.column, 0,
-                        "pass 'err.code' or 'err.msg' instead",
-                        "an Error value");
+                    NODE_ERROR_FORMATTED_HELP(checker, node->data.call.arguments[argument_index], "E3158",
+                        "pass 'err.code' or 'err.msg' instead", "an Error value");
                 }
             }
             /* Record for main.c: it probes the real header through the C
@@ -10658,9 +10404,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
         GrayType *object_type = resolve_expression(checker, function_node->data.member.object);
         if (object_type && object_type->kind != TYPE_KIND_STRUCT && object_type->kind != TYPE_KIND_POINTER &&
             object_type->kind != TYPE_KIND_UNKNOWN && object_type->kind != TYPE_KIND_VOID) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3186",
-                NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
-                type_name(object_type));
+            NODE_ERROR_FORMATTED(checker, function_node, "E3186", type_name(object_type));
         } else if (object_type && (object_type->kind == TYPE_KIND_STRUCT || object_type->kind == TYPE_KIND_POINTER) &&
                    function_node->data.member.object->kind == NODE_CALL_EXPRESSION) {
             /* E3075: chaining struct function calls (calling one struct
@@ -10668,8 +10412,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
              * Assigning the intermediate result to a variable keeps
              * each call site readable and avoids the AST-rewrite
              * gymnastics that fluent-interface chaining would require. */
-            diagnostic_error_code_help(checker->diagnostics, "E3075",
-                NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
+            NODE_ERROR_HELP(checker, function_node, "E3075",
                 "assign the intermediate result to a variable, then call the next struct function on it");
         } else if (object_type && (object_type->kind == TYPE_KIND_STRUCT || object_type->kind == TYPE_KIND_POINTER)) {
             /* An index or nested-field receiver of struct type that reached
@@ -10677,8 +10420,7 @@ static GrayType *resolve_call_expression(TypeChecker *checker, AstNode *node) {
              * routes the valid ones into instance dispatch before now. */
             const char *struct_name_text = object_type->kind == TYPE_KIND_POINTER
                 ? object_type->element_type : object_type->name;
-            diagnostic_error_code_formatted(checker->diagnostics, "E4018",
-                NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, function_node, "E4018",
                 struct_display_name(checker, struct_name_text), function_node->data.member.member);
         }
         result = &TYPE_UNKNOWN;
@@ -10730,23 +10472,16 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             GrayType *left_shown = left->kind == TYPE_KIND_LITERAL ? check_expression_as(checker, left_node, NULL) : left;
             GrayType *right_shown = right->kind == TYPE_KIND_LITERAL ? check_expression_as(checker, right_node, NULL) : right;
             if (operator == TOKEN_PERCENT && (left_shown->kind == TYPE_KIND_FLOATING_POINT || right_shown->kind == TYPE_KIND_FLOATING_POINT)) {
-                diagnostic_error_code(checker->diagnostics, "E3181",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E3181");
             } else if (is_bitwise) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E8001",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    operator_display_name(operator), type_display_name(checker, left_shown),
-                    type_display_name(checker, right_shown));
+                NODE_ERROR_FORMATTED(checker, node, "E8001",
+                    operator_display_name(operator), type_display_name(checker, left_shown), type_display_name(checker, right_shown));
             } else if (is_comparison) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3156",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "convert one side with cast()",
-                    type_name(left_shown), type_name(right_shown));
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3156",
+                    "convert one side with cast()", type_name(left_shown), type_name(right_shown));
             } else {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3002",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "convert one side with cast()",
-                    operator_display_name(operator), type_name(left_shown), type_name(right_shown));
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3002",
+                    "convert one side with cast()", operator_display_name(operator), type_name(left_shown), type_name(right_shown));
             }
             return &TYPE_UNKNOWN;
         }
@@ -10810,8 +10545,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((left && left->kind == TYPE_KIND_C_FUNCTION) || (right && right->kind == TYPE_KIND_C_FUNCTION)) {
         AstNode *bad_operand = (left && left->kind == TYPE_KIND_C_FUNCTION)
             ? node->data.infix.left : node->data.infix.right;
-        diagnostic_error_code(checker->diagnostics, "E3168",
-            NODE_FILE(checker, bad_operand), bad_operand->token.line, bad_operand->token.column, 0);
+        NODE_ERROR(checker, bad_operand, "E3168");
         return &TYPE_UNKNOWN;
     }
 
@@ -10819,10 +10553,8 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((left->kind == TYPE_KIND_STRING || right->kind == TYPE_KIND_STRING) &&
         (operator == TOKEN_LESS_THAN || operator == TOKEN_GREATER_THAN ||
          operator == TOKEN_LESS_THAN_OR_EQUAL || operator == TOKEN_GREATER_THAN_OR_EQUAL)) {
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3180",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use strings.compare() instead",
-            operator_display_name(operator));
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E3180",
+            "use strings.compare() instead", operator_display_name(operator));
         result = &TYPE_BOOL;
         return result;
     }
@@ -10851,9 +10583,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             is_zero = true;
         }
         if (is_zero) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3201",
-                NODE_FILE(checker, right_operand), right_operand->token.line, right_operand->token.column, 0,
-                operator == TOKEN_PERCENT ? "modulo" : "division");
+            NODE_ERROR_FORMATTED(checker, right_operand, "E3201", operator == TOKEN_PERCENT ? "modulo" : "division");
             infix_errored = true;
         } else if (operator == TOKEN_SLASH) {
             /* E3137: INT64_MIN / -1 is the one division C leaves undefined
@@ -10866,10 +10596,8 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             if (is_right_integer_literal && integer_value == -1 &&
                 typechecker_fold_const_integer(checker, node->data.infix.left, &left_value, &left_value_overflowed) &&
                 left_value == INT64_MIN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3137",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    (long long)left_value, (long long)integer_value,
-                    type_display_name(checker, numeric_result ? numeric_result : left));
+                NODE_ERROR_FORMATTED(checker, node, "E3137",
+                    (long long)left_value, (long long)integer_value, type_display_name(checker, numeric_result ? numeric_result : left));
                 infix_errored = true;
             }
         }
@@ -10881,9 +10609,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
          operator == TOKEN_ASTERISK || operator == TOKEN_SLASH ||
          operator == TOKEN_PERCENT) &&
         left->kind != TYPE_KIND_UNKNOWN && right->kind != TYPE_KIND_UNKNOWN) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3002",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            operator_display_name(operator), type_name(left), type_name(right));
+        NODE_ERROR_FORMATTED(checker, node, "E3002", operator_display_name(operator), type_name(left), type_name(right));
         infix_errored = true;
     }
 
@@ -10896,10 +10622,8 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
      * nil-assignment check with a confusing message). */
     if ((left->kind == TYPE_KIND_NIL || right->kind == TYPE_KIND_NIL) &&
         operator != TOKEN_EQUAL && operator != TOKEN_NOT_EQUAL) {
-        diagnostic_error_code_formatted_help(checker->diagnostics, "E3182",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "nil is only valid for == and != against nullable types (Error, pointers)",
-            operator_display_name(operator));
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E3182",
+            "nil is only valid for == and != against nullable types (Error, pointers)", operator_display_name(operator));
         infix_errored = true;
     }
 
@@ -10913,8 +10637,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             left->kind != TYPE_KIND_POINTER && left->kind != TYPE_KIND_ERROR)
             non_nil = left;
         if (non_nil) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3092", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_display_name(checker, non_nil));
+            NODE_ERROR_FORMATTED(checker, node, "E3092", type_display_name(checker, non_nil));
             infix_errored = true;
         }
     }
@@ -10926,8 +10649,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         (left->kind == TYPE_KIND_STRING || right->kind == TYPE_KIND_STRING) &&
         left->kind != TYPE_KIND_UNKNOWN && right->kind != TYPE_KIND_UNKNOWN &&
         (left->kind != TYPE_KIND_STRING || right->kind != TYPE_KIND_STRING)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3048",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3048",
             type_display_name(checker, left), type_display_name(checker, right));
         infix_errored = true;
     }
@@ -10936,9 +10658,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((left->kind == TYPE_KIND_STRING || right->kind == TYPE_KIND_STRING) &&
         operator != TOKEN_PLUS && operator != TOKEN_EQUAL && operator != TOKEN_NOT_EQUAL &&
         operator != TOKEN_IN && operator != TOKEN_NOT_IN) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3180",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            operator_display_name(operator));
+        NODE_ERROR_FORMATTED(checker, node, "E3180", operator_display_name(operator));
         infix_errored = true;
     }
 
@@ -10952,7 +10672,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         else if (right->kind == TYPE_KIND_MAP || right->kind == TYPE_KIND_ARRAY || right->kind == TYPE_KIND_STRUCT)
             bad_operand_type = right;
         if (bad_operand_type && bad_operand_type->kind != TYPE_KIND_UNKNOWN) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3093", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E3093",
                 operator_display_name(operator), type_display_name(checker, bad_operand_type));
             infix_errored = true;
         }
@@ -10966,8 +10686,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((left->kind == TYPE_KIND_POINTER || right->kind == TYPE_KIND_POINTER) &&
         (operator == TOKEN_PLUS || operator == TOKEN_MINUS ||
          operator == TOKEN_ASTERISK || operator == TOKEN_SLASH || operator == TOKEN_PERCENT)) {
-        diagnostic_error_code(checker->diagnostics, "E3078",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3078");
         infix_errored = true;
     }
 
@@ -10978,8 +10697,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         (left->kind == TYPE_KIND_POINTER || right->kind == TYPE_KIND_POINTER) &&
         (operator == TOKEN_LESS_THAN || operator == TOKEN_GREATER_THAN ||
          operator == TOKEN_LESS_THAN_OR_EQUAL || operator == TOKEN_GREATER_THAN_OR_EQUAL)) {
-        diagnostic_error_code(checker->diagnostics, "E3120",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3120");
         infix_errored = true;
     }
 
@@ -10992,7 +10710,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         left->kind == TYPE_KIND_ENUM && right->kind == TYPE_KIND_ENUM &&
         left->name && right->name &&
         !typechecker_same_enum_type(checker, left->name, right->name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3032", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3032",
             type_display_name(checker, left), type_display_name(checker, right));
         infix_errored = true;
     }
@@ -11008,8 +10726,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         for (int enum_index = 0; enum_index < checker->enum_count; enum_index++)
             if (strcmp(checker->enum_names[enum_index], left->name) == 0) { matched_enum_index = enum_index; break; }
         if (matched_enum_index >= 0 && checker->is_enum_tagged[matched_enum_index]) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3124",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E3124",
                 operator_display_name(operator), enum_display_name(checker, left->name));
             infix_errored = true;
         }
@@ -11034,7 +10751,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
                             (right && right->kind == TYPE_KIND_SIGNED_INTEGER);
         if ((left_is_enum || right_is_enum) &&
             !(is_ordering && has_integer_side)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3049", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(operator));
+            NODE_ERROR_FORMATTED(checker, node, "E3049", operator_display_name(operator));
             infix_errored = true;
         }
     }
@@ -11043,13 +10760,11 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
     if ((operator == TOKEN_EQUAL || operator == TOKEN_NOT_EQUAL) &&
         left->kind != TYPE_KIND_UNKNOWN && right->kind != TYPE_KIND_UNKNOWN) {
         if (left->kind == TYPE_KIND_ENUM && is_integer_kind(right->kind)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3117",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E3117",
                 type_display_name(checker, left), type_name(right), type_display_name(checker, left));
         }
         if (is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3117",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E3117",
                 type_display_name(checker, right), type_name(left), type_display_name(checker, right));
         }
     }
@@ -11060,16 +10775,18 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         !(is_integer_kind(left->kind) && is_integer_kind(right->kind)) &&
         !(left->kind == TYPE_KIND_STRUCT && is_integer_kind(right->kind)) &&
         !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_STRUCT) &&
-        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_BOOL) &&
-        !(left->kind == TYPE_KIND_BOOL && is_integer_kind(right->kind)) &&
         !(left->kind == TYPE_KIND_ENUM && is_integer_kind(right->kind)) &&
-        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM) &&
-        /* String enums can be compared with string literals */
-        !(left->kind == TYPE_KIND_ENUM && right->kind == TYPE_KIND_STRING && typechecker_enum_is_string(checker, left->name)) &&
-        !(left->kind == TYPE_KIND_STRING && right->kind == TYPE_KIND_ENUM && typechecker_enum_is_string(checker, right->name))) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3156",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            type_name(left), type_name(right));
+        !(is_integer_kind(left->kind) && right->kind == TYPE_KIND_ENUM)) {
+        NODE_ERROR_FORMATTED(checker, node, "E3156", type_name(left), type_name(right));
+    }
+
+    /* A bool ordered against a non-bool (n < flag): the C compiler would
+     * compare it as 1 or 0. */
+    if ((operator == TOKEN_LESS_THAN || operator == TOKEN_GREATER_THAN ||
+         operator == TOKEN_LESS_THAN_OR_EQUAL || operator == TOKEN_GREATER_THAN_OR_EQUAL) &&
+        left->kind != TYPE_KIND_UNKNOWN && right->kind != TYPE_KIND_UNKNOWN &&
+        (left->kind == TYPE_KIND_BOOL) != (right->kind == TYPE_KIND_BOOL)) {
+        NODE_ERROR_FORMATTED(checker, node, "E3156", type_name(left), type_name(right));
     }
 
     /* Pointer-to-pointer: pointee types differ in == / != comparison */
@@ -11078,9 +10795,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         left->name && right->name &&
         strcmp(left->name, right->name) != 0 &&
         strcmp(left->name, "nil") != 0 && strcmp(right->name, "nil") != 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3156",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            type_name(left), type_name(right));
+        NODE_ERROR_FORMATTED(checker, node, "E3156", type_name(left), type_name(right));
     }
     /* E3074: arrays cannot be compared with == / != directly. The C
      * backend has no structural-equality operator on aggregate types,
@@ -11090,27 +10805,21 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
          operator == TOKEN_LESS_THAN || operator == TOKEN_LESS_THAN_OR_EQUAL ||
          operator == TOKEN_GREATER_THAN || operator == TOKEN_GREATER_THAN_OR_EQUAL) &&
         left->kind == TYPE_KIND_ARRAY && right->kind == TYPE_KIND_ARRAY) {
-        diagnostic_error_code_help(checker->diagnostics, "E3074",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use 'arrays.is_equal(a, b)' to compare arrays element-by-element");
+        NODE_ERROR_HELP(checker, node, "E3074", "use 'arrays.is_equal(a, b)' to compare arrays element-by-element");
         infix_errored = true;
     }
     if ((operator == TOKEN_EQUAL || operator == TOKEN_NOT_EQUAL ||
          operator == TOKEN_LESS_THAN || operator == TOKEN_LESS_THAN_OR_EQUAL ||
          operator == TOKEN_GREATER_THAN || operator == TOKEN_GREATER_THAN_OR_EQUAL) &&
         left->kind == TYPE_KIND_MAP && right->kind == TYPE_KIND_MAP) {
-        diagnostic_error_code_help(checker->diagnostics, "E3076",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use 'maps.is_equal(a, b)' to compare maps for equality");
+        NODE_ERROR_HELP(checker, node, "E3076", "use 'maps.is_equal(a, b)' to compare maps for equality");
         infix_errored = true;
     }
     if ((operator == TOKEN_EQUAL || operator == TOKEN_NOT_EQUAL ||
          operator == TOKEN_LESS_THAN || operator == TOKEN_LESS_THAN_OR_EQUAL ||
          operator == TOKEN_GREATER_THAN || operator == TOKEN_GREATER_THAN_OR_EQUAL) &&
         left->kind == TYPE_KIND_STRUCT && right->kind == TYPE_KIND_STRUCT) {
-        diagnostic_error_code_help(checker->diagnostics, "E3077",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "compare individual fields instead, e.g. 'a.x == b.x'");
+        NODE_ERROR_HELP(checker, node, "E3077", "compare individual fields instead, e.g. 'a.x == b.x'");
         infix_errored = true;
     }
 
@@ -11147,14 +10856,11 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
             }
         } else {
             /* RHS is not a valid target for 'in' */
-            diagnostic_error_code_formatted(checker->diagnostics, "E3095", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                right_type_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3095", right_type_name);
             infix_errored = true;
         }
         if (mismatch) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3085",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                left_type_name, right_type_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3085", left_type_name, right_type_name);
             infix_errored = true;
         }
     }
@@ -11167,8 +10873,7 @@ static GrayType *resolve_infix_expression(TypeChecker *checker, AstNode *node) {
         bool is_right_valid = is_integer_kind(right->kind) || right->kind == TYPE_KIND_CHAR
             || (right->kind == TYPE_KIND_ENUM && right->name && typechecker_enum_is_flags(checker, right->name));
         if (!is_left_valid || !is_right_valid) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E8001",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E8001",
                 operator_display_name(operator), type_display_name(checker, left), type_display_name(checker, right));
             infix_errored = true;
         } else {
@@ -11211,10 +10916,7 @@ static GrayType *resolve_error_field(TypeChecker *checker, AstNode *node,
         return &TYPE_STRING;
     if (strcmp(member, "code") == 0)
         return type_from_name("ErrorCode");
-    diagnostic_error_code_formatted_help(checker->diagnostics, "E3191",
-        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-        "available fields: msg, code",
-        member);
+    NODE_ERROR_FORMATTED_HELP(checker, node, "E3191", "available fields: msg, code", member);
     return &TYPE_UNKNOWN;
 }
 
@@ -11249,7 +10951,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 }
             }
             if (!member_found) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, prefixed_type, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", prefixed_type, member);
             }
             /* Mark module as used */
             mark_import_used(checker, module_name);
@@ -11311,7 +11013,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 }
             }
             if (!member_found) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, resolved_object, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", resolved_object, member);
             }
             result = type_enum(checker_resolve_enum_key(checker, resolved_object));
             return result;
@@ -11407,13 +11109,13 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             if (field_index < symbol->return_count) {
                 result = symbol->return_types[field_index];
             } else {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3006", NODE_FILE(checker, node), node->token.line, node->token.column, 0, symbol->return_count, field_index + 1);
+                NODE_ERROR_FORMATTED(checker, node, "E3006", symbol->return_count, field_index + 1);
                 result = &TYPE_UNKNOWN;
             }
         } else if (symbol && symbol->type->kind == TYPE_KIND_STRUCT) {
             result = struct_field_type(checker, symbol->type->name, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, struct_display_name(checker, symbol->type->name), member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", struct_display_name(checker, symbol->type->name), member);
             }
         } else if (symbol && member[0] == 'v' && member[1] >= '0' && member[1] <= '9') {
             /* Multi-return .v0/.v1/.v2 access; use stored return types */
@@ -11424,11 +11126,11 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 result = symbol->type;
             } else if (symbol->return_types && field_index >= symbol->return_count) {
                 /* More variables than the function returns */
-                diagnostic_error_code_formatted(checker->diagnostics, "E3006", NODE_FILE(checker, node), node->token.line, node->token.column, 0, symbol->return_count, field_index + 1);
+                NODE_ERROR_FORMATTED(checker, node, "E3006", symbol->return_count, field_index + 1);
                 result = &TYPE_UNKNOWN;
             } else if (!symbol->return_types && field_index > 0) {
                 /* Single-return function used in multi-variable assignment */
-                diagnostic_error_code_formatted(checker->diagnostics, "E3006", NODE_FILE(checker, node), node->token.line, node->token.column, 0, 1, field_index + 1);
+                NODE_ERROR_FORMATTED(checker, node, "E3006", 1, field_index + 1);
                 result = &TYPE_UNKNOWN;
             } else {
                 result = type_from_name("Error"); /* fallback for (T, Error) pattern */
@@ -11437,7 +11139,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             /* Pointer auto-deref field access */
             result = struct_field_type(checker, symbol->type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, symbol->type->element_type, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", symbol->type->element_type, member);
             }
         } else if (symbol && symbol->type->kind == TYPE_KIND_ERROR) {
             result = resolve_error_field(checker, node, member);
@@ -11445,9 +11147,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                    symbol->type->kind != TYPE_KIND_STRUCT && symbol->type->kind != TYPE_KIND_ENUM &&
                    symbol->type->kind != TYPE_KIND_POINTER &&
                    !(member[0] == 'v' && member[1] >= '0' && member[1] <= '9')) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3013",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_name(symbol->type));
+            NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(symbol->type));
         }
         /* Struct-namespaced function or enum access: Type.func() / Type.MEMBER */
         if (!symbol && is_struct_name(checker, resolved_object)) {
@@ -11455,7 +11155,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             /* Check if member is a field; can't access fields on the type itself */
             GrayType *field_type = struct_field_type(checker, resolved_object, member);
             if (field_type && field_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3044", NODE_FILE(checker, node), node->token.line, node->token.column, 0, member, resolved_object);
+                NODE_ERROR_FORMATTED(checker, node, "E3044", member, resolved_object);
             } else {
                 /* Not a field and not a struct function: the user is accessing
                  * a struct type as if it were an enum (Point.RED). Left
@@ -11464,10 +11164,13 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 char struct_key[MESSAGE_BUFFER_SIZE], field_lookup_key[MESSAGE_BUFFER_SIZE];
                 snprintf(field_lookup_key, sizeof(field_lookup_key), "%s_%s",
                     checker_resolve_declaration_into(checker, resolved_object, struct_key, sizeof(struct_key)), member);
-                if (!find_function(checker, field_lookup_key)) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3141",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        struct_display_name(checker, resolved_object), member);
+                FunctionSignature *struct_function = find_function(checker, field_lookup_key);
+                if (!struct_function) {
+                    NODE_ERROR_FORMATTED(checker, node, "E3141", struct_display_name(checker, resolved_object), member);
+                } else {
+                    struct_function->was_used = true;
+                    const char *written = typechecker_format(checker, "%s.%s", struct_display_name(checker, resolved_object), member);
+                    NODE_ERROR_FORMATTED(checker, node, "E3031", written, written, written);
                 }
             }
             result = &TYPE_UNKNOWN;
@@ -11485,10 +11188,12 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             !is_struct_name(checker, resolved_object) &&
             !is_enum_name(checker, resolved_object)) {
             ResolveScope member_resolve_scope = checker_scope(checker);
-            if (!module_resolve_qualified(checker->modules, &member_resolve_scope, object_name, member, NULL)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4024",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    object_name, member);
+            DeclarationEntry *member_entry = module_resolve_qualified(checker->modules, &member_resolve_scope, object_name, member, NULL);
+            if (!member_entry) {
+                NODE_ERROR_FORMATTED(checker, node, "E4024", object_name, member);
+            } else if (member_entry->kind == DECLARATION_FUNCTION) {
+                const char *written = typechecker_format(checker, "%s.%s", object_name, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3031", written, written, written);
             }
         }
     } else if (object->kind == NODE_MEMBER_EXPRESSION) {
@@ -11507,28 +11212,45 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 }
             }
         }
+        /* A module-qualified struct function used as a value: lib.Type.func */
+        if (ast_member_chain(node, &resolved_module_name, &type_name_part) &&
+            typechecker_is_imported_module(checker, resolved_module_name)) {
+            char prefixed_type[MESSAGE_BUFFER_SIZE];
+            module_member_key(checker, resolved_module_name, type_name_part, prefixed_type, sizeof(prefixed_type));
+            const char *function_key = typechecker_format(checker, "%s_%s", prefixed_type, member);
+            FunctionSignature *struct_function = find_function(checker, function_key);
+            if (struct_function) {
+                struct_function->was_used = true;
+                const char *written = typechecker_format(checker, "%s.%s.%s", resolved_module_name, type_name_part, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3031", written, written, written);
+                return &TYPE_UNKNOWN;
+            }
+            if (is_struct_name(checker, prefixed_type)) {
+                GrayType *field_type = struct_field_type(checker, prefixed_type, member);
+                if (!field_type || field_type->kind == TYPE_KIND_UNKNOWN) {
+                    NODE_ERROR_FORMATTED(checker, node, "E4018", struct_display_name(checker, prefixed_type), member);
+                    return &TYPE_UNKNOWN;
+                }
+            }
+        }
         /* Nested member access: a.b.c; resolve a.b first, then look up .c */
         GrayType *object_type = type_table_get(checker->type_table, object);
         if (!object_type) object_type = resolve_expression(checker, object);
         if (object_type && object_type->kind == TYPE_KIND_STRUCT) {
             result = struct_field_type(checker, object_type->name, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    struct_display_name(checker, object_type->name), member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", struct_display_name(checker, object_type->name), member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_POINTER) {
             /* Auto-deref pointer field: a.next.val where a.next is ^Node */
             result = struct_field_type(checker, object_type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    object_type->element_type, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", object_type->element_type, member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_ERROR) {
             result = resolve_error_field(checker, node, member);
         } else if (object_type && object_type->kind != TYPE_KIND_UNKNOWN && object_type->kind != TYPE_KIND_STRUCT) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3013",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_name(object_type));
+            NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(object_type));
         }
     } else {
         /* Object is an expression (e.g. foo().bar, p^.field); resolve its type */
@@ -11536,23 +11258,19 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         if (object_type && object_type->kind == TYPE_KIND_STRUCT) {
             result = struct_field_type(checker, object_type->name, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    struct_display_name(checker, object_type->name), member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", struct_display_name(checker, object_type->name), member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_POINTER && object_type->element_type) {
             /* Auto-deref pointer from expression (array index, map index, call) */
             result = struct_field_type(checker, object_type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    object_type->element_type, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", object_type->element_type, member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_ERROR) {
             /* Error from an expression: errs[0].code, m["k"].msg, f().code */
             result = resolve_error_field(checker, node, member);
         } else if (object_type && object_type->kind != TYPE_KIND_UNKNOWN && object_type->kind != TYPE_KIND_VOID) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3013",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_name(object_type));
+            NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(object_type));
         }
     }
     return result;
@@ -11626,10 +11344,8 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             /* E3127: the binding names a real type, just not a struct one. */
             if (!node->data.struct_value.was_type_parameter_rejected) {
                 node->data.struct_value.was_type_parameter_rejected = true;
-                diagnostic_error_code_formatted(checker->diagnostics, "E3127",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    checker->generics.names[generic_index],
-                    unqualified_display_name(struct_name));
+                NODE_ERROR_FORMATTED(checker, node, "E3127",
+                    checker->generics.names[generic_index], unqualified_display_name(struct_name));
             }
         } else {
             typechecker_error_undefined_type(checker, node, unqualified_display_name(struct_name));
@@ -11644,7 +11360,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             if (!node->data.struct_value.field_names[j]) continue;
             if (strcmp(node->data.struct_value.field_names[j],
                        node->data.struct_value.field_names[i]) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E2015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, node->data.struct_value.field_names[i]);
+                NODE_ERROR_FORMATTED(checker, node, "E2015", node->data.struct_value.field_names[i]);
                 break;
             }
         }
@@ -11677,7 +11393,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (!found) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, struct_name, field_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", struct_name, field_name);
             } else if (expected_type && value_type->kind != TYPE_KIND_UNKNOWN &&
                        expected_type->kind != TYPE_KIND_UNKNOWN &&
                        /* kinds differ, OR both are pointers to different types,
@@ -11694,13 +11410,11 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                          expected_type->name && value_type->name &&
                          !typechecker_same_enum_type(checker, expected_type->name, value_type->name))) &&
                        !(expected_type->kind == TYPE_KIND_ENUM && is_integer_kind(value_type->kind)) &&
-                       !(expected_type->kind == TYPE_KIND_STRUCT && is_integer_kind(value_type->kind)) &&
                        !(is_integer_kind(expected_type->kind) && value_type->kind == TYPE_KIND_STRUCT) &&
                        /* nil is a valid value for pointer and Error fields */
                        !(value_type->kind == TYPE_KIND_NIL &&
                          (expected_type->kind == TYPE_KIND_POINTER || expected_type->kind == TYPE_KIND_ERROR))) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3053",
                     "a struct field", type_display_name(checker, expected_type), type_display_name(checker, value_type));
             }
             /* W3003/E3052: fixed-size array field ([T,N]) set in a struct
@@ -11726,8 +11440,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
              * built the struct supplied it. */
             if (found && function_types_mismatch(checker, expected_type, value_type)) {
                 AstNode *value = node->data.struct_value.field_values[i];
-                diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-                    NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, value, "E3066",
                     type_display_name(checker, expected_type), type_display_name(checker, value_type));
             }
         }
@@ -11744,7 +11457,15 @@ static bool reference_names_function(TypeChecker *checker, AstNode *argument) {
     if (argument->kind == NODE_LABEL)
         return find_function(checker, argument->data.label.value) != NULL;
     const char *qualifier = ast_member_qualifier(argument);
-    if (!qualifier) return false;
+    if (!qualifier) {
+        /* mod.Struct.func */
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (!ast_member_chain(argument, &chain_module, &chain_type) || scope_lookup(checker->current_scope, chain_module))
+            return false;
+        char chain_key[MESSAGE_BUFFER_SIZE];
+        snprintf(chain_key, sizeof(chain_key), "%s_%s_%s", chain_module, chain_type, argument->data.member.member);
+        return find_function(checker, chain_key) != NULL;
+    }
     /* An instance's field, not a module's or struct's function. */
     if (scope_lookup(checker->current_scope, qualifier)) return false;
     if (is_stdlib_module_name(typechecker_resolve_alias(checker, qualifier)))
@@ -11769,9 +11490,7 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
         const char *label_name = node->data.function_reference.function->data.label.value;
         /* Surface 1: ()builtin_name — builtins are not first-class values */
         if (typechecker_is_builtin(label_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4019",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                label_name, "builtin");
+            NODE_ERROR_FORMATTED(checker, node, "E4019", label_name, "builtin");
         } else {
             reference_name = label_name;
         }
@@ -11788,9 +11507,7 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
                 mark_import_used(checker, module_name);
             /* Surface 2: ()module.func — stdlib module functions are not first-class values */
             if (is_stdlib_module_name(module_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4038",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    object->data.label.value, member);
+                NODE_ERROR_FORMATTED(checker, node, "E4038", object->data.label.value, member);
             } else {
                 /* Struct.func → lookup as Struct_func */
                 reference_struct_name = object->data.label.value;
@@ -11812,12 +11529,10 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
                 mark_import_used(checker, typechecker_resolve_alias(checker, chain_module));
             char struct_key[MESSAGE_BUFFER_SIZE];
             snprintf(struct_key, sizeof(struct_key), "%s_%s", chain_module, chain_type);
-            char buffer[MESSAGE_BUFFER_SIZE];
-            snprintf(buffer, sizeof(buffer), "%s_%s", struct_key, member);
             reference_struct_name = chain_type;
             reference_struct_key = arena_copy_string(checker->arena, struct_key);
             reference_member_name = member;
-            reference_name = arena_copy_string(checker->arena, buffer);
+            reference_name = typechecker_format(checker, "%s_%s", struct_key, member);
         }
     }
     FunctionSignature *reference_signature = reference_name ? find_function(checker, reference_name) : NULL;
@@ -11835,17 +11550,13 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
             const char *display = (reference_struct_name && reference_member_name)
                 ? typechecker_format(checker, "%s.%s", reference_struct_name, reference_member_name)
                 : reference_name;
-            diagnostic_error_code_formatted(checker->diagnostics, "E4032",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                display);
+            NODE_ERROR_FORMATTED(checker, node, "E4032", display);
         }
         /* E4017: private struct function referenced from outside the struct */
         if (reference_signature->is_private && reference_struct_key &&
             !(checker->current_struct_name &&
               strcmp(checker->current_struct_name, reference_struct_key) == 0)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4017", NODE_FILE(checker, node),
-                node->token.line, node->token.column, 0,
-                reference_struct_name, reference_member_name);
+            NODE_ERROR_FORMATTED(checker, node, "E4017", reference_struct_name, reference_member_name);
         }
     } else if (reference_name) {
         /* Surface 3: using module; ()stdlib_func — check if reference_name is in an active using module */
@@ -11855,15 +11566,12 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
             const char *real_module = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
             if (is_stdlib_module_name(real_module) && find_stdlib_metadata(real_module, reference_name)) {
                 found_in_using = true;
-                diagnostic_error_code_formatted(checker->diagnostics, "E4019",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    reference_name, "stdlib");
+                NODE_ERROR_FORMATTED(checker, node, "E4019", reference_name, "stdlib");
             }
         }
         if (!found_in_using) {
             const char *suggestion = suggest_similar_name(checker, reference_name);
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E4002",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E4002",
                 suggestion ? typechecker_format(checker, "did you mean '%s'?", suggestion) : NULL, reference_name);
         }
     }
@@ -12137,8 +11845,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             symbol->was_used = true;
             result = symbol->type;
             if (result->kind == TYPE_KIND_RANGE && node != checker->range_use) {
-                diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, node),
-                    node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E3205");
                 result = &TYPE_UNKNOWN;
                 break;
             }
@@ -12158,7 +11865,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
              * in a value position and should be rejected. */
             FunctionSignature *function_signature = find_function(checker, name);
             if (function_signature) function_signature->was_used = true;
-            diagnostic_error_code_formatted(checker->diagnostics, "E3031", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name, name, name);
+            NODE_ERROR_FORMATTED(checker, node, "E3031", name, name, name);
         } else if (typechecker_lookup_using_constant(checker, name)) {
             result = typechecker_lookup_using_constant(checker, name);
         } else if (typechecker_is_builtin(name)) {
@@ -12168,14 +11875,12 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                  * position. The builtins that take one — size_of(), type_of()
                  * — resolve their own argument, so anything arriving here is
                  * a name used as a value and was emitted into the C. */
-                diagnostic_error_code_formatted(checker->diagnostics, "E3100",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+                NODE_ERROR_FORMATTED(checker, node, "E3100", name);
                 result = base_type;
             } else {
                 /* Bare builtin function name used as a value (e.g. `input`
                  * instead of `input()`). */
-                diagnostic_error_code_formatted(checker->diagnostics, "E3031", NODE_FILE(checker, node),
-                    node->token.line, node->token.column, 0, name, name, name);
+                NODE_ERROR_FORMATTED(checker, node, "E3031", name, name, name);
             }
         } else if (!typechecker_is_imported_module(checker, name) &&
                    !module_declares_const(checker, name) &&
@@ -12192,18 +11897,13 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
              * enum, an instance for a struct, and neither for an alias of a
              * primitive, which gets the bare message. */
             if (is_enum_name(checker, resolved)) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3100",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    typechecker_format(checker, "use '%s.VARIANT' to access an enum value", name),
-                    name);
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3100",
+                    typechecker_format(checker, "use '%s.VARIANT' to access an enum value", name), name);
             } else if (is_struct_name(checker, resolved)) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3100",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    typechecker_format(checker, "use '%s{...}' or 'new(%s)' to create an instance", name, name),
-                    name);
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3100",
+                    typechecker_format(checker, "use '%s{...}' or 'new(%s)' to create an instance", name, name), name);
             } else {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3100",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+                NODE_ERROR_FORMATTED(checker, node, "E3100", name);
             }
             result = &TYPE_UNKNOWN;
         } else if (!is_enum_name(checker, name) &&
@@ -12215,13 +11915,10 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     !module_declares_const(checker, name))) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
-                diagnostic_error_code_formatted(checker->diagnostics, "E1012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name + 1);
+                NODE_ERROR_FORMATTED(checker, node, "E1012", name + 1);
             } else if (is_unimported_user_module(checker, name,
                                                  typechecker_resolve_alias(checker, name))) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E4033",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "add an import for it at the top of the file",
-                    name);
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E4033", "add an import for it at the top of the file", name);
             } else {
                 /* Check if the name matches a named return value */
                 bool is_named_return = false;
@@ -12241,13 +11938,10 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     snprintf(help, sizeof(help),
                         "'%s' is a named return value in the function signature. Did you forget to declare 'mut %s %s' at function scope?",
                         name, name, narrowed_return_type ? narrowed_return_type : "?");
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E4001",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        arena_copy_string(checker->arena, help), name);
+                    NODE_ERROR_FORMATTED_HELP(checker, node, "E4001", arena_copy_string(checker->arena, help), name);
                 } else {
                     const char *suggestion = suggest_similar_name(checker, name);
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E4001",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    NODE_ERROR_FORMATTED_HELP(checker, node, "E4001",
                         suggestion ? typechecker_format(checker, "did you mean '%s'?", suggestion) : NULL, name);
                 }
             }
@@ -12269,7 +11963,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             /* -literal and bit_not literal are literals too; they take a
              * type from context with the rest of the expression. */
             if (node->data.prefix.operator == TOKEN_BIT_NOT && right->is_decimal) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E8002", NODE_FILE(checker, node), node->token.line, node->token.column, 0, "f64");
+                NODE_ERROR_FORMATTED(checker, node, "E8002", "f64");
                 result = &TYPE_UNKNOWN;
             } else {
                 result = right;
@@ -12279,20 +11973,20 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         if (right->kind == TYPE_KIND_LITERAL) right = resolve_expression(checker, node->data.prefix.right);
         if (node->data.prefix.operator == TOKEN_BANG) {
             if (right->kind != TYPE_KIND_BOOL && right->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3090", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, right));
+                NODE_ERROR_FORMATTED(checker, node, "E3090", type_display_name(checker, right));
             }
             result = &TYPE_BOOL;
         } else if (node->data.prefix.operator == TOKEN_MINUS) {
             if (right->kind != TYPE_KIND_UNKNOWN && !type_is_numeric(right)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3007", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, right));
+                NODE_ERROR_FORMATTED(checker, node, "E3007", type_display_name(checker, right));
             } else if (right->kind != TYPE_KIND_UNKNOWN && right->name && is_unsigned_integer_type_name(right->name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3096", NODE_FILE(checker, node), node->token.line, node->token.column, 0, right->name);
+                NODE_ERROR_FORMATTED(checker, node, "E3096", right->name);
             }
             result = right;
         } else if (node->data.prefix.operator == TOKEN_BIT_NOT) {
             /* E3090: bit_not requires an integer operand */
             if (right->kind != TYPE_KIND_UNKNOWN && !is_integer_kind(right->kind) && right->kind != TYPE_KIND_CHAR) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E8002", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, right));
+                NODE_ERROR_FORMATTED(checker, node, "E8002", type_display_name(checker, right));
             }
             result = right;
         } else {
@@ -12315,7 +12009,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 /* Dereference: ^T^ → T */
                 result = typechecker_type_from_name(checker, left_type->element_type);
             } else if (left_type->kind != TYPE_KIND_UNKNOWN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3016", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, left_type));
+                NODE_ERROR_FORMATTED(checker, node, "E3016", type_display_name(checker, left_type));
                 result = left_type;
             } else {
                 result = left_type;
@@ -12328,8 +12022,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 node->data.postfix.left->kind != NODE_MEMBER_EXPRESSION &&
                 !(node->data.postfix.left->kind == NODE_POSTFIX_EXPRESSION &&
                   node->data.postfix.left->data.postfix.operator == TOKEN_CARET)) {
-                diagnostic_error_code(checker->diagnostics, "E5015",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E5015");
             }
             /* ++ and -- only valid on mutable numeric types.
              * Walk nested member/index chains so that e.g. p.x++ is caught. */
@@ -12340,12 +12033,13 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                         ? target_root_symbol(checker, node->data.postfix.left)
                         : scope_lookup(checker->current_scope, root);
                     if (symbol && !symbol->is_mutable && !(symbol->type && symbol->type->kind == TYPE_KIND_POINTER))
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, root);
+                        NODE_ERROR_FORMATTED(checker, node, "E3005", root);
                 }
                 report_write_to_module_variable(checker, node, node->data.postfix.left);
             }
             if (left_type->kind != TYPE_KIND_UNKNOWN && !type_is_integer(left_type)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(node->data.postfix.operator), type_display_name(checker, left_type));
+                NODE_ERROR_FORMATTED(checker, node, "E5023",
+                    operator_display_name(node->data.postfix.operator), type_display_name(checker, left_type));
             }
             result = left_type;
         } else {
@@ -12379,9 +12073,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         /* E3003: array index must be integer */
         if (left->kind == TYPE_KIND_ARRAY && index_type->kind != TYPE_KIND_UNKNOWN &&
             !is_integer_kind(index_type->kind)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3003",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "array", type_name(index_type));
+            NODE_ERROR_FORMATTED(checker, node, "E3003", "array", type_name(index_type));
         }
         /* Reject negative literal index at compile time. Applies to
          * arrays and strings (); the analogous runtime panic
@@ -12392,9 +12084,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             node->data.index_expression.index->data.prefix.operator == TOKEN_MINUS &&
             node->data.index_expression.index->data.prefix.right->kind == NODE_INTEGER_LITERAL) {
             const char *what = left->kind == TYPE_KIND_STRING ? "string" : "array";
-            diagnostic_error_code_formatted(checker->diagnostics, "E3203",
-                NODE_FILE(checker, node->data.index_expression.index),
-                node->data.index_expression.index->token.line, node->data.index_expression.index->token.column, 0, what);
+            NODE_ERROR_FORMATTED(checker, node->data.index_expression.index, "E3203", what);
         }
         if (left->kind == TYPE_KIND_ARRAY && left->element_type) {
             result = typechecker_type_from_name(checker, left->element_type);
@@ -12411,20 +12101,16 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     types_assignable(checker, key_type, index_type) ||
                     (declared_is_enum && is_integer_kind(index_type->kind));
                 if (!compatible) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        "a map index", left->key_type, type_name(index_type));
+                    NODE_ERROR_FORMATTED(checker, node, "E3053", "a map index", left->key_type, type_name(index_type));
                 }
             }
         } else if (left->kind == TYPE_KIND_STRING) {
             if (index_type->kind != TYPE_KIND_UNKNOWN && !is_integer_kind(index_type->kind)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3003",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "string", type_name(index_type));
+                NODE_ERROR_FORMATTED(checker, node, "E3003", "string", type_name(index_type));
             }
             result = &TYPE_CHAR;
         } else if (left->kind != TYPE_KIND_UNKNOWN) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3008", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, left));
+            NODE_ERROR_FORMATTED(checker, node, "E3008", type_display_name(checker, left));
         }
         break;
     }
@@ -12456,8 +12142,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             }
             if (!element_type) element_type = any_decimal ? &TYPE_F64 : &TYPE_I64;
             if (element_type->kind == TYPE_KIND_ERROR)
-                diagnostic_error_code(checker->diagnostics, "E3153", NODE_FILE(checker, node),
-                    node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E3153");
             result = type_array(type_name(element_type));
             for (int i = 0; i < node->data.array_value.count; i++) {
                 AstNode *element = node->data.array_value.elements[i];
@@ -12476,8 +12161,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 if (compatible && element_type->element_type && element_resolved->element_type)
                     compatible = strcmp(element_type->element_type, element_resolved->element_type) == 0;
                 if (!compatible) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                        NODE_FILE(checker, element), element->token.line, element->token.column, 0,
+                    NODE_ERROR_FORMATTED(checker, element, "E3053",
                         "an array literal", type_name(element_type), type_name(element_resolved));
                     break;
                 }
@@ -12521,21 +12205,18 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         if (!first_key_type) first_key_type = key_decimal ? &TYPE_F64 : &TYPE_I64;
         if (!first_value_type) first_value_type = value_decimal ? &TYPE_F64 : &TYPE_I64;
         if (first_key_type->kind == TYPE_KIND_ERROR || first_value_type->kind == TYPE_KIND_ERROR)
-            diagnostic_error_code(checker->diagnostics, "E3153", NODE_FILE(checker, node),
-                node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3153");
         for (int i = 0; i < node->data.map_value.count; i++) {
             AstNode *key_node = node->data.map_value.keys[i];
             AstNode *value_node = node->data.map_value.values[i];
             if (is_literal_expression(key_node) &&
                 literal_entry_mismatches(checker, first_key_type, check_expression_as(checker, key_node, first_key_type))) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                    NODE_FILE(checker, key_node), key_node->token.line, key_node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, key_node, "E3053",
                     "a map literal key", type_display_name(checker, first_key_type), type_display_name(checker, resolve_expression(checker, key_node)));
             }
             if (is_literal_expression(value_node) &&
                 literal_entry_mismatches(checker, first_value_type, check_expression_as(checker, value_node, first_value_type))) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                    NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, value_node, "E3053",
                     "a map literal value", type_display_name(checker, first_value_type), type_display_name(checker, resolve_expression(checker, value_node)));
             }
         }
@@ -12573,8 +12254,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
 
     case NODE_RANGE_EXPRESSION: {
         if (node != checker->range_use) {
-            diagnostic_error_code(checker->diagnostics, "E3205", NODE_FILE(checker, node),
-                node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3205");
             result = &TYPE_UNKNOWN;
             break;
         }
@@ -12668,9 +12348,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             char source_name[TYPE_NAME_MAX];
             strncpy(source_name, type_name(source_type), sizeof(source_name) - 1);
             source_name[sizeof(source_name) - 1] = '\0';
-            diagnostic_error_code_formatted(checker->diagnostics, "E3167",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                source_name, unqualified_display_name(written_target));
+            NODE_ERROR_FORMATTED(checker, node, "E3167", source_name, unqualified_display_name(written_target));
             result = destination_type;
             break;
         }
@@ -12679,7 +12357,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             bool allowed = false;
             /* Same kind is always allowed (identity cast) */
             if (source_type->kind == destination_type->kind && source_type->kind != TYPE_KIND_ARRAY &&
-                source_type->kind != TYPE_KIND_MAP && source_type->kind != TYPE_KIND_STRUCT)
+                source_type->kind != TYPE_KIND_MAP && source_type->kind != TYPE_KIND_STRUCT &&
+                source_type->kind != TYPE_KIND_STRING)
                 allowed = true;
             /* A C interop result carries no Grayscale type; cast() to a
              * C-representable scalar is the inline form of the
@@ -12700,9 +12379,6 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
              * type reinterpretation, not fallible string parsing. */
             /* Numeric/Bool -> String (stringification) */
             if ((type_is_numeric(source_type) || source_type->kind == TYPE_KIND_BOOL) && destination_type->kind == TYPE_KIND_STRING)
-                allowed = true;
-            /* String -> String (identity) */
-            if (source_type->kind == TYPE_KIND_STRING && destination_type->kind == TYPE_KIND_STRING)
                 allowed = true;
             /* String -> number: parsed at runtime, panicking on bad input */
             if (source_type->kind == TYPE_KIND_STRING &&
@@ -12737,6 +12413,15 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     allowed = true;
                 }
             }
+            /* A tagged enum is a struct in C: it converts to no other type,
+             * and nothing converts to one. */
+            bool is_source_tagged = source_type->kind == TYPE_KIND_ENUM &&
+                typechecker_enum_is_tagged(checker, source_type->name);
+            bool is_destination_tagged = destination_type->kind == TYPE_KIND_ENUM &&
+                typechecker_enum_is_tagged(checker, destination_type->name);
+            if ((is_source_tagged || is_destination_tagged) &&
+                !(source_type->kind == destination_type->kind && strcmp(source_type->name, destination_type->name) == 0))
+                allowed = false;
             if (!allowed) {
                 char type_name_buffer[TYPE_NAME_MAX];
                 if (source_type->kind == TYPE_KIND_ARRAY && source_type->element_type)
@@ -13255,7 +12940,7 @@ static bool block_has_return(AstNode *node) {
 static void check_no_nested_ensure(TypeChecker *checker, AstNode *node, bool nested) {
     if (!node) return;
     if (node->kind == NODE_ENSURE_STATEMENT && nested) {
-        diagnostic_error_code(checker->diagnostics, "E3070", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3070");
         return;
     }
     if (node->kind == NODE_BLOCK_STATEMENT) {
@@ -13584,10 +13269,8 @@ static void check_block(TypeChecker *checker, AstNode *node) {
                                call_function->data.member.member) {
                         function_name = call_function->data.member.member;
                     }
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3183",
-                        NODE_FILE(checker, first), first->token.line, first->token.column, 0,
-                        "all return values must be handled; use '_' to discard unwanted values",
-                        function_name, symbol->return_count, variable_count);
+                    NODE_ERROR_FORMATTED_HELP(checker, first, "E3183",
+                        "all return values must be handled; use '_' to discard unwanted values", function_name, symbol->return_count, variable_count);
                 }
             }
         }
@@ -13705,22 +13388,18 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
      * diagnostic instead of a clang error pointing at the generated C. */
     if (checker->function_depth == 0 && node->data.variable_declaration.value &&
         expression_contains_call(node->data.variable_declaration.value)) {
-        diagnostic_error_code(checker->diagnostics, "E5013",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E5013");
     }
     /* E5040: function-scope const initializers cannot contain runtime
      * function calls.  Constants must be compile-time-known. */
     if (checker->function_depth > 0 && !node->data.variable_declaration.is_mutable &&
         node->data.variable_declaration.value &&
         expression_contains_call(node->data.variable_declaration.value)) {
-        diagnostic_error_code(checker->diagnostics, "E5040",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E5040");
     }
     /* E3038: void cannot be used as variable type */
     if (node->data.variable_declaration.type_name && strcmp(node->data.variable_declaration.type_name, "void") == 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3038",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "a variable type");
+        NODE_ERROR_FORMATTED(checker, node, "E3038", "a variable type");
     }
     /* E3038: void in array/map types.
      * "void" is legal as a typed-func return type (encoded as
@@ -13730,9 +13409,7 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
         bool is_typed_function = strncmp(type_name_text, "func(", 5) == 0 ||
                              strncmp(type_name_text, "[func(", 6) == 0;
         if (!is_typed_function && strstr(type_name_text, "void") != NULL && strcmp(type_name_text, "void") != 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3038",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "an element type in arrays or maps");
+            NODE_ERROR_FORMATTED(checker, node, "E3038", "an element type in arrays or maps");
         }
     }
     /* E3101: func reference variables must use 'const', not 'mut' */
@@ -13742,34 +13419,27 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
         bool is_function_type = node->data.variable_declaration.type_name &&
             strncmp(node->data.variable_declaration.type_name, "func(", 5) == 0;
         if (is_function_reference_value || is_function_type) {
-            diagnostic_error_code(checker->diagnostics, "E3101",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3101");
         }
     }
     /* E3034: 'any' type is reserved */
     if (node->data.variable_declaration.type_name && strcmp(node->data.variable_declaration.type_name, "any") == 0) {
-        diagnostic_error_code(checker->diagnostics, "E3034", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3034");
     }
     /* E2038: reserved type name as variable name */
     if (node->data.variable_declaration.name[0] != '_' &&
         is_reserved_type_name(node->data.variable_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            VARIABLE_DISPLAY_NAME(node), "a variable");
+        NODE_ERROR_FORMATTED(checker, node, "E2038", VARIABLE_DISPLAY_NAME(node), "a variable");
     }
     /* E5016: builtin function name as variable name */
     if (node->data.variable_declaration.name[0] != '_' &&
         is_reserved_builtin_function_name(node->data.variable_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            VARIABLE_DISPLAY_NAME(node), "a variable");
+        NODE_ERROR_FORMATTED(checker, node, "E5016", VARIABLE_DISPLAY_NAME(node), "a variable");
     }
     /* E5035: stdlib module name as variable name */
     if (node->data.variable_declaration.name[0] != '_' &&
         is_stdlib_module_name(node->data.variable_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            VARIABLE_DISPLAY_NAME(node), "a variable");
+        NODE_ERROR_FORMATTED(checker, node, "E5035", VARIABLE_DISPLAY_NAME(node), "a variable");
     }
     /* E4026: 'main' is reserved for the entry-point function */
     check_reserved_main(checker, node->data.variable_declaration.name,
@@ -13800,20 +13470,18 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
                     strncpy(display, call_name, sizeof(display) - 1);
                     display[sizeof(display) - 1] = '\0';
                 }
-                diagnostic_error_code_formatted(checker->diagnostics, "E3045", NODE_FILE(checker, node->data.variable_declaration.value), node->data.variable_declaration.value->token.line,
-                    node->data.variable_declaration.value->token.column, 0, display);
+                NODE_ERROR_FORMATTED(checker, node->data.variable_declaration.value, "E3045", display);
             }
         }
     }
     /* E3059: maps cannot be declared const */
     if (!node->data.variable_declaration.is_mutable && node->data.variable_declaration.type_name &&
         strncmp(node->data.variable_declaration.type_name, "map[", 4) == 0) {
-        diagnostic_error_code_help(checker->diagnostics, "E3059", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "change 'const' to 'mut'; use a struct for fixed key-value data");
+        NODE_ERROR_HELP(checker, node, "E3059", "change 'const' to 'mut'; use a struct for fixed key-value data");
     }
     /* const must have a value */
     if (!node->data.variable_declaration.is_mutable && !node->data.variable_declaration.value) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E2011", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node));
+        NODE_ERROR_FORMATTED(checker, node, "E2011", VARIABLE_DISPLAY_NAME(node));
     }
     /* W1004: a mut-class declaration with a type but no value silently
      * zero-initializes. State the fact so a dropped '= value' is visible.
@@ -13834,8 +13502,8 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
     if (node->data.variable_declaration.value && node->data.variable_declaration.value->kind == NODE_LABEL) {
         const char *value_label_name = node->data.variable_declaration.value->data.label.value;
         if (is_reserved_type_name(value_label_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3011", NODE_FILE(checker, node->data.variable_declaration.value), node->data.variable_declaration.value->token.line,
-                node->data.variable_declaration.value->token.column, 0, value_label_name, value_label_name);
+            NODE_ERROR_FORMATTED(checker, node->data.variable_declaration.value, "E3011",
+                value_label_name, value_label_name);
         }
     }
 
@@ -13862,9 +13530,7 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
         case NODE_BOOL_VALUE:   suggested = "bool";   break;
         default: break;
         }
-        diagnostic_error_code_formatted(checker->diagnostics, "E3131",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            VARIABLE_DISPLAY_NAME(node), suggested);
+        NODE_ERROR_FORMATTED(checker, node, "E3131", VARIABLE_DISPLAY_NAME(node), suggested);
     }
 
     /* E3054: mutable array with fixed size */
@@ -13907,8 +13573,7 @@ static void check_variable_declaration_annotation(TypeChecker *checker, AstNode 
 
     /* E4029: private not allowed inside functions */
     if (node->data.variable_declaration.is_private && checker->function_depth > 0) {
-        diagnostic_error_code(checker->diagnostics, "E4029",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E4029");
     }
 }
 
@@ -13944,10 +13609,8 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
             bool inferred = node->data.variable_declaration.is_mutable &&
                 typechecker_literal_type_inferable(checker, literal, value_type);
             if ((is_array || is_map) && !inferred) {
-                diagnostic_error_code_help(checker->diagnostics, is_array ? "E3050" : "E3051",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    is_array ? "add a type annotation, e.g. 'mut x [i64] = {1, 2, 3}'"
-                             : "add a type annotation, e.g. 'mut x [string:i64] = {\"a\": 1}'");
+                NODE_ERROR_HELP(checker, node, is_array ? "E3050" : "E3051",
+                    is_array ? "add a type annotation, e.g. 'mut x [i64] = {1, 2, 3}'" : "add a type annotation, e.g. 'mut x [string:i64] = {\"a\": 1}'");
             } else if (is_map && inferred) {
                 /* The inferred map type is taken from the first pair only
                  * (typechecker_literal_type_inferable / NODE_MAP_VALUE). Every
@@ -13963,21 +13626,18 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
                     GrayType *initializer_value_type = resolve_expression(checker, value_node);
                     if ((key_type && !typechecker_kind_is_primitive(key_type->kind)) ||
                         (initializer_value_type && !typechecker_kind_is_primitive(initializer_value_type->kind))) {
-                        diagnostic_error_code_help(checker->diagnostics, "E3051",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        NODE_ERROR_HELP(checker, node, "E3051",
                             "add a type annotation, e.g. 'mut x [string:i64] = {\"a\": 1}'");
                         break;
                     }
                     if (key_type && map_key_type && key_type->kind != TYPE_KIND_UNKNOWN && map_key_type->kind != TYPE_KIND_UNKNOWN &&
                         !types_assignable(checker, map_key_type, key_type)) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                            NODE_FILE(checker, key_node), key_node->token.line, key_node->token.column, 0,
+                        NODE_ERROR_FORMATTED(checker, key_node, "E3053",
                             "a map literal key", type_display_name(checker, map_key_type), type_display_name(checker, key_type));
                     }
                     if (initializer_value_type && map_value_type && initializer_value_type->kind != TYPE_KIND_UNKNOWN && map_value_type->kind != TYPE_KIND_UNKNOWN &&
                         !types_assignable(checker, map_value_type, initializer_value_type)) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3053",
-                            NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
+                        NODE_ERROR_FORMATTED(checker, value_node, "E3053",
                             "a map literal value", type_display_name(checker, map_value_type), type_display_name(checker, initializer_value_type));
                     }
                 }
@@ -13996,9 +13656,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
         }
         /* E3038: cannot assign void function result */
         if (value_type->kind == TYPE_KIND_VOID) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3187",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "the value of a variable");
+            NODE_ERROR_FORMATTED(checker, node, "E3187", "the value of a variable");
         }
         /* E3102: cannot assign a func-type return value to a variable.
          * Func references must be created with ()func_name or ref(func_name).
@@ -14018,9 +13676,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
                     called_qualifier, call_function->data.member.member);
                 called = called_name;
             }
-            diagnostic_error_code_formatted(checker->diagnostics, "E3102",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                called);
+            NODE_ERROR_FORMATTED(checker, node, "E3102", called);
         }
         /* Check for multi-return to single variable
          * (skip if this is part of a multi-var expansion; the value will be a .v0 access) */
@@ -14033,22 +13689,17 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
         if (value_type->kind == TYPE_KIND_NIL && declared->kind != TYPE_KIND_UNKNOWN &&
             declared->kind != TYPE_KIND_ERROR && declared->kind != TYPE_KIND_POINTER &&
             declared->kind != TYPE_KIND_NIL) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3157",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                type_name(declared));
+            NODE_ERROR_FORMATTED(checker, node, "E3157", type_name(declared));
         }
         /* Reject bare 'mut x = nil' with no type context */
         if (value_type->kind == TYPE_KIND_NIL && declared->kind == TYPE_KIND_UNKNOWN) {
-            diagnostic_error_code_help(checker->diagnostics, "E3196",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation (e.g., 'mut x Error = nil')");
+            NODE_ERROR_HELP(checker, node, "E3196", "add a type annotation (e.g., 'mut x Error = nil')");
         }
         /* E3066: typed-func variable assigned a function reference with a
          * different signature. Both sides are TYPE_KIND_FUNCTION; the canonical
          * encoded names (e.g. "func(i64)->i64") must match exactly. */
         if (function_types_mismatch(checker, declared, value_type)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-                NODE_FILE(checker, node->data.variable_declaration.value), node->data.variable_declaration.value->token.line, node->data.variable_declaration.value->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node->data.variable_declaration.value, "E3066",
                 type_display_name(checker, declared), type_display_name(checker, value_type));
         }
         /* E3001: \`f func = expr\` requires expr to be a function reference.
@@ -14076,9 +13727,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
                     help = typechecker_format(checker, "to store a reference to '%s', use '()%s' (not '%s()')",
                         called, called, called);
                 }
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3001",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, help,
-                    type_name(value_type), "func");
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3001", help, type_name(value_type), "func");
                 was_function_declaration_reported = true;
             }
         }
@@ -14092,10 +13741,8 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
              * directly; string routes through from_c_string(), aggregates through
              * individual fields. */
             if (!c_function_result_fits(declared)) {
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3001",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "convert it with from_c_string() for text, or read individual fields",
-                    type_display_name(checker, value_type), type_display_name(checker, declared));
+                NODE_ERROR_FORMATTED_HELP(checker, node, "E3001",
+                    "convert it with from_c_string() for text, or read individual fields", type_display_name(checker, value_type), type_display_name(checker, declared));
             } else {
                 extern_call_assert_type(checker, node->data.variable_declaration.value, declared, false);
             }
@@ -14165,12 +13812,8 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
             if (strncmp(type_name_text, "map[", 4) == 0 &&
                 node->data.variable_declaration.value->kind == NODE_ARRAY_VALUE) {
                 AstNode *map_initializer = node->data.variable_declaration.value;
-                diagnostic_error_code_formatted_help(checker->diagnostics, "E3001",
-                    NODE_FILE(checker, map_initializer), map_initializer->token.line, map_initializer->token.column, 0,
-                    map_initializer->data.array_value.count == 0
-                        ? "use '{:}' for an empty map"
-                        : "map literals use '{key: value, ...}' syntax",
-                    "an array literal", type_name_text);
+                NODE_ERROR_FORMATTED_HELP(checker, map_initializer, "E3001",
+                    map_initializer->data.array_value.count == 0 ? "use '{:}' for an empty map" : "map literals use '{key: value, ...}' syntax", "an array literal", type_name_text);
             }
             /* W3003/E3052: fixed-size array initialization count checks */
             if (type_name_text[0] == '[' && node->data.variable_declaration.value->kind == NODE_ARRAY_VALUE) {
@@ -14214,7 +13857,7 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
                     int fixed_size = atoi(comma + 1);
                     AstNode *array = node->data.variable_declaration.value;
                     if (fixed_size > 0 && array->data.array_value.count > fixed_size) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3052", NODE_FILE(checker, node), node->token.line, node->token.column, 0, fixed_size, array->data.array_value.count);
+                        NODE_ERROR_FORMATTED(checker, node, "E3052", fixed_size, array->data.array_value.count);
                     }
                     if (fixed_size > 0 && array->data.array_value.count < fixed_size) {
                         diagnostic_warning_code_formatted(checker->diagnostics, "W3003",
@@ -14240,11 +13883,13 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
         /* Check for redeclaration in same scope */
         Symbol *existing = scope_lookup_local(checker->current_scope,
             node->data.variable_declaration.name);
-        if (existing && existing->definition_line != 0) {
+        if (existing && (existing->definition_line != 0 || existing->parameter_line != 0)) {
             /* definition_line == 0 means this was pre-registered in Pass 1.5
              * to allow forward references between global constants;
-             * that is not a duplicate declaration. */
-            diagnostic_error_code_formatted(checker->diagnostics, "E4003", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node), existing->definition_line);
+             * that is not a duplicate declaration. A parameter shares the
+             * function body's scope, so redeclaring it is. */
+            NODE_ERROR_FORMATTED(checker, node, "E4003",
+                VARIABLE_DISPLAY_NAME(node), existing->definition_line != 0 ? existing->definition_line : existing->parameter_line);
         }
         /* W2002/W2007: check if variable shadows outer scope */
         if (!existing && checker->current_scope->parent) {
@@ -14287,7 +13932,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 (is_enum_name(checker, variable_name) &&
                  strcmp(enum_display_name(checker, variable_name), variable_display_name) == 0);
             if (shadows_type) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, variable_display_name);
+                NODE_ERROR_FORMATTED(checker, node, "E4012", variable_display_name);
             }
         }
         /* E4013: shadows a function — only when the variable name
@@ -14299,7 +13944,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
             FunctionSignature *shadowed = find_function(checker, node->data.variable_declaration.name);
             if (shadowed && strcmp(function_display_name(shadowed),
                                    VARIABLE_DISPLAY_NAME(node)) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4013", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node));
+                NODE_ERROR_FORMATTED(checker, node, "E4013", VARIABLE_DISPLAY_NAME(node));
             }
         }
         /* E4014: shadows an imported module. imported_modules[] is a single
@@ -14316,7 +13961,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                     (variable_file && imp_file && strcmp(variable_file, imp_file) == 0);
                 if (!same_file) continue;
                 if (strcmp(checker->imported_modules[import_index], node->data.variable_declaration.name) == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E4014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VARIABLE_DISPLAY_NAME(node));
+                    NODE_ERROR_FORMATTED(checker, node, "E4014", VARIABLE_DISPLAY_NAME(node));
                     break;
                 }
             }
@@ -14411,8 +14056,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                             source_argument->data.label.value);
                         if (source_symbol && !source_symbol->is_mutable &&
                             !find_function(checker, source_argument->data.label.value)) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E3079",
-                                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            NODE_ERROR_FORMATTED(checker, node, "E3079",
                                 source_argument->data.label.value, node->data.variable_declaration.name);
                         }
                     }
@@ -14617,39 +14261,6 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 }
             }
         }
-        /* Per-element tracking for [func] arrays initialised with a
-         * literal of func refs (). Preserves each element's
-         * originating function name so constant-index calls can
-         * recover the real return type (e.g. struct returns) that
-         * would otherwise be erased by the void* storage. */
-        if (node->data.variable_declaration.value &&
-            node->data.variable_declaration.value->kind == NODE_ARRAY_VALUE &&
-            node->data.variable_declaration.type_name &&
-            (strcmp(node->data.variable_declaration.type_name, "[func]") == 0 ||
-             strncmp(node->data.variable_declaration.type_name, "[func(", 6) == 0)) {
-            AstNode *literal = node->data.variable_declaration.value;
-            int count = literal->data.array_value.count;
-            Symbol *symbol = scope_lookup_local(checker->current_scope,
-                node->data.variable_declaration.name);
-            if (symbol && count > 0) {
-                symbol->function_array_references = xcalloc((size_t)count, sizeof(const char *));
-                symbol->function_array_reference_count = count;
-                for (int enum_index = 0; enum_index < count; enum_index++) {
-                    AstNode *element = literal->data.array_value.elements[enum_index];
-                    if (!element || element->kind != NODE_FUNCTION_REFERENCE) continue;
-                    AstNode *function_reference = element->data.function_reference.function;
-                    const char *el_qualifier = ast_member_qualifier(function_reference);
-                    if (function_reference->kind == NODE_LABEL) {
-                        symbol->function_array_references[enum_index] = function_reference->data.label.value;
-                    } else if (el_qualifier) {
-                        char buffer[MESSAGE_BUFFER_SIZE];
-                        symbol->function_array_references[enum_index] = arena_copy_string(checker->arena,
-                            module_member_key(checker, el_qualifier,
-                                function_reference->data.member.member, buffer, sizeof(buffer)));
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -14672,9 +14283,7 @@ static void check_const_integer_value(TypeChecker *checker, AstNode *node) {
     } else if (!is_literal_expression(node->data.variable_declaration.value)) {
         /* A step overflowed its type. A literal expression is range-checked
          * against the declared type when it takes it (E3036). */
-        diagnostic_error_code_formatted(checker->diagnostics, "E5039",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            node->data.variable_declaration.type_name);
+        NODE_ERROR_FORMATTED(checker, node, "E5039", node->data.variable_declaration.type_name);
     }
 }
 
@@ -14713,7 +14322,7 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
         else if (key_resolved->kind == TYPE_KIND_MAP) bad_name = "map";
         else if (key_resolved->kind == TYPE_KIND_POINTER) bad_name = "pointer";
         if (bad_name) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, key_type_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3057", key_type_name);
         }
     }
 
@@ -14734,7 +14343,7 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
         else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
         else if (strcmp(declared_name, "Builder") == 0) handle_label = "string builder";
         if (handle_label) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
+            NODE_ERROR_FORMATTED(checker, node, "E3062", handle_label, handle_label);
         }
     }
 
@@ -14823,9 +14432,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                 /* Resolve RHS to infer type */
                 GrayType *value_type = resolve_expression(checker, node->data.assign.value);
                 if (value_type && value_type->kind == TYPE_KIND_VOID) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3187",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        "the value of a variable");
+                    NODE_ERROR_FORMATTED(checker, node, "E3187", "the value of a variable");
                 }
                 /* Same registration rule as a `mut` declaration: an
                  * unresolved initializer already drew its own error, and only
@@ -14882,8 +14489,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
 
         /* E3078: pointer arithmetic */
         if (target_type && target_type->kind == TYPE_KIND_POINTER) {
-            diagnostic_error_code(checker->diagnostics, "E3078",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3078");
         }
 
         if (target_type && assigned_value_type &&
@@ -14891,8 +14497,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
 
             /* E3002: bool in arithmetic */
             if (target_type->kind == TYPE_KIND_BOOL || assigned_value_type->kind == TYPE_KIND_BOOL) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3002",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3002",
                     operator_display_name(assign_operator), type_name(target_type), type_name(assigned_value_type));
             }
 
@@ -14903,24 +14508,20 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
              * not pile onto E3093 / E3001. */
             if (target_type->kind == TYPE_KIND_STRING && assigned_value_type->kind != TYPE_KIND_STRING &&
                 assign_operator == TOKEN_PLUS_ASSIGN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3048",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3048",
                     type_display_name(checker, target_type), type_display_name(checker, assigned_value_type));
             }
 
             /* E3002: string in non-plus arithmetic */
             if ((target_type->kind == TYPE_KIND_STRING || assigned_value_type->kind == TYPE_KIND_STRING) &&
                 assign_operator != TOKEN_PLUS_ASSIGN) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3180",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    operator_display_name(assign_operator));
+                NODE_ERROR_FORMATTED(checker, node, "E3180", operator_display_name(assign_operator));
             }
 
             /* E3002: modulo on a floating-point value */
             if (assign_operator == TOKEN_PERCENT_ASSIGN &&
                 (target_type->kind == TYPE_KIND_FLOATING_POINT || assigned_value_type->kind == TYPE_KIND_FLOATING_POINT)) {
-                diagnostic_error_code(checker->diagnostics, "E3181",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                NODE_ERROR(checker, node, "E3181");
             }
 
             /* E3093: arithmetic on map, array, or struct */
@@ -14930,8 +14531,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                 assigned_value_type->kind == TYPE_KIND_STRUCT) {
                 GrayType *bad_type = (target_type->kind == TYPE_KIND_MAP || target_type->kind == TYPE_KIND_ARRAY ||
                                  target_type->kind == TYPE_KIND_STRUCT) ? target_type : assigned_value_type;
-                diagnostic_error_code_formatted(checker->diagnostics, "E3093",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3093",
                     operator_display_name(assign_operator), type_display_name(checker, bad_type));
             }
         }
@@ -14961,9 +14561,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             DeclarationEntry *entry = target->resolved_declaration;
             AstNode *declaration = (entry && entry->kind == DECLARATION_CONST) ? entry->ast_node : NULL;
             const char *kind = (declaration && declaration->data.variable_declaration.is_mutable) ? "variable" : "constant";
-            diagnostic_error_code_formatted(checker->diagnostics, "E6008",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                object_name, target->data.member.member, kind);
+            NODE_ERROR_FORMATTED(checker, node, "E6008", object_name, target->data.member.member, kind);
             was_e6008_reported = true;
         }
     }
@@ -14976,8 +14574,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         target->kind != NODE_INDEX_EXPRESSION &&
         target->kind != NODE_PREFIX_EXPRESSION &&
         target->kind != NODE_POSTFIX_EXPRESSION) {
-        diagnostic_error_code(checker->diagnostics, "E5025",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E5025");
     }
 
     /* Check for assignment to const variable (direct, index, or field).
@@ -14995,7 +14592,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         }
     }
     if (const_name) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, const_name);
+        NODE_ERROR_FORMATTED(checker, node, "E3005", const_name);
     }
 
     /* E3122: cannot modify value through a pointer whose pointee is a
@@ -15019,8 +14616,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_INDEX_EXPRESSION) {
         GrayType *indexed_type = resolve_expression(checker, target->data.index_expression.left);
         if (indexed_type && indexed_type->kind == TYPE_KIND_STRING) {
-            diagnostic_error_code(checker->diagnostics, "E3004",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3004");
         }
     }
 
@@ -15035,8 +14631,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                 /* enum array: type_from_name returns TYPE_KIND_STRUCT for enum names */
                 !(value_type->kind == TYPE_KIND_ENUM && element_type->kind == TYPE_KIND_STRUCT &&
                   indexed_type->element_type && is_enum_name(checker, indexed_type->element_type))) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3094",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3094",
                     type_display_name(checker, value_type), type_display_name(checker, indexed_type));
             }
         }
@@ -15071,8 +14666,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
     /* Reject integer assigned to enum variable */
     if (target->kind == NODE_LABEL && target_type->kind == TYPE_KIND_ENUM &&
         is_integer_kind(assigned_value_type->kind)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3118",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3118",
             type_name(assigned_value_type), type_display_name(checker, target_type), type_display_name(checker, target_type));
     }
     /* Check type mismatch on assignment (only for direct variable targets) */
@@ -15082,7 +14676,6 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             target_type->kind != TYPE_KIND_UNKNOWN &&
             !types_assignable(checker, target_type, assigned_value_type) &&
             !(target_type->kind == TYPE_KIND_ENUM && is_integer_kind(assigned_value_type->kind)) &&
-            !(target_type->kind == TYPE_KIND_STRUCT && is_integer_kind(assigned_value_type->kind)) &&
             !(target_type->kind == TYPE_KIND_POINTER && node->data.assign.value->kind == NODE_LABEL &&
               scope_lookup(checker->current_scope, node->data.assign.value->data.label.value) &&
               scope_lookup(checker->current_scope, node->data.assign.value->data.label.value)->is_reference) &&
@@ -15120,8 +14713,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         target_type->kind == TYPE_KIND_STRUCT && assigned_value_type->kind == TYPE_KIND_STRUCT &&
         target_type->name && assigned_value_type->name &&
         strcmp(target_type->name, assigned_value_type->name) != 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3098",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3098",
             type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
     }
     /* General type mismatch through pointer dereference (e.g. p^ = "hello"
@@ -15134,8 +14726,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         !types_assignable(checker, target_type, assigned_value_type) &&
         !(assigned_value_type->kind == TYPE_KIND_NIL &&
           (target_type->kind == TYPE_KIND_POINTER || target_type->kind == TYPE_KIND_ERROR))) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3098",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3098",
             type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
     }
     /* Pointer-to-pointer: pointee types differ on reassignment (e.g., p = q where ^i64 ≠ ^string).
@@ -15190,8 +14781,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             }
             /* E3066: func signature mismatch on struct field assignment */
             if (function_types_mismatch(checker, field_type, assigned_value_type)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-                    NODE_FILE(checker, node->data.assign.value), node->data.assign.value->token.line, node->data.assign.value->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node->data.assign.value, "E3066",
                     type_display_name(checker, field_type), type_display_name(checker, assigned_value_type));
             }
         }
@@ -15220,6 +14810,29 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
           target->data.member.object->data.postfix.operator == TOKEN_CARET)) {
         typechecker_error_assign_type(checker, node, "a C interop value", type_display_name(checker, target_type));
     }
+    /* A map element (m[k] = v) or a field reached through an element or a
+     * nested field (xs[i].f, m[k].f): none of the checks above type-check
+     * these targets. */
+    {
+        bool is_map_element = false;
+        if (target->kind == NODE_INDEX_EXPRESSION) {
+            GrayType *indexed_type = resolve_expression(checker, target->data.index_expression.left);
+            is_map_element = indexed_type && indexed_type->kind == TYPE_KIND_MAP;
+        }
+        bool is_indirect_field = target->kind == NODE_MEMBER_EXPRESSION &&
+            target->data.member.object->kind != NODE_LABEL &&
+            !(target->data.member.object->kind == NODE_POSTFIX_EXPRESSION &&
+              target->data.member.object->data.postfix.operator == TOKEN_CARET);
+        if ((is_map_element || is_indirect_field) &&
+            target_type->kind != TYPE_KIND_UNKNOWN && assigned_value_type->kind != TYPE_KIND_UNKNOWN &&
+            assigned_value_type->kind != TYPE_KIND_C_FUNCTION &&
+            !types_assignable(checker, target_type, assigned_value_type) &&
+            !(target_type->kind == TYPE_KIND_ENUM && is_integer_kind(assigned_value_type->kind)) &&
+            !(assigned_value_type->kind == TYPE_KIND_NIL &&
+              (target_type->kind == TYPE_KIND_POINTER || target_type->kind == TYPE_KIND_ERROR))) {
+            typechecker_error_assign_type(checker, node, type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
+        }
+    }
     /* E3163: storing a local's address into memory that outlives it, reached
      * through a pointer parameter, a &ref parameter, or a new() heap object's
      * pointer field. The origin travels through intermediate pointers, so
@@ -15240,9 +14853,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         if (origin_depth > 0 &&
             origin_depth >= checker->current_function_scope_depth) {
             const char *destination_root = escape_root_name(target);
-            diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                destination_root ? destination_root : origin_name, origin_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3163", destination_root ? destination_root : origin_name, origin_name);
         }
     }
     /* E3163: reject storing an address into a pointer that outlives it.
@@ -15255,9 +14866,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         int origin_depth = expression_origin(checker, node->data.assign.value,
                                              &origin_name);
         if (origin_depth > symbol_scope_depth(checker->current_scope, pointer_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                pointer_name, origin_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3163", pointer_name, origin_name);
         } else {
             Symbol *pointer_symbol = scope_lookup(checker->current_scope, pointer_name);
             if (pointer_symbol) {
@@ -15283,9 +14892,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                                                  &origin_name);
             int root_depth = symbol_scope_depth(checker->current_scope, root);
             if (origin_depth > root_depth) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3163",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    root, origin_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3163", root, origin_name);
             } else if (origin_depth > 0) {
                 Symbol *root_symbol = scope_lookup(checker->current_scope, root);
                 if (root_symbol && origin_depth > root_symbol->field_origin_depth) {
@@ -15399,7 +15006,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             const char *type_name_text = (i == 0 && checker->current_return_type_names)
                 ? checker->current_return_type_names[i] : NULL;
             if (type_name_text && type_name_has_unbound_generic(checker_substitute_generics(checker, type_name_text))) {
-                diagnostic_error_code(checker->diagnostics, "E3071", NODE_FILE(checker, return_value), return_value->token.line, return_value->token.column, 0);
+                NODE_ERROR(checker, return_value, "E3071");
             }
         }
     }
@@ -15414,9 +15021,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             if (expected && expected->kind != TYPE_KIND_POINTER &&
                 expected->kind != TYPE_KIND_ERROR && expected->kind != TYPE_KIND_UNKNOWN &&
                 expected->kind != TYPE_KIND_NIL && expected->kind != TYPE_KIND_VOID) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3072",
-                    NODE_FILE(checker, return_value), return_value->token.line, return_value->token.column, 0,
-                    type_name(expected));
+                NODE_ERROR_FORMATTED(checker, return_value, "E3072", type_name(expected));
             }
         }
     }
@@ -15427,14 +15032,12 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
          * we've rewritten main()'s declared return type to void
          * after E4008 (). */
         if (!checker->is_current_main_return_suppressed) {
-            diagnostic_error_code(checker->diagnostics, "E3184",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3184");
         }
     } else if (checker->current_return_count > 0 && node->data.return_statement.count == 0 &&
                !checker->has_current_named_returns) {
         /* Bare return in non-void function (without named returns) */
-        diagnostic_error_code(checker->diagnostics, "E3185",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3185");
     } else if (checker->current_return_count > 0 && node->data.return_statement.count > 0 &&
                node->data.return_statement.count != checker->current_return_count) {
         /* E3040: wrong number of return values (skip or_return synthetic returns
@@ -15450,8 +15053,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
         /* A multi-value call already reported is the cause of the count
          * mismatch, not a second mistake. */
         if (!is_or_return_synthetic && !is_multi_value_rejected) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3188",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node, "E3188",
                 checker->current_return_count, node->data.return_statement.count);
         }
     } else if (checker->current_return_count > 0 && node->data.return_statement.count > 0 &&
@@ -15488,15 +15090,13 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
                     : typechecker_same_enum_type(checker, return_type->name, expected->name);
             }
             if (!assignable || !same_named) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5049",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E5049",
                     type_display_name(checker, expected), type_display_name(checker, return_type));
             }
         }
         /* E3066: func signature mismatch in return */
         if (function_types_mismatch(checker, return_type, expected)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3066",
-                NODE_FILE(checker, node->data.return_statement.values[0]), node->data.return_statement.values[0]->token.line, node->data.return_statement.values[0]->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, node->data.return_statement.values[0], "E3066",
                 type_display_name(checker, expected), type_display_name(checker, return_type));
         }
         /* Map key/value type mismatch in return */
@@ -15506,8 +15106,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             bool is_value_mismatch = return_type->value_type && expected->value_type &&
                 strcmp(return_type->value_type, expected->value_type) != 0;
             if (key_mismatch || is_value_mismatch) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5049",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E5049",
                     type_display_name(checker, expected), type_display_name(checker, return_type));
             }
         }
@@ -15536,8 +15135,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
             }
             if (slot_assignable && slot_same_named) continue;
             AstNode *struct_value = node->data.return_statement.values[i];
-            diagnostic_error_code_formatted(checker->diagnostics, "E5049",
-                NODE_FILE(checker, struct_value), struct_value->token.line, struct_value->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, struct_value, "E5049",
                 type_display_name(checker, slot_expected_type), type_display_name(checker, slot_return_type));
         }
         /* E3073: named return variable must be the value returned */
@@ -15548,9 +15146,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
                 bool is_named_variable = (return_value->kind == NODE_LABEL &&
                     strcmp(return_value->data.label.value, checker->current_return_names[i]) == 0);
                 if (!is_named_variable) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3080",
-                        NODE_FILE(checker, return_value), return_value->token.line, return_value->token.column, 0,
-                        checker->current_return_names[i]);
+                    NODE_ERROR_FORMATTED(checker, return_value, "E3080", checker->current_return_names[i]);
                 }
             }
         }
@@ -15689,9 +15285,7 @@ static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const ch
      * a->destroyed. A reset is unaffected: resetting (or re-resetting) an
      * arena whose actual destroy hasn't run yet is safe. */
     if (arena->is_destroyed || (is_destroy && arena->is_ensure_destroy_pending)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3166",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-            display_text, arena_name, arena_name);
+        NODE_ERROR_FORMATTED(checker, report_node, "E3166", display_text, arena_name, arena_name);
         return;
     }
     arena->end_file = NODE_FILE(checker, report_node);
@@ -15720,9 +15314,7 @@ static void pointer_checker_apply_ensure_mem_call(TypeChecker *checker, AstNode 
     const char *display_text = (call->data.call.function->kind == NODE_MEMBER_EXPRESSION)
         ? "mem.destroy" : function_name;
     if (arena_lifetime->is_destroyed || arena_lifetime->is_ensure_destroy_pending) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3166",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-            display_text, arena, arena);
+        NODE_ERROR_FORMATTED(checker, report_node, "E3166", display_text, arena, arena);
         return;
     }
     arena_lifetime->is_ensure_destroy_pending = true;
@@ -15976,13 +15568,9 @@ static void pointer_checker_check_mem_deref(TypeChecker *checker, AstNode *point
     ArenaLifetime *arena_lifetime = pointer_checker_arena_get(checker, arena);
     if (!arena_lifetime) return;
     if (arena_lifetime->is_destroyed || arena_lifetime->is_premarked_destroyed) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3164",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-            root, arena);
+        NODE_ERROR_FORMATTED(checker, report_node, "E3164", root, arena);
     } else if (arena_lifetime->epoch > bound_epoch) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3165",
-            NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-            root, arena);
+        NODE_ERROR_FORMATTED(checker, report_node, "E3165", root, arena);
     }
 }
 
@@ -16203,23 +15791,13 @@ static void pointer_checker_check_mem_escape(TypeChecker *checker, AstNode *expr
           arena_lifetime->is_destroyed_in_function || arena_lifetime->epoch > bound_epoch))
         return;
     const char *root = assignment_target_root_name(expression);
-    diagnostic_error_code_formatted(checker->diagnostics, "E3169",
-        NODE_FILE(checker, report_node), report_node->token.line, report_node->token.column, 0,
-        root ? root : arena, arena);
+    NODE_ERROR_FORMATTED(checker, report_node, "E3169", root ? root : arena, arena);
 }
 
-static void check_expression_statement(TypeChecker *checker, AstNode *node) {
-    GrayType *expression_type = resolve_expression(checker, node->data.expression_statement.expression);
-    /* E3081: bare function name used as statement without call */
-    AstNode *expression = node->data.expression_statement.expression;
-    if (expression && expression->kind == NODE_LABEL) {
-        const char *name = expression->data.label.value;
-        if (typechecker_is_builtin(name) || find_function(checker, name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3081",
-                NODE_FILE(checker, expression), expression->token.line, expression->token.column, 0,
-                name, name);
-        }
-    }
+/* E5011: a call whose result is dropped — a bare call statement, or the
+ * call under defer/ensure — must not return a value. */
+static void check_discarded_call_result(TypeChecker *checker, AstNode *node,
+                                        AstNode *expression, GrayType *expression_type) {
     if (expression && expression->kind == NODE_CALL_EXPRESSION && expression_type &&
         expression_type->kind != TYPE_KIND_VOID && expression_type->kind != TYPE_KIND_UNKNOWN &&
         /* An extern. C call as a statement is a side-effect call; C code
@@ -16277,11 +15855,32 @@ static void check_expression_statement(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+}
+
+static void check_expression_statement(TypeChecker *checker, AstNode *node) {
+    GrayType *expression_type = resolve_expression(checker, node->data.expression_statement.expression);
+    /* E3081: bare function name used as statement without call */
+    AstNode *expression = node->data.expression_statement.expression;
+    if (expression && expression->kind == NODE_LABEL) {
+        const char *name = expression->data.label.value;
+        if (typechecker_is_builtin(name) || find_function(checker, name)) {
+            NODE_ERROR_FORMATTED(checker, expression, "E3081", name, name);
+        }
+    }
+    check_discarded_call_result(checker, node, expression, expression_type);
     /* Pointer checker: a bare @mem lifecycle call as a statement —
      * mem.destroy(a) / mem.reset(a). Updates arena lifetime state and reports
      * E3166 for a repeat destroy/reset. */
     if (expression && expression->kind == NODE_CALL_EXPRESSION)
         pointer_checker_apply_mem_call(checker, expression, node, NULL);
+}
+
+/* True when a condition's type is known and is not a bool. A void call is
+ * reported on its own, and a C function result has no Grayscale type to check. */
+static bool condition_type_is_not_bool(GrayType *condition_type) {
+    return condition_type && condition_type->kind != TYPE_KIND_BOOL &&
+        condition_type->kind != TYPE_KIND_VOID && condition_type->kind != TYPE_KIND_UNKNOWN &&
+        condition_type->kind != TYPE_KIND_C_FUNCTION;
 }
 
 static void check_if_statement(TypeChecker *checker, AstNode *node) {
@@ -16295,13 +15894,9 @@ static void check_if_statement(TypeChecker *checker, AstNode *node) {
         condition_type, "an 'if' condition");
     /* E3040: multi-return calls cannot be used as if condition */
     reject_multi_return_in_single_position(checker, node->data.if_statement.condition);
-    if (condition_type && condition_type->kind != TYPE_KIND_UNKNOWN &&
-        (condition_type->kind == TYPE_KIND_STRING || condition_type->kind == TYPE_KIND_ARRAY ||
-         condition_type->kind == TYPE_KIND_MAP   || condition_type->kind == TYPE_KIND_STRUCT ||
-         condition_type->kind == TYPE_KIND_POINTER)) {
+    if (condition_type_is_not_bool(condition_type)) {
         AstNode *condition = node->data.if_statement.condition;
-        diagnostic_error_code_formatted(checker->diagnostics, "E3091", NODE_FILE(checker, condition), condition->token.line, condition->token.column, 0,
-            type_display_name(checker, condition_type));
+        NODE_ERROR_FORMATTED(checker, condition, "E3091", type_display_name(checker, condition_type));
     }
     Scope *if_outer = checker->current_scope;
     /* Pointer checker: check each arm from the pre-branch arena state, then
@@ -16350,8 +15945,7 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
     if (iterable_type->kind == TYPE_KIND_RANGE) {
         loop_variable_type = range_element_type(iterable_type);
     } else if (iterable_type->kind != TYPE_KIND_UNKNOWN) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3204",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        NODE_ERROR_FORMATTED(checker, node, "E3204",
             node->data.for_statement.variable_name, node->data.for_statement.variable_name);
     }
     scope_define(loop_scope, node->data.for_statement.variable_name, loop_variable_type, false);
@@ -16379,9 +15973,8 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
             if (negative_step ? order < 0 : order > 0) {
                 const char *start_text = literal_text(checker, &start_value);
                 const char *end_text = literal_text(checker, &end_value);
-                diagnostic_error_code_formatted(checker->diagnostics, "E9005",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, start_text,
-                    negative_step ? "greater than or equal to" : "less than or equal to", end_text);
+                NODE_ERROR_FORMATTED(checker, node, "E9005",
+                    start_text, negative_step ? "greater than or equal to" : "less than or equal to", end_text);
             }
         }
     }
@@ -16446,14 +16039,13 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
      * infer a type from, causing the loop variable to default to unknown. */
     if (node->data.for_each.collection->kind == NODE_ARRAY_VALUE &&
         node->data.for_each.collection->data.array_value.count == 0) {
-        diagnostic_error_code(checker->diagnostics, "E3136", NODE_FILE(checker, node->data.for_each.collection),
-            node->data.for_each.collection->token.line, node->data.for_each.collection->token.column, 0);
+        NODE_ERROR(checker, node->data.for_each.collection, "E3136");
     }
 
     /* Check that collection is iterable */
     if (collection_type->kind != TYPE_KIND_UNKNOWN && collection_type->kind != TYPE_KIND_ARRAY &&
         collection_type->kind != TYPE_KIND_MAP && collection_type->kind != TYPE_KIND_STRING) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3009", NODE_FILE(checker, node), node->token.line, node->token.column, 0, type_display_name(checker, collection_type));
+        NODE_ERROR_FORMATTED(checker, node, "E3009", type_display_name(checker, collection_type));
     }
 
     if (collection_type->kind == TYPE_KIND_MAP) {
@@ -16528,19 +16120,14 @@ static void check_while_statement(TypeChecker *checker, AstNode *node) {
     /* E3038 (): void function call as 'as_long_as' condition. */
     reject_void_in_context(checker, node->data.while_statement.condition,
         while_condition_type, "an 'as_long_as' condition");
-    if (while_condition_type && while_condition_type->kind != TYPE_KIND_UNKNOWN &&
-        (while_condition_type->kind == TYPE_KIND_STRING || while_condition_type->kind == TYPE_KIND_ARRAY ||
-         while_condition_type->kind == TYPE_KIND_MAP   || while_condition_type->kind == TYPE_KIND_STRUCT ||
-         while_condition_type->kind == TYPE_KIND_POINTER)) {
+    if (condition_type_is_not_bool(while_condition_type)) {
         AstNode *condition = node->data.while_statement.condition;
-        diagnostic_error_code_formatted(checker->diagnostics, "E3091", NODE_FILE(checker, condition), condition->token.line, condition->token.column, 0,
-            type_display_name(checker, while_condition_type));
+        NODE_ERROR_FORMATTED(checker, condition, "E3091", type_display_name(checker, while_condition_type));
     }
     /* E3129: empty loop body hangs forever at runtime */
     if (node->data.while_statement.body &&
         node->data.while_statement.body->data.block.count == 0) {
-        diagnostic_error_code(checker->diagnostics, "E3129",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        NODE_ERROR(checker, node, "E3129");
     }
     Scope *while_outer_scope = checker->current_scope;
     Scope *while_scope = scope_create(while_outer_scope);
@@ -16556,25 +16143,19 @@ static void check_while_statement(TypeChecker *checker, AstNode *node) {
 static void check_function_declaration(TypeChecker *checker, AstNode *node) {
     /* E2038: reserved type name as function name */
     if (is_reserved_type_name(node->data.function_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            FUNCTION_DISPLAY_NAME(node), "a function");
+        NODE_ERROR_FORMATTED(checker, node, "E2038", FUNCTION_DISPLAY_NAME(node), "a function");
     }
     /* E5016: builtin function name redeclared */
     if (is_reserved_builtin_function_name(node->data.function_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            FUNCTION_DISPLAY_NAME(node), "a function");
+        NODE_ERROR_FORMATTED(checker, node, "E5016", FUNCTION_DISPLAY_NAME(node), "a function");
     }
     /* E5035: stdlib module name as function name */
     if (is_stdlib_module_name(node->data.function_declaration.name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            FUNCTION_DISPLAY_NAME(node), "a function");
+        NODE_ERROR_FORMATTED(checker, node, "E5035", FUNCTION_DISPLAY_NAME(node), "a function");
     }
     /* Check for nested function declarations */
     if (checker->function_depth > 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E2051", NODE_FILE(checker, node), node->token.line, node->token.column, 0, FUNCTION_DISPLAY_NAME(node));
+        NODE_ERROR_FORMATTED(checker, node, "E2051", FUNCTION_DISPLAY_NAME(node));
     }
 
     Scope *function_scope = scope_create(checker->current_scope);
@@ -16595,28 +16176,22 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
         Parameter *parameter = &node->data.function_declaration.parameters[i];
         /* E2038: reserved type name as parameter name */
         if (is_reserved_type_name(parameter->name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                parameter->name, "a parameter");
+            NODE_ERROR_FORMATTED(checker, node, "E2038", parameter->name, "a parameter");
         }
         /* E5016: builtin function name as parameter name */
         if (is_reserved_builtin_function_name(parameter->name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                parameter->name, "a parameter");
+            NODE_ERROR_FORMATTED(checker, node, "E5016", parameter->name, "a parameter");
         }
         /* E5035: stdlib module name as parameter name */
         if (is_stdlib_module_name(parameter->name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                parameter->name, "a parameter");
+            NODE_ERROR_FORMATTED(checker, node, "E5035", parameter->name, "a parameter");
         }
         /* E4026: 'main' is reserved for the entry-point function */
         check_reserved_main(checker, parameter->name, NODE_FILE(checker, node), node->token.line, node->token.column);
         /* Check for duplicate parameter name */
         for (int j = 0; j < i; j++) {
             if (strcmp(node->data.function_declaration.parameters[j].name, parameter->name) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E2012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, parameter->name);
+                NODE_ERROR_FORMATTED(checker, node, "E2012", parameter->name);
                 break;
             }
         }
@@ -16636,9 +16211,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                 bool is_used_early = substituted && strchr(substituted, '?');
                 free(substituted);
                 if (!is_used_early) continue;
-                diagnostic_error_code_formatted(checker->diagnostics, "E4039",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    declared_later.names[j], parameter->name);
+                NODE_ERROR_FORMATTED(checker, node, "E4039", declared_later.names[j], parameter->name);
                 break;
             }
             generic_bindings_clear(&declared_later);
@@ -16715,9 +16288,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
             if (inferred && inferred->kind == TYPE_KIND_ENUM) {
                 parameter_type = inferred;
             } else {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3160",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    parameter->name, parameter->name);
+                NODE_ERROR_FORMATTED(checker, node, "E3160", parameter->name, parameter->name);
             }
         }
         /* E5026: validate default value type matches parameter type */
@@ -16733,12 +16304,13 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
             if (default_type->kind != TYPE_KIND_UNKNOWN && parameter_type->kind != TYPE_KIND_UNKNOWN &&
                 !types_assignable(checker, parameter_type, default_type) &&
                 !(default_type->kind == TYPE_KIND_NIL)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5062",
-                    NODE_FILE(checker, parameter->default_value), parameter->default_value->token.line, parameter->default_value->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, parameter->default_value, "E5062",
                     parameter->name, parameter->type_name, type_name(default_type));
             }
         }
         scope_define(function_scope, parameter->name, parameter_type, parameter->is_mutable);
+        Symbol *parameter_symbol = scope_lookup_local(function_scope, parameter->name);
+        if (parameter_symbol) parameter_symbol->parameter_line = node->token.line;
     }
 
     /* Define named return variables in function scope */
@@ -16750,18 +16322,14 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                 for (int j = 0; j < i; j++) {
                     if (node->data.function_declaration.return_names[j] &&
                         strcmp(node->data.function_declaration.return_names[j], resolved_name) == 0) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E2063",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            resolved_name, "another named return value");
+                        NODE_ERROR_FORMATTED(checker, node, "E2063", resolved_name, "another named return value");
                         break;
                     }
                 }
                 /* E2063: named return collides with parameter */
                 for (int j = 0; j < node->data.function_declaration.parameter_count; j++) {
                     if (strcmp(node->data.function_declaration.parameters[j].name, resolved_name) == 0) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E2063",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            resolved_name, "a parameter");
+                        NODE_ERROR_FORMATTED(checker, node, "E2063", resolved_name, "a parameter");
                         break;
                     }
                 }
@@ -16806,9 +16374,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
              * whose return type is func has no valid use. Reject it at the
              * declaration rather than at every downstream call site. */
             if (return_type_name && (strcmp(return_type_name, "func") == 0 || strncmp(return_type_name, "func(", 5) == 0)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3142",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    FUNCTION_DISPLAY_NAME(node));
+                NODE_ERROR_FORMATTED(checker, node, "E3142", FUNCTION_DISPLAY_NAME(node));
             }
             reject_private_type(checker, node, return_type_name);
             reject_error_in_container(checker, node, return_type_name);
@@ -16886,10 +16452,10 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
             }
         }
         if (!has_return && !has_named_returns) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, FUNCTION_DISPLAY_NAME(node));
+            NODE_ERROR_FORMATTED(checker, node, "E3024", FUNCTION_DISPLAY_NAME(node));
         } else if (has_return && !has_named_returns &&
                    !all_paths_return(node->data.function_declaration.body)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3035", NODE_FILE(checker, node), node->token.line, node->token.column, 0, FUNCTION_DISPLAY_NAME(node));
+            NODE_ERROR_FORMATTED(checker, node, "E3035", FUNCTION_DISPLAY_NAME(node));
         }
     }
 
@@ -16961,14 +16527,12 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
      * same way opaque types are: only while the owning module is imported. */
     const char *enum_owner = stdlib_enum_module(name);
     if (enum_owner && program_imports_module(checker, enum_owner)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3099",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+        NODE_ERROR_FORMATTED(checker, node, "E3099", name);
         return;
     }
     if (!is_reserved_stdlib_struct_name(name)) return;
     if (!stdlib_opaque_module(name) || is_stdlib_opaque_type_available(checker, name)) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3099",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+        NODE_ERROR_FORMATTED(checker, node, "E3099", name);
     }
 }
 
@@ -16981,9 +16545,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
     check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
     if (checker->function_depth > 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E2053",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "struct", STRUCT_DISPLAY_NAME(node));
+        NODE_ERROR_FORMATTED(checker, node, "E2053", "struct", STRUCT_DISPLAY_NAME(node));
     }
     /* E3103/E3104: #json structs are data-only */
     if (node->data.struct_declaration.is_json) {
@@ -16992,8 +16554,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
          * Without the import the helper references undeclared symbols and the
          * C compiler fails instead of the typechecker. */
         if (!typechecker_is_imported_module(checker, "json")) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E6012",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            NODE_ERROR_FORMATTED_HELP(checker, node, "E6012",
                 "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
         }
         /* E3171: within THIS struct, fields are either all tagged or all
@@ -17034,8 +16595,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
                         }
                     }
                     if (!field_key) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3170",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        NODE_ERROR_FORMATTED(checker, node, "E3170",
                             raw_tag, STRUCT_DISPLAY_NAME(node), struct_field->name);
                         has_tag = false;
                     } else {
@@ -17047,20 +16607,17 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
                     json_tag_dialect_tagged = has_tag;
                     json_tag_dialect_field = struct_field->name;
                 } else if (has_tag != json_tag_dialect_tagged) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3171",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    NODE_ERROR_FORMATTED(checker, node, "E3171",
                         STRUCT_DISPLAY_NAME(node), struct_field->name, has_tag ? "is tagged" : "isn't tagged", json_tag_dialect_field, json_tag_dialect_tagged ? "is tagged" : "isn't tagged");
                 }
             }
             const char *field_type_name = node->data.struct_declaration.fields[field_index].type_name;
             if (field_type_name && strncmp(field_type_name, "func", 4) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3103",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3103",
                     STRUCT_DISPLAY_NAME(node), node->data.struct_declaration.fields[field_index].name);
             }
             if (node->data.struct_declaration.fields[field_index].default_value) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3109",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3109",
                     STRUCT_DISPLAY_NAME(node), node->data.struct_declaration.fields[field_index].name);
             }
             /* E3173: an enum field is serialized by its backing type (integer or
@@ -17069,8 +16626,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
              * this specific diagnostic instead of the generic "no JSON
              * representation" one. */
             if (field_type_name && is_enum_name(checker, field_type_name) && typechecker_enum_is_tagged(checker, field_type_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3173",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3173",
                     STRUCT_DISPLAY_NAME(node), node->data.struct_declaration.fields[field_index].name, enum_display_name(checker, field_type_name));
             }
             /* E3140: field types the JSON serializer codegen cannot marshal.
@@ -17081,8 +16637,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
             if (field_type_name && strncmp(field_type_name, "func", 4) != 0 &&
                 !json_field_type_supported(checker, field_type_name) &&
                 !is_enum_name(checker, field_type_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3140",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3140",
                     STRUCT_DISPLAY_NAME(node), node->data.struct_declaration.fields[field_index].name, field_type_name);
             }
         }
@@ -17096,8 +16651,7 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
                 StructField *right_field = &node->data.struct_declaration.fields[right_index];
                 const char *right_key = right_field->json_tag ? right_field->json_tag : right_field->name;
                 if (strcmp(left_key, right_key) != 0) continue;
-                diagnostic_error_code_formatted(checker->diagnostics, "E3172",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, node, "E3172",
                     STRUCT_DISPLAY_NAME(node), left_field->name, right_field->name, left_key);
             }
         }
@@ -17159,17 +16713,13 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
         !scope_lookup(checker->current_scope, subject->data.label.value)) {
         const char *type_name = subject->data.label.value;
         if (is_struct_name(checker, type_name)) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E3100",
-                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0,
-                typechecker_format(checker, "use '%s{...}' or 'new(%s)' to create an instance", type_name, type_name),
-                type_name);
+            NODE_ERROR_FORMATTED_HELP(checker, subject, "E3100",
+                typechecker_format(checker, "use '%s{...}' or 'new(%s)' to create an instance", type_name, type_name), type_name);
             return;
         }
         if (is_enum_name(checker, type_name)) {
-            diagnostic_error_code_formatted_help(checker->diagnostics, "E3100",
-                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0,
-                typechecker_format(checker, "use '%s.VARIANT' to access an enum value", type_name),
-                type_name);
+            NODE_ERROR_FORMATTED_HELP(checker, subject, "E3100",
+                typechecker_format(checker, "use '%s.VARIANT' to access an enum value", type_name), type_name);
             return;
         }
     }
@@ -17187,8 +16737,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
     if (when_type && (when_type->kind == TYPE_KIND_STRUCT || when_type->kind == TYPE_KIND_ARRAY ||
                    when_type->kind == TYPE_KIND_MAP || when_type->kind == TYPE_KIND_POINTER)) {
         AstNode *when_subject = node->data.when_statement.value;
-        diagnostic_error_code_formatted(checker->diagnostics, "E3121", NODE_FILE(checker, when_subject), when_subject->token.line, when_subject->token.column, 0,
-            type_display_name(checker, when_type));
+        NODE_ERROR_FORMATTED(checker, when_subject, "E3121", type_display_name(checker, when_type));
         when_type = NULL;
     }
     /* The program-wide ErrorCode enum is open — `when err.code` can never be
@@ -17202,8 +16751,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
         strcmp(when_type->name, "ErrorCode") == 0) {
         AstNode *when_subject = node->data.when_statement.value;
         if (node->data.when_statement.is_strict) {
-            diagnostic_error_code(checker->diagnostics, "E3151",
-                NODE_FILE(checker, when_subject), when_subject->token.line, when_subject->token.column, 0);
+            NODE_ERROR(checker, when_subject, "E3151");
             /* #strict is never valid on the open ErrorCode enum, so the
              * shared #strict-exhaustiveness block below must not also run
              * for this statement — it infers the enum independently from
@@ -17212,8 +16760,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
              * E3151 already emitted above. */
             errorcode_strict_rejected = true;
         } else if (!node->data.when_statement.default_body) {
-            diagnostic_error_code(checker->diagnostics, "E3149",
-                NODE_FILE(checker, when_subject), when_subject->token.line, when_subject->token.column, 0);
+            NODE_ERROR(checker, when_subject, "E3149");
         }
     }
 
@@ -17229,8 +16776,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                 int earlier_value_limit = (earlier_case_index == i) ? j : node->data.when_statement.cases[earlier_case_index].value_count;
                 for (int earlier_value_index = 0; earlier_value_index < earlier_value_limit; earlier_value_index++) {
                     if (when_case_values_equal(value_node, node->data.when_statement.cases[earlier_case_index].values[earlier_value_index])) {
-                        diagnostic_error_code(checker->diagnostics, "E2043", NODE_FILE(checker, value_node),
-                            value_node->token.line, value_node->token.column, 0);
+                        NODE_ERROR(checker, value_node, "E2043");
                         flagged = true;
                         break;
                     }
@@ -17277,12 +16823,13 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                             if (strcmp(checker->enum_values[pattern_enum_index][variant_index], pattern_variant_name) == 0) { pattern_variant_index = variant_index; break; }
                         }
                         if (pattern_variant_index < 0) {
-                            diagnostic_error_code_formatted(checker->diagnostics, "E3047", NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0, pattern_enum_name, pattern_variant_name);
+                            NODE_ERROR_FORMATTED(checker, value_node, "E3047", pattern_enum_name, pattern_variant_name);
                         } else {
                             int expected_binding_count = checker->enum_payload_counts[pattern_enum_index][pattern_variant_index];
                             int actual_binding_count = value_node->data.when_pattern.binding_count;
                             if (expected_binding_count != actual_binding_count) {
-                                diagnostic_error_code_formatted(checker->diagnostics, "E3116", NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0, pattern_variant_name, expected_binding_count, actual_binding_count);
+                                NODE_ERROR_FORMATTED(checker, value_node, "E3116",
+                                    pattern_variant_name, expected_binding_count, actual_binding_count);
                             }
                         }
                     }
@@ -17303,7 +16850,8 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                                              : check_expression_as(checker, value_node, when_type);
             if (is_stored_range_case && when_type && when_type->kind != TYPE_KIND_UNKNOWN &&
                 (!is_integer_kind(when_type->kind) || !range_holds_integer(case_type, when_type))) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3018", NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0, type_display_name(checker, when_type), type_display_name(checker, case_type));
+                NODE_ERROR_FORMATTED(checker, value_node, "E3018",
+                    type_display_name(checker, when_type), type_display_name(checker, case_type));
             }
             /* Check case value type matches scrutinee; skip range exprs and unknowns */
             if (when_type && case_type &&
@@ -17321,7 +16869,8 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                      (when_type->kind == TYPE_KIND_ENUM && case_type->kind == TYPE_KIND_STRING &&
                       typechecker_enum_is_string(checker, when_type->name)));
                 if (!is_compatible) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3018", NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0, type_display_name(checker, when_type), type_display_name(checker, case_type));
+                    NODE_ERROR_FORMATTED(checker, value_node, "E3018",
+                        type_display_name(checker, when_type), type_display_name(checker, case_type));
                 }
             }
         }
@@ -17501,7 +17050,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                         }
                     }
                     if (!covered) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3056", NODE_FILE(checker, node), node->token.line, node->token.column, 0, enum_name, variants[variant_index]);
+                        NODE_ERROR_FORMATTED(checker, node, "E3056", enum_name, variants[variant_index]);
                     }
                 }
             }
@@ -17518,17 +17067,12 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (!has_true)
-                diagnostic_error_code_formatted(checker->diagnostics, "E3189",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "true");
+                NODE_ERROR_FORMATTED(checker, node, "E3189", "true");
             if (!has_false)
-                diagnostic_error_code_formatted(checker->diagnostics, "E3189",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "false");
+                NODE_ERROR_FORMATTED(checker, node, "E3189", "false");
         } else {
             /* #strict on non-enum: just warn that it has no effect without default */
-            diagnostic_error_code(checker->diagnostics, "E3190",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3190");
         }
     }
     /* W3005: when matches on enum values but has no #strict and no default */
@@ -17586,6 +17130,24 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
     literal_flush_pending(checker, literal_start);
 }
 
+/* Append a using entry; returns the module's import index, or -1. */
+static int using_append(TypeChecker *checker, const char *module, const char *file) {
+    if (checker->using_module_count >= checker->using_module_capacity) {
+        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
+        checker->using_modules = xrealloc(checker->using_modules,
+            sizeof(const char *) * (size_t)checker->using_module_capacity);
+        checker->using_module_files = xrealloc(checker->using_module_files,
+            sizeof(const char *) * (size_t)checker->using_module_capacity);
+        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
+            sizeof(int) * (size_t)checker->using_module_capacity);
+    }
+    int import_index = typechecker_find_import_index(checker, module);
+    checker->using_module_files[checker->using_module_count] = file;
+    checker->using_module_import_indices[checker->using_module_count] = import_index;
+    checker->using_modules[checker->using_module_count++] = module;
+    return import_index;
+}
+
 static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     if (!node) return;
 
@@ -17603,8 +17165,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
                               node->kind == NODE_CONTINUE_STATEMENT ||
                               node->kind == NODE_WHEN_STATEMENT);
         if (is_executable) {
-            diagnostic_error_code(checker->diagnostics, "E2056",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E2056");
         }
     }
 
@@ -17652,8 +17213,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         /* E3129: empty loop body hangs forever at runtime */
         if (node->data.loop_statement.body &&
             node->data.loop_statement.body->data.block.count == 0) {
-            diagnostic_error_code(checker->diagnostics, "E3129",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3129");
         }
         Scope *loop_outer_scope = checker->current_scope;
         Scope *loop_scope = scope_create(loop_outer_scope);
@@ -17670,8 +17230,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     case NODE_BREAK_STATEMENT:
     case NODE_CONTINUE_STATEMENT:
         if (checker->loop_depth == 0) {
-            diagnostic_error_code(checker->diagnostics, "E2050",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E2050");
         }
         break;
 
@@ -17681,7 +17240,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
 
     case NODE_IMPORT_STATEMENT:
         if (checker->function_depth > 0) {
-            diagnostic_error_code(checker->diagnostics, "E2036", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E2036");
         }
         break;
 
@@ -17689,31 +17248,19 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         /* Function-scoped using: add modules to the using list so
          * bare-name resolution works for the rest of this scope. */
         for (int j = 0; j < node->data.using_statement.count; j++) {
-            if (checker->using_module_count >= checker->using_module_capacity) {
-                checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                checker->using_modules = xrealloc(checker->using_modules,
-                    sizeof(const char *) * (size_t)checker->using_module_capacity);
-                checker->using_module_files = xrealloc(checker->using_module_files,
-                    sizeof(const char *) * (size_t)checker->using_module_capacity);
-                checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                    sizeof(int) * (size_t)checker->using_module_capacity);
-            }
-            checker->using_module_files[checker->using_module_count] = node->token.file;
-            checker->using_module_import_indices[checker->using_module_count] =
-                typechecker_find_import_index(checker, node->data.using_statement.modules[j]);
-            checker->using_modules[checker->using_module_count++] = node->data.using_statement.modules[j];
+            using_append(checker, node->data.using_statement.modules[j], node->token.file);
         }
         break;
 
     case NODE_ENSURE_STATEMENT:
-        resolve_expression(checker, node->data.ensure_statement.expression);
-        /* E5011: the deferred call's result is dropped, so a multi-value
-         * or fallible call cannot be deferred. */
-        reject_multi_value_call(checker, node->data.ensure_statement.expression,
-                                node->data.ensure_statement.expression, true);
+        {
+            GrayType *deferred_type = resolve_expression(checker, node->data.ensure_statement.expression);
+            check_discarded_call_result(checker, node->data.ensure_statement.expression,
+                                        node->data.ensure_statement.expression, deferred_type);
+        }
         if (node->data.ensure_statement.expression &&
             node->data.ensure_statement.expression->kind != NODE_CALL_EXPRESSION) {
-            diagnostic_error_code(checker->diagnostics, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            NODE_ERROR(checker, node, "E3039");
         }
         /* Pointer checker: ensure mem.destroy(a) — mark the destroy pending
          * (pointer_checker_apply_ensure_mem_call), not applied via pointer_checker_apply_mem_call like
@@ -17733,9 +17280,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     case NODE_ENUM_DECLARATION:
         /* E2053: enum inside function */
         if (checker->function_depth > 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2053",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "enum", ENUM_DISPLAY_NAME(node));
+            NODE_ERROR_FORMATTED(checker, node, "E2053", "enum", ENUM_DISPLAY_NAME(node));
         }
         /* E3099: enum name collides with a stdlib opaque type */
         check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
@@ -17753,9 +17298,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
     case NODE_ALIAS_DECLARATION:
         /* E2053: alias inside function */
         if (checker->function_depth > 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2053",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "alias", node->data.alias_declaration.name);
+            NODE_ERROR_FORMATTED(checker, node, "E2053", "alias", node->data.alias_declaration.name);
         }
         break;
 
@@ -17917,9 +17460,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
      * element ([func], map[string:func]) it is the documented spelling and
      * works the same as a local of that type. */
     if (!nested && strcmp(type_name, "func") == 0) {
-        diagnostic_error_code_help(checker->diagnostics, "E3130",
-            NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-            "use a typed signature: 'func(params) -> return_type'");
+        NODE_ERROR_HELP(checker, statement, "E3130", "use a typed signature: 'func(params) -> return_type'");
         return;
     }
 
@@ -18035,7 +17576,7 @@ static void register_declaration_imports(TypeChecker *checker, AstNode *program)
                 if (item->is_stdlib && item->module && is_stdlib_module_name(item->module))
                     register_stdlib_module(checker, item->module);
                 if (item->is_stdlib && item->module && !is_stdlib_module_name(item->module)) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E6001", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, item->module);
+                    NODE_ERROR_FORMATTED(checker, statement, "E6001", item->module);
                 }
                 /* Record import for unused-import tracking.
                  * Store the ALIAS as the import name (so using/dot notation uses the alias). */
@@ -18082,8 +17623,7 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
         /* E4020: duplicate alias name */
         for (int j = 0; j < checker->type_alias_count; j++) {
             if (strcmp(checker->type_alias_names[j], alias_name) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4020",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, alias_name);
+                NODE_ERROR_FORMATTED(checker, statement, "E4020", alias_name);
                 goto next_alias;
             }
         }
@@ -18093,18 +17633,14 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
          * Skip registration so every later use of the name still means what
          * the language says it means. */
         if (is_reserved_type_name(alias_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                alias_name, "an alias");
+            NODE_ERROR_FORMATTED(checker, statement, "E2038", alias_name, "an alias");
             goto next_alias;
         }
         /* E5016: a builtin's name is not available either. Structs, enums,
          * variables, and functions all run this check; the alias declaration
          * was the one site that did not. */
         if (is_reserved_builtin_function_name(alias_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                alias_name, "an alias");
+            NODE_ERROR_FORMATTED(checker, statement, "E5016", alias_name, "an alias");
             goto next_alias;
         }
         /* E4026: 'main' is reserved for the entry-point function */
@@ -18115,9 +17651,7 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, alias_name, statement) ||
             is_struct_name(checker, alias_name) || is_enum_name(checker, alias_name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4007",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                alias_name);
+            NODE_ERROR_FORMATTED(checker, statement, "E4007", alias_name);
         }
         /* Register the alias */
         if (checker->type_alias_count >= checker->type_alias_capacity) {
@@ -18162,9 +17696,7 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
         }
         if (cycle) {
             AstNode *declaration = checker->type_alias_nodes[i];
-            diagnostic_error_code_formatted(checker->diagnostics, "E3133",
-                NODE_FILE(checker, declaration), declaration->token.line, declaration->token.column, 0,
-                declaration->data.alias_declaration.name);
+            NODE_ERROR_FORMATTED(checker, declaration, "E3133", declaration->data.alias_declaration.name);
             continue;
         }
         /* E3132: target type must exist — resolve fully then check.
@@ -18185,27 +17717,21 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
         /* E2038: reserved name for enums */
         const char *enum_name = ENUM_DISPLAY_NAME(statement);
         if (is_reserved_type_name(statement->data.enum_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                enum_name, "an enum");
+            NODE_ERROR_FORMATTED(checker, statement, "E2038", enum_name, "an enum");
         }
         /* E5016: builtin function name as enum name */
         if (is_reserved_builtin_function_name(statement->data.enum_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                enum_name, "an enum");
+            NODE_ERROR_FORMATTED(checker, statement, "E5016", enum_name, "an enum");
         }
         /* E5035: stdlib module name as enum name */
         if (is_stdlib_module_name(statement->data.enum_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                enum_name, "an enum");
+            NODE_ERROR_FORMATTED(checker, statement, "E5035", enum_name, "an enum");
         }
         /* E4026: 'main' is reserved for the entry-point function */
         check_reserved_main(checker, statement->data.enum_declaration.name, NODE_FILE(checker, statement), statement->token.line, statement->token.column);
         /* E2016: empty enum */
         if (statement->data.enum_declaration.value_count == 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2016", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, enum_name);
+            NODE_ERROR_FORMATTED(checker, statement, "E2016", enum_name);
         }
         /* E3033: check for duplicate enum values */
         for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
@@ -18216,9 +17742,8 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
                     statement->data.enum_declaration.values[index].value->kind == NODE_INTEGER_LITERAL &&
                     statement->data.enum_declaration.values[j].value->data.integer_literal.value ==
                     statement->data.enum_declaration.values[index].value->data.integer_literal.value) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3033", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, enum_name,
-                        statement->data.enum_declaration.values[index].name,
-                        statement->data.enum_declaration.values[j].name);
+                    NODE_ERROR_FORMATTED(checker, statement, "E3033",
+                        enum_name, statement->data.enum_declaration.values[index].name, statement->data.enum_declaration.values[j].name);
                     break;
                 }
             }
@@ -18249,31 +17774,23 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
             const char *variant_name = statement->data.enum_declaration.values[j].name;
             if (strcmp(variant_name, statement->data.enum_declaration.name) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E2065", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, variant_name,
-                    enum_name);
+                NODE_ERROR_FORMATTED(checker, statement, "E2065", variant_name, enum_name);
             }
             /* E2038: reserved type name as enum variant */
             if (is_reserved_type_name(variant_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    variant_name, "an enum variant");
+                NODE_ERROR_FORMATTED(checker, statement, "E2038", variant_name, "an enum variant");
             }
             /* E5016: builtin function name as enum variant */
             if (is_reserved_builtin_function_name(variant_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    variant_name, "an enum variant");
+                NODE_ERROR_FORMATTED(checker, statement, "E5016", variant_name, "an enum variant");
             }
             /* E5035: stdlib module name as enum variant */
             if (is_stdlib_module_name(variant_name)) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    variant_name, "an enum variant");
+                NODE_ERROR_FORMATTED(checker, statement, "E5035", variant_name, "an enum variant");
             }
             for (int index = 0; index < j; index++) {
                 if (strcmp(statement->data.enum_declaration.values[index].name, variant_name) == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E2014", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, variant_name,
-                        enum_name);
+                    NODE_ERROR_FORMATTED(checker, statement, "E2014", variant_name, enum_name);
                     break;
                 }
             }
@@ -18296,9 +17813,7 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
             (type_name_already_declared(checker, statement->data.enum_declaration.name, statement) ||
             is_enum_name(checker, statement->data.enum_declaration.name) ||
             is_struct_name(checker, statement->data.enum_declaration.name))) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4007",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                ENUM_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E4007", ENUM_DISPLAY_NAME(statement));
         }
         int variant_count = statement->data.enum_declaration.value_count;
         const char **variant_names = arena_allocate(checker->arena, sizeof(const char *) * (variant_count ? variant_count : 1));
@@ -18333,18 +17848,17 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
         checker->current_check_file = saved_payload_file;
         /* E3111: string enum with payloads */
         if (is_string && has_tagged) {
-            diagnostic_error_code(checker->diagnostics, "E3111", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0);
+            NODE_ERROR(checker, statement, "E3111");
         }
         /* E3112: flags enum with payloads */
         if (statement->data.enum_declaration.is_flags && has_tagged) {
-            diagnostic_error_code(checker->diagnostics, "E3112", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0);
+            NODE_ERROR(checker, statement, "E3112");
         }
         /* E3143: flags enum with more than 63 variants. Codegen assigns each
          * unvalued variant `1LL << j`; bit 63 is int64's sign bit and bits
          * 64+ are undefined shifts in C. */
         if (statement->data.enum_declaration.is_flags && variant_count > 63) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3143", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                enum_name, variant_count);
+            NODE_ERROR_FORMATTED(checker, statement, "E3143", enum_name, variant_count);
         }
         DeclarationEntry *entry = module_register(checker, statement, DECLARATION_ENUM, ENUM_DISPLAY_NAME(statement),
                             statement->data.enum_declaration.is_private);
@@ -18382,26 +17896,22 @@ static void register_error_code_set(TypeChecker *checker, AstNode *program) {
         bool is_bad = false;
 
         if (statement->data.enum_declaration.is_tagged) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3147",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, enum_name);
+            NODE_ERROR_FORMATTED(checker, statement, "E3147", enum_name);
             is_bad = true;
         }
         if (statement->data.enum_declaration.is_flags) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3152",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, enum_name);
+            NODE_ERROR_FORMATTED(checker, statement, "E3152", enum_name);
             is_bad = true;
         }
         for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
             AstNode *value_node = statement->data.enum_declaration.values[j].value;
             if (!value_node) continue;
             if (value_node->kind == NODE_STRING_VALUE) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3145",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, enum_name);
+                NODE_ERROR_FORMATTED(checker, statement, "E3145", enum_name);
                 is_bad = true;
                 break;
             }
-            diagnostic_error_code_formatted(checker->diagnostics, "E3146",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
+            NODE_ERROR_FORMATTED(checker, statement, "E3146",
                 enum_name, statement->data.enum_declaration.values[j].name);
             is_bad = true;
             break;
@@ -18430,8 +17940,7 @@ static void register_error_code_set(TypeChecker *checker, AstNode *program) {
                 if (strcmp(names[index], value_name) == 0) { is_duplicate = true; break; }
             }
             if (is_duplicate) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3148",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, value_name);
+                NODE_ERROR_FORMATTED(checker, statement, "E3148", value_name);
                 continue;
             }
             if (count >= capacity) {
@@ -18457,7 +17966,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
 
         /* E2067: empty struct */
         if (statement->data.struct_declaration.field_count == 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2067", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, STRUCT_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E2067", STRUCT_DISPLAY_NAME(statement));
         }
         int field_count = statement->data.struct_declaration.field_count;
         const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * (field_count ? field_count : 1));
@@ -18498,8 +18007,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                     const char *comma = field_type_name[0] == '[' ? type_top_level_comma(field_type_name + 1) : NULL;
                     int fixed_size = comma ? atoi(comma + 1) : 0;
                     if (fixed_size > 0 && default_value->data.array_value.count > fixed_size) {
-                        diagnostic_error_code_formatted(checker->diagnostics, "E3052",
-                            NODE_FILE(checker, default_value), default_value->token.line, default_value->token.column, 0,
+                        NODE_ERROR_FORMATTED(checker, default_value, "E3052",
                             fixed_size, default_value->data.array_value.count);
                     } else if (fixed_size > 0 && default_value->data.array_value.count < fixed_size) {
                         diagnostic_warning_code_formatted(checker->diagnostics, "W3003",
@@ -18511,25 +18019,19 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             /* E3038: void field type */
             if (statement->data.struct_declaration.fields[j].type_name &&
                 strcmp(statement->data.struct_declaration.fields[j].type_name, "void") == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3038",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    "a struct field type");
+                NODE_ERROR_FORMATTED(checker, statement, "E3038", "a struct field type");
             }
             /* E2066: field name matches struct type name */
             if (strcmp(field_names[j], statement->data.struct_declaration.name) == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E2066", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, field_names[j], STRUCT_DISPLAY_NAME(statement));
+                NODE_ERROR_FORMATTED(checker, statement, "E2066", field_names[j], STRUCT_DISPLAY_NAME(statement));
             }
             /* E5016: builtin function name as struct field name */
             if (is_reserved_builtin_function_name(field_names[j])) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    field_names[j], "a struct field");
+                NODE_ERROR_FORMATTED(checker, statement, "E5016", field_names[j], "a struct field");
             }
             /* E5035: stdlib module name as struct field name */
             if (is_stdlib_module_name(field_names[j])) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                    field_names[j], "a struct field");
+                NODE_ERROR_FORMATTED(checker, statement, "E5035", field_names[j], "a struct field");
             }
             /* E3061: struct field cannot be the enclosing struct by value */
             const char *field_type_name = statement->data.struct_declaration.fields[j].type_name;
@@ -18554,8 +18056,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                         ? typechecker_format(checker, "use a pointer field '^%s' for recursive types", display)
                         : typechecker_format(checker, "break the cycle through '%s' with a pointer field '^%s'",
                               field_type_name, field_type_name);
-                    diagnostic_error_code_formatted_help(checker->diagnostics, "E3061",
-                        NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, help, display);
+                    NODE_ERROR_FORMATTED_HELP(checker, statement, "E3061", help, display);
                 }
             }
             /* Validate all named types within the field type recursively. */
@@ -18564,7 +18065,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             /* Check for duplicate field names */
             for (int index = 0; index < j; index++) {
                 if (strcmp(field_names[index], field_names[j]) == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E2013", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, field_names[j], STRUCT_DISPLAY_NAME(statement));
+                    NODE_ERROR_FORMATTED(checker, statement, "E2013", field_names[j], STRUCT_DISPLAY_NAME(statement));
                     break;
                 }
             }
@@ -18579,8 +18080,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                     field_types[j]->kind != TYPE_KIND_UNKNOWN &&
                     !types_assignable(checker, field_types[j], default_type) &&
                     default_type->kind != TYPE_KIND_NIL) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E3175",
-                        NODE_FILE(checker, field_default), field_default->token.line, field_default->token.column, 0,
+                    NODE_ERROR_FORMATTED(checker, field_default, "E3175",
                         field_names[j], type_name(field_types[j]), type_name(default_type));
                 }
             }
@@ -18588,21 +18088,15 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
         /* E2037/E2038: reserved name check for structs */
         const char *struct_name = STRUCT_DISPLAY_NAME(statement);
         if (is_reserved_type_name(statement->data.struct_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E2038",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                struct_name, "a struct");
+            NODE_ERROR_FORMATTED(checker, statement, "E2038", struct_name, "a struct");
         }
         /* E5016: builtin function name as struct name */
         if (is_reserved_builtin_function_name(statement->data.struct_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5016",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                struct_name, "a struct");
+            NODE_ERROR_FORMATTED(checker, statement, "E5016", struct_name, "a struct");
         }
         /* E5035: stdlib module name as struct name */
         if (is_stdlib_module_name(statement->data.struct_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5035",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                struct_name, "a struct");
+            NODE_ERROR_FORMATTED(checker, statement, "E5035", struct_name, "a struct");
         }
         /* E4026: 'main' is reserved for the entry-point function */
         check_reserved_main(checker, statement->data.struct_declaration.name, NODE_FILE(checker, statement), statement->token.line, statement->token.column);
@@ -18612,9 +18106,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             (type_name_already_declared(checker, statement->data.struct_declaration.name, statement) ||
             is_struct_name(checker, statement->data.struct_declaration.name) ||
             is_enum_name(checker, statement->data.struct_declaration.name))) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4007",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                STRUCT_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E4007", STRUCT_DISPLAY_NAME(statement));
         }
         DeclarationEntry *entry = module_register(checker, statement, DECLARATION_STRUCT, STRUCT_DISPLAY_NAME(statement),
                             statement->data.struct_declaration.is_private);
@@ -18637,8 +18129,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 AstNode *previous_statement = statement->data.struct_declaration.functions[index].function_declaration;
                 if (previous_statement && previous_statement->kind == NODE_FUNCTION_DECLARATION &&
                     strcmp(previous_statement->data.function_declaration.name, function_node->data.function_declaration.name) == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E2037",
-                        NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
+                    NODE_ERROR_FORMATTED(checker, function_node, "E2037",
                         FUNCTION_DISPLAY_NAME(function_node), STRUCT_DISPLAY_NAME(statement));
                     break;
                 }
@@ -18652,16 +18143,15 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 if (top_statement->kind != NODE_FUNCTION_DECLARATION ||
                     strcmp(top_statement->data.function_declaration.name, function_node->data.function_declaration.name) != 0)
                     continue;
-                diagnostic_error_code_formatted(checker->diagnostics, "E4022",
-                    NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, function_node, "E4022",
                     STRUCT_DISPLAY_NAME(statement), FUNCTION_DISPLAY_NAME(function_node), FUNCTION_DISPLAY_NAME(top_statement));
                 break;
             }
             /* E2064: function name conflicts with field name */
             for (int index = 0; index < field_count; index++) {
                 if (strcmp(field_names[index], function_node->data.function_declaration.name) == 0) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E2064", NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0, FUNCTION_DISPLAY_NAME(function_node), field_names[index],
-                        STRUCT_DISPLAY_NAME(statement));
+                    NODE_ERROR_FORMATTED(checker, function_node, "E2064",
+                        FUNCTION_DISPLAY_NAME(function_node), field_names[index], STRUCT_DISPLAY_NAME(statement));
                     break;
                 }
             }
@@ -18710,9 +18200,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             checker->functions[checker->function_count - 1].is_deprecated = function_node->data.function_declaration.is_deprecated;
             checker->functions[checker->function_count - 1].deprecated_message = function_node->data.function_declaration.deprecated_message;
             if (function_node->data.function_declaration.is_discard && return_count == 0) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E5042",
-                    NODE_FILE(checker, function_node), function_node->token.line, function_node->token.column, 0,
-                    FUNCTION_DISPLAY_NAME(function_node));
+                NODE_ERROR_FORMATTED(checker, function_node, "E5042", FUNCTION_DISPLAY_NAME(function_node));
             }
             finalize_generic_signature(&checker->functions[checker->function_count - 1], function_node);
         }
@@ -18746,27 +18234,23 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
         /* E4008: main() cannot have parameters or return types */
         if (strcmp(statement->data.function_declaration.name, "main") == 0) {
             if (parameter_count > 0) {
-                diagnostic_error_code(checker->diagnostics, "E4008",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0);
+                NODE_ERROR(checker, statement, "E4008");
             }
             if (return_count > 0) {
-                diagnostic_error_code(checker->diagnostics, "E4008",
-                    NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0);
+                NODE_ERROR(checker, statement, "E4008");
             }
         }
         /* E5046: #test functions take no parameters and return nothing */
         if (statement->data.function_declaration.is_test &&
             (parameter_count > 0 || return_count > 0)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5046",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                FUNCTION_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E5046", FUNCTION_DISPLAY_NAME(statement));
         }
         /* Check for reserved prefix */
         check_reserved_name(checker, statement->data.function_declaration.name,
             NODE_FILE(checker, statement), statement->token.line, statement->token.column);
         /* Check for duplicate function names */
         if (find_function(checker, statement->data.function_declaration.name)) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4004", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, FUNCTION_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E4004", FUNCTION_DISPLAY_NAME(statement));
         }
         /* E4007: function name conflicts with a type. `do main()` paired with
          * a type named `main` already produced E4026 on the type — the real
@@ -18774,9 +18258,7 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
         if (strcmp(statement->data.function_declaration.name, "main") != 0 &&
             (is_struct_name(checker, statement->data.function_declaration.name) ||
             is_enum_name(checker, statement->data.function_declaration.name))) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E4036",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                FUNCTION_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E4036", FUNCTION_DISPLAY_NAME(statement));
         }
         DeclarationEntry *entry = module_register(checker, statement, DECLARATION_FUNCTION, FUNCTION_DISPLAY_NAME(statement),
                                            statement->data.function_declaration.is_private);
@@ -18793,9 +18275,7 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
         checker->functions[checker->function_count - 1].deprecated_message = statement->data.function_declaration.deprecated_message;
         /* E5042: #discard on a void function is an error */
         if (statement->data.function_declaration.is_discard && return_count == 0) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E5042",
-                NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0,
-                FUNCTION_DISPLAY_NAME(statement));
+            NODE_ERROR_FORMATTED(checker, statement, "E5042", FUNCTION_DISPLAY_NAME(statement));
         }
         /* Store line for unused function warning */
         checker->functions[checker->function_count - 1].definition_line = statement->token.line;
@@ -18888,19 +18368,7 @@ static void using_add(TypeChecker *checker, const char *module, const char *file
         const char *existing_file = checker->using_module_files[i];
         if ((!existing_file && !file) || (existing_file && file && strcmp(existing_file, file) == 0)) return;
     }
-    if (checker->using_module_count >= checker->using_module_capacity) {
-        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-        checker->using_modules = xrealloc(checker->using_modules,
-            sizeof(const char *) * (size_t)checker->using_module_capacity);
-        checker->using_module_files = xrealloc(checker->using_module_files,
-            sizeof(const char *) * (size_t)checker->using_module_capacity);
-        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-            sizeof(int) * (size_t)checker->using_module_capacity);
-    }
-    checker->using_module_files[checker->using_module_count] = file;
-    checker->using_module_import_indices[checker->using_module_count] =
-        typechecker_find_import_index(checker, module);
-    checker->using_modules[checker->using_module_count++] = module;
+    using_append(checker, module, file);
 }
 
 /* Collect `using` and `import and use` before anything resolves a name.
@@ -19018,8 +18486,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
             DeclarationEntry *target_entry = private_target_leaf(checker,
                 declaration->data.alias_declaration.target_type);
             if (target_entry) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E4025",
-                    NODE_FILE(checker, declaration), declaration->token.line, declaration->token.column, 0,
+                NODE_ERROR_FORMATTED(checker, declaration, "E4025",
                     declaration->data.alias_declaration.name, target_entry->name);
             }
         }
@@ -19027,9 +18494,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
         char leaf[MESSAGE_BUFFER_SIZE];
         const char *undefined = undefined_type_leaf(checker, resolved, leaf, sizeof(leaf));
         if (undefined) {
-            diagnostic_error_code_formatted(checker->diagnostics, "E3132",
-                NODE_FILE(checker, declaration), declaration->token.line, declaration->token.column, 0,
-                undefined);
+            NODE_ERROR_FORMATTED(checker, declaration, "E3132", undefined);
         }
     }
 }
@@ -19386,43 +18851,17 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     }
                 }
                 if (!imported_before) {
-                    diagnostic_error_code_formatted(checker->diagnostics, "E2010", NODE_FILE(checker, statement), statement->token.line, statement->token.column, 0, using_module, using_module);
+                    NODE_ERROR_FORMATTED(checker, statement, "E2010", using_module, using_module);
                 }
-                if (checker->using_module_count >= checker->using_module_capacity) {
-                    checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                    checker->using_modules = xrealloc(checker->using_modules,
-                        sizeof(const char *) * (size_t)checker->using_module_capacity);
-                    checker->using_module_files = xrealloc(checker->using_module_files,
-                        sizeof(const char *) * (size_t)checker->using_module_capacity);
-                    checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                        sizeof(int) * (size_t)checker->using_module_capacity);
-                }
-                checker->using_module_files[checker->using_module_count] = statement->token.file;
-                {
-                    int import_index = typechecker_find_import_index(checker, statement->data.using_statement.modules[j]);
-                    checker->using_module_import_indices[checker->using_module_count] = import_index;
-                    if (import_index >= 0) checker->is_import_used[import_index] = true;
-                }
-                checker->using_modules[checker->using_module_count++] = statement->data.using_statement.modules[j];
+                int import_index = using_append(checker, statement->data.using_statement.modules[j], statement->token.file);
+                if (import_index >= 0) checker->is_import_used[import_index] = true;
             }
         }
         if (statement->kind == NODE_IMPORT_STATEMENT && statement->data.import_statement.should_auto_use) {
             for (int j = 0; j < statement->data.import_statement.count; j++) {
                 ImportItem *item = &statement->data.import_statement.items[j];
                 if (item->module) {
-                    if (checker->using_module_count >= checker->using_module_capacity) {
-                        checker->using_module_capacity = checker->using_module_capacity ? checker->using_module_capacity * 2 : 8;
-                        checker->using_modules = xrealloc(checker->using_modules,
-                            sizeof(const char *) * (size_t)checker->using_module_capacity);
-                        checker->using_module_files = xrealloc(checker->using_module_files,
-                            sizeof(const char *) * (size_t)checker->using_module_capacity);
-                        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
-                            sizeof(int) * (size_t)checker->using_module_capacity);
-                    }
-                    checker->using_module_files[checker->using_module_count] = statement->token.file;
-                    checker->using_module_import_indices[checker->using_module_count] =
-                        typechecker_find_import_index(checker, item->module);
-                    checker->using_modules[checker->using_module_count++] = item->module;
+                    using_append(checker, item->module, statement->token.file);
                 }
             }
         }
@@ -19527,8 +18966,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         }
         if (statement->kind == NODE_IMPORT_STATEMENT) {
             if (has_seen_file_declaration) {
-                diagnostic_error_code(checker->diagnostics, "E2036", NODE_FILE(checker, statement),
-                    statement->token.line, statement->token.column, 0);
+                NODE_ERROR(checker, statement, "E2098");
             }
         } else if (statement->kind != NODE_USING_STATEMENT) {
             has_seen_file_declaration = true;
@@ -19657,7 +19095,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             scope_destroy(instantiation_scope);
 
             if (errors_after > errors_before && call_site) {
-                diagnostic_error_code_formatted(checker->diagnostics, "E3058", NODE_FILE(checker, call_site), call_site->token.line, call_site->token.column, 0, function_display_name(function_signature), instantiation_text);
+                NODE_ERROR_FORMATTED(checker, call_site, "E3058",
+                    function_display_name(function_signature), instantiation_text);
             }
         }
         instantiation_cursors[field_index] = function_signature->instantiation_count;

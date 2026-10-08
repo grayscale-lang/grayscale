@@ -52,7 +52,8 @@ do main() {
     // -- reverse [string] (16-u8 elements), empty, single --
     mut ws [string] = {"a", "bb", "ccc"}
     mut wr [string] = arrays.reverse(ws)
-    mut er [i64] = arrays.reverse({})
+    mut no_items [i64] = {}
+    mut er [i64] = arrays.reverse(no_items)
     mut sr [i64] = arrays.reverse({99})
     if wr[0] == "ccc" && wr[2] == "a" && len(er) == 0 && len(sr) == 1 && sr[0] == 99 {
         println("  [PASS] reverse [string] / empty / single")
@@ -66,7 +67,7 @@ do main() {
     mut c1 [i64] = arrays.concat({1, 2, 3}, {4, 5})
     mut c2 [i64] = arrays.concat({}, {7, 8})
     mut c3 [i64] = arrays.concat({7, 8}, {})
-    mut c4 [i64] = arrays.concat({}, {})
+    mut c4 [i64] = arrays.concat(no_items, no_items)
     mut cc_ok bool = len(c1) == 5 && c1[0] == 1 && c1[3] == 4 && c1[4] == 5
     cc_ok = cc_ok && len(c2) == 2 && c2[0] == 7 && len(c3) == 2 && c3[1] == 8 && len(c4) == 0
     if cc_ok {
@@ -106,7 +107,8 @@ do main() {
     for i in range(0, 6) {
         if flat[i] != i + 1 { fl_ok = false }
     }
-    mut flat_empty [i64] = arrays.flatten({})
+    mut no_rows [[i64]] = {}
+    mut flat_empty [i64] = arrays.flatten(no_rows)
     if fl_ok && len(flat_empty) == 0 {
         println("  [PASS] flatten uneven + empty inner + empty outer")
         passed += 1

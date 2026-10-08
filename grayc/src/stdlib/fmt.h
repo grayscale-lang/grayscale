@@ -112,6 +112,12 @@ GrayString gray_fmt_pad_left(GrayArena *arena, GrayString string, int64_t width,
  * characters (on the right when left_align). NUL-terminated, for %s. */
 GrayString gray_fmt_char_field(GrayArena *arena, int32_t codepoint, int32_t width, bool left_align);
 
+/* fmt.printf %s of a string with a width or precision: `string` cut to
+ * `precision` characters (none when negative), then padded with spaces to
+ * `width` characters (on the right when left_align). Counts characters, not
+ * bytes, and never splits one. NUL-terminated, for %s. */
+GrayString gray_fmt_string_field(GrayArena *arena, GrayString string, int32_t width, bool left_align, int32_t precision);
+
 /*@man pad_right
  *@module fmt
  *@group Padding

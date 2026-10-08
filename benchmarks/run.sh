@@ -31,6 +31,43 @@ if [ ! -x "$GRAY" ]; then
     exit 1
 fi
 
+tmp="$(mktemp)"
+prior="$(mktemp)"
+trap 'rm -f "$tmp" "$prior"' EXIT
+
+kb() { awk "BEGIN { printf \"%.1f\", $1 / 1024 }"; }
+
+print_header() { # <title> [column-width]
+    printf '\n%s\n' "$1"
+    printf '%-16s %*s %*s %*s\n' "workload" "${2:-12}" "compile_ms" "${2:-12}" "run_ms" "${2:-12}" "bin_kb"
+    printf -- '------------------------------------------------------------------\n'
+}
+
+# ---- prior run ---------------------------------------------------------------
+# Read the saved results.json before this run overwrites it. Each line is
+# name, compile median, run median (empty for compile-only), binary bytes.
+if [ -f "$results" ]; then
+    prior_timestamp="$(sed -n 's/.*"timestamp": "\([^"]*\)".*/\1/p' "$results" | sed 's/T/ /; s/Z/ UTC/')"
+    awk '/"name":/ {
+        name = $0; sub(/.*"name": "/, "", name); sub(/".*/, "", name)
+        compile = $0; sub(/.*"compile_ms": \{[^}]*"median": /, "", compile); sub(/,.*/, "", compile)
+        run = ""
+        if ($0 !~ /"run_ms": null/) {
+            run = $0; sub(/.*"run_ms": \{[^}]*"median": /, "", run); sub(/,.*/, "", run)
+        }
+        bytes = $0; sub(/.*"binary_bytes": /, "", bytes); sub(/\}.*/, "", bytes)
+        printf "%s\t%s\t%s\t%s\n", name, compile, run, bytes
+    }' "$results" > "$prior"
+fi
+
+if [ -s "$prior" ]; then
+    echo "Benchmark suite is running. Your results from the run before this one are below."
+    print_header "Prior to Latest ($prior_timestamp)"
+    awk -F'\t' '{
+        printf "%-16s %12s %12s %12.1f\n", $1, $2, ($3 == "" ? "-" : $3), $4 / 1024
+    }' "$prior"
+fi
+
 # Start each run from a clean slate: the fixtures are deterministic and
 # take under a second to rebuild, so there is nothing to preserve.
 echo "==> resetting $gen"
@@ -65,17 +102,11 @@ gray_version="$("$GRAY" version 2>&1 | awk '{ gsub(/\033\[[0-9;]*m/, "") } /Inst
 timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 # ---- run -------------------------------------------------------------------
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-
 value() { # <result-line> <key>
     printf '%s\n' "$1" | sed -n "s/.* $2=\([0-9.]*\).*/\1/p"
 }
 
-kb() { awk "BEGIN { printf \"%.1f\", $1 / 1024 }"; }
-
-printf '\n%-16s %12s %12s %12s\n' "workload" "compile_ms" "run_ms" "bin_kb"
-printf -- '------------------------------------------------------------\n'
+print_header "Latest Run ($(printf '%s' "$timestamp" | sed 's/T/ /; s/Z/ UTC/'))"
 
 for name in $workloads; do
     src="$work/$name.gray"
@@ -101,6 +132,33 @@ printf '%-16s %12s %12s %12s\n' \
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "compile_stress" \
     "$(value "$cs_line" min)" "$(value "$cs_line" median)" "$(value "$cs_line" mean)" \
     "" "" "" "$cs_size" >> "$tmp"
+
+# ---- difference ------------------------------------------------------------
+if [ -s "$prior" ]; then
+    print_header "Difference (Latest subtracted by Prior to Latest)" 18
+    awk -F'\t' '
+    function cell(latest, before, scale,    diff, pct, diff_text, pct_text) {
+        if (latest == "" || before == "") return "-"
+        diff = (latest - before) / scale
+        diff_text = sprintf("%.1f", diff)
+        if (diff_text == "-0.0" || diff_text == "0.0") diff_text = "0.0"
+        else diff_text = sprintf("%+.1f", diff)
+        if (before + 0 == 0) return diff_text " (n/a)"
+        pct = (latest - before) / before * 100
+        pct_text = sprintf("%.1f", pct)
+        if (pct_text == "-0.0" || pct_text == "0.0") pct_text = "0.0"
+        else pct_text = sprintf("%+.1f", pct)
+        return diff_text " (" pct_text "%)"
+    }
+    FNR == NR { compile[$1] = $2; run[$1] = $3; bytes[$1] = $4; next }
+    {
+        if (!($1 in compile)) { printf "%-16s %18s %18s %18s\n", $1, "-", "-", "-"; next }
+        printf "%-16s %18s %18s %18s\n", $1, cell($3, compile[$1], 1), cell($6, run[$1], 1), cell($8, bytes[$1], 1024)
+    }' "$prior" "$tmp"
+else
+    echo
+    echo "No run prior to Latest"
+fi
 
 # ---- results.json ---------------------------------------------------------
 {

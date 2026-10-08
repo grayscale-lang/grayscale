@@ -1,0 +1,24 @@
+/*
+ * Test: fmt padding and the %s width and precision count characters, not bytes
+ */
+
+import @fmt
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if fmt.pad_left("é", 4, '*') == "***é" { passed += 1 } otherwise { failed += 1 }
+    if fmt.pad_right("日本", 6, '*') == "日本****" { passed += 1 } otherwise { failed += 1 }
+    if fmt.center("é", 5, '*') == "**é**" { passed += 1 } otherwise { failed += 1 }
+    if fmt.pad_left("ab", 4, '*') == "**ab" { passed += 1 } otherwise { failed += 1 }
+    if fmt.sprintf("[%-6s]", {"日本"}) == "[日本    ]" { passed += 1 } otherwise { failed += 1 }
+    if fmt.sprintf("[%6s]", {"日本"}) == "[    日本]" { passed += 1 } otherwise { failed += 1 }
+    if fmt.sprintf("[%.1s]", {"é"}) == "[é]" { passed += 1 } otherwise { failed += 1 }
+    if fmt.sprintf("[%5.2s]", {"日本語"}) == "[   日本]" { passed += 1 } otherwise { failed += 1 }
+    if fmt.sprintf("[%-5.2s|%s|%3s]", {"abc", "plain", "x"}) == "[ab   |plain|  x]" { passed += 1 } otherwise { failed += 1 }
+
+    println("fmt_width_counts_characters: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,9 @@
+// Error Test: E5026 - sqlite_exec_sql_not_string.gray
+// expect-error: E5026
+
+import @sqlite
+
+do main() {
+    mut db, open_err = sqlite.open(":memory:")
+    mut ok, exec_err = sqlite.exec(db, 5)
+}

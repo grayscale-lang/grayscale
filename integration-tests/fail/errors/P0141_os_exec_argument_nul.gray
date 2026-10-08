@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0141 - os.exec with an embedded null byte in an argument */
+import @os
+
+do main() {
+    mut nul string = "\x00"
+    mut _, _, _, _ = os.exec("/bin/echo", {"x" + nul + "y", "z"})
+}

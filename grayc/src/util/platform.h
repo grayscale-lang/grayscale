@@ -156,6 +156,10 @@ int gray_spawn_path(const char *const *argv);
  * *termination_signal is set to the signal (0 otherwise; always 0 on Windows). */
 int gray_spawn_exact(const char *const *argv, int *termination_signal);
 
+/* Human-readable name of a signal number. Windows has no strsignal(), so it
+ * returns a fixed string there. */
+const char *gray_signal_name(int signal_number);
+
 /* Like gray_spawn_path, but with the child's stdout and stderr discarded. */
 int gray_spawn_quiet(const char *const *argv);
 

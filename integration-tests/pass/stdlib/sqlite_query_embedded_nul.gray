@@ -1,0 +1,32 @@
+import @sqlite
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut db, _ = sqlite.open(":memory:")
+    mut _, _ = sqlite.exec(db, "create table t (v text)")
+    mut _, _ = sqlite.exec_params(db, "insert into t values (?)", {"a" + "\x00" + "b"})
+    mut rows, _ = sqlite.query(db, "select v from t")
+    if len(rows[0]["v"]) == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: query cut a stored value at an embedded NUL")
+    }
+
+    mut param_rows, _ = sqlite.query_params(db, "select ? as p", {"x" + "\x00" + "y"})
+    if len(param_rows[0]["p"]) == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: query_params cut a value at an embedded NUL")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

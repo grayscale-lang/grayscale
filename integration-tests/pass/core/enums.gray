@@ -43,7 +43,7 @@ do main() {
     println("  -- Basic Int Enum --")
 
     // Test 1: first enum value is 0
-    mut n i64 = Direction.NORTH
+    mut n i64 = cast(Direction.NORTH, i64)
     if n == 0 {
         println("  [PASS] Direction.NORTH = 0")
         passed += 1
@@ -53,9 +53,9 @@ do main() {
     }
 
     // Test 2: auto-increment
-    mut e i64 = Direction.EAST
-    mut s i64 = Direction.SOUTH
-    mut w i64 = Direction.WEST
+    mut e i64 = cast(Direction.EAST, i64)
+    mut s i64 = cast(Direction.SOUTH, i64)
+    mut w i64 = cast(Direction.WEST, i64)
     if e == 1 && s == 2 && w == 3 {
         println("  [PASS] enum auto-increment (1, 2, 3)")
         passed += 1
@@ -65,7 +65,7 @@ do main() {
     }
 
     // Test 3: store enum in variable
-    mut current i64 = Direction.SOUTH
+    mut current i64 = cast(Direction.SOUTH, i64)
     if current == 2 {
         println("  [PASS] enum value in variable")
         passed += 1
@@ -78,7 +78,7 @@ do main() {
     println("  -- Flags Enum (power-of-2) --")
 
     // Test 4: first flag value is 1
-    mut r i64 = Permissions.READ
+    mut r i64 = cast(Permissions.READ, i64)
     if r == 1 {
         println("  [PASS] Permissions.READ = 1")
         passed += 1
@@ -88,7 +88,7 @@ do main() {
     }
 
     // Test 5: power-of-2 values
-    mut wr i64 = Permissions.WRITE
+    mut wr i64 = cast(Permissions.WRITE, i64)
     if wr == 2 {
         println("  [PASS] Permissions.WRITE = 2")
         passed += 1
@@ -98,8 +98,8 @@ do main() {
     }
 
     // Test 6: continue power-of-2
-    mut ex i64 = Permissions.EXECUTE
-    mut dl i64 = Permissions.DELETE
+    mut ex i64 = cast(Permissions.EXECUTE, i64)
+    mut dl i64 = cast(Permissions.DELETE, i64)
     if ex == 4 && dl == 8 {
         println("  [PASS] Permissions.EXECUTE=4, DELETE=8")
         passed += 1
@@ -112,7 +112,7 @@ do main() {
     println("  -- String Enum --")
 
     // Test 7: string enum value
-    if Status.TODO == "todo" {
+    if cast(Status.TODO, string) == "todo" {
         println("  [PASS] Status.TODO = \"todo\"")
         passed += 1
     } otherwise {
@@ -121,7 +121,7 @@ do main() {
     }
 
     // Test 8: other string values
-    if Status.IN_PROGRESS == "in_progress" && Status.DONE == "done" {
+    if cast(Status.IN_PROGRESS, string) == "in_progress" && cast(Status.DONE, string) == "done" {
         println("  [PASS] Status.IN_PROGRESS and DONE")
         passed += 1
     } otherwise {
@@ -130,7 +130,7 @@ do main() {
     }
 
     // Test 9: string enum in variable
-    mut current_status string = Status.IN_PROGRESS
+    mut current_status string = cast(Status.IN_PROGRESS, string)
     if current_status == "in_progress" {
         println("  [PASS] string enum in variable")
         passed += 1
@@ -143,9 +143,9 @@ do main() {
     println("  -- Int Enum (auto-detected) --")
 
     // Test 10: i64 enum auto-increment works without any attribute
-    mut lo i64 = Priority.LOW
-    mut md i64 = Priority.MEDIUM
-    mut hi i64 = Priority.HIGH
+    mut lo i64 = cast(Priority.LOW, i64)
+    mut md i64 = cast(Priority.MEDIUM, i64)
+    mut hi i64 = cast(Priority.HIGH, i64)
     if lo == 0 && md == 1 && hi == 2 {
         println("  [PASS] i64 enum auto-increment (0, 1, 2)")
         passed += 1
@@ -158,7 +158,7 @@ do main() {
     println("  -- Enum Comparison --")
 
     // Test 11: compare enum values via i64 variables
-    mut priority i64 = Priority.HIGH
+    mut priority i64 = cast(Priority.HIGH, i64)
     if priority >= Priority.MEDIUM {
         println("  [PASS] enum comparison (HIGH >= MEDIUM)")
         passed += 1
