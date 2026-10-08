@@ -98,7 +98,7 @@ jobs:
         run: make test-integration
 
   clang:
-    name: Build and Test (Clang)
+    name: Build and Test (Clang, Linux)
     runs-on: ubuntu-latest
     env:
       CC: clang
