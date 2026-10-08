@@ -436,10 +436,7 @@ static inline gray_i256 gray_i256_mul(gray_i256 left, gray_i256 right) {
             uint64_t product_high_low = left_high * right_low;
             uint64_t product_high_high = left_high * right_high;
             uint64_t middle = product_low_high + (product_low_low >> 32);
-            uint64_t low_limb = (product_low_low & LOW32_MASK) | ((middle & LOW32_MASK) << 32) + (product_high_low << 32);
-
-            /* Simpler approach: just use the truncating product */
-            low_limb = left.w[j] * right.w[i];
+            uint64_t low_limb = left.w[j] * right.w[i];
             uint64_t hi_part = product_high_high + (middle >> 32) + (((middle & LOW32_MASK) + product_high_low) >> 32);
 
             uint64_t previous_limb = result.w[i + j];

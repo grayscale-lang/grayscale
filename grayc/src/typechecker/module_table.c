@@ -498,10 +498,9 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
             const char *parameter_type_name = function_signature->parameter_types[i];
             const char *resolved = module_resolve_type_name(table, scope, parameter_type_name);
             if (resolved != parameter_type_name) was_changed = true;
-            char piece[MESSAGE_BUFFER_SIZE];
-            snprintf(piece, sizeof(piece), "%s%s%s", i ? "," : "",
+            size_t used = strlen(parameter_list);
+            snprintf(parameter_list + used, sizeof(parameter_list) - used, "%s%s%s", i ? "," : "",
                 function_signature->is_parameter_mutable[i] ? "&" : "", resolved);
-            strncat(parameter_list, piece, sizeof(parameter_list) - strlen(parameter_list) - 1);
         }
         char return_list[MESSAGE_BUFFER_SIZE];
         return_list[0] = '\0';
@@ -517,9 +516,8 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
                 const char *return_type_name = function_signature->return_types[i];
                 const char *resolved = module_resolve_type_name(table, scope, return_type_name);
                 if (resolved != return_type_name) was_changed = true;
-                char piece[MESSAGE_BUFFER_SIZE];
-                snprintf(piece, sizeof(piece), "%s%s", i ? "," : "", resolved);
-                strncat(parts, piece, sizeof(parts) - strlen(parts) - 1);
+                size_t used = strlen(parts);
+                snprintf(parts + used, sizeof(parts) - used, "%s%s", i ? "," : "", resolved);
             }
             snprintf(return_list, sizeof(return_list), "(%s)", parts);
         }

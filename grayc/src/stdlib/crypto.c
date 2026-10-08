@@ -441,7 +441,11 @@ GrayString gray_crypto_totp(GrayArena *arena, GrayString secret, int64_t timesta
     uint32_t one_time_password = binary_code % modulus;
 
     char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)digits + 1);
-    snprintf(buffer, (size_t)digits + 1, "%0*u", (int)digits, one_time_password);
+    for (int64_t i = digits - 1; i >= 0; i--) {
+        buffer[i] = (char)('0' + one_time_password % 10);
+        one_time_password /= 10;
+    }
+    buffer[digits] = '\0';
     return (GrayString){ buffer, (int32_t)digits };
 }
 

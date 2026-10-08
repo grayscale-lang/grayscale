@@ -815,7 +815,7 @@ static void append_c_header_includes(const ImportItem *const *headers, int count
 
     for (int i = 0; i < count; i++) {
         const ImportItem *item = headers[i];
-        char line[PATH_BUFFER_SIZE];
+        char line[PATH_BUFFER_SIZE + sizeof("#include \"\"\n")];
         if (c_header_is_local(item->path)) {
             char resolved[PATH_BUFFER_SIZE];
             char canonical[PATH_BUFFER_SIZE];

@@ -238,6 +238,7 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic
         severity_color = COLOR_RED;
         break;
     case SEVERITY_WARNING:
+    default:
         severity_label = "warning";
         severity_color = COLOR_YELLOW;
         break;

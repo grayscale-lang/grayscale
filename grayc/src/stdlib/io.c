@@ -640,7 +640,7 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *relat
             child_rel = gray_string_format(arena, "%s/%s", relative_path, entry->d_name);
         }
         GRAY_ARRAY_PUSH(arena, output, &child_rel);
-        char child_full[GRAY_IO_PATH_BUFFER_SIZE];
+        char child_full[GRAY_IO_PATH_BUFFER_SIZE + sizeof(entry->d_name)];
         snprintf(child_full, sizeof(child_full), "%s/%s", full, entry->d_name);
         if (io_path_is_directory(child_full)) {
             walk_recursive(arena, base, child_rel.data, output);

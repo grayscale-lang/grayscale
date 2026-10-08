@@ -3851,7 +3851,7 @@ static int levenshtein(const char *left, const char *right) {
     int left_length = (int)strlen(left), right_length = (int)strlen(right);
     if (left_length == 0) return right_length;
     if (right_length == 0) return left_length;
-    int stack_row[256];
+    int stack_row[256] = {0};
     int *distance_row = right_length < 256 ? stack_row : xmalloc(sizeof(int) * (right_length + 1));
     for (int j = 0; j <= right_length; j++) distance_row[j] = j;
     for (int i = 1; i <= left_length; i++) {
@@ -11215,9 +11215,9 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         /* A module-qualified struct function used as a value: lib.Type.func */
         if (ast_member_chain(node, &resolved_module_name, &type_name_part) &&
             typechecker_is_imported_module(checker, resolved_module_name)) {
-            char prefixed_type[MESSAGE_BUFFER_SIZE], function_key[MESSAGE_BUFFER_SIZE];
+            char prefixed_type[MESSAGE_BUFFER_SIZE];
             module_member_key(checker, resolved_module_name, type_name_part, prefixed_type, sizeof(prefixed_type));
-            snprintf(function_key, sizeof(function_key), "%s_%s", prefixed_type, member);
+            const char *function_key = typechecker_format(checker, "%s_%s", prefixed_type, member);
             FunctionSignature *struct_function = find_function(checker, function_key);
             if (struct_function) {
                 struct_function->was_used = true;
@@ -11529,12 +11529,10 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
                 mark_import_used(checker, typechecker_resolve_alias(checker, chain_module));
             char struct_key[MESSAGE_BUFFER_SIZE];
             snprintf(struct_key, sizeof(struct_key), "%s_%s", chain_module, chain_type);
-            char buffer[MESSAGE_BUFFER_SIZE];
-            snprintf(buffer, sizeof(buffer), "%s_%s", struct_key, member);
             reference_struct_name = chain_type;
             reference_struct_key = arena_copy_string(checker->arena, struct_key);
             reference_member_name = member;
-            reference_name = arena_copy_string(checker->arena, buffer);
+            reference_name = typechecker_format(checker, "%s_%s", struct_key, member);
         }
     }
     FunctionSignature *reference_signature = reference_name ? find_function(checker, reference_name) : NULL;

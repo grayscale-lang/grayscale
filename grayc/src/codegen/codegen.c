@@ -160,7 +160,7 @@ static const char *codegen_written_type_name(CodeGen *codegen, const char *name,
         return buffer;
     }
     size_t length = strlen(name);
-    char inner[MESSAGE_BUFFER_SIZE];
+    char inner[TYPE_NAME_MAX];
     if (length > 1 && name[0] == '^') {
         snprintf(buffer, buffer_length, "^%s",
                  codegen_written_type_name(codegen, name + 1, inner, sizeof(inner)));
@@ -179,7 +179,7 @@ static const char *codegen_written_type_name(CodeGen *codegen, const char *name,
         char *colon = strchr(pair, ':');
         if (colon) {
             *colon = '\0';
-            char lookup_key[MESSAGE_BUFFER_SIZE];
+            char lookup_key[TYPE_NAME_MAX];
             codegen_written_type_name(codegen, pair, lookup_key, sizeof(lookup_key));
             snprintf(buffer, buffer_length, "map[%s:%s]", lookup_key,
                      codegen_written_type_name(codegen, colon + 1, inner, sizeof(inner)));
@@ -1105,7 +1105,7 @@ static void emit_array_deep_copy(CodeGen *codegen, const char *gray_type_name, c
         unique_id, unique_id, unique_id, unique_id,
         c_element_type, unique_id);
 
-    char inner_variable[MESSAGE_BUFFER_SIZE];
+    char inner_variable[MESSAGE_BUFFER_SIZE + IDENTIFIER_BUFFER_SIZE];
     snprintf(inner_variable, sizeof(inner_variable),
         "((%s *)_ds%d.data)[_di%d]", c_element_type, unique_id, unique_id);
     emit_value_deep_copy(codegen, element_type_name, inner_variable);
@@ -9053,7 +9053,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             const char *resolved_name = codegen_resolve_declaration(codegen, raw_name);
             if (resolved_name == raw_name) resolved_name = resolve_alias(codegen, raw_name);
             /* Try to find as a namespaced function: Name_func or ResolvedAlias_func */
-            char namespaced_name[IDENTIFIER_BUFFER_SIZE];
+            char namespaced_name[IDENTIFIER_BUFFER_SIZE * 2];
             snprintf(namespaced_name, sizeof(namespaced_name), "%s_%s", resolved_name, member);
             AstNode *namespaced_function = find_function(codegen, namespaced_name);
             /* If not found, try using-module-prefixed struct names so
