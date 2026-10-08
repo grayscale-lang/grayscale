@@ -97,6 +97,40 @@ jobs:
           GRAY_CC: tcc
         run: make test-integration
 
+  clang:
+    name: Build and Test (Clang)
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Install Clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Toolchain versions
+        run: clang --version
+
+      - name: Build
+        run: make build
+
+      - name: Run Grayscale unit tests (lexer + parser + typechecker)
+        run: make test-unit
+
+      - name: Run Grayscale end-to-end tests
+        run: make test-e2e
+
+      - name: Run Grayscale integration tests
+        run: make test-integration
+
   # Windows is a separate job rather than a matrix entry: the steps above run
   # bash scripts and sanitizers that have no Windows equivalent.
   windows:
