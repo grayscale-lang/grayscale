@@ -20,6 +20,9 @@
 #include <pthread.h>
 #if !GRAY_RUNTIME_WINDOWS
 #include <locale.h>
+#if defined(__APPLE__) && !defined(__clang__)
+#include <xlocale.h> /* GCC's <locale.h> does not declare locale_t on macOS */
+#endif
 #endif
 
 

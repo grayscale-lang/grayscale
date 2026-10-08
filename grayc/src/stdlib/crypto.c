@@ -112,7 +112,14 @@ static int sha256_hw_available(void) {
 #endif
 }
 
-__attribute__((target("+sha2")))
+#if defined(__clang__)
+#define SHA256_ARM_TARGET "+sha2"
+#else
+/* GCC rejects the bare "+sha2" form Clang takes. */
+#define SHA256_ARM_TARGET "arch=armv8-a+crypto"
+#endif
+
+__attribute__((target(SHA256_ARM_TARGET)))
 static void sha256_compress_arm(uint32_t h[8], const uint8_t *msg, size_t nblocks) {
     uint32x4_t s0 = vld1q_u32(h), s1 = vld1q_u32(h + 4);
     for (; nblocks > 0; nblocks--, msg += HASH_BLOCK_SIZE) {

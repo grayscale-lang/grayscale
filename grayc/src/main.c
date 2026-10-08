@@ -17,6 +17,9 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <time.h>
+#if defined(__APPLE__)
+#include <sys/stat.h>
+#endif
 #include <ctype.h>
 
 #include "util/arena.h"
@@ -418,6 +421,164 @@ static bool c_compiler_is_tinycc(const char *c_compiler) {
     }
     return strcmp(name, "tcc") == 0 || strcmp(name, "tcc.exe") == 0;
 }
+
+/* Every runtime and stdlib .c file, relative to the runtime directory. Mirrors
+ * RT_SRC in grayc/Makefile; atomic_builtin.c stands in for the per-architecture
+ * assembly, which is written for the host. */
+static const char *const RUNTIME_SOURCES[] = {
+    "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
+    "runtime/test.c", "runtime/atomic_builtin.c",
+};
+static const char *const STDLIB_SOURCES[] = {
+    "stdlib/arrays.c",   "stdlib/binary.c",   "stdlib/builtins.c",
+    "stdlib/chars.c",    "stdlib/channels.c", "stdlib/crypto.c",
+    "stdlib/csv.c",      "stdlib/encoding.c", "stdlib/fmt.c",
+    "stdlib/http.c",     "stdlib/io.c",       "stdlib/json.c",
+    "stdlib/maps.c",     "stdlib/math.c",     "stdlib/mem.c",
+    "stdlib/net.c",      "stdlib/os.c",       "stdlib/random.c",
+    "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
+    "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
+    "stdlib/threads.c",  "stdlib/runtime_mod.c",
+    "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
+    "vendor/sqlite3.c"
+};
+
+#if defined(__APPLE__)
+/* The first line of `<compiler> --version`, or an empty string. */
+static void c_compiler_banner(const char *c_compiler, bool is_command, char *banner, size_t banner_size) {
+    banner[0] = '\0';
+    Arena *arena = arena_create(PATH_BUFFER_SIZE);
+    ArgumentVector arguments = {0};
+    argument_vector_push_compiler(&arguments, arena, c_compiler, is_command);
+    argument_vector_push(&arguments, "--version");
+    argument_vector_end(&arguments);
+    FILE *capture = gray_tmpfile();
+    if (capture && !arguments.has_overflowed && gray_spawn_capture_stdout(arguments.values, capture) == 0) {
+        rewind(capture);
+        size_t length = fread(banner, 1, banner_size - 1, capture);
+        banner[length] = '\0';
+        char *line_end = strchr(banner, '\n');
+        if (line_end) *line_end = '\0';
+    }
+    if (capture) fclose(capture);
+    arena_destroy(arena);
+}
+#endif
+
+/* libgrayrt.a is built by the system Clang. On macOS a different compiler
+ * (Homebrew GCC) lays out thread-local variables differently and cannot link
+ * it. Asks the compiler itself, since /usr/bin/gcc is Clang. */
+static bool c_compiler_cannot_link_archive(const char *c_compiler, bool is_command) {
+#if defined(__APPLE__)
+    if (c_compiler_is_tinycc(c_compiler)) return false;
+    char banner[256];
+    c_compiler_banner(c_compiler, is_command, banner, sizeof(banner));
+    return banner[0] && strstr(banner, "clang") == NULL;
+#else
+    (void)c_compiler;
+    (void)is_command;
+    return false;
+#endif
+}
+
+#if defined(__APPLE__)
+typedef struct {
+    const char *directory;
+    time_t archive_modified;
+    bool is_stale;
+} ArchiveStaleness;
+
+static bool note_newer_runtime_file(const char *name, void *context) {
+    ArchiveStaleness *staleness = context;
+    char path[PATH_BUFFER_SIZE];
+    struct stat file_status;
+    gray_path_join(path, sizeof(path), staleness->directory, name);
+    if (stat(path, &file_status) == 0 && file_status.st_mtime > staleness->archive_modified)
+        staleness->is_stale = true;
+    return !staleness->is_stale;
+}
+
+/* A compiler that cannot link the prebuilt libgrayrt.a would otherwise rebuild
+ * the whole runtime on every compile (tens of seconds). Build it once with that
+ * compiler into the temp directory, keyed by the compiler's version banner and
+ * the runtime directory, and rebuild when any runtime or stdlib file is newer.
+ * SQLite stays out of the archive (a program that uses it builds from source).
+ * Returns false, leaving the from-source build to run, if anything fails. */
+static bool ensure_runtime_archive(const char *c_compiler, bool is_command, const char *runtime_directory,
+                                   char *archive_path, size_t archive_path_size) {
+    char banner[256];
+    c_compiler_banner(c_compiler, is_command, banner, sizeof(banner));
+    uint64_t key = 14695981039346656037ULL;
+    const char *const key_parts[] = {banner, runtime_directory};
+    for (size_t part = 0; part < 2; part++)
+        for (const char *cursor = key_parts[part]; *cursor; cursor++)
+            key = (key ^ (unsigned char)*cursor) * 1099511628211ULL;
+    snprintf(archive_path, archive_path_size, "%s/gray-runtime-%016llx.a", gray_temporary_directory(),
+             (unsigned long long)key);
+
+    struct stat archive_status;
+    if (stat(archive_path, &archive_status) == 0) {
+        ArchiveStaleness staleness = {NULL, archive_status.st_mtime, false};
+        static const char *const watched[] = {"runtime", "stdlib"};
+        for (size_t i = 0; i < 2 && !staleness.is_stale; i++) {
+            char directory[PATH_BUFFER_SIZE];
+            gray_path_join(directory, sizeof(directory), runtime_directory, watched[i]);
+            staleness.directory = directory;
+            gray_scandir(directory, note_newer_runtime_file, &staleness);
+        }
+        if (!staleness.is_stale) return true;
+    }
+
+    Arena *arena = arena_create(PATH_BUFFER_SIZE);
+    ArgumentVector archiver = {0};
+    char temporary_archive[PATH_BUFFER_SIZE];
+    gray_temporary_path(temporary_archive, sizeof(temporary_archive), "gray_rt_", ".a");
+    argument_vector_push(&archiver, "ar");
+    argument_vector_push(&archiver, "rcs");
+    argument_vector_push(&archiver, temporary_archive);
+
+    char objects[48][PATH_BUFFER_SIZE];
+    int object_count = 0;
+    bool is_built = true;
+    for (size_t i = 0; i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0]) + sizeof(STDLIB_SOURCES) / sizeof(STDLIB_SOURCES[0]) && is_built; i++) {
+        const char *source = i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0])
+                                 ? RUNTIME_SOURCES[i]
+                                 : STDLIB_SOURCES[i - sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0])];
+        if (strstr(source, "sqlite")) continue;
+        if (object_count >= 48) { is_built = false; break; }
+        gray_temporary_path(objects[object_count], PATH_BUFFER_SIZE, "gray_rt_", ".o");
+
+        ArgumentVector compile = {0};
+        argument_vector_push_compiler(&compile, arena, c_compiler, is_command);
+        argument_vector_push(&compile, "-c");
+        argument_vector_push(&compile, "-std=c11");
+        argument_vector_push(&compile, "-D_POSIX_C_SOURCE=200809L");
+        argument_vector_push(&compile, "-D_DARWIN_C_SOURCE");
+        argument_vector_push(&compile, "-O2");
+        argument_vector_push(&compile, "-w");
+        argument_vector_push(&compile, "-ffunction-sections");
+        argument_vector_push(&compile, "-fdata-sections");
+        argument_vector_push(&compile, "-I");
+        argument_vector_push(&compile, runtime_directory);
+        argument_vector_push(&compile, "-o");
+        argument_vector_push(&compile, objects[object_count]);
+        argument_vector_push_formatted(&compile, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, source);
+        argument_vector_end(&compile);
+        is_built = !compile.has_overflowed && gray_spawn_quiet(compile.values) == 0;
+        argument_vector_push(&archiver, objects[object_count]);
+        object_count++;
+    }
+    argument_vector_end(&archiver);
+    is_built = is_built && !archiver.has_overflowed && gray_spawn_quiet(archiver.values) == 0;
+    /* Renamed into place so a concurrent compile never reads a partial archive. */
+    is_built = is_built && rename(temporary_archive, archive_path) == 0;
+
+    for (int i = 0; i < object_count; i++) gray_remove_file(objects[i]);
+    if (!is_built) gray_remove_file(temporary_archive);
+    arena_destroy(arena);
+    return is_built;
+}
+#endif
 
 static const char *detect_c_compiler(void) {
     /* GRAY_CC / CC are checked, not trusted: a stale CC=cc from a profile must
@@ -2053,6 +2214,11 @@ int main(int argc, char **argv) {
         /* fall through to the from-source build below; TinyCC also cannot
          * link objects another compiler built, or share its thread-local
          * layout (see gray_thread_state in runtime.h) */
+    } else if (c_compiler_cannot_link_archive(c_compiler_command, false)) {
+#if defined(__APPLE__)
+        has_archive = !strstr(c_source, "#include \"sqlite.h\"") &&
+                      ensure_runtime_archive(c_compiler_command, false, runtime_directory, lib_path, sizeof(lib_path));
+#endif
     } else if (gray_file_readable(lib_path)) {
         has_archive = true;
     } else {
@@ -2151,43 +2317,26 @@ int main(int argc, char **argv) {
     if (has_archive) {
         argument_vector_push(&c_compiler_arguments, lib_path);
     } else {
-        /* Build source list from all runtime and stdlib .c files. Mirrors
-         * RT_SRC in grayc/Makefile; atomic_builtin.c stands in for the
-         * per-architecture assembly, which is written for the host. */
-        static const char *runtime_srcs[] = {
-            "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
-            "runtime/test.c", "runtime/atomic_builtin.c",
-        };
-        static const char *stdlib_srcs[] = {
-            "stdlib/arrays.c",   "stdlib/binary.c",   "stdlib/builtins.c",
-            "stdlib/chars.c",    "stdlib/channels.c", "stdlib/crypto.c",
-            "stdlib/csv.c",      "stdlib/encoding.c", "stdlib/fmt.c",
-            "stdlib/http.c",     "stdlib/io.c",       "stdlib/json.c",
-            "stdlib/maps.c",     "stdlib/math.c",     "stdlib/mem.c",
-            "stdlib/net.c",      "stdlib/os.c",       "stdlib/random.c",
-            "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
-            "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
-            "stdlib/threads.c",  "stdlib/runtime_mod.c",
-            "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
-            "vendor/sqlite3.c"
-        };
-        for (size_t i = 0; i < sizeof(runtime_srcs) / sizeof(runtime_srcs[0]); i++) {
-            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, runtime_srcs[i]);
+        for (size_t i = 0; i < sizeof(RUNTIME_SOURCES) / sizeof(RUNTIME_SOURCES[0]); i++) {
+            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, RUNTIME_SOURCES[i]);
         }
         /* The vendored SQLite amalgamation is not part of the extracted
          * runtime a release binary carries; without it sqlite.c cannot build. */
         char vendor_probe[PATH_BUFFER_SIZE];
         gray_path_join(vendor_probe, sizeof(vendor_probe), runtime_directory, "vendor/sqlite3.c");
-        /* TinyCC's Mach-O linker rejects a program that links the vendored
-         * SQLite (it takes the address of close() while the rest of the program
-         * calls it), so TinyCC links SQLite only for a program that uses it. */
+        /* The SQLite amalgamation is by far the slowest file to compile, and
+         * TinyCC's Mach-O linker rejects it outright (it takes the address of
+         * close() while the rest of the program calls it). TinyCC and a
+         * compiler that cannot link the archive therefore include SQLite only
+         * for a program that uses it; any other --cc compiler is unchanged. */
+        bool skips_unused_sqlite = is_tinycc || c_compiler_cannot_link_archive(c_compiler_command, options.c_compiler_override != NULL);
         bool has_vendor = gray_file_readable(vendor_probe) &&
-                          (!is_tinycc || strstr(c_source, "#include \"sqlite.h\"") != NULL);
-        for (size_t i = 0; i < sizeof(stdlib_srcs) / sizeof(stdlib_srcs[0]); i++) {
-            if (!has_vendor && (strcmp(stdlib_srcs[i], "stdlib/sqlite.c") == 0 ||
-                                strcmp(stdlib_srcs[i], "vendor/sqlite3.c") == 0))
+                          (!skips_unused_sqlite || strstr(c_source, "#include \"sqlite.h\"") != NULL);
+        for (size_t i = 0; i < sizeof(STDLIB_SOURCES) / sizeof(STDLIB_SOURCES[0]); i++) {
+            if (!has_vendor && (strcmp(STDLIB_SOURCES[i], "stdlib/sqlite.c") == 0 ||
+                                strcmp(STDLIB_SOURCES[i], "vendor/sqlite3.c") == 0))
                 continue;
-            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, stdlib_srcs[i]);
+            argument_vector_push_formatted(&c_compiler_arguments, arena, "%s" GRAY_PATH_SEPARATOR_STRING "%s", runtime_directory, STDLIB_SOURCES[i]);
         }
     }
 

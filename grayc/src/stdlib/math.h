@@ -24,9 +24,10 @@
  * keeps the mechanism uniform with the other colliding stdlib headers,
  * whose system namesakes are absent on some platforms. */
 #ifdef GRAY_GENERATED_C
-#  if defined(__TINYC__)
-/* TinyCC's include_next re-finds this header when a quoted include from its
- * own .c file reached it; <sys/..> steps past this directory instead. */
+#  if defined(__TINYC__) || (defined(__GNUC__) && !defined(__clang__) && !defined(_WIN32))
+/* include_next re-finds this header when a quoted include from its own .c
+ * file reached it (TinyCC, and GCC when the runtime is built from source);
+ * <sys/..> steps past this directory instead. */
 #    if __has_include(<sys/../math.h>)
 #      include <sys/../math.h>
 #    endif
