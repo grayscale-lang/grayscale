@@ -263,9 +263,63 @@ static size_t skip_c_comment(const char *text, size_t start) {
     return text[index] ? index + 2 : index;
 }
 
+/* TinyCC treats every textual `struct { ... }` as a new type, so an initializer
+ * that names an anonymous struct (a multi-return call through a function
+ * pointer) has a different type in each of the two copies lowered below.
+ * Replace each outermost anonymous struct in text[0, length) with a typedef name
+ * and append the typedefs to `typedefs`; both copies then share one type.
+ * Returns the rewritten text, malloc'd. */
+static char *hoist_anonymous_structs(const char *text, size_t length, StringBuffer *typedefs) {
+    static int next_anonymous_struct = 0;
+    StringBuffer rewritten = buffer_create(length + 1);
+    size_t index = 0;
+    while (index < length) {
+        size_t literal_end = text[index] == '"' || text[index] == '\'' ? skip_c_literal(text, index)
+                                                                     : skip_c_comment(text, index);
+        if (literal_end > index) {
+            append_bytes_to_buffer(&rewritten, text + index, literal_end - index);
+            index = literal_end;
+            continue;
+        }
+        size_t brace = index + 6;
+        while (brace < length && isspace((unsigned char)text[brace])) brace++;
+        bool at_anonymous_struct = strncmp(text + index, "struct", 6) == 0 &&
+                                   (index == 0 || !(isalnum((unsigned char)text[index - 1]) || text[index - 1] == '_')) &&
+                                   brace < length && text[brace] == '{';
+        if (!at_anonymous_struct) {
+            append_char_to_buffer(&rewritten, text[index]);
+            index++;
+            continue;
+        }
+        size_t body_end = brace;
+        int depth = 0;
+        while (body_end < length) {
+            size_t skipped = text[body_end] == '"' || text[body_end] == '\'' ? skip_c_literal(text, body_end)
+                                                                           : skip_c_comment(text, body_end);
+            if (skipped > body_end) { body_end = skipped; continue; }
+            if (text[body_end] == '{') depth++;
+            if (text[body_end] == '}' && --depth == 0) { body_end++; break; }
+            body_end++;
+        }
+        append_format_to_buffer(typedefs, "typedef ");
+        append_bytes_to_buffer(typedefs, text + index, body_end - index);
+        append_format_to_buffer(typedefs, " gray_tcc_anonymous_%d; ", next_anonymous_struct);
+        append_format_to_buffer(&rewritten, "gray_tcc_anonymous_%d", next_anonymous_struct++);
+        index = body_end;
+    }
+    char *result = strdup(buffer_to_string(&rewritten));
+    buffer_destroy(&rewritten);
+    return result;
+}
+
 /* TinyCC has no __auto_type. `__auto_type name = init;` becomes
  * `__typeof__(init) name = init;`: typeof does not evaluate its operand, so
- * the initializer runs once, and both copies are lowered in turn. */
+ * the initializer runs once, and both copies are lowered in turn. A bare
+ * identifier may name a function, which __auto_type decays to a function
+ * pointer but a plain typeof would declare as a function, so that one case
+ * goes through a conditional, which decays it. Any other initializer stays
+ * plain: a conditional over a call returning an anonymous struct compares two
+ * distinct struct types and fails. */
 static void lower_auto_type_range(const char *text, size_t begin, size_t end, StringBuffer *output) {
     static const char keyword[] = "__auto_type";
     const size_t keyword_length = sizeof(keyword) - 1;
@@ -305,12 +359,42 @@ static void lower_auto_type_range(const char *text, size_t begin, size_t end, St
             if (scanned == ')' || scanned == ']' || scanned == '}') depth--;
             initializer_end++;
         }
-        append_string_to_buffer(output, "__typeof__(");
-        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        /* The typedefs go in front of the declaration, so only where a
+         * statement can start. */
+        StringBuffer typedefs = buffer_create(1);
+        char *initializer = hoist_anonymous_structs(text + initializer_begin, initializer_end - initializer_begin, &typedefs);
+        size_t before = output->length;
+        while (before > 0 && isspace((unsigned char)output->data[before - 1])) before--;
+        bool can_hoist = typedefs.length > 0 && (before == 0 || strchr(";{}", output->data[before - 1]) != NULL);
+        if (can_hoist) append_bytes_to_buffer(output, typedefs.data, typedefs.length);
+        else {
+            free(initializer);
+            initializer = malloc(initializer_end - initializer_begin + 1);
+            memcpy(initializer, text + initializer_begin, initializer_end - initializer_begin);
+            initializer[initializer_end - initializer_begin] = '\0';
+        }
+        buffer_destroy(&typedefs);
+        size_t initializer_length = strlen(initializer);
+
+        size_t identifier_begin = 0;
+        while (identifier_begin < initializer_length && isspace((unsigned char)initializer[identifier_begin])) identifier_begin++;
+        size_t identifier_end = identifier_begin;
+        while (identifier_end < initializer_length && (isalnum((unsigned char)initializer[identifier_end]) || initializer[identifier_end] == '_')) identifier_end++;
+        size_t trailing_end = identifier_end;
+        while (trailing_end < initializer_length && isspace((unsigned char)initializer[trailing_end])) trailing_end++;
+        bool is_bare_identifier = identifier_end > identifier_begin && trailing_end == initializer_length;
+        append_string_to_buffer(output, is_bare_identifier ? "__typeof__(1 ? (" : "__typeof__(");
+        lower_auto_type_range(initializer, 0, initializer_length, output);
+        if (is_bare_identifier) {
+            append_string_to_buffer(output, ") : (");
+            lower_auto_type_range(initializer, 0, initializer_length, output);
+            append_string_to_buffer(output, ")");
+        }
         append_string_to_buffer(output, ") ");
         append_bytes_to_buffer(output, text + name_begin, name_end - name_begin);
         append_string_to_buffer(output, " =");
-        lower_auto_type_range(text, initializer_begin, initializer_end, output);
+        lower_auto_type_range(initializer, 0, initializer_length, output);
+        free(initializer);
         index = initializer_end;
     }
 }
@@ -511,7 +595,8 @@ static void add_local_c_header_dirs(ArgumentVector *c_compiler_arguments, Arena 
             const char *kept = arena_copy_string(arena, directory);
             if (seen_count < MAX_C_COMPILER_ARGUMENTS) seen[seen_count++] = kept;
 
-            argument_vector_push(c_compiler_arguments, "-iquote");
+            /* TinyCC has no -iquote; -I is its nearest equivalent. */
+            argument_vector_push(c_compiler_arguments, c_compiler_is_tinycc(c_compiler_arguments->values[0]) ? "-I" : "-iquote");
             argument_vector_push(c_compiler_arguments, kept);
         }
     }
@@ -1319,6 +1404,19 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                                          DiagnosticList *diagnostics, Arena *arena,
                                          const char *c_compiler_command, bool cc_is_command,
                                          const char *entry_file) {
+    /* TinyCC has no AST dump or -aux-info to read a C signature from, so the
+     * checks below would all be skipped; ask a compiler that has them. They
+     * only parse the headers, so the compiler that builds the program is
+     * not required to be the one that answers. */
+    if (c_compiler_is_tinycc(c_compiler_command)) {
+        static const char *const introspection_compilers[] = {"cc", "gcc", "clang"};
+        for (size_t i = 0; i < sizeof(introspection_compilers) / sizeof(introspection_compilers[0]); i++) {
+            if (!c_compiler_available(introspection_compilers[i])) continue;
+            c_compiler_command = introspection_compilers[i];
+            cc_is_command = false;
+            break;
+        }
+    }
     if (report_c_header_conflicts(program, diagnostics, arena, c_compiler_command, cc_is_command, entry_file))
         return;
 
@@ -2080,7 +2178,11 @@ int main(int argc, char **argv) {
          * runtime a release binary carries; without it sqlite.c cannot build. */
         char vendor_probe[PATH_BUFFER_SIZE];
         gray_path_join(vendor_probe, sizeof(vendor_probe), runtime_directory, "vendor/sqlite3.c");
-        bool has_vendor = gray_file_readable(vendor_probe);
+        /* TinyCC's Mach-O linker rejects a program that links the vendored
+         * SQLite (it takes the address of close() while the rest of the program
+         * calls it), so TinyCC links SQLite only for a program that uses it. */
+        bool has_vendor = gray_file_readable(vendor_probe) &&
+                          (!is_tinycc || strstr(c_source, "#include \"sqlite.h\"") != NULL);
         for (size_t i = 0; i < sizeof(stdlib_srcs) / sizeof(stdlib_srcs[0]); i++) {
             if (!has_vendor && (strcmp(stdlib_srcs[i], "stdlib/sqlite.c") == 0 ||
                                 strcmp(stdlib_srcs[i], "vendor/sqlite3.c") == 0))
