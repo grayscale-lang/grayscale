@@ -3,17 +3,19 @@
  *
  * Windows ships no <regex.h> and there is no Win32 equivalent, so this
  * provides the subset of the POSIX interface the regex stdlib module uses:
- * regcomp, regexec, regfree, regex_t, regmatch_t, REG_EXTENDED, and REG_NOSUB.
+ * regcomp, regexec, regfree, regex_t (with re_nsub), regmatch_t, REG_EXTENDED,
+ * and REG_NOSUB.
  * Including it in place of <regex.h> leaves the module's own code unchanged.
  *
  * Supported: literals, '.', bracket expressions with ranges, negation and the
  * [:alpha:]-style classes, anchors, the '*', '+', '?' and '{n,m}' quantifiers,
  * alternation, grouping, and backslash escapes.
  *
- * Deliberately not supported: capture-group extraction. regexec reports the
- * extent of the whole match only, which is all the module asks for -- it never
- * passes an nmatch above 1. Matching is leftmost-first rather than POSIX's
- * leftmost-longest, the same rule Perl-style engines use.
+ * Capture groups: regcomp counts them into re_nsub, and regexec writes each
+ * group's extent to pmatch[1..nmatch-1] (rm_so == -1 for a group that did not
+ * participate). A repeated group reports its last iteration. Matching is
+ * leftmost-first rather than POSIX's leftmost-longest, the same rule
+ * Perl-style engines use.
  *
  * Author:  Aristomedes (@Aristomedes)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -64,6 +66,7 @@ struct GrayRegexNode {
     bool is_negated;      /* GRAY_REGEX_CLASS */
     unsigned char character_set[32]; /* GRAY_REGEX_CLASS bitmap, 256 bits */
     GrayRegexAlternation *group;        /* GRAY_REGEX_GROUP */
+    int group_index;      /* GRAY_REGEX_GROUP: 1-based capture number */
     int minimum_repeat, maximum_repeat; /* quantifier; maximum_repeat < 0 means unbounded */
 };
 
@@ -76,11 +79,13 @@ typedef struct {
 struct GrayRegexAlternation {
     GrayRegexSequence *sequences;
     int count;
+    int first_group, last_group; /* capture numbers opened inside; empty when last < first */
 };
 
 typedef struct {
     GrayRegexAlternation *root;
     bool has_no_submatches;
+    size_t re_nsub; /* number of capture groups */
 } regex_t;
 
 /* --- Parser --- */
@@ -88,6 +93,7 @@ typedef struct {
 typedef struct {
     const char *cursor;
     bool failed;
+    int group_count; /* capture groups opened so far */
 } GrayRegexParser;
 
 static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parser);
@@ -213,6 +219,7 @@ static bool gray_regex_parse_atom(GrayRegexParser *parser, GrayRegexNode *node) 
     if (character == '(') {
         parser->cursor++;
         node->kind = GRAY_REGEX_GROUP;
+        node->group_index = ++parser->group_count;
         node->group = gray_regex_parse_alternation(parser);
         if (*parser->cursor == ')') parser->cursor++;
         else parser->failed = true;
@@ -295,6 +302,7 @@ static GrayRegexSequence gray_regex_parse_sequence(GrayRegexParser *parser) {
 static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parser) {
     GrayRegexAlternation *alternation = (GrayRegexAlternation *)calloc(1, sizeof(GrayRegexAlternation));
     if (!alternation) { parser->failed = true; return NULL; }
+    alternation->first_group = parser->group_count + 1;
     int capacity = 0;
     for (;;) {
         GrayRegexSequence sequence = gray_regex_parse_sequence(parser);
@@ -308,6 +316,7 @@ static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parse
         if (*parser->cursor == '|') { parser->cursor++; continue; }
         break;
     }
+    alternation->last_group = parser->group_count;
     return alternation;
 }
 
@@ -332,7 +341,17 @@ static void gray_regex_free_alternation(GrayRegexAlternation *alternation) {
 typedef struct {
     const char *begin; /* start of subject, for '^' */
     bool is_not_beginning_of_line; /* REG_NOTBOL: '^' must not match at begin */
+    regmatch_t *captures; /* indexed by group number; NULL when nobody reads groups */
 } GrayRegexContext;
+
+/* Mark groups first..last as not participating. */
+static void gray_regex_clear_captures(GrayRegexContext *context, int first, int last) {
+    if (!context->captures) return;
+    for (int group_index = first; group_index <= last; group_index++) {
+        context->captures[group_index].rm_so = -1;
+        context->captures[group_index].rm_eo = -1;
+    }
+}
 
 static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayRegexAlternation *alternation, const char *scan_position);
 static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRegexSequence *sequence, int index, const char *scan_position);
@@ -365,7 +384,18 @@ static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRege
     if (node->minimum_repeat == 1 && node->maximum_repeat == 1) {
         const char *next = gray_regex_match_one(context, node, scan_position);
         if (!next) return NULL;
-        return gray_regex_match_sequence(context, sequence, index + 1, next);
+        if (node->kind != GRAY_REGEX_GROUP || !context->captures) {
+            return gray_regex_match_sequence(context, sequence, index + 1, next);
+        }
+        regmatch_t previous = context->captures[node->group_index];
+        context->captures[node->group_index].rm_so = (long)(scan_position - context->begin);
+        context->captures[node->group_index].rm_eo = (long)(next - context->begin);
+        const char *rest = gray_regex_match_sequence(context, sequence, index + 1, next);
+        if (!rest) {
+            gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+            context->captures[node->group_index] = previous;
+        }
+        return rest;
     }
 
     /* Record how far the atom can repeat, then give ground from the longest
@@ -382,9 +412,29 @@ static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRege
         stack[++depth] = cursor;
     }
 
+    bool records_captures = node->kind == GRAY_REGEX_GROUP && context->captures;
+    regmatch_t previous = {-1, -1};
+    if (records_captures) previous = context->captures[node->group_index];
+
     for (int take = depth; take >= node->minimum_repeat; take--) {
+        if (records_captures) {
+            /* The group reports its last iteration: rerun that iteration so
+             * groups nested inside it match it, not a later or failed one. */
+            gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+            if (take == 0) {
+                context->captures[node->group_index] = previous;
+            } else {
+                gray_regex_match_one(context, node, stack[take - 1]);
+                context->captures[node->group_index].rm_so = (long)(stack[take - 1] - context->begin);
+                context->captures[node->group_index].rm_eo = (long)(stack[take] - context->begin);
+            }
+        }
         const char *rest = gray_regex_match_sequence(context, sequence, index + 1, stack[take]);
         if (rest) return rest;
+    }
+    if (records_captures) {
+        gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+        context->captures[node->group_index] = previous;
     }
     return NULL;
 }
@@ -394,6 +444,7 @@ static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayR
     for (int i = 0; i < alternation->count; i++) {
         const char *end_cursor = gray_regex_match_sequence(context, &alternation->sequences[i], 0, scan_position);
         if (end_cursor) return end_cursor;
+        gray_regex_clear_captures(context, alternation->first_group, alternation->last_group);
     }
     return NULL;
 }
@@ -404,8 +455,10 @@ static int regcomp(regex_t *regex, const char *pattern, int flags) {
     GrayRegexParser parser;
     parser.cursor = pattern;
     parser.failed = false;
+    parser.group_count = 0;
     regex->root = gray_regex_parse_alternation(&parser);
     regex->has_no_submatches = (flags & REG_NOSUB) != 0;
+    regex->re_nsub = (size_t)parser.group_count;
     if (parser.failed || *parser.cursor != '\0') {
         gray_regex_free_alternation(regex->root);
         regex->root = NULL;
@@ -421,6 +474,12 @@ static int regexec(const regex_t *regex, const char *string, size_t nmatch, regm
     GrayRegexContext context;
     context.begin = string;
     context.is_not_beginning_of_line = (eflags & REG_NOTBOL) != 0;
+    context.captures = NULL;
+    if (nmatch > 1 && pmatch && regex->re_nsub > 0) {
+        context.captures = (regmatch_t *)malloc((regex->re_nsub + 1) * sizeof(regmatch_t));
+        if (!context.captures) return REG_NOMATCH;
+        gray_regex_clear_captures(&context, 1, (int)regex->re_nsub);
+    }
 
     for (const char *start = string;; start++) {
         const char *end_cursor = gray_regex_match_alternation(&context, regex->root, start);
@@ -429,10 +488,20 @@ static int regexec(const regex_t *regex, const char *string, size_t nmatch, regm
                 pmatch[0].rm_so = (long)(start - string);
                 pmatch[0].rm_eo = (long)(end_cursor - string);
             }
+            for (size_t group_index = 1; group_index < nmatch && pmatch; group_index++) {
+                if (context.captures && group_index <= regex->re_nsub) {
+                    pmatch[group_index] = context.captures[group_index];
+                } else {
+                    pmatch[group_index].rm_so = -1;
+                    pmatch[group_index].rm_eo = -1;
+                }
+            }
+            free(context.captures);
             return 0;
         }
         if (*start == '\0') break;
     }
+    free(context.captures);
     return REG_NOMATCH;
 }
 
