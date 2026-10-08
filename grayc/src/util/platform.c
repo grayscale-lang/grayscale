@@ -9,6 +9,12 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+#if defined(__linux__)
+/* glibc declares realpath() only under _XOPEN_SOURCE >= 500 (or _DEFAULT_SOURCE),
+ * which -D_POSIX_C_SOURCE=200809L alone does not enable. */
+#define _XOPEN_SOURCE 700
+#endif
+
 #include "platform.h"
 #include "xalloc.h"
 
