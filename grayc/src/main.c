@@ -2461,7 +2461,7 @@ int main(int argc, char **argv) {
         } else if (term_signal) {
             fflush(stdout);
             fprintf(stderr, "gray: program crashed: signal %d (%s)\n",
-                    term_signal, strsignal(term_signal));
+                    term_signal, gray_signal_name(term_signal));
         }
         ran_program = true;
         gray_remove_file(options.output_file);

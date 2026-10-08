@@ -489,6 +489,15 @@ int gray_spawn_exact(const char *const *argv, int *termination_signal) {
     return spawn_child(argv, false, termination_signal);
 }
 
+const char *gray_signal_name(int signal_number) {
+#if GRAY_OS_WINDOWS
+    (void)signal_number;
+    return "unknown signal";
+#else
+    return strsignal(signal_number);
+#endif
+}
+
 int gray_spawn_quiet(const char *const *argv) {
     int null_device = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
     if (null_device < 0) return gray_spawn_path(argv);
