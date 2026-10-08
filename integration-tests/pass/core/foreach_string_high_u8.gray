@@ -1,47 +1,25 @@
-// for_each over a string must yield the same unsigned byte values as s[i]
-// indexing. GrayString.data is signed char*, so a u8 >= 0x80 used to
-// sign-extend to a negative "codepoint" in the loop only.
+// for_each over a string yields one codepoint per character, never a
+// sign-extended negative value for bytes >= 0x80. s[i] still indexes bytes.
 
 do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    // "é" is 0xC3 0xA9 in UTF-8 -> 195, 169
+    // "é" is 0xC3 0xA9 in UTF-8 -> one codepoint, 233
     mut s string = "é"
 
-    // every loop byte is non-negative and equals the indexed byte
-    mut i i64 = 0
-    mut all_match bool = true
-    mut first i64 = 0
-    mut second i64 = 0
+    mut count i64 = 0
+    mut codepoint i64 = 0
     for_each ch in s {
-        if cast(ch, i64) < 0 {
-            all_match = false
-        }
-        if cast(ch, i64) != cast(s[i], i64) {
-            all_match = false
-        }
-        if i == 0 {
-            first = cast(ch, i64)
-        }
-        if i == 1 {
-            second = cast(ch, i64)
-        }
-        i += 1
+        codepoint = cast(ch, i64)
+        count += 1
     }
 
-    if i == 2 && first == 195 && second == 169 {
+    if count == 1 && codepoint == 233 {
         passed += 1
     } otherwise {
         failed += 1
-        println("FAIL: loop bytes ${first}, ${second} (count ${i})")
-    }
-
-    if all_match {
-        passed += 1
-    } otherwise {
-        failed += 1
-        println("FAIL: loop disagrees with indexing or went negative")
+        println("FAIL: loop codepoint ${codepoint} (count ${count})")
     }
 
     if cast(s[0], i64) == 195 && cast(s[1], i64) == 169 {
