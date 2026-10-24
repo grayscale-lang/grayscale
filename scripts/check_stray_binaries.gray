@@ -71,7 +71,7 @@ do main() {
 
     mut stray [string] = {}
     for_each entry in entries {
-        if strings.starts_with(entry, ".") || entry == "gray" || !io.is_file(entry) || is_symlink(entry) {
+        if strings.starts_with(entry, ".") || entry == "gray" || entry == "check_stray_binaries" || !io.is_file(entry) || is_symlink(entry) {
             continue
         }
         if is_binary(entry) {
