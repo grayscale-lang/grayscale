@@ -234,23 +234,51 @@ int diagnostic_warning_count(DiagnosticList *diagnostics) {
 
 /* --- Rendering --- */
 
+/* How many continuation bytes follow a UTF-8 lead byte, 0 for any other byte. */
+static int utf8_continuation_count(unsigned char byte) {
+    if (byte >= 0xF0 && byte <= 0xF4) return 3;
+    if (byte >= 0xE0 && byte < 0xF0) return 2;
+    if (byte >= 0xC2 && byte < 0xE0) return 1;
+    return 0;
+}
+
+/* A byte 0x80-0x9F outside a UTF-8 sequence: a C1 control in 8-bit form
+ * (0x9B is CSI to a terminal in 8-bit mode). Inside a sequence the same
+ * values are ordinary continuation bytes. `pending` is how many continuation
+ * bytes the sequence in progress still owes; this advances it. */
+static bool is_lone_c1_byte(unsigned char byte, int *pending) {
+    if (*pending > 0 && (byte & 0xC0) == 0x80) {
+        (*pending)--;
+        return false;
+    }
+    *pending = utf8_continuation_count(byte);
+    return byte >= 0x80 && byte <= 0x9F;
+}
+
 /* Source text reaches the terminal in diagnostics: the quoted line, and names
  * and values copied into messages. A control byte in it (ESC, BEL, CR, a C1
- * control encoded as UTF-8) would be run by the terminal rather than shown, so
- * each is printed as a visible escape. A tab, and a newline when
- * `allow_newline`, pass through. Returns how many columns the text takes. */
+ * control encoded as UTF-8 or as a lone byte) would be run by the terminal
+ * rather than shown, so each is printed as a visible escape. A tab, and a
+ * newline when `allow_newline`, pass through. Returns how many columns the
+ * text takes. */
 static int write_visible(const char *text, int length, bool allow_newline) {
     int columns = 0;
+    int pending = 0;
     for (int index = 0; index < length; index++) {
         unsigned char byte = (unsigned char)text[index];
         bool is_c1 = byte == 0xC2 && index + 1 < length && ((unsigned char)text[index + 1] & 0xE0) == 0x80;
         if (is_c1) {
             columns += fprintf(stderr, "\\u{%02x}", (unsigned char)text[index + 1]);
             index++;
+            pending = 0;
         } else if (byte == '\t' || (byte == '\n' && allow_newline)) {
             fputc(byte, stderr);
             columns++;
+            pending = 0;
         } else if (byte < 0x20 || byte == 0x7F) {
+            columns += fprintf(stderr, "\\x%02x", byte);
+            pending = 0;
+        } else if (is_lone_c1_byte(byte, &pending)) {
             columns += fprintf(stderr, "\\x%02x", byte);
         } else {
             fputc(byte, stderr);
@@ -265,11 +293,13 @@ static int write_visible(const char *text, int length, bool allow_newline) {
  * padding always has. */
 static int visible_width(const char *text, int length) {
     int columns = 0;
+    int pending = 0;
     for (int index = 0; index < length; index++) {
         unsigned char byte = (unsigned char)text[index];
         bool is_c1 = byte == 0xC2 && index + 1 < length && ((unsigned char)text[index + 1] & 0xE0) == 0x80;
-        if (is_c1) { columns += 6; index++; }
-        else if (byte != '\t' && (byte < 0x20 || byte == 0x7F)) columns += 4;
+        if (is_c1) { columns += 6; index++; pending = 0; }
+        else if (byte != '\t' && (byte < 0x20 || byte == 0x7F)) { columns += 4; pending = 0; }
+        else if (is_lone_c1_byte(byte, &pending)) columns += 4;
         else columns++;
     }
     return columns;
