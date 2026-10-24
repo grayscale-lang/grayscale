@@ -2900,6 +2900,7 @@ typedef struct {
 static const ExternStringRetainer extern_string_retainers[] = {
     {"putenv",  0},
     {"setbuf",  1},
+    {"setbuffer", 1},
     {"setvbuf", 1},
     {"strtok",  0},
 };
