@@ -1,0 +1,9 @@
+const A struct {
+    n i64
+    x [A,2]
+}
+
+do main() {
+    mut a A = A{n: 1}
+    println("${a.n}")
+}

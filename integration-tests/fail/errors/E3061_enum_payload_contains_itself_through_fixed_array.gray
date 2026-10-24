@@ -1,0 +1,8 @@
+const A enum {
+    Leaf,
+    Node([A,2])
+}
+
+do main() {
+    mut a A = A.Leaf
+}

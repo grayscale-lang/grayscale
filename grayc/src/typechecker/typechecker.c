@@ -18555,6 +18555,24 @@ static AstNode *find_struct_or_enum_in_program(TypeChecker *checker, const char 
     return NULL;
 }
 
+/* The element spelling of a fixed-size array spelling ([T,N] -> T), looking
+ * through nested fixed arrays; any other spelling comes back unchanged. A
+ * fixed array stores its elements inline, so by-value containment sees
+ * through it where a dynamic [T] breaks the chain. */
+static const char *fixed_array_innermost_element(TypeChecker *checker, const char *spelling) {
+    while (array_spelling_is_fixed(spelling)) {
+        int depth = 0;
+        const char *comma = NULL;
+        for (const char *cursor = spelling; *cursor && !comma; cursor++) {
+            if (*cursor == '[') depth++;
+            else if (*cursor == ']') depth--;
+            else if (*cursor == ',' && depth == 1) comma = cursor;
+        }
+        spelling = arena_copy_string_with_length(checker->arena, spelling + 1, (size_t)(comma - spelling - 1));
+    }
+    return spelling;
+}
+
 static bool type_contains_by_value(TypeChecker *checker, const char *type_name, const char *target,
                                    const char **visited, int *visited_count, int visited_capacity);
 
@@ -18605,6 +18623,7 @@ static bool type_contains_by_value(TypeChecker *checker, const char *type_name, 
      * one reached transitively is visited with its AST names still as
      * written, so an alias hid the cycle. */
     type_name = resolve_type_alias(checker, checker_resolve_type_name(checker, type_name));
+    type_name = resolve_type_alias(checker, fixed_array_innermost_element(checker, type_name));
     if (type_name[0] == '^' || type_name[0] == '[' || strncmp(type_name, "map[", 4) == 0) return false;
     if (strcmp(type_name, target) == 0) return true;
     return struct_contains_by_value(checker, find_struct_or_enum_in_program(checker, type_name), target,
@@ -19135,7 +19154,8 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
             const char *self_name = statement->data.enum_declaration.name;
             const char *cycle_type = NULL;
             for (int index = 0; index < payload_counts[j] && !is_cycle; index++) {
-                const char *payload_type = resolve_type_alias(checker, payload_types[j][index]);
+                const char *payload_type = resolve_type_alias(checker,
+                    fixed_array_innermost_element(checker, resolve_type_alias(checker, payload_types[j][index])));
                 if (payload_type[0] == '^' || payload_type[0] == '[' || strncmp(payload_type, "map[", 4) == 0) continue;
                 if (strcmp(payload_type, self_name) == 0) {
                     is_cycle = true;
@@ -19335,14 +19355,15 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             }
             /* E3061: struct field cannot be the enclosing struct by value */
             const char *field_type_name = statement->data.struct_declaration.fields[j].type_name;
-            if (field_type_name && *field_type_name && field_type_name[0] != '^' && field_type_name[0] != '[' &&
-                strncmp(field_type_name, "map[", 4) != 0) {
+            const char *inline_type_name = field_type_name ? fixed_array_innermost_element(checker, field_type_name) : NULL;
+            if (inline_type_name && *inline_type_name && inline_type_name[0] != '^' && inline_type_name[0] != '[' &&
+                strncmp(inline_type_name, "map[", 4) != 0) {
                 bool is_cycle = false;
                 const char *self_name = statement->data.struct_declaration.name;
-                if (strcmp(field_type_name, self_name) == 0) {
+                if (strcmp(inline_type_name, self_name) == 0) {
                     is_cycle = true;
                 } else {
-                    AstNode *child = find_struct_or_enum_in_program(checker, field_type_name);
+                    AstNode *child = find_struct_or_enum_in_program(checker, inline_type_name);
                     if (child) {
                         const char *visited[MAX_STRUCT_DEPTH];
                         int variant_count = 0;
@@ -19352,10 +19373,10 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 }
                 if (is_cycle) {
                     const char *display = STRUCT_DISPLAY_NAME(statement);
-                    char *help = strcmp(field_type_name, self_name) == 0
+                    char *help = strcmp(inline_type_name, self_name) == 0
                         ? typechecker_format(checker, "use a pointer field '^%s' for recursive types", display)
                         : typechecker_format(checker, "break the cycle through '%s' with a pointer field '^%s'",
-                              field_type_name, field_type_name);
+                              inline_type_name, inline_type_name);
                     NODE_ERROR_FORMATTED_HELP(checker, statement, "E3061", help, "struct", display);
                 }
             }
