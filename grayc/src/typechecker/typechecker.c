@@ -10990,6 +10990,9 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
         if (object_type && object_type->kind != TYPE_KIND_STRUCT && object_type->kind != TYPE_KIND_POINTER &&
             object_type->kind != TYPE_KIND_UNKNOWN && object_type->kind != TYPE_KIND_VOID) {
             NODE_ERROR_FORMATTED(checker, function_node, "E3186", type_name(object_type));
+        } else if (object_type && object_type->kind == TYPE_KIND_VOID) {
+            reject_void_in_context(checker, function_node->data.member.object, object_type,
+                "the receiver of a struct function call");
         } else if (object_type && (object_type->kind == TYPE_KIND_STRUCT || object_type->kind == TYPE_KIND_POINTER) &&
                    function_node->data.member.object->kind == NODE_CALL_EXPRESSION) {
             /* E3075: chaining struct function calls (calling one struct
@@ -11959,7 +11962,9 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         } else if (object_type && object_type->kind == TYPE_KIND_ERROR) {
             /* Error from an expression: errs[0].code, m["k"].msg, f().code */
             result = resolve_error_field(checker, node, member);
-        } else if (object_type && object_type->kind != TYPE_KIND_UNKNOWN && object_type->kind != TYPE_KIND_VOID) {
+        } else if (object_type && object_type->kind == TYPE_KIND_VOID) {
+            reject_void_in_context(checker, object, object_type, "the base of a member access");
+        } else if (object_type && object_type->kind != TYPE_KIND_UNKNOWN) {
             NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(object_type));
         }
     }

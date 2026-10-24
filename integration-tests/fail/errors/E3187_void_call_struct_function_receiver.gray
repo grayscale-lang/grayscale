@@ -1,0 +1,9 @@
+const S struct {
+    a i64
+}
+
+do nothing() {}
+
+do main() {
+    nothing().f()
+}
