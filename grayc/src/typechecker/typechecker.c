@@ -6700,6 +6700,22 @@ static void emit_unknown_stdlib_function(TypeChecker *checker, const char *modul
     NODE_ERROR_FORMATTED(checker, node, "E4005", module_name, member_function_name);
 }
 
+/* E3113: a variant that carries a payload, named without one in a value
+ * position. A `when` case names only the variant to match, and a `.P(x)`
+ * callee is given its payload by the call, so both are exempt. */
+static void reject_payload_variant_without_payload(TypeChecker *checker, AstNode *node,
+                                                    int enum_index, const char *variant) {
+    if (checker->allows_payloadless_variant || enum_index < 0 || !checker->is_enum_tagged[enum_index]) return;
+    for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
+        if (strcmp(checker->enum_values[enum_index][variant_index], variant) != 0) continue;
+        int payload_count = checker->enum_payload_counts[enum_index][variant_index];
+        if (payload_count > 0)
+            NODE_ERROR_FORMATTED(checker, node, "E3113",
+                variant, checker->enum_display_names[enum_index], payload_count, 0);
+        return;
+    }
+}
+
 /* Resolve .VARIANT implicit enum selector using expected type context.
  * Sets node->data.implicit_enum.resolved_enum on success. */
 static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
@@ -6736,6 +6752,7 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
         return &TYPE_UNKNOWN;
     }
 
+    reject_payload_variant_without_payload(checker, node, find_enum_index(checker, enum_name), variant);
     /* Resolve: write the enum name onto the node for codegen */
     node->data.implicit_enum.resolved_enum = enum_name;
     return type_enum(enum_name);
@@ -10532,7 +10549,10 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
      * leaving its subtree untyped and breaking codegen paths that rely on
      * typetable lookups. Resolve it here so those subtrees get populated. */
     if (function_node && function_node->kind != NODE_LABEL && function_node->kind != NODE_MEMBER_EXPRESSION) {
+        /* The payload of a `.P(x)` callee is the call's arguments. */
+        checker->allows_payloadless_variant = function_node->kind == NODE_IMPLICIT_ENUM;
         resolve_expression(checker, function_node);
+        checker->allows_payloadless_variant = false;
     }
 
     /* E5030: chained call on a function-call result — e.g. get_fn()(5).
@@ -11627,6 +11647,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             if (!member_found) {
                 NODE_ERROR_FORMATTED(checker, node, "E3047", prefixed_type, member);
             }
+            else reject_payload_variant_without_payload(checker, node, find_enum_index(checker, prefixed_type), member);
             /* Mark module as used */
             mark_import_used(checker, module_name);
             result = type_enum(prefixed_type);
@@ -11699,6 +11720,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             if (!member_found) {
                 NODE_ERROR_FORMATTED(checker, node, "E3047", resolved_object, member);
             }
+            else reject_payload_variant_without_payload(checker, node, find_enum_index(checker, resolved_object), member);
             result = type_enum(checker_resolve_enum_key(checker, resolved_object));
             return result;
         }
@@ -18019,8 +18041,10 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
             bool is_range_case = is_stored_range_case || value_node->kind == NODE_RANGE_EXPRESSION ||
                 (value_node->kind == NODE_CALL_EXPRESSION && value_node->data.call.function->kind == NODE_LABEL &&
                  strcmp(value_node->data.call.function->data.label.value, "range") == 0);
+            checker->allows_payloadless_variant = true;
             GrayType *case_type = is_range_case ? resolve_expression(checker, value_node)
                                              : check_expression_as(checker, value_node, when_type);
+            checker->allows_payloadless_variant = false;
             if (is_stored_range_case && when_type && when_type->kind != TYPE_KIND_UNKNOWN &&
                 (!is_integer_kind(when_type->kind) || !range_holds_integer(case_type, when_type))) {
                 NODE_ERROR_FORMATTED(checker, value_node, "E3018",

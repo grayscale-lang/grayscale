@@ -427,6 +427,9 @@ typedef struct {
      * resolved through checker->current_scope, which belongs to whichever
      * caller triggered the lazy summary. */
     bool is_pointer_checker_in_mem_summary;
+    /* True while a `when` case value or a `.P(x)` callee is being checked: the
+     * payload variant is named without its payload on purpose. */
+    bool allows_payloadless_variant;
 
     /*  true during register_declarations to allow forward references */
     bool is_registering;
