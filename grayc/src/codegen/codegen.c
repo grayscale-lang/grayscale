@@ -10647,6 +10647,14 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
         emit_c_value_to_u64(codegen, value, line);
     } else if (is_c_i64) {
         emit_c_value_to_i64(codegen, value, line);
+    } else if (!is_unsigned) {
+        /* The value's signedness is unseen: gray_cast_check takes an int64_t,
+         * which would turn an unsigned 2^63 and up negative and let it pass. */
+        emit_formatted(codegen, "(%s)gray_cast_check(", c_target);
+        emit_c_value_to_i64(codegen, value, line);
+        emit(codegen, ", ");
+        emit_sized_bounds_arguments(codegen, source_minimum, source_maximum, is_unsigned, target, line);
+        emit(codegen, ")");
     } else {
         emit_formatted(codegen, "(%s)", c_target);
         emit_range_checked_narrowing(codegen, codegen_type_of(codegen, value), value, NULL,
