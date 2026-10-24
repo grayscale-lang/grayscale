@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
 
-**Total: 574 codes** (403 errors, 17 warnings, 154 panics)
+**Total: 576 codes** (403 errors, 17 warnings, 156 panics)
 
 ---
 
@@ -601,6 +601,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0169` | channels | channels.%s on a channel that was never created with channels.open() |
 | `P0170` | threads | threads.%s on a thread handle that was never returned by threads.spawn() or was already joined or detached |
 | `P0171` | mem | mem.%s on an arena that was never created with mem.arena() or was already destroyed |
+| `P0172` | channels | channels.send on a closed channel |
+| `P0173` | channels | channels.open capacity %lld is below 1 |
 
 ---
 
@@ -625,4 +627,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-24 16:32:35 UTC*
+*Generated on 2026-10-24 17:31:11 UTC*

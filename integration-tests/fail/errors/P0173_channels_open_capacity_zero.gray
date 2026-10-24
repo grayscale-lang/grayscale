@@ -1,0 +1,10 @@
+/*
+ * Panic Test: P0173 - channels.open with a capacity below 1
+ */
+
+import @channels
+
+do main() {
+    mut c = channels.open(0)
+    channels.close(c)
+}

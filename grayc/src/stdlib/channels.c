@@ -30,7 +30,7 @@ static GrayChannelInternal *live_channel(GrayChannel handle, const char *functio
 }
 
 GrayChannel gray_channels_open(int64_t capacity) {
-    if (capacity < 1) capacity = 1;
+    if (capacity < 1) gray_panic_code("P0173", "channels.open capacity %lld is below 1", (long long)capacity);
     if ((uint64_t)capacity > SIZE_MAX / sizeof(int64_t))
         gray_panic_code("P0159", "channels.open capacity is too large to allocate a buffer");
     size_t arena_limit = gray_default_arena->maximum_bytes;
@@ -67,7 +67,7 @@ void gray_channels_send(GrayChannel handle, int64_t value) {
     }
     if (channel->closed) {
         pthread_mutex_unlock(&channel->mutex);
-        return;
+        gray_panic_code("P0172", "channels.send on a closed channel");
     }
     channel->buffer[channel->tail] = value;
     channel->tail = (channel->tail + 1) % channel->capacity;
