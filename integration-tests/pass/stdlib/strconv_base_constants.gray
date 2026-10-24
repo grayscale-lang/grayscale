@@ -1,0 +1,46 @@
+/*
+ * strconv_base_constants.gray - BASE_2, BASE_8, BASE_10, BASE_16 and BASE_36
+ * hold 2, 8, 10, 16 and 36 and are accepted wherever a base is taken, both
+ * qualified and bare after `import and use` (STANDARD 9.27).
+ */
+
+import @strconv
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if strconv.BASE_2 == 2 { passed += 1 } otherwise { println("  [FAIL] BASE_2 is 2"); failed += 1 }
+    if strconv.BASE_8 == 8 { passed += 1 } otherwise { println("  [FAIL] BASE_8 is 8"); failed += 1 }
+    if strconv.BASE_10 == 10 { passed += 1 } otherwise { println("  [FAIL] BASE_10 is 10"); failed += 1 }
+    if strconv.BASE_16 == 16 { passed += 1 } otherwise { println("  [FAIL] BASE_16 is 16"); failed += 1 }
+    if strconv.BASE_36 == 36 { passed += 1 } otherwise { println("  [FAIL] BASE_36 is 36"); failed += 1 }
+
+    mut from_base_2, from_base_2_err = strconv.to_i64("101", strconv.BASE_2)
+    if from_base_2_err == nil && from_base_2 == 5 { passed += 1 } otherwise { println("  [FAIL] to_i64 with BASE_2"); failed += 1 }
+
+    mut from_base_8, from_base_8_err = strconv.to_i64("17", strconv.BASE_8)
+    if from_base_8_err == nil && from_base_8 == 15 { passed += 1 } otherwise { println("  [FAIL] to_i64 with BASE_8"); failed += 1 }
+
+    mut from_base_10, from_base_10_err = strconv.to_i64("42", strconv.BASE_10)
+    if from_base_10_err == nil && from_base_10 == 42 { passed += 1 } otherwise { println("  [FAIL] to_i64 with BASE_10"); failed += 1 }
+
+    mut from_base_16, from_base_16_err = strconv.to_i64("ff", strconv.BASE_16)
+    if from_base_16_err == nil && from_base_16 == 255 { passed += 1 } otherwise { println("  [FAIL] to_i64 with BASE_16"); failed += 1 }
+
+    mut from_base_36, from_base_36_err = strconv.to_i64("zz", strconv.BASE_36)
+    if from_base_36_err == nil && from_base_36 == 1295 { passed += 1 } otherwise { println("  [FAIL] to_i64 with BASE_36"); failed += 1 }
+
+    mut unsigned_from_16, unsigned_from_16_err = strconv.to_u64("ff", strconv.BASE_16)
+    if unsigned_from_16_err == nil && unsigned_from_16 == 255 { passed += 1 } otherwise { println("  [FAIL] to_u64 with BASE_16"); failed += 1 }
+
+    if strconv.format_i64(255, strconv.BASE_16) == "ff" { passed += 1 } otherwise { println("  [FAIL] format_i64 with BASE_16"); failed += 1 }
+    if strconv.format_i64(5, strconv.BASE_2) == "101" { passed += 1 } otherwise { println("  [FAIL] format_i64 with BASE_2"); failed += 1 }
+    if strconv.format_i64(1295, strconv.BASE_36) == "zz" { passed += 1 } otherwise { println("  [FAIL] format_i64 with BASE_36"); failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+    println("ALL TESTS PASSED")
+}

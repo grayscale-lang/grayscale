@@ -44,6 +44,7 @@ typedef struct {
     size_t peak_bytes;        /* high-water mark of total_allocated */
     size_t alloc_count;       /* cumulative allocations on this arena */
     bool is_destroyed;
+    uint64_t reset_count;     /* bumped by every reset, so a pointer from before it can be told from one after */
     bool counts_toward_total; /* allocations feed gray_total_alloc_count; false for mem.arena() arenas */
 } GrayArena;
 #define GRAY_ARENA_DECLARED
@@ -61,6 +62,8 @@ size_t gray_arena_block_count(GrayArena *arena);
  * no runtime to back it in a program it links itself. Under it the per-thread
  * globals below live in one heap block per thread, reached through an
  * accessor; each name expands to an lvalue, so no use site changes. */
+#define GRAY_MAX_CALL_DEPTH 10000
+
 #if defined(__TINYC__)
 typedef struct {
     GrayArena *default_arena;
@@ -69,6 +72,7 @@ typedef struct {
     const char *panic_call_file;
     int panic_call_line;
     int call_depth;
+    const char *call_names[GRAY_MAX_CALL_DEPTH + 1];
 } GrayThreadState;
 
 GrayThreadState *gray_thread_state(void);
@@ -78,6 +82,7 @@ GrayThreadState *gray_thread_state(void);
 #define gray_panic_call_file (gray_thread_state()->panic_call_file)
 #define gray_panic_call_line (gray_thread_state()->panic_call_line)
 #define gray_call_depth (gray_thread_state()->call_depth)
+#define gray_call_names (gray_thread_state()->call_names)
 /* One accessor call for the pair; generated code stamps the location before
  * every statement that can panic. */
 #define gray_set_panic_call(file, line) \
@@ -217,6 +222,12 @@ GrayString gray_string_concat_n(GrayArena *arena, int count, ...);
 /* --- Runtime Init/Shutdown --- */
 
 void gray_runtime_init(size_t arena_limit);
+
+/* Gives the calling thread a default and a heap arena if it has none: a
+ * thread a C library created and then ran a Grayscale callback on. The arenas
+ * are released when the thread exits (the heap arena only if nothing was
+ * allocated from it, since a new() pointer can outlive the thread). */
+void gray_callback_thread_init(void);
 void gray_runtime_shutdown(void);
 
 /* Seconds elapsed since gray_runtime_init() was called */
@@ -296,18 +307,30 @@ static inline void *gray_mem_check_live(GrayArena *arena, void *allocation, cons
     return allocation;
 }
 
+/* gray_mem_check_live for a pointer whose arena epoch was recorded when it
+ * was allocated: a reset since then has handed its memory out again. */
+static inline void *gray_mem_check_live_epoch(GrayArena *arena, uint64_t epoch, void *allocation,
+                                              const char *file, int line) {
+    if (arena && arena->reset_count != epoch) {
+        gray_panic_code_at(file, line, "P0117",
+            "dereferenced a pointer into an arena that has been destroyed or reset");
+    }
+    return gray_mem_check_live(arena, allocation, file, line);
+}
+
 /* --- Stack depth guard --- */
 
-#define GRAY_MAX_CALL_DEPTH 10000
 #if !defined(__TINYC__)
 extern _Thread_local int gray_call_depth;
+extern _Thread_local const char *gray_call_names[GRAY_MAX_CALL_DEPTH + 1];
 #endif
 
-static inline void gray_enter_func(const char *file, int line) {
+static inline void gray_enter_func(const char *file, int line, const char *name) {
     if (++gray_call_depth > GRAY_MAX_CALL_DEPTH) {
         gray_panic_code_at(file, line, "P0003", "maximum recursion depth exceeded (%d calls deep)",
             GRAY_MAX_CALL_DEPTH);
     }
+    gray_call_names[gray_call_depth] = name;
 }
 
 static inline void gray_exit_func(void) {

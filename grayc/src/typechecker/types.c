@@ -17,19 +17,19 @@
 #include <stdarg.h>
 
 /* Built-in type singletons */
-GrayType TYPE_VOID    = {TYPE_KIND_VOID,   "void",   NULL, NULL, NULL, NULL, false};
-GrayType TYPE_I64     = {TYPE_KIND_SIGNED_INTEGER,    "i64",    NULL, NULL, NULL, NULL, false};
-GrayType TYPE_U64     = {TYPE_KIND_UNSIGNED_INTEGER,   "u64",    NULL, NULL, NULL, NULL, false};
-GrayType TYPE_F64     = {TYPE_KIND_FLOATING_POINT,  "f64",    NULL, NULL, NULL, NULL, false};
-GrayType TYPE_BOOL    = {TYPE_KIND_BOOL,   "bool",   NULL, NULL, NULL, NULL, false};
-GrayType TYPE_CHAR    = {TYPE_KIND_CHAR,   "char",   NULL, NULL, NULL, NULL, false};
-GrayType TYPE_U8      = {TYPE_KIND_UNSIGNED_INTEGER,   "u8",     NULL, NULL, NULL, NULL, false};
-GrayType TYPE_STRING  = {TYPE_KIND_STRING, "string", NULL, NULL, NULL, NULL, false};
-GrayType TYPE_NIL     = {TYPE_KIND_NIL,    "nil",    NULL, NULL, NULL, NULL, false};
-GrayType TYPE_UNKNOWN = {TYPE_KIND_UNKNOWN,"unknown",NULL, NULL, NULL, NULL, false};
-GrayType TYPE_C_FUNCTION  = {TYPE_KIND_C_FUNCTION, "a C interop value", NULL, NULL, NULL, NULL, false};
-GrayType TYPE_LITERAL_INTEGER     = {TYPE_KIND_LITERAL, "integer literal", NULL, NULL, NULL, NULL, false};
-GrayType TYPE_LITERAL_DECIMAL = {TYPE_KIND_LITERAL, "decimal literal", NULL, NULL, NULL, NULL, true};
+GrayType TYPE_VOID    = {TYPE_KIND_VOID,   "void",   NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_I64     = {TYPE_KIND_SIGNED_INTEGER,    "i64",    NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_U64     = {TYPE_KIND_UNSIGNED_INTEGER,   "u64",    NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_F64     = {TYPE_KIND_FLOATING_POINT,  "f64",    NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_BOOL    = {TYPE_KIND_BOOL,   "bool",   NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_CHAR    = {TYPE_KIND_CHAR,   "char",   NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_U8      = {TYPE_KIND_UNSIGNED_INTEGER,   "u8",     NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_STRING  = {TYPE_KIND_STRING, "string", NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_NIL     = {TYPE_KIND_NIL,    "nil",    NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_UNKNOWN = {TYPE_KIND_UNKNOWN,"unknown",NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_C_FUNCTION  = {TYPE_KIND_C_FUNCTION, "a C interop value", NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_LITERAL_INTEGER     = {TYPE_KIND_LITERAL, "integer literal", NULL, NULL, NULL, NULL, false, NULL};
+GrayType TYPE_LITERAL_DECIMAL = {TYPE_KIND_LITERAL, "decimal literal", NULL, NULL, NULL, NULL, true, NULL};
 
 /* Pool for dynamically created types — one entry per distinct composite type
  * (struct, enum, pointer, array, map, function signature), accumulated for the
@@ -43,6 +43,10 @@ typedef struct TypePoolBlock {
     struct TypePoolBlock *next;
     GrayType types[TYPE_POOL_BLOCK_SIZE];
 } TypePoolBlock;
+
+/* The distinct types declared so far, one shared GrayType each. */
+static GrayType **distinct_types = NULL;
+static int distinct_type_count = 0;
 
 static TypePoolBlock *type_pool_head = NULL;
 static TypePoolBlock *type_pool_tail = NULL;
@@ -304,6 +308,7 @@ static GrayFunctionSignature *parse_function_signature(const char *name) {
 
 /* Free the heap-owned names/signatures of one pool entry. */
 static void type_pool_free_entry(GrayType *type) {
+    free((char *)type->distinct);
     switch (type->kind) {
     case TYPE_KIND_STRUCT:
     case TYPE_KIND_ENUM:
@@ -359,6 +364,10 @@ void type_pool_reset(void) {
     free(type_hash_table);
     type_hash_table = NULL;
     type_hash_capacity = 0;
+
+    free(distinct_types);
+    distinct_types = NULL;
+    distinct_type_count = 0;
 }
 
 /* Width in bits of a sized integer or floating-point type name; 0 for anything else. */
@@ -374,8 +383,14 @@ static int number_width(const char *name) {
     return 0;
 }
 
+bool type_same_distinct(const GrayType *left, const GrayType *right) {
+    if (!left->distinct || !right->distinct) return left->distinct == right->distinct;
+    return strcmp(left->distinct, right->distinct) == 0;
+}
+
 Conversion type_conversion(GrayType *source, GrayType *target) {
     if (!source || !target || !source->name || !target->name) return CONVERSION_MISMATCH;
+    if (!type_same_distinct(source, target)) return CONVERSION_MISMATCH;
     if (type_kind_is_number(source->kind) && type_kind_is_number(target->kind)) {
         if (strcmp(source->name, target->name) == 0) return CONVERSION_SAME;
         int from_width = number_width(source->name);
@@ -431,6 +446,7 @@ GrayType *type_binary_result(TokenType operator, GrayType *left, GrayType *right
         if (literal->is_decimal && typed->kind != TYPE_KIND_FLOATING_POINT) return NULL;
         return is_comparison ? &TYPE_BOOL : typed;
     }
+    if (!type_same_distinct(left, right)) return NULL;
     GrayType *common = NULL;
     if (strcmp(left->name, right->name) == 0)
         common = left;
@@ -467,6 +483,7 @@ static const char *type_name_format(const char *format, ...) {
 
 const char *type_name(GrayType *type) {
     if (!type) return "unknown";
+    if (type->distinct) return type->distinct;
     /* Pointer types store the bare pointee in type->name (and type->element_type).
      * Render them with the leading '^' so error messages match source syntax. */
     if (type->kind == TYPE_KIND_POINTER && type->name) {
@@ -540,8 +557,29 @@ const char *type_top_level_comma(const char *text) {
     return NULL;
 }
 
+void type_register_distinct(const char *name, const char *underlying_name) {
+    GrayType *underlying = type_from_name(underlying_name);
+    GrayType *type = type_allocate();
+    *type = *underlying;
+    type->name = strdup(underlying->name);
+    type->distinct = strdup(name);
+    distinct_types = xrealloc(distinct_types, sizeof(GrayType *) * (size_t)(distinct_type_count + 1));
+    distinct_types[distinct_type_count++] = type;
+}
+
+static GrayType *distinct_type_named(const char *name) {
+    for (int i = 0; i < distinct_type_count; i++) {
+        if (strcmp(distinct_types[i]->distinct, name) == 0) return distinct_types[i];
+    }
+    return NULL;
+}
+
 GrayType *type_from_name(const char *name) {
     if (!name) return &TYPE_UNKNOWN;
+    if (distinct_type_count > 0) {
+        GrayType *distinct = distinct_type_named(name);
+        if (distinct) return distinct;
+    }
 
     /* Typed function reference: "func(p1,&p2)->R" — checked before bsearch
      * so "func(...)" doesn't get conflated with the bare "func" entry. */

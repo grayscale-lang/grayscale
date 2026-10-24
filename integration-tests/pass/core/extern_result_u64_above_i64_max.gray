@@ -1,0 +1,36 @@
+/*
+ * extern_result_u64_above_i64_max.gray - a C value of 2^63 or more is a valid
+ * u64: the C type, not the bit pattern, decides whether it is negative.
+ */
+
+extern import "stdlib.h"
+extern import "stdint.h"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    unsafe {
+        mut a u64 = extern.strtoull("18446744073709551615", nil, 10)
+        if a == 18446744073709551615 { passed += 1 } otherwise { failed += 1 }
+
+        mut b u64 = extern.strtoull("9223372036854775808", nil, 10)
+        if b == 9223372036854775808 { passed += 1 } otherwise { failed += 1 }
+
+        mut c u64 = extern.UINT64_MAX
+        if c == 18446744073709551615 { passed += 1 } otherwise { failed += 1 }
+
+        mut d u64 = extern.SIZE_MAX
+        if d == 18446744073709551615 { passed += 1 } otherwise { failed += 1 }
+
+        mut e u64 = cast(extern.strtoull("18446744073709551615", nil, 10), u64)
+        if e == 18446744073709551615 { passed += 1 } otherwise { failed += 1 }
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

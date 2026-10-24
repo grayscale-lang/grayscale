@@ -1,0 +1,73 @@
+/*
+ * A distinct alias in function parameters and returns, struct fields, arrays,
+ * maps, file-scope constants, generics, and as a `private distinct alias`.
+ */
+
+distinct alias UserId = i64
+distinct alias OrderId = i64
+private distinct alias InternalId = i64
+
+const FIRST_USER UserId = 1
+const SECOND_USER UserId = FIRST_USER + 1
+
+const Order struct {
+    id OrderId
+    owner UserId
+}
+
+do next_user(id UserId) -> UserId {
+    return id + 1
+}
+
+do pair(id UserId) -> (UserId, OrderId) {
+    return id, cast(id, OrderId)
+}
+
+do identity(kind generic, value kind) -> kind {
+    return value
+}
+
+do internal() -> InternalId {
+    return 77
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if next_user(FIRST_USER) == SECOND_USER { passed += 1 } otherwise { failed += 1 }
+    if next_user(5) == 6 { passed += 1 } otherwise { failed += 1 }
+
+    mut user UserId, order OrderId = pair(7)
+    if user == 7 && order == 7 { passed += 1 } otherwise { failed += 1 }
+
+    mut record Order = Order{id: 3, owner: user}
+    record.owner = next_user(record.owner)
+    if record.owner == 8 { passed += 1 } otherwise { failed += 1 }
+
+    mut users [UserId] = {1, 2, 3}
+    users[0] = next_user(users[2])
+    if users[0] == 4 { passed += 1 } otherwise { failed += 1 }
+    mut total UserId = 0
+    for_each member in users { total += member }
+    if total == 9 { passed += 1 } otherwise { failed += 1 }
+
+    mut names map[UserId:string] = {1: "ada"}
+    names[2] = "bob"
+    if names[2] == "bob" && len(names) == 2 { passed += 1 } otherwise { failed += 1 }
+
+    mut chosen UserId = identity(UserId, user)
+    if chosen == user { passed += 1 } otherwise { failed += 1 }
+
+    if internal() == 77 { passed += 1 } otherwise { failed += 1 }
+
+    mut stored ^UserId = new(UserId)
+    stored^ = 12
+    if stored^ == 12 { passed += 1 } otherwise { failed += 1 }
+
+    if type_of(user) == "UserId" { passed += 1 } otherwise { failed += 1 }
+
+    println("distinct declarations: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

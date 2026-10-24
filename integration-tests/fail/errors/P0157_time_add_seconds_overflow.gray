@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0157 - time.add_seconds result exceeds the i64 range */
+import @time
+
+do main() {
+    println(time.add_seconds(9223372036854775807, 1))
+}

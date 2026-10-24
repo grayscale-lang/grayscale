@@ -1,0 +1,36 @@
+/*
+ * uuid_nil_constant.gray - NIL_UUID is the all-zero UUID (STANDARD 9.14).
+ */
+
+import @uuid
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if uuid.to_string(uuid.NIL_UUID) == "00000000-0000-0000-0000-000000000000" { passed += 1 } otherwise { println("  [FAIL] NIL_UUID string form"); failed += 1 }
+    if uuid.version(uuid.NIL_UUID) == 0 { passed += 1 } otherwise { println("  [FAIL] NIL_UUID has version 0"); failed += 1 }
+    if uuid.generate_compact(uuid.NIL_UUID) == "00000000000000000000000000000000" { passed += 1 } otherwise { println("  [FAIL] NIL_UUID compact form"); failed += 1 }
+
+    mut nil_bytes [u8] = uuid.to_bytes(uuid.NIL_UUID)
+    mut all_zero bool = len(nil_bytes) == 16
+    for_each byte_value in nil_bytes {
+        if byte_value != 0 {
+            all_zero = false
+        }
+    }
+    if all_zero { passed += 1 } otherwise { println("  [FAIL] NIL_UUID is 16 zero bytes"); failed += 1 }
+
+    if uuid.is_valid(uuid.to_string(uuid.NIL_UUID)) { passed += 1 } otherwise { println("  [FAIL] NIL_UUID string is valid"); failed += 1 }
+    if uuid.to_string(uuid.parse("00000000-0000-0000-0000-000000000000")) == uuid.to_string(uuid.NIL_UUID) { passed += 1 } otherwise { println("  [FAIL] parsing the zero string yields NIL_UUID"); failed += 1 }
+    if uuid.to_string(uuid.generate()) != uuid.to_string(uuid.NIL_UUID) { passed += 1 } otherwise { println("  [FAIL] generate differs from NIL_UUID"); failed += 1 }
+
+    mut _, has_time = uuid.timestamp(uuid.NIL_UUID)
+    if !has_time { passed += 1 } otherwise { println("  [FAIL] NIL_UUID has no embedded time"); failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+    println("ALL TESTS PASSED")
+}

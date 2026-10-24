@@ -1,0 +1,25 @@
+/*
+ * Error Test: E3001 - distinct alias: distinct in ptr
+ */
+
+// expect-error: E3001
+// expect-error-count: 1
+
+distinct alias UserId = i64
+distinct alias OrderId = i64
+distinct alias Score = f64
+distinct alias Flag = bool
+distinct alias Letter = char
+distinct alias Label = string
+distinct alias Tiny = u8
+distinct alias Huge = i128
+distinct alias Wide = u256
+const Pt struct {
+    id UserId
+    tag Label
+}
+do main() {
+    mut u UserId = 4
+    mut p ^i64 = addr(u)
+    println(p^)
+}

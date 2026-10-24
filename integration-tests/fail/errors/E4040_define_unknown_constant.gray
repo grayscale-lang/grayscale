@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4040 - -define: names a constant the program does not declare
+ */
+
+// expect-error: E4040
+// define: MISSING=1
+
+#define
+const PRESENT i64 = 1
+
+do main() {
+    println(PRESENT)
+}

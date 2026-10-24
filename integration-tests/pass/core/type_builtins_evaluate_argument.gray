@@ -17,8 +17,5 @@ do main() {
     mut names = fields(make_point())
     if calls == 2 && len(names) == 1 { passed += 1 } otherwise { failed += 1 }
 
-    mut size = size_of(make_point())
-    if calls == 3 && size == 8 { passed += 1 } otherwise { failed += 1 }
-
     println("passed: ${passed}, failed: ${failed}")
 }

@@ -105,7 +105,8 @@
     GRAY_ERROR("E2099", "syntax", "a mutable (&) parameter cannot have a default value; the caller must pass a variable to modify") \
     GRAY_ERROR("E2100", "syntax", "%d names but %d values in declaration; give one value per name, or a single value for all of them") \
     GRAY_ERROR("E2101", "syntax", "a declaration with a list of values takes one shared type after the last name; per-name types are not supported") \
-    GRAY_ERROR("E2102", "syntax", "'or_default' needs a binding to substitute into; write 'mut value = call() or_default fallback'")
+    GRAY_ERROR("E2102", "syntax", "'or_default' needs a binding to substitute into; write 'mut value = call() or_default fallback'") \
+    GRAY_ERROR("E2103", "syntax", "a label can only be placed before a loop; '%s' is followed by something that is not 'for', 'for_each', 'as_long_as' or 'loop'")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -156,7 +157,7 @@
     GRAY_ERROR("E3057", "types", "type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable") \
     GRAY_ERROR("E3058", "types", "in instantiation of generic function '%s' with %s") \
     GRAY_ERROR("E3059", "types", "maps cannot be declared const; use 'mut' for maps or a struct for fixed data") \
-    GRAY_ERROR("E3061", "types", "struct '%s' cannot contain itself by value") \
+    GRAY_ERROR("E3061", "types", "%s '%s' cannot contain itself by value") \
     GRAY_ERROR("E3062", "types", "'%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state)") \
     GRAY_ERROR("E3066", "types", "function reference signature mismatch: expected %s, got %s") \
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
@@ -301,7 +302,10 @@
     GRAY_ERROR("E3210", "types", "json.parse() needs a declared target type; use it as the initializer of a typed declaration or as a return value") \
     GRAY_ERROR("E3211", "types", "'%s' requires a function that returns (T, Error); the operand is not a function call") \
     GRAY_ERROR("E3212", "types", "'%s' only works on bool; got '%s'") \
-    GRAY_ERROR("E3213", "types", "enum '%s': variant '%s' takes the value after the largest i64, which does not fit in i64")
+    GRAY_ERROR("E3213", "types", "enum '%s': variant '%s' takes the value after the largest i64, which does not fit in i64") \
+    GRAY_ERROR("E3214", "types", "-define:%s: '%s' is not a valid %s value") \
+    GRAY_ERROR("E3215", "types", "'distinct alias %s' must target a primitive type (an integer, f32, f64, bool, char, or string), not '%s'") \
+    GRAY_ERROR("E3216", "safety", "cannot pass a string to '%s'; the C function keeps the pointer past the string's scope. Pass to_c_string(...) instead")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -340,7 +344,11 @@
     GRAY_ERROR("E4036", "names", "function '%s' conflicts with a type of the same name") \
     GRAY_ERROR("E4037", "names", "'%s.%s()' expects a type name as argument %d") \
     GRAY_ERROR("E4038", "names", "cannot take a function reference to '%s.%s'; stdlib functions are not first-class values") \
-    GRAY_ERROR("E4039", "names", "generic parameter '%s' is used in the type of parameter '%s' before it is declared; declare it earlier in the parameter list")
+    GRAY_ERROR("E4039", "names", "generic parameter '%s' is used in the type of parameter '%s' before it is declared; declare it earlier in the parameter list") \
+    GRAY_ERROR("E4040", "names", "-define: names '%s', but the program declares no such constant") \
+    GRAY_ERROR("E4041", "names", "'%s' is not a known statement; did you mean '%s'?") \
+    GRAY_ERROR("E4042", "names", "loop label '%s' is already used by an enclosing loop") \
+    GRAY_ERROR("E4043", "names", "no enclosing loop is labeled '%s'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -392,7 +400,11 @@
     GRAY_ERROR("E5062", "arguments", "default value for parameter '%s' has wrong type; expected %s, got %s") \
     GRAY_ERROR("E5063", "arguments", "'to_char()' index %lld is out of bounds") \
     GRAY_ERROR("E5064", "arguments", "cannot call a bare 'func' value; its signature is not known, so pass it to a function with a typed 'func(...) -> T' parameter instead") \
-    GRAY_ERROR("E5065", "usage", "'%s' is unsafe; use it inside an 'unsafe' block or an 'unsafe' function")
+    GRAY_ERROR("E5065", "usage", "'%s' is unsafe; use it inside an 'unsafe' block or an 'unsafe' function") \
+    GRAY_ERROR("E5066", "usage", "-define: names '%s', which is not marked #define") \
+    GRAY_ERROR("E5067", "arguments", "callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares") \
+    GRAY_ERROR("E5068", "arguments", "'%s' wraps integers only; got %s and %s") \
+    GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -534,7 +546,7 @@
     GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \
     GRAY_PANIC("P0110", "strconv",    "strconv.format_i64: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0111", "strconv",    "strconv.format_u64: invalid base %lld; must be between 2 and 36") \
-    GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d") \
+    GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array has the wrong length to decode; need %d bytes but have %d") \
     GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
     GRAY_PANIC("P0116", "strings",    "string builder size exceeds maximum string length") \
     GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset") \
@@ -584,7 +596,14 @@
     GRAY_PANIC("P0163", "fmt",        "fmt.f64_to_fixed result exceeds maximum string length") \
     GRAY_PANIC("P0164", "functions",  "function reference signature mismatch: expected %s, got %s") \
     GRAY_PANIC("P0165", "net",        "net: a host contains an embedded null byte") \
-    GRAY_PANIC("P0166", "net",        "net: a host is longer than the maximum hostname length")
+    GRAY_PANIC("P0166", "net",        "net: a host is longer than the maximum hostname length") \
+    GRAY_PANIC("P0167", "strings",    "formatted result exceeds maximum string length") \
+    GRAY_PANIC("P0168", "sync",       "sync.%s on a mutex that was never created with sync.mutex() or was already destroyed") \
+    GRAY_PANIC("P0169", "channels",   "channels.%s on a channel that was never created with channels.open()") \
+    GRAY_PANIC("P0170", "threads",    "threads.%s on a thread handle that was never returned by threads.spawn() or was already joined or detached") \
+    GRAY_PANIC("P0171", "mem",        "mem.%s on an arena that was never created with mem.arena() or was already destroyed") \
+    GRAY_PANIC("P0172", "channels",   "channels.send on a closed channel") \
+    GRAY_PANIC("P0173", "channels",   "channels.open capacity %lld is below 1")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

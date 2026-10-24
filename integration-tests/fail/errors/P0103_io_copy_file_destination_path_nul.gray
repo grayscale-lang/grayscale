@@ -1,0 +1,11 @@
+// expect-contains: .gray:
+/* Panic Test: P0103 - io.copy_file destination with an embedded null byte in the path */
+import @io
+
+do main() {
+    mut nul string = "\x00"
+    mut bad string = "file" + nul + "name"
+    mut result, err = io.copy_file("src.txt", bad)
+    println(result)
+    println(err)
+}

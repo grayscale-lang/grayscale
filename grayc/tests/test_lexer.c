@@ -694,6 +694,132 @@ static void test_hex_upper_lower(void) {
     ASSERT_STR_EQ(token.literal, "0xABCD");
 }
 
+/* ===== token names ===== */
+
+static void test_token_type_name_of_every_token(void) {
+    static const struct { TokenType type; const char *name; } expected[] = {
+        {TOKEN_ILLEGAL, "ILLEGAL"},
+        {TOKEN_END_OF_FILE, "EOF"},
+        {TOKEN_IDENTIFIER, "IDENT"},
+        {TOKEN_INTEGER_LITERAL, "INT"},
+        {TOKEN_FLOATING_POINT_LITERAL, "FLOAT"},
+        {TOKEN_STRING, "STRING"},
+        {TOKEN_RAW_STRING, "RAW_STRING"},
+        {TOKEN_CHAR, "CHAR"},
+        {TOKEN_ASSIGN, "="},
+        {TOKEN_PLUS, "+"},
+        {TOKEN_MINUS, "-"},
+        {TOKEN_BANG, "!"},
+        {TOKEN_ASTERISK, "*"},
+        {TOKEN_SLASH, "/"},
+        {TOKEN_PERCENT, "%"},
+        {TOKEN_LESS_THAN, "<"},
+        {TOKEN_GREATER_THAN, ">"},
+        {TOKEN_EQUAL, "=="},
+        {TOKEN_NOT_EQUAL, "!="},
+        {TOKEN_LESS_THAN_OR_EQUAL, "<="},
+        {TOKEN_GREATER_THAN_OR_EQUAL, ">="},
+        {TOKEN_PLUS_ASSIGN, "+="},
+        {TOKEN_MINUS_ASSIGN, "-="},
+        {TOKEN_ASTERISK_ASSIGN, "*="},
+        {TOKEN_SLASH_ASSIGN, "/="},
+        {TOKEN_PERCENT_ASSIGN, "%="},
+        {TOKEN_INCREMENT, "++"},
+        {TOKEN_DECREMENT, "--"},
+        {TOKEN_AND, "&&"},
+        {TOKEN_OR, "||"},
+        {TOKEN_COMMA, ","},
+        {TOKEN_COLON, ":"},
+        {TOKEN_SEMICOLON, ";"},
+        {TOKEN_NEWLINE, "NEWLINE"},
+        {TOKEN_LEFT_PARENTHESIS, "("},
+        {TOKEN_RIGHT_PARENTHESIS, ")"},
+        {TOKEN_LEFT_BRACE, "{"},
+        {TOKEN_RIGHT_BRACE, "}"},
+        {TOKEN_LEFT_BRACKET, "["},
+        {TOKEN_RIGHT_BRACKET, "]"},
+        {TOKEN_ARROW, "->"},
+        {TOKEN_DOT, "."},
+        {TOKEN_AT, "@"},
+        {TOKEN_CARET, "^"},
+        {TOKEN_AMPERSAND, "&"},
+        {TOKEN_HASH_LEFT_BRACKET, "#["},
+        {TOKEN_STRICT, "#strict"},
+        {TOKEN_FLAGS, "#flags"},
+        {TOKEN_DOC, "#doc"},
+        {TOKEN_JSON_ATTRIBUTE, "#json"},
+        {TOKEN_DISCARD, "#discard"},
+        {TOKEN_DEPRECATED, "#deprecated"},
+        {TOKEN_TEST, "#test"},
+        {TOKEN_ERROR_CODE_ATTRIBUTE, "#error_code"},
+        {TOKEN_DEFINE, "#define"},
+        {TOKEN_MUT, "mut"},
+        {TOKEN_CONST, "const"},
+        {TOKEN_DO, "do"},
+        {TOKEN_RETURN, "return"},
+        {TOKEN_IF, "if"},
+        {TOKEN_OR_KEYWORD, "or"},
+        {TOKEN_OTHERWISE, "otherwise"},
+        {TOKEN_FOR, "for"},
+        {TOKEN_FOR_EACH, "for_each"},
+        {TOKEN_AS_LONG_AS, "as_long_as"},
+        {TOKEN_LOOP, "loop"},
+        {TOKEN_BREAK, "break"},
+        {TOKEN_CONTINUE, "continue"},
+        {TOKEN_IN, "in"},
+        {TOKEN_NOT_IN, "not_in"},
+        {TOKEN_RANGE, "range"},
+        {TOKEN_IMPORT, "import"},
+        {TOKEN_USING, "using"},
+        {TOKEN_STRUCT, "struct"},
+        {TOKEN_ENUM, "enum"},
+        {TOKEN_NIL, "nil"},
+        {TOKEN_NEW, "new"},
+        {TOKEN_TRUE, "true"},
+        {TOKEN_FALSE, "false"},
+        {TOKEN_BLANK, "_"},
+        {TOKEN_ENSURE, "ensure"},
+        {TOKEN_OR_RETURN, "or_return"},
+        {TOKEN_OR_DEFAULT, "or_default"},
+        {TOKEN_OR_PANIC, "or_panic"},
+        {TOKEN_EXTERN, "extern"},
+        {TOKEN_GENERIC, "generic"},
+        {TOKEN_PRIVATE, "private"},
+        {TOKEN_UNSAFE, "unsafe"},
+        {TOKEN_USE, "use"},
+        {TOKEN_WHEN, "when"},
+        {TOKEN_IS, "is"},
+        {TOKEN_DEFAULT, "default"},
+        {TOKEN_ALIAS, "alias"},
+        {TOKEN_DISTINCT, "distinct"},
+        {TOKEN_CAST, "cast"},
+        {TOKEN_BIT_AND, "bit_and"},
+        {TOKEN_BIT_OR, "bit_or"},
+        {TOKEN_BIT_XOR, "bit_xor"},
+        {TOKEN_BIT_NOT, "bit_not"},
+        {TOKEN_BIT_SHIFT_LEFT, "bit_shift_left"},
+        {TOKEN_BIT_SHIFT_RIGHT, "bit_shift_right"},
+        {TOKEN_COUNT, "COUNT"},
+    };
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        const char *actual = token_type_name(expected[i].type);
+        ASSERT_NOT_NULL(actual);
+        if (strcmp(actual, expected[i].name) != 0) {
+            fprintf(stderr, "  token %d: \"%s\" != \"%s\"\n", (int)expected[i].type, actual, expected[i].name);
+            ASSERT(false);
+        }
+    }
+}
+
+static void test_token_type_name_is_unique_per_token(void) {
+    static const TokenType types[] = {
+TOKEN_ILLEGAL, TOKEN_END_OF_FILE, TOKEN_IDENTIFIER, TOKEN_INTEGER_LITERAL, TOKEN_FLOATING_POINT_LITERAL, TOKEN_STRING, TOKEN_RAW_STRING, TOKEN_CHAR, TOKEN_ASSIGN, TOKEN_PLUS, TOKEN_MINUS, TOKEN_BANG, TOKEN_ASTERISK, TOKEN_SLASH, TOKEN_PERCENT, TOKEN_LESS_THAN, TOKEN_GREATER_THAN, TOKEN_EQUAL, TOKEN_NOT_EQUAL, TOKEN_LESS_THAN_OR_EQUAL, TOKEN_GREATER_THAN_OR_EQUAL, TOKEN_PLUS_ASSIGN, TOKEN_MINUS_ASSIGN, TOKEN_ASTERISK_ASSIGN, TOKEN_SLASH_ASSIGN, TOKEN_PERCENT_ASSIGN, TOKEN_INCREMENT, TOKEN_DECREMENT, TOKEN_AND, TOKEN_OR, TOKEN_COMMA, TOKEN_COLON, TOKEN_SEMICOLON, TOKEN_NEWLINE, TOKEN_LEFT_PARENTHESIS, TOKEN_RIGHT_PARENTHESIS, TOKEN_LEFT_BRACE, TOKEN_RIGHT_BRACE, TOKEN_LEFT_BRACKET, TOKEN_RIGHT_BRACKET, TOKEN_ARROW, TOKEN_DOT, TOKEN_AT, TOKEN_CARET, TOKEN_AMPERSAND, TOKEN_HASH_LEFT_BRACKET, TOKEN_STRICT, TOKEN_FLAGS, TOKEN_DOC, TOKEN_JSON_ATTRIBUTE, TOKEN_DISCARD, TOKEN_DEPRECATED, TOKEN_TEST, TOKEN_ERROR_CODE_ATTRIBUTE, TOKEN_DEFINE, TOKEN_MUT, TOKEN_CONST, TOKEN_DO, TOKEN_RETURN, TOKEN_IF, TOKEN_OR_KEYWORD, TOKEN_OTHERWISE, TOKEN_FOR, TOKEN_FOR_EACH, TOKEN_AS_LONG_AS, TOKEN_LOOP, TOKEN_BREAK, TOKEN_CONTINUE, TOKEN_IN, TOKEN_NOT_IN, TOKEN_RANGE, TOKEN_IMPORT, TOKEN_USING, TOKEN_STRUCT, TOKEN_ENUM, TOKEN_NIL, TOKEN_NEW, TOKEN_TRUE, TOKEN_FALSE, TOKEN_BLANK, TOKEN_ENSURE, TOKEN_OR_RETURN, TOKEN_OR_DEFAULT, TOKEN_OR_PANIC, TOKEN_EXTERN, TOKEN_GENERIC, TOKEN_PRIVATE, TOKEN_UNSAFE, TOKEN_USE, TOKEN_WHEN, TOKEN_IS, TOKEN_DEFAULT, TOKEN_ALIAS, TOKEN_DISTINCT, TOKEN_CAST, TOKEN_BIT_AND, TOKEN_BIT_OR, TOKEN_BIT_XOR, TOKEN_BIT_NOT, TOKEN_BIT_SHIFT_LEFT, TOKEN_BIT_SHIFT_RIGHT, TOKEN_COUNT
+    };
+    for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++)
+        for (size_t j = i + 1; j < sizeof(types) / sizeof(types[0]); j++)
+            ASSERT(strcmp(token_type_name(types[i]), token_type_name(types[j])) != 0);
+}
+
 int main(void) {
     arena = arena_create(64 * 1024);
     printf("\n");
@@ -787,6 +913,10 @@ int main(void) {
     RUN_TEST(test_mixed_tokens_line);
     RUN_TEST(test_line_tracking_with_comment);
     RUN_TEST(test_hex_upper_lower);
+
+    printf("--- token names ---\n");
+    RUN_TEST(test_token_type_name_of_every_token);
+    RUN_TEST(test_token_type_name_is_unique_per_token);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

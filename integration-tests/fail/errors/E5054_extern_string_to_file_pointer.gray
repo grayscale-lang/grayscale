@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5054 - a string passed to a FILE * parameter
+ * Expected: E5054 error
+ */
+
+extern import "stdio.h"
+
+do main() {
+    unsafe {
+        mut x i32 = extern.fclose("abc")
+        println(x)
+    }
+}

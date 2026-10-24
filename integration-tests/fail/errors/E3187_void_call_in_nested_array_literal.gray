@@ -1,0 +1,6 @@
+do nothing() {}
+
+do main() {
+    mut xs [[i64]] = {{nothing()}}
+    println(len(xs))
+}

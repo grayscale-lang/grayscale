@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2001 - map types nested past the 64-level limit
+ * Expected: E2001 error, not a stack overflow in the parser
+ */
+
+do main() {
+    mut x map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:map[string:i64]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] = {:}
+}

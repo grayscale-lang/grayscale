@@ -1,0 +1,39 @@
+/*
+ * A type argument names a type in the caller's scope: when the caller and an
+ * imported module each declare Item, passing the caller's Item to the module's
+ * generic function binds the caller's.
+ */
+
+import "./lib.gray"
+import "./other.gray"
+
+const Item struct {
+    c f64
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut local Item = Item{c: 2.5}
+    mut from_lib lib.Item = lib.Item{a: 1}
+    mut from_other other.Item = other.Item{b: "s"}
+
+    mut first string = lib.show(Item, local)
+    if first == "Item" { passed += 1 } otherwise { failed += 1 }
+    mut second string = other.show(Item, local)
+    if second == "Item" { passed += 1 } otherwise { failed += 1 }
+    mut third string = lib.show(lib.Item, from_lib)
+    if third == "Item" { passed += 1 } otherwise { failed += 1 }
+    mut fourth string = other.show(other.Item, from_other)
+    if fourth == "Item" { passed += 1 } otherwise { failed += 1 }
+    mut fifth string = lib.show_pointer(Item, addr(local))
+    if fifth == "Item" { passed += 1 } otherwise { failed += 1 }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

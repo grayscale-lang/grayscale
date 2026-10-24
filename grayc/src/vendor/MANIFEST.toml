@@ -1,7 +1,7 @@
 # Vendored third-party C source tracked into this repository.
 #
 # Every file under grayc/src/vendor/ that is not first-party Grayscale code
-# must be covered by an entry here. `scripts/check_vendor.sh` verifies the
+# must be covered by an entry here. `scripts/check_vendor.gray` verifies the
 # recorded SHA256 of each listed file and queries OSV.dev for published
 # advisories against each pinned version.
 #
@@ -25,7 +25,7 @@ modifications = "none"
 advisories_reviewed_through = "2026-09-06"
 
 # SHA256 of each vendored file exactly as checked in, relative to this
-# directory. Recomputed and verified by scripts/check_vendor.sh.
+# directory. Recomputed and verified by scripts/check_vendor.gray.
 [dependencies.sqlite.files]
 "sqlite3.c" = "b947b84b8c45d1513ecf2df8f46bf099d9f6d7a0acac0928061ddbb4ea6fe54b"
 "sqlite3.h" = "b4b4cbcc2bd6dda8eaf348103c330c971676a59b3732cca068098f574de43994"

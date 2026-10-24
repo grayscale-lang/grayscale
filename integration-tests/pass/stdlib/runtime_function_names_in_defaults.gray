@@ -1,0 +1,22 @@
+import @runtime
+
+do log(msg string, who string = runtime.caller_name(), me string = runtime.function_name()) -> string {
+    return "${who}/${me}: ${msg}"
+}
+
+do work() -> string {
+    return log("hi")
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if work() == "work/log: hi" { passed += 1 } otherwise { failed += 1 }
+    if log("direct") == "main/log: direct" { passed += 1 } otherwise { failed += 1 }
+    if log("explicit", "me") == "me/log: explicit" { passed += 1 } otherwise { failed += 1 }
+
+    println("runtime names in defaults: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

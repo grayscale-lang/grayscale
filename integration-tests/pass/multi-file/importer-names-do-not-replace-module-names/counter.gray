@@ -1,0 +1,16 @@
+const LIMIT i64 = 5
+mut calls i64 = 0
+
+do helper() -> i64 { return 1 }
+
+do tag(n i64) -> string { return "counter${n}" }
+
+do run() -> i64 {
+    calls += 1
+    return helper() + LIMIT + calls
+}
+
+do run_through_reference() -> string {
+    const reference = ()tag
+    return reference(2)
+}

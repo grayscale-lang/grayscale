@@ -665,6 +665,10 @@ bool gray_io_remove_dir_all(GrayString path) {
     return remove_directory_recursive(path.data);
 }
 
+static int compare_entry_names(const void *left, const void *right) {
+    return strcmp(((const GrayString *)left)->data, ((const GrayString *)right)->data);
+}
+
 static void walk_recursive(GrayArena *arena, const char *base, const char *relative_path, GrayArray *output) {
     char full[GRAY_IO_PATH_BUFFER_SIZE];
     if (relative_path[0] == '\0') {
@@ -674,23 +678,24 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *relat
     }
     DIR *directory = opendir(full);
     if (!directory) return;
-    struct dirent *entry;
-    while ((entry = readdir(directory)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+    GrayArray names = io_list_directory_from(arena, directory);
+    closedir(directory);
+    qsort(names.data, (size_t)names.len, sizeof(GrayString), compare_entry_names);
+    for (int32_t index = 0; index < names.len; index++) {
+        GrayString name = GRAY_ARRAY_GET(names, GrayString, index);
         GrayString child_rel;
         if (relative_path[0] == '\0') {
-            child_rel = gray_string_format(arena, "%s", entry->d_name);
+            child_rel = gray_string_format(arena, "%s", name.data);
         } else {
-            child_rel = gray_string_format(arena, "%s/%s", relative_path, entry->d_name);
+            child_rel = gray_string_format(arena, "%s/%s", relative_path, name.data);
         }
         GRAY_ARRAY_PUSH(arena, output, &child_rel);
-        char child_full[GRAY_IO_PATH_BUFFER_SIZE + sizeof(entry->d_name)];
-        snprintf(child_full, sizeof(child_full), "%s/%s", full, entry->d_name);
-        if (io_path_is_directory(child_full)) {
+        char child_full[GRAY_IO_PATH_BUFFER_SIZE + sizeof(((struct dirent *)0)->d_name)];
+        snprintf(child_full, sizeof(child_full), "%s/%s", full, name.data);
+        if (is_real_directory(child_full)) {
             walk_recursive(arena, base, child_rel.data, output);
         }
     }
-    closedir(directory);
 }
 
 GrayArray gray_io_walk(GrayArena *arena, GrayString path) {

@@ -37,7 +37,7 @@ Grayscale is a programming language for software that's simple to write and safe
 - **Simplicity** — Readable, opinionated syntax — bitwise and membership operators are real keywords (`bit_and`, `bit_xor`, `not_in`), not punctuation — with familiar per-file aliases (`fn`, `switch`/`case`, `elif`/`else`, `while`, `defer`) for devs who prefer them. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray check`, `gray new`, and `gray watch`.
 - **Flexibility** — Build scripts and dev tooling, cross-platform CLI utilities, HTTP/JSON backend services, SQLite-backed apps, network daemons, and batch data processing, or learning systems programming fundamentals.
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
-- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), wrapping arithmetic (`wrap_add()`), or C interop (`extern import`)
 
 ---
 
@@ -121,9 +121,9 @@ switch       when        while
 
 **Declarations:**
 ```
-alias        const       do          enum        extern      fn
-generic      import      mut         new         private     struct
-unsafe       use*        using
+alias        const       distinct    do          enum        extern
+fn           generic     import      mut         new         private
+struct       unsafe      use*        using
 ```
 
 > 💡 **Tip:** `use*` is reserved exclusively for the `import and use` statement. It has no other syntactic role.
@@ -327,7 +327,7 @@ Grayscale's integer types are named by signedness and width:
 | `u32` | 32-bit | no | 0 to 2^32-1 |
 | `u64` | 64-bit | no | 0 to 2^64-1 |
 
-An integer literal with no other type to take is an `i64`. Arithmetic is overflow-checked: overflow or underflow produces a runtime panic rather than silent wrapping.
+An integer literal with no other type to take is an `i64`. Arithmetic is overflow-checked: overflow or underflow produces a runtime panic rather than silent wrapping. Code that needs modular arithmetic, such as a hash or a random number generator, uses `wrap_add`, `wrap_sub`, `wrap_mult` and `wrap_div`, which only an `unsafe` block or an unsafe function may call (see 11.7).
 
 ```gray
 mut small i64 = 42
@@ -448,7 +448,7 @@ mut x i64 = cast(c, i64)           // cast back to i64
 mut s string = string(c)     // convert to string
 ```
 
-Wide integers use the same overflow-checked arithmetic as `i64` and `u64`; overflow produces a runtime panic.
+Wide integers use the same overflow-checked arithmetic as `i64` and `u64`; overflow produces a runtime panic, unless the operation is a `wrap_add`, `wrap_sub`, `wrap_mult` or `wrap_div` call.
 
 
 #### 3.1.7 Pointer Type (`^Type`)
@@ -828,14 +828,14 @@ Enum values are `i64`. An explicit value outside the `i64` range is rejected wit
 | `#error_code`-tagged (and `ErrorCode` itself) | The variant's name (e.g. `"PAYMENT_DECLINED"`) — see [Section 10.5](#105-errorcode) |
 
 ```gray
-const Color enum { RED GREEN BLUE }
+const Color enum { RED; GREEN; BLUE }
 println(Color.RED)              // "0" — plain enums print their integer
 
-const Status enum { TODO = "todo" DONE = "done" }
+const Status enum { TODO = "todo"; DONE = "done" }
 println(Status.TODO)            // "todo" — string enums print their string
 
 #error_code
-const PaymentErrors enum { PAYMENT_DECLINED PAYMENT_CANCELED }
+const PaymentErrors enum { PAYMENT_DECLINED; PAYMENT_CANCELED }
 println(PaymentErrors.PAYMENT_DECLINED)  // "PAYMENT_DECLINED" — error-code enums print their name
 ```
 
@@ -1174,6 +1174,38 @@ Private aliases restrict access to the declaring file:
 ```gray
 private alias InternalID = i64
 ```
+
+#### 3.5.1 Distinct Aliases
+
+A plain alias is another name for the same type. Prefixing it with `distinct` declares a type with the same representation as its target that the compiler treats as a different type:
+
+```gray
+distinct alias UserId = i64
+distinct alias OrderId = i64
+
+do delete_user(id UserId) { }
+
+do main() {
+    mut user UserId = 5
+    mut order OrderId = 7
+    delete_user(user)                  // ok
+    delete_user(order)                 // error: expected UserId, got OrderId
+    delete_user(cast(order, UserId))   // explicit conversion, ok
+}
+```
+
+**Rules:**
+
+- **Primitive targets only** — `i8`..`i256`, `u8`..`u256`, `f32`, `f64`, `bool`, `char`, and `string`, or a plain alias of one. A `distinct alias` of a struct, enum, array, map, pointer, or other type is `E3215`; `generic` is `E3135`, as for any alias.
+- **Prefix order** — `private distinct alias InternalId = i64`. `distinct` comes directly before `alias`.
+- **No implicit conversion** — a distinct type is not assignable to or from its target, or any other distinct type, including another `distinct alias` of the same target. Assigning, passing, returning, or storing the wrong type is the ordinary type mismatch error.
+- **Literals** — a literal of a compatible kind is accepted: `mut user UserId = 5`, `mut label Name = "ada"`. The literal is range-checked against the underlying type.
+- **`cast`** — `cast` is the only conversion, in both directions: `cast(user, i64)`, `cast(n, UserId)`, `cast(user, OrderId)`.
+- **Operators** — arithmetic, bitwise, and comparison operators between two values of the same distinct type are allowed, and arithmetic yields that distinct type (a comparison yields `bool`). Mixing a distinct type with its target or another distinct type is a type error; a literal on the other side takes the distinct type.
+- **No runtime cost** — a distinct type is erased to its target's C type, with the same overflow and range checking as the target.
+- **`type_of()`** returns the distinct type's name: `type_of(user)` is `"UserId"` and `type_of(order)` is `"OrderId"`. A plain alias is erased, so `type_of()` returns its target's name.
+- **Indexing** — a distinct integer may index an array or string: `items[user_index]` needs no `cast`. Indexing reads the value without converting it to another type.
+- **Generics** — a distinct type is a valid type argument, and a generic function over it sees the distinct type.
 
 ---
 
@@ -1772,6 +1804,22 @@ for i in range(0, 100) {
 }
 ```
 
+A loop can take a label written before it, and `break` followed by that label terminates the labeled loop from inside any loop nested in it:
+
+```gray
+mut found bool = false
+outer: for y in range(0, height) {
+    for x in range(0, width) {
+        if grid[y][x] == target {
+            found = true
+            break outer
+        }
+    }
+}
+```
+
+A label can go on `for`, `for_each`, `as_long_as` (or `while`) and `loop`; it is a compile error on any other statement (E2103). The label must be written on the same line as the `break`. It must name a loop that encloses the statement, in the same function (E4043), and it can't repeat the label of an enclosing loop (E4042). Labels are not values and live in their own namespace, so a label can share a name with a variable. A `when` is never a target: `break outer` inside a `when` inside the labeled loop leaves the labeled loop.
+
 #### 6.4.2 Continue
 
 The `continue` statement skips to the next iteration of the innermost enclosing loop:
@@ -1782,6 +1830,18 @@ for i in range(0, 10) {
         continue
     }
     println("${i}")  // Prints odd numbers only
+}
+```
+
+`continue` followed by a loop's label skips to the next iteration of that loop, leaving every loop nested inside it:
+
+```gray
+outer: for y in range(0, height) {
+    for x in range(0, width) {
+        if grid[y][x] == 0 {
+            continue outer
+        }
+    }
 }
 ```
 
@@ -1990,7 +2050,7 @@ do swap(&a, &b i64) {
 
 #### 7.2.4 Default Parameters
 
-Parameters can have default values. Default values are supported for all primitive types (integer and float types, `string`, `bool`, `char`):
+Parameters can have default values. A default may be any value assignable to the parameter's type: a primitive (integer and float types, `string`, `bool`, `char`), a struct literal, an array literal, or an enum member. A default whose type is not assignable to the parameter's type is error E5062:
 
 ```gray
 do greet(name string = "World") -> string {
@@ -2275,6 +2335,7 @@ const Person struct {
 | `#discard` | functions | Allows callers to ignore the return value without a "return value not used" error |
 | `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns at every reference to the item, with an optional replacement message |
 | `#test` | functions | Marks a test function, run by `gray test` and stripped from normal builds |
+| `#define` | top-level `const` declarations of a primitive type | Lets `-define:NAME=VALUE` override the constant's value at build time |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -2562,6 +2623,34 @@ do something() { }
 - The container and the stacked form may be mixed on the same declaration.
 - Not supported on struct functions yet — stack the attributes there.
 
+#### 7.5.7 `#define` Attribute
+
+The `#define` attribute marks a top-level `const` so its value can be overridden at build time with the `-define:NAME=VALUE` flag. The override is baked into the binary; it is not a runtime flag, and the program never sees it as an argument.
+
+```gray
+#define
+const ROSTER_PATH string = "./roster.txt"
+
+do main() {
+    println(ROSTER_PATH)
+}
+```
+
+```bash
+gray build main.gray                                   # ROSTER_PATH is "./roster.txt"
+gray build main.gray -define:ROSTER_PATH=./my/path     # ROSTER_PATH is "./my/path"
+```
+
+**Rules:**
+
+- `#define` applies only to a top-level `const` of type `i8`..`i256`, `u8`..`u256`, `f32`, `f64`, `bool`, `char`, or `string`. On a local `const`, a `mut` declaration, or any other type it is rejected with `E2094`.
+- The declaration still requires a value. It is the default, used when no flag names the constant.
+- The flag value replaces the constant's initializer before anything else is evaluated, so a constant initialized from an overridden constant sees the new value. If `BAR` is initialized from `FOO` and both are `#define`, `-define:FOO=...` changes both, and `-define:BAR=...` replaces `BAR` alone.
+- The flag value is the bare value text, with no quotes of its own (the shell strips them): an integer is base-10 with an optional sign, a float is decimal or exponent notation, a `bool` is `true` or `false`, a `char` is one Unicode codepoint, and a `string` is taken verbatim.
+- `-define:` naming a constant the program does not declare is `E4040`. Naming a constant that has no `#define` is `E5066`. A value that does not parse as the constant's type, or is out of range for it, is `E3214`.
+- A `-define:` argument without `=`, or the same name given twice, is a usage error from the `gray` command.
+- Accepted by `gray <file>`, `build`, `check`, `watch`, and `cross build`. Arguments after a bare `--` belong to the program and are not read as flags.
+
 ### 7.6 Function References
 
 A function reference is a value that holds a pointer to a named function. Function references are created with `()` prefix syntax or `ref()` and must always be bound to a `const`:
@@ -2751,6 +2840,8 @@ Rules:
 - Called as `StructName.func_name(args...)`
 - Cross-module: `module.StructName.func_name(args...)`
 - Module-qualified types can be used in variable declarations, parameters, and return types: `mut p module.Point`
+- A struct cannot declare two functions with the same name (E2037). Only the name is compared, so functions with different parameters or return types still collide; Grayscale has no overloading
+- A struct function cannot share a name with a field of the same struct (E2064)
 
 #### Calling a Sibling Function
 
@@ -3031,7 +3122,7 @@ When a directory is imported, all `.gray` files within it are merged into a sing
 - Files within the directory may import each other via relative paths (e.g., `import "./types.gray"`). These sibling cross-references are resolved internally and do not create separate namespaces; all symbols remain under the directory's namespace.
 - Transitive imports inside directory files follow the same rule as everywhere else: they resolve relative to the importing file's location.
 - If a file inside a directory imports its own parent directory (self-referential import), it is rejected.
-- If a directory import is followed by a direct import of a file already in that directory, the compiler warns that the import is redundant; the directory namespace should be used instead.
+- If a directory import is followed by a direct import of a file already in that directory, the compiler warns that the import is redundant (W2015): `import of '<path>' is redundant; already included by directory import`. A file inside a directory that imports a sibling gets no warning.
 - If two files in a directory declare the same symbol name, it is a collision error.
 
 **Deduplication:** If the same file is imported multiple times (e.g., directly by main and transitively through another import), it is only processed once. No error is emitted.
@@ -3221,7 +3312,9 @@ do main() {
 
 The pointer addresses a NUL-terminated copy that lives for the rest of the program, so it stays valid after the string, loop iteration, or function that created it is gone; writing through it does not change the string.
 
-**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected.
+**Pointer arguments:** an argument for a C pointer parameter is checked against what the parameter points at (E5054). A `string` fits a `char *` or a `const void *`; a `^T` fits a pointer to the same kind of value (integer, floating-point, pointer, or struct). `nil`, `^void`, and `^u8` — the way an opaque handle such as a `FILE *` is held — fit any pointer. A number is never a pointer.
+
+**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `u8`, and pointers (`^T` is `T*`, so `^void` or `^i64` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected. The callback must also match the function pointer type the header declares (E5067): the same number of parameters, and a parameter and return of the same kind and width — an integer of the same bit width, a floating-point of the same width, or a pointer — with no return value when the C type returns `void`. A `qsort` comparator is `do cmp(a ^T, b ^T) -> i32`. A callback can run on a thread the C library created (a `pthread_create` start routine, a timer or thread-pool callback): it gets its own arenas for the life of that thread, so it may allocate. Strings, arrays, and maps are released when that thread exits; `new()` memory lives for the rest of the program.
 
 **Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
@@ -3249,10 +3342,11 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 
 #### Safety
 
-`extern import` is an opt-out from Grayscale's memory safety. ASBAM, the pointer escape checks (11.7), and bounds checking reason only about Grayscale code — they cannot analyze a C function, so their guarantees stop at the `extern.` call. Once a program calls into C, "memory safe by default" no longer holds for anything that crosses the boundary.
+`extern import` is an opt-in to unsafe operations outside Grayscale's memory safety. ASBAM, the pointer escape checks (11.7), and bounds checking reason only about Grayscale code — they cannot analyze a C function, so their guarantees stop at the `extern.` call. Once a program calls into C, "memory safe by default" no longer holds for anything that crosses the boundary.
 
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
 - **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
+- **A string passed to a C function that keeps the pointer dangles.** A string's storage is reclaimed with its scope. `putenv`, `setbuf`, `setvbuf` (buffer argument), and `strtok` (first argument) keep the pointer, so passing them a string other than a literal or a file-scope string is a compile error (E3216); pass `to_c_string(...)` instead. A C function outside this list that keeps a `char*` is the programmer's responsibility.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
 - **Numeric arguments narrow silently.** Integer and float literals are `i64` and `f64`. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
@@ -3321,7 +3415,7 @@ running the child so output is not reordered.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `len` | `(collection T) -> i64` | Length of a string (byte length, not character count), array, map, Channel (values buffered), Builder (bytes written), or range (iteration count) |
+| `len` | `(collection T) -> i64` | Length of a string (byte length, not character count), array, map, Channel (values buffered), Builder (bytes written), or range (iteration count); panics (P0155) if a range has more than `i64.MAX` elements, e.g. `len(range(i64.MIN, i64.MAX))`, including a `u64` or wide-integer range whose count does not fit an `i64` |
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"i64"`, `"u64"`, `"f64"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> i64` | Size of type in bytes |
 | `fields` | `(instance T) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
@@ -3330,6 +3424,10 @@ running the child so output is not reordered.
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
 | `addr` | `(variable T) -> ^T` | Get memory address of a variable |
 | `raw` | `(variable T) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
+| `wrap_add` | `(a T, b T) -> T` | Wrapping addition on any integer type: the true sum modulo 2^N, in two's complement for signed types. Never panics. Operands type as for a binary operator. Unsafe: requires an `unsafe` block or an unsafe function (see 11.7) |
+| `wrap_sub` | `(a T, b T) -> T` | Wrapping subtraction on any integer type. Wrapping negation is `wrap_sub(0, x)`. Unsafe, like `wrap_add` |
+| `wrap_mult` | `(a T, b T) -> T` | Wrapping multiplication on any integer type. Unsafe, like `wrap_add` |
+| `wrap_div` | `(a T, b T) -> T` | Division on any integer type that returns `MIN` for `MIN / -1` instead of panicking (P0079). Division by zero still panics (P0078). Unsafe, like `wrap_add` |
 | `error` | `(code ErrorCode, message string = "") -> Error` | Create error value |
 | `assert` | `(condition bool, message string = "")` | Terminate if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
@@ -3833,6 +3931,8 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `start_of_month` | `(timestamp i64) -> i64` | Unix timestamp of `00:00:00` UTC on the first day of the same month |
 | `end_of_month` | `(timestamp i64) -> i64` | Unix timestamp of `23:59:59` UTC on the last day of the same month; leap-year aware |
 
+These functions panic (P0157) when an intermediate or final result leaves the `i64` range: `diff`, `since`, `add_days`, `add_hours`, `add_minutes`, `add_months`, `add_seconds`, `start_of_day` and `end_of_day`. `add_months`, `start_of_month` and `end_of_month` panic with P0140 instead when the timestamp is outside the range of dates that can be broken into parts.
+
 #### Performance Timing
 
 | Function | Signature | Description |
@@ -3853,7 +3953,7 @@ Unless noted otherwise, all math functions accept any integer or float type (`i8
 | `rand_char` | `(min char, max char) -> char` | Random char [min, max), never a surrogate (U+D800–U+DFFF); panics if `min` is not less than `max` or the range holds only surrogates |
 | `rand_string` | `(length i64, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics if `alphabet` is empty and `length > 0` |
 | `rand_bytes` | `(n i64) -> [u8]` | `n` random bytes from the module's RNG (reproducible with `seed`, not cryptographically secure); `n` 0 returns an empty array; panics if `n` is negative |
-| `roll_dice` | `(count i64, sides i64) -> i64` | Sum of `count` rolls of a `sides`-sided die, each uniform in `1..sides`; panics if `count` or `sides` is less than 1 |
+| `roll_dice` | `(count i64, sides i64) -> i64` | Sum of `count` rolls of a `sides`-sided die, each uniform in `1..sides`; panics if `count` or `sides` is less than 1, or if the sum of the rolls exceeds `i64.MAX` (P0156) |
 | `choice` | `(arr [T]) -> T` | Random element from array |
 | `shuffle` | `(arr [T]) -> [T]` | Return shuffled copy |
 | `sample` | `(arr [T], n i64) -> [T]` | Return n unique random elements |
@@ -4311,6 +4411,8 @@ An HTTP server module with dynamic handlers and path parameters.
 
 A handler returns an `HttpResponse` (see the HttpResponse Type under `@http`). The server sends every entry in its `headers` map, and sets `Content-Length` and `Connection` itself: a `Content-Length`, `Transfer-Encoding` or `Connection` entry in the map is not sent. A header key or value containing CR or LF panics.
 
+A request has 30 seconds in total to arrive, counted from the connection being accepted. A connection that has not sent a complete request by then is closed without a response, however slowly it is still sending. A request whose body ends before its declared `Content-Length` because the peer closed the connection is answered `400 Bad Request`, and one whose headers and declared body do not fit in 64 KiB is answered `413 Payload Too Large`; the handler runs for neither.
+
 #### Request Type
 
 The `HttpRequest` type is only available when `@server` is imported. Importing `@http` alone does not provide this type.
@@ -4419,6 +4521,8 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | `yield` | `()` | Hint the scheduler to run another runnable thread |
 | `thread_count` | `() -> i64` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
 
+A `Thread` that `spawn` did not return (a zero-value one), or one already passed to `join` or `detach`, is a runtime panic (P0170) in `join`, `detach`, and `is_alive`. `join` and `detach` clear the handle they are given, and a copy of that handle made earlier is rejected the same way.
+
 ### 9.22 Sync Module (`@sync`)
 
 Synchronization primitives for thread-safe access to shared data. Compiler-only feature; requires POSIX threads.
@@ -4430,6 +4534,8 @@ Synchronization primitives for thread-safe access to shared data. Compiler-only 
 | `unlock` | `(m Mutex)` | Release a mutex |
 | `try_lock` | `(m Mutex) -> bool` | Try to acquire a mutex (non-blocking); true if acquired, false if already locked |
 | `destroy` | `(m Mutex)` | Destroy a mutex |
+
+A `Mutex` that `mutex()` did not create (a zero-value one, such as a `Mutex` field of a struct made with `new()`), or one already destroyed, is a runtime panic (P0168) in every function above, rather than a lock that excludes nothing. `destroy` clears the handle it is given, and a copy of that handle made earlier is rejected the same way.
 
 ### 9.23 Channels Module (`@channels`)
 
@@ -4444,9 +4550,11 @@ Message passing between threads. Compiler-only feature; requires POSIX threads.
 | `try_send` | `(ch Channel, value i64) -> bool` | Non-blocking send; returns false if full |
 | `try_receive` | `(ch Channel) -> (i64, bool)` | Non-blocking receive; returns value and success |
 
-A capacity below 1 opens a channel with capacity 1. A capacity whose buffer cannot be allocated, or exceeds `--arena-limit`, is a runtime panic.
+A capacity below 1 is a runtime panic (P0173), as is a capacity whose buffer cannot be allocated or exceeds `--arena-limit`. `send` on a closed channel is a runtime panic (P0172), including a `send` that was blocked on a full channel when it closed; `try_send` returns false instead.
 
 Channels are **i64-only**. Sending non-i64 types (`string`, `f64`, `bool`, etc.) is a compile-time error.
+
+A `Channel` that `open` did not create (a zero-value one) is a runtime panic (P0169) in every function above.
 
 ### 9.24 Memory Module (`@mem`)
 
@@ -4464,13 +4572,17 @@ Arena-based memory allocation. Compiler-only feature.
 | `zero` | `(p ptr, n i64)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value i64, n i64)` | Set `n` bytes at `p` to `value` |
 
+An `Arena` that `arena` did not create (a zero-value one), or one already destroyed, is a runtime panic (P0171) in `destroy`, `reset`, `usage`, `init`, and `alloc`. `destroy` clears the handle it is given, and a copy of that handle made earlier is rejected the same way.
+
 ### 9.25 Atomic Module (`@atomic`)
 
-Lock-free atomic operations backed by hand-written assembly (ARM64 and x86_64). Compiler-only feature.
+Atomic operations implemented with the C compiler's `__atomic` builtins, so they work on every supported ABI, including Windows x64. Under TinyCC snapshots that lack `stdatomic.h` (such as Ubuntu's 0.9.27), every read-modify-write runs under one process-wide mutex instead. Compiler-only feature.
+
+Every operation is sequentially consistent. `cas` is a strong compare-and-swap with no spurious failures.
 
 #### 64-bit Atomics
 
-All pointer arguments must be `^i64` (pointer to i64).
+All pointer arguments must be `^i64` (pointer to i64) and must point to a valid, 8-byte-aligned `i64`; a misaligned pointer is undefined behavior. A `nil` pointer is not diagnosed; the program crashes with a segmentation fault.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -4479,7 +4591,9 @@ All pointer arguments must be `^i64` (pointer to i64).
 | `add` | `(ptr ^i64, val i64) -> i64` | Atomic add; returns previous value |
 | `sub` | `(ptr ^i64, val i64) -> i64` | Atomic subtract; returns previous value |
 | `exchange` | `(ptr ^i64, val i64) -> i64` | Atomic swap; returns previous value |
-| `cas` | `(ptr ^i64, expected i64, desired i64) -> bool` | Compare-and-swap; returns true on success |
+| `cas` | `(ptr ^i64, expected i64, desired i64) -> bool` | Compare-and-swap; returns true if the swap happened, never the previous value |
+
+`add` and `sub` wrap in two's complement on overflow and never panic: `add(ptr, 1)` on `i64.MAX` stores `i64.MIN` and returns `i64.MAX`.
 | `and` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise AND; returns previous value |
 | `or` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise OR; returns previous value |
 | `xor` | `(ptr ^i64, val i64) -> i64` | Atomic bitwise XOR; returns previous value |
@@ -4494,11 +4608,17 @@ All pointer arguments must be `^i64` (pointer to i64).
 | `spin_unlock` | `(lk SpinLock)` | Release a spinlock |
 | `spinlock_destroy` | `(lk SpinLock)` | Destroy a spinlock and free its resources |
 
+A `SpinLock` is a handle to a heap-allocated lock. Copying it copies the handle, so the copy refers to the same lock. After `spinlock_destroy` on one handle, every other copy is dangling and using it is undefined behavior. The destroyed handle itself becomes inert: `spin_lock` and `spin_unlock` do nothing and `spin_trylock` returns `false`. A zero-value `SpinLock` (declared without `atomic.spinlock()`) behaves the same way.
+
+The lock is not recursive: `spin_lock` on a lock the caller already holds spins forever. `spin_unlock` on a lock nobody holds simply marks it free. `spinlock_destroy` on a lock another thread holds frees it anyway, so destroy a lock only after every thread has finished with it.
+
 #### Memory Barrier
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `fence` | `()` | Full memory barrier (sequential consistency) |
+
+The 32-bit and 8-bit atomic primitives in the runtime are internal, used by the runtime's own array and map code. The module exposes no 32-bit or 8-bit functions.
 
 ### 9.26 Fmt Module (`@fmt`)
 
@@ -4700,6 +4820,8 @@ Read-only introspection into the compiler-managed arenas (default + heap), execu
 | `version` | `() -> string` | Grayscale version that compiled this binary |
 | `call_depth` | `() -> i64` | Current call stack depth |
 | `call_limit` | `() -> i64` | Maximum allowed call stack depth (10,000) |
+| `function_name` | `() -> string` | Name of the currently executing function (`Type.func` for a struct function), resolved at compile time |
+| `caller_name` | `() -> string` | Name of the function that called the currently executing function; empty string from `main` |
 | `uptime` | `() -> f64` | Seconds elapsed since the program started |
 
 ### 9.29 Chars Module (`@chars`)
@@ -5058,7 +5180,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Array out-of-bounds | Runtime panic |
 | Map key not found | Runtime panic |
 | Division by zero | Runtime panic |
-| Integer overflow | Runtime panic (checked arithmetic) |
+| Integer overflow | Runtime panic (checked arithmetic); `wrap_add`, `wrap_sub`, `wrap_mult` and `wrap_div` wrap instead and are unsafe |
 | Stack overflow (deep recursion) | Detected and reported |
 | Double-`destroy` on a `@mem` arena the checker can't trace to a named arena parameter | Runtime panic |
 | Allocating (`mem.init()`/`mem.alloc()`) from a `@mem` arena the checker can't trace as already destroyed | Runtime panic |
@@ -5080,9 +5202,9 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Out-of-bounds write by a C function | A C function writes past the end of a buffer passed from Grayscale. Bounds checking does not cross the `extern.` call. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
-For programs that stay in the safe subset — no `@mem`, no `raw()`, no threading, no C interop — the pointer checker makes use-after-free a compile error, not a runtime hazard. `@mem`, `raw()`, threading, and `extern import` are Grayscale's explicit unsafe opt-outs; reaching for one of them is what puts memory safety back in the programmer's hands.
+For programs that stay in the safe subset — no `@mem`, no `raw()`, no threading, no wrapping arithmetic, no C interop — the pointer checker makes use-after-free a compile error, not a runtime hazard. `@mem`, `raw()`, threading, wrapping arithmetic, and `extern import` are Grayscale's explicit unsafe opt-ins; reaching for one of them is what puts memory safety back in the programmer's hands.
 
-**The `unsafe` marker.** The four opt-outs are lexically marked. `raw()`, every function of the `@mem` and `@threads` modules, and every `extern.` call is a compile error (E5065) unless it sits inside an `unsafe { ... }` block or an unsafe function:
+**The `unsafe` marker.** The five opt-ins are lexically marked. `raw()`, `wrap_add()`, `wrap_sub()`, `wrap_mult()`, `wrap_div()`, every function of the `@mem` and `@threads` modules, and every `extern.` call is a compile error (E5065) unless it sits inside an `unsafe { ... }` block or an unsafe function:
 
 ```gray
 import @mem
@@ -5139,7 +5261,7 @@ When a value created inside a scoped block needs to survive — for example, app
 
 #### Early Exits
 
-When `return`, `break`, or `continue` exits through nested scopes, the runtime unwinds all live arenas in reverse order. A `break` inside an `if` inside a loop will clean up the if-block arena and the loop iteration arena before jumping out. This ensures no memory is leaked regardless of control flow.
+When `return`, `break`, or `continue` exits through nested scopes, the runtime unwinds all live arenas in reverse order. A `break` inside an `if` inside a loop will clean up the if-block arena and the loop iteration arena before jumping out. A labeled `break` or `continue` also cleans up the arenas of every loop it leaves. This ensures no memory is leaked regardless of control flow.
 
 #### Growth
 
@@ -5241,6 +5363,7 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 | `--no-color` | Disable colored diagnostic output. |
 | `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics. |
 | `--cc <compiler>` | C compiler for this invocation (see [C Compiler](#c-compiler)). |
+| `-define:NAME=VALUE` | Override the value of the `#define` constant `NAME` at build time (see [7.5.7](#757-define-attribute)). May be repeated for different names. |
 
 ### Command Help
 

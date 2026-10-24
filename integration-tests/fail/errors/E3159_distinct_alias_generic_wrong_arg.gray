@@ -1,0 +1,25 @@
+/*
+ * Error Test: E3159 - distinct alias: generic wrong arg
+ */
+
+// expect-error: E3159
+// expect-error-count: 1
+
+distinct alias UserId = i64
+distinct alias OrderId = i64
+distinct alias Score = f64
+distinct alias Flag = bool
+distinct alias Letter = char
+distinct alias Label = string
+distinct alias Tiny = u8
+distinct alias Huge = i128
+distinct alias Wide = u256
+const Pt struct {
+    id UserId
+    tag Label
+}
+do ident(kind generic, x kind) -> kind { return x }
+do main() {
+    mut o OrderId = 5
+    println(ident(UserId, o))
+}

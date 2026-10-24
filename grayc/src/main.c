@@ -29,6 +29,8 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "parser/imports.h"
+#include "parser/defines.h"
+#include "util/xalloc.h"
 #include "typechecker/typechecker.h"
 #include "codegen/codegen.h"
 #include "fmt/fmt.h"
@@ -66,6 +68,7 @@ static void print_usage(void) {
     fprintf(stderr, "  --quiet         Suppress all warnings\n");
     fprintf(stderr, "  --quiet W1001   Suppress specific warnings (comma-separated)\n");
     fprintf(stderr, "  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)\n");
+    fprintf(stderr, "  --define=NAME=VALUE   Override the #define constant NAME (repeatable)\n");
     fprintf(stderr, "  --no-color      Disable colored output\n");
     fprintf(stderr, "  --test          Build a test runner from #test functions (used by 'gray test')\n");
     fprintf(stderr, "  -h, --help      Show this help\n");
@@ -902,8 +905,41 @@ typedef struct {
     char return_text[128];
     int parameter_count;                        /* entries of parameter_* filled in */
     CReturnClass parameter_class[C_SIGNATURE_PARAMETERS];
-    char parameter_text[C_SIGNATURE_PARAMETERS][64];
+    char parameter_text[C_SIGNATURE_PARAMETERS][128];
+    int parameter_bits[C_SIGNATURE_PARAMETERS];   /* width of an integer or floating-point parameter, 0 when unknown */
+    int return_bits;
+    /* For a pointer parameter: what it points at. C_RETURN_UNKNOWN when the
+     * pointee is a spelling this does not recognise or the parameter is not
+     * a plain data pointer (a function pointer, a typedef'd pointer). */
+    CReturnClass pointee_class[C_SIGNATURE_PARAMETERS];
+    bool pointee_is_byte[C_SIGNATURE_PARAMETERS];     /* char, signed char, unsigned char */
+    bool pointee_is_const[C_SIGNATURE_PARAMETERS];
 } CFunctionSignature;
+
+/* Removes the words clang and gcc add to a parameter or return type that say
+ * nothing about its kind (_Nonnull, restrict, ...), so the rest classifies
+ * and prints as the header author wrote it. */
+static void strip_c_qualifier_noise(char *text) {
+    static const char *const noise[] = {"_Null_unspecified", "_Nonnull", "_Nullable", "__restrict__", "__restrict", "restrict"};
+    for (size_t i = 0; i < sizeof(noise) / sizeof(noise[0]); i++) {
+        size_t noise_length = strlen(noise[i]);
+        char *found = text;
+        while ((found = strstr(found, noise[i])) != NULL) {
+            bool is_word = (found == text || !(isalnum((unsigned char)found[-1]) || found[-1] == '_')) &&
+                           !(isalnum((unsigned char)found[noise_length]) || found[noise_length] == '_');
+            if (!is_word) { found += noise_length; continue; }
+            memmove(found, found + noise_length, strlen(found + noise_length) + 1);
+        }
+    }
+    /* Collapse the runs of spaces the removals leave and tidy "( *" spacing. */
+    char *output = text;
+    for (const char *input = text; *input; input++) {
+        if (*input == ' ' && (output == text || output[-1] == ' ' || output[-1] == '(' || input[1] == ')' || input[1] == ' ')) continue;
+        *output++ = *input;
+    }
+    while (output > text && output[-1] == ' ') output--;
+    *output = '\0';
+}
 
 /* Classifies a C return type spelled the way clang's AST dump prints it
  * ("unsigned long", "void *", "enum E", "struct tm"). */
@@ -933,7 +969,7 @@ static CReturnClass classify_c_return(const char *spelling) {
  * which spells the type as written ('struct div_t') and, when that differs, the
  * fully resolved type after a colon ('__darwin_size_t':'unsigned long'). The
  * written spelling is tried first, then the resolved one. */
-static CReturnClass classify_c_typedef(const char *dump, const char *name) {
+static CReturnClass classify_c_typedef_text(const char *dump, const char *name, char *classified_text, size_t classified_size) {
     size_t name_length = strlen(name);
     for (const char *cursor = dump; (cursor = strstr(cursor, name)) != NULL; cursor += name_length) {
         if (cursor == dump || cursor[-1] != ' ' || cursor[name_length] != ' ' || cursor[name_length + 1] != '\'') continue;
@@ -951,7 +987,10 @@ static CReturnClass classify_c_typedef(const char *dump, const char *name) {
             memcpy(text, spelling, text_length);
             text[text_length] = '\0';
             CReturnClass return_class = classify_c_return(text);
-            if (return_class != C_RETURN_UNKNOWN) return return_class;
+            if (return_class != C_RETURN_UNKNOWN) {
+                if (classified_text) snprintf(classified_text, classified_size, "%s", text);
+                return return_class;
+            }
             if (pass == 1 || spelling_end[1] != ':' || spelling_end[2] != '\'') break;
             spelling = spelling_end + 3;
             spelling_end = strchr(spelling, '\'');
@@ -960,6 +999,96 @@ static CReturnClass classify_c_typedef(const char *dump, const char *name) {
         return C_RETURN_UNKNOWN;
     }
     return C_RETURN_UNKNOWN;
+}
+
+static CReturnClass classify_c_typedef(const char *dump, const char *name) {
+    return classify_c_typedef_text(dump, name, NULL, 0);
+}
+
+/* What a plain data-pointer parameter such as "FILE *", "const char *" or
+ * "char **" points at. The words after the last '*' are qualifiers of the
+ * pointer itself. */
+static void classify_c_pointee(const char *dump, const char *parameter_text, CReturnClass *pointee_class,
+                               bool *is_byte, bool *is_const) {
+    *pointee_class = C_RETURN_UNKNOWN;
+    *is_byte = false;
+    *is_const = false;
+    const char *last_star = strrchr(parameter_text, '*');
+    if (!last_star || strchr(parameter_text, '(') || strchr(parameter_text, '[')) return;
+    char pointee[128];
+    size_t pointee_length = (size_t)(last_star - parameter_text);
+    if (pointee_length >= sizeof(pointee)) return;
+    memcpy(pointee, parameter_text, pointee_length);
+    pointee[pointee_length] = '\0';
+    if (strchr(pointee, '*')) { *pointee_class = C_RETURN_POINTER; return; }
+
+    char name[128];
+    name[0] = '\0';
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%s", pointee);
+    for (char *save = NULL, *word = strtok_r(buffer, " ", &save); word; word = strtok_r(NULL, " ", &save)) {
+        if (strcmp(word, "const") == 0) { *is_const = true; continue; }
+        if (strcmp(word, "volatile") == 0) continue;
+        size_t used = strlen(name);
+        snprintf(name + used, sizeof(name) - used, "%s%s", used ? " " : "", word);
+    }
+    CReturnClass pointee_kind = classify_c_return(name);
+    char resolved[128];
+    snprintf(resolved, sizeof(resolved), "%s", name);
+    if (pointee_kind == C_RETURN_UNKNOWN && name[0])
+        pointee_kind = classify_c_typedef_text(dump, name, resolved, sizeof(resolved));
+    *pointee_class = pointee_kind;
+    *is_byte = pointee_kind == C_RETURN_INTEGER && strstr(resolved, "char") != NULL;
+}
+
+/* The width in bits of the C integer or floating-point type `spelling`
+ * names, 0 when it is neither or its width depends on something this cannot
+ * see. `long` is as wide as it is for the compiler that built grayc. */
+static int c_scalar_bits(const char *spelling) {
+    bool has_long = false, has_char = false, has_short = false, has_int = false;
+    int long_count = 0;
+    char buffer[128];
+    snprintf(buffer, sizeof(buffer), "%s", spelling);
+    for (char *save = NULL, *word = strtok_r(buffer, " ", &save); word; word = strtok_r(NULL, " ", &save)) {
+        if (strcmp(word, "float") == 0) return 32;
+        if (strcmp(word, "double") == 0) return has_long ? 0 : 64;
+        if (strcmp(word, "_Bool") == 0) return 8;
+        if (strcmp(word, "enum") == 0) return 32;
+        if (strcmp(word, "long") == 0) { has_long = true; long_count++; }
+        else if (strcmp(word, "char") == 0) has_char = true;
+        else if (strcmp(word, "short") == 0) has_short = true;
+        else if (strcmp(word, "int") == 0) has_int = true;
+    }
+    if (has_char) return 8;
+    if (has_short) return 16;
+    if (long_count >= 2) return 64;
+    if (has_long) return (int)(sizeof(long) * 8);
+    return has_int || strstr(spelling, "unsigned") || strstr(spelling, "signed") ? 32 : 0;
+}
+
+/* c_scalar_bits() of a parameter or return spelling, following a typedef name
+ * to what it stands for. */
+static int c_type_bits(const char *dump, const char *spelling, CReturnClass type_class) {
+    if (type_class != C_RETURN_INTEGER && type_class != C_RETURN_FLOATING_POINT) return 0;
+    char resolved[128];
+    snprintf(resolved, sizeof(resolved), "%s", spelling);
+    if (classify_c_return(spelling) == C_RETURN_UNKNOWN) classify_c_typedef_text(dump, spelling, resolved, sizeof(resolved));
+    return c_scalar_bits(resolved);
+}
+
+/* Fills in what a return or parameter spelled as a typedef name stands for. */
+static void resolve_c_signature_typedefs(const char *dump, CFunctionSignature *output) {
+    if (output->return_class == C_RETURN_UNKNOWN && output->return_text[0])
+        output->return_class = classify_c_typedef(dump, output->return_text);
+    output->return_bits = c_type_bits(dump, output->return_text, output->return_class);
+    for (int i = 0; i < output->parameter_count; i++) {
+        if (output->parameter_class[i] == C_RETURN_UNKNOWN)
+            output->parameter_class[i] = classify_c_typedef(dump, output->parameter_text[i]);
+        output->parameter_bits[i] = c_type_bits(dump, output->parameter_text[i], output->parameter_class[i]);
+        if (output->parameter_class[i] == C_RETURN_POINTER)
+            classify_c_pointee(dump, output->parameter_text[i], &output->pointee_class[i],
+                               &output->pointee_is_byte[i], &output->pointee_is_const[i]);
+    }
 }
 
 /* True when a C result of class `rc` may be declared as, or cast to,
@@ -979,16 +1108,49 @@ static bool c_return_fits(CReturnClass return_class, const GrayType *asserted, b
     return return_class == C_RETURN_INTEGER || via_cast;
 }
 
+/* True when `argument_type` is a pointer or string whose pointee C cannot
+ * accept for the data pointer parameter `parameter_index`: a string for
+ * anything but a char pointer (or a read-only void pointer), or a ^T for a
+ * pointee of another kind (a number where C wants a FILE, a struct where it
+ * wants an int). nil, ^void and ^u8 — the way an opaque C handle is held — fit
+ * any pointer. */
+static bool c_pointer_pointee_mismatch(const CFunctionSignature *signature, int parameter_index, const GrayType *argument_type) {
+    CReturnClass pointee = signature->pointee_class[parameter_index];
+    if (pointee == C_RETURN_UNKNOWN) return false;
+    if (argument_type->kind == TYPE_KIND_STRING) {
+        if (signature->pointee_is_byte[parameter_index]) return false;
+        return !(pointee == C_RETURN_VOID && signature->pointee_is_const[parameter_index]);
+    }
+    if (argument_type->kind != TYPE_KIND_POINTER || !argument_type->element_type) return false;
+    if (pointee == C_RETURN_VOID) return false;
+    const char *element = argument_type->element_type;
+    if (strcmp(element, "void") == 0 || strcmp(element, "u8") == 0) return false;
+    if (element[0] == '^') return pointee != C_RETURN_POINTER;
+    bool is_floating_point_element = strcmp(element, "f32") == 0 || strcmp(element, "f64") == 0;
+    bool is_integer_element = strcmp(element, "bool") == 0 || strcmp(element, "char") == 0 ||
+        ((element[0] == 'i' || element[0] == 'u') && isdigit((unsigned char)element[1]));
+    if (is_floating_point_element) return pointee != C_RETURN_FLOATING_POINT;
+    /* An out-parameter holding an opaque handle (a pthread_t is a pointer on
+     * some platforms and an integer on others) is a pointer-sized integer. */
+    if (pointee == C_RETURN_POINTER && (strcmp(element, "i64") == 0 || strcmp(element, "u64") == 0)) return false;
+    if (is_integer_element) return pointee != C_RETURN_INTEGER;
+    return pointee != C_RETURN_AGGREGATE;
+}
+
 /* True when a Grayscale argument cannot be converted by C to a parameter of
  * class `param`: a string, nil or pointer where C wants a number, or a number
  * where C wants a pointer. Any other argument kind, or a parameter of a kind
  * this does not recognise, is left to the C compiler. */
-static bool c_argument_kind_mismatch(CReturnClass parameter_class, const GrayType *argument_type) {
+static bool c_argument_kind_mismatch(const CFunctionSignature *signature, int parameter_index, const GrayType *argument_type) {
+    CReturnClass parameter_class = signature->parameter_class[parameter_index];
     bool is_argument_number = argument_type->kind == TYPE_KIND_SIGNED_INTEGER || argument_type->kind == TYPE_KIND_UNSIGNED_INTEGER || argument_type->kind == TYPE_KIND_FLOATING_POINT ||
                          argument_type->kind == TYPE_KIND_BOOL || argument_type->kind == TYPE_KIND_CHAR;
     bool is_argument_pointer = argument_type->kind == TYPE_KIND_STRING || argument_type->kind == TYPE_KIND_POINTER || argument_type->kind == TYPE_KIND_NIL;
     if (parameter_class == C_RETURN_INTEGER || parameter_class == C_RETURN_FLOATING_POINT) return is_argument_pointer;
-    if (parameter_class == C_RETURN_POINTER) return is_argument_number;
+    if (parameter_class == C_RETURN_POINTER) {
+        if (is_argument_number) return true;
+        return c_pointer_pointee_mismatch(signature, parameter_index, argument_type);
+    }
     return false;
 }
 
@@ -1082,6 +1244,7 @@ static bool count_c_parameters(const char *signature_text, CFunctionSignature *o
         if (return_length > 0 && return_length < sizeof(output->return_text)) {
             memcpy(output->return_text, signature_text, return_length);
             output->return_text[return_length] = '\0';
+            strip_c_qualifier_noise(output->return_text);
             output->return_class = classify_c_return(output->return_text);
         }
     }
@@ -1112,6 +1275,7 @@ static bool count_c_parameters(const char *signature_text, CFunctionSignature *o
                 if (count < C_SIGNATURE_PARAMETERS && segment_length < sizeof(output->parameter_text[0])) {
                     memcpy(output->parameter_text[count], segment, segment_length);
                     output->parameter_text[count][segment_length] = '\0';
+                    strip_c_qualifier_noise(output->parameter_text[count]);
                     output->parameter_class[count] = classify_c_return(output->parameter_text[count]);
                     output->parameter_count = count + 1;
                 }
@@ -1174,12 +1338,7 @@ static bool find_c_function_signature(const char *dump, const char *name, CFunct
     if (!count_c_parameters(signature, output)) return false;
     /* A return type spelled as a typedef name classifies as unknown until the
      * typedef itself is looked up. */
-    if (output->return_class == C_RETURN_UNKNOWN && output->return_text[0])
-        output->return_class = classify_c_typedef(dump, output->return_text);
-    for (int i = 0; i < output->parameter_count; i++) {
-        if (output->parameter_class[i] == C_RETURN_UNKNOWN)
-            output->parameter_class[i] = classify_c_typedef(dump, output->parameter_text[i]);
-    }
+    resolve_c_signature_typedefs(dump, output);
     return true;
 }
 
@@ -1576,6 +1735,58 @@ static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char 
     return dump.data;
 }
 
+/* True when a Grayscale parameter or return type cannot stand for the C type
+ * of class `c_class` and width `c_bits` in a callback. A C type this does not
+ * classify, an aggregate, or a Grayscale type with no C layout (E3197/E3198
+ * reject those) is left alone. */
+static bool callback_scalar_mismatch(CReturnClass c_class, int c_bits, const GrayType *gray_type) {
+    if (!gray_type || c_class == C_RETURN_UNKNOWN || c_class == C_RETURN_AGGREGATE) return false;
+    int gray_bits = 0;
+    CReturnClass gray_class;
+    switch (gray_type->kind) {
+    case TYPE_KIND_SIGNED_INTEGER:
+    case TYPE_KIND_UNSIGNED_INTEGER:
+        gray_class = C_RETURN_INTEGER;
+        gray_bits = gray_type->name ? atoi(gray_type->name + 1) : 0;
+        break;
+    case TYPE_KIND_BOOL: gray_class = C_RETURN_INTEGER; gray_bits = 8; break;
+    case TYPE_KIND_CHAR: gray_class = C_RETURN_INTEGER; gray_bits = 32; break;
+    case TYPE_KIND_FLOATING_POINT:
+        gray_class = C_RETURN_FLOATING_POINT;
+        gray_bits = gray_type->name ? atoi(gray_type->name + 1) : 0;
+        break;
+    case TYPE_KIND_POINTER: gray_class = C_RETURN_POINTER; break;
+    default: return false;
+    }
+    if (gray_class != c_class) return true;
+    return c_bits != 0 && gray_bits != 0 && c_bits != gray_bits;
+}
+
+/* True when the Grayscale `callback` cannot be called through the C function
+ * pointer type spelled `pointer_text` ("int (*)(const void *, const void *)"):
+ * a different number of parameters, or a parameter or return of another kind
+ * or width. Anything this cannot read is accepted. */
+static bool callback_mismatches_function_pointer(const char *dump, const char *pointer_text, const FunctionSignature *callback) {
+    const char *marker = strstr(pointer_text, "(*)");
+    if (!marker || marker[3] != '(') return false;
+    char shape[256];
+    int shape_length = snprintf(shape, sizeof(shape), "%.*s %s", (int)(marker - pointer_text), pointer_text, marker + 3);
+    if (shape_length < 0 || (size_t)shape_length >= sizeof(shape)) return false;
+    CFunctionSignature expected;
+    memset(&expected, 0, sizeof(expected));
+    if (!count_c_parameters(shape, &expected) || expected.is_variadic) return false;
+    resolve_c_signature_typedefs(dump, &expected);
+
+    if (callback->parameter_count != expected.minimum_parameters) return true;
+    for (int i = 0; i < expected.parameter_count && i < callback->parameter_count; i++)
+        if (callback_scalar_mismatch(expected.parameter_class[i], expected.parameter_bits[i], callback->parameter_types[i]))
+            return true;
+    if (expected.return_class == C_RETURN_VOID) return callback->return_count != 0;
+    if (expected.return_class == C_RETURN_UNKNOWN) return false;
+    if (callback->return_count != 1) return true;
+    return callback_scalar_mismatch(expected.return_class, expected.return_bits, callback->return_types[0]);
+}
+
 /* First reports any two imported C headers that declare the same symbol
  * differently (E6016). Then validates every extern.func(...) call and
  * extern.CONST access the type
@@ -1700,11 +1911,26 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
             for (int argument_index = 0; argument_index < actual && argument_index < signature.parameter_count; argument_index++) {
                 AstNode *argument = calls[i].node->data.call.arguments[argument_index];
                 GrayType *argument_type = type_table_get(type_table, argument);
-                if (!argument_type || !c_argument_kind_mismatch(signature.parameter_class[argument_index], argument_type)) continue;
+                if (!argument_type || !c_argument_kind_mismatch(&signature, argument_index, argument_type)) continue;
                 diagnostic_error_code_formatted(diagnostics, "E5054",
                     argument->token.file ? argument->token.file : (calls[i].file ? calls[i].file : entry_file),
                     argument->token.line, argument->token.column, 0,
                     argument_index + 1, calls[i].function_name, type_name(argument_type), signature.parameter_text[argument_index]);
+            }
+        }
+
+        if (is_valid && calls[i].node) {
+            for (int argument_index = 0; argument_index < actual && argument_index < signature.parameter_count &&
+                                         argument_index < EXTERN_CALLBACK_ARGUMENTS; argument_index++) {
+                const FunctionSignature *callback = calls[i].callback_signatures[argument_index];
+                if (!callback || !callback->declaration ||
+                    !callback_mismatches_function_pointer(dump, signature.parameter_text[argument_index], callback)) continue;
+                AstNode *argument = calls[i].node->data.call.arguments[argument_index];
+                diagnostic_error_code_formatted(diagnostics, "E5067",
+                    argument->token.file ? argument->token.file : (calls[i].file ? calls[i].file : entry_file),
+                    argument->token.line, argument->token.column, 0,
+                    callback->declaration->data.function_declaration.name, argument_index + 1, calls[i].function_name,
+                    signature.parameter_text[argument_index]);
             }
         }
 
@@ -1735,6 +1961,8 @@ typedef struct {
     char **program_arguments;     /* run mode: everything after "--", passed to the program */
     int program_argument_count;
     size_t arena_limit;           /* 0 = let codegen use its 1 GB default */
+    const char **defines;         /* --define=NAME=VALUE overrides of #define constants */
+    int define_count;
     bool should_emit_c_only;
     bool is_check_only;
     bool is_directory_input;         /* check: input_file names a directory, checked as one module */
@@ -1840,6 +2068,11 @@ static ArgumentsStatus parse_arguments(int argc, char **argv, CompilerOptions *o
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
             options->arena_limit = strtoull(argv[i] + 14, NULL, 10);
+            continue;
+        }
+        if (strncmp(argv[i], "--define=", 9) == 0) {
+            options->defines = xrealloc((void *)options->defines, sizeof(const char *) * (size_t)(options->define_count + 1));
+            options->defines[options->define_count++] = argv[i] + 9;
             continue;
         }
         if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
@@ -2016,6 +2249,18 @@ int main(int argc, char **argv) {
     Parser *parser = parser_create(arena, lexer, options.input_file, diagnostics);
     AstNode *program = parser_parse_program(parser);
 
+    if (diagnostic_has_errors(diagnostics)) {
+        diagnostic_print_all(diagnostics);
+        diagnostic_print_summary(diagnostics);
+        diagnostic_destroy(diagnostics);
+        arena_destroy(arena);
+        free(source);
+        return 1;
+    }
+
+    /* Apply -define: overrides to the entry file's #define constants before
+     * anything reads their values. */
+    defines_apply(arena, diagnostics, program, options.input_file, options.defines, options.define_count);
     if (diagnostic_has_errors(diagnostics)) {
         diagnostic_print_all(diagnostics);
         diagnostic_print_summary(diagnostics);

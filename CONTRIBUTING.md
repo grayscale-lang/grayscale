@@ -283,7 +283,7 @@ type, all of the following are **required** before your PR is ready:
       signature: return type, argument count and types, and fallibility
 - [ ] **Codegen** — `grayc/src/codegen/codegen.c` emits the C call
 - [ ] **`STANDARD.md`** — add it to the module's table in the language spec
-- [ ] Run `./scripts/generate_stdlib_man.sh` and commit the regenerated file
+- [ ] Run `./grayc/grayc scripts/generate_stdlib_man.gray && ./generate_stdlib_man` and commit the regenerated file
 - [ ] `make build` compiles clean with zero warnings
 
 The typechecker and codegen internals move around; don't work from a list of
@@ -316,7 +316,7 @@ spread across more than 15 call sites.
    - `diagnostic_error_code_formatted()` — registry message template with `%s`/`%d` args
    - `diagnostic_error_message()` / `diagnostic_warning_message()` — custom message with a code
 
-3. **Regenerate `ERRORS.md`** by running `./scripts/generate_errors.sh` and committing the output.
+3. **Regenerate `ERRORS.md`** by running `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` and committing the output.
 
 4. **Add a fail test** in `integration-tests/fail/errors/` named `E####_short_description.gray` that triggers the new error and verifies the compiler rejects it.
 
@@ -325,7 +325,7 @@ spread across more than 15 call sites.
 Third-party C source under `grayc/src/vendor/` (currently SQLite) is tracked in
 `grayc/src/vendor/MANIFEST.toml`: pinned version, upstream URL, archive and
 per-file SHA256, SPDX license, local modifications, and the date its advisories
-were last reviewed. `scripts/check_vendor.sh` verifies every recorded hash and
+were last reviewed. `scripts/check_vendor.gray` verifies every recorded hash and
 prints OSV.dev advisories for each pinned version; a scheduled CI job runs it
 monthly so new CVEs against a pinned version surface.
 
@@ -337,7 +337,7 @@ To bump a vendored dependency:
    `archive_sha256`, `source_id` (if the upstream records one), `license` if it
    changed, `modifications`, and every hash in the `[dependencies.<name>.files]`
    table.
-3. Run `./scripts/check_vendor.sh`. Every file must report `ok`. Triage the
+3. Run `./grayc/grayc scripts/check_vendor.gray && ./check_vendor`. Every file must report `ok`. Triage the
    advisory list, then set `advisories_reviewed_through` to today's date.
 4. Commit the source and manifest change together: `chore(vendor): bump sqlite
    to <version>`.
@@ -346,7 +346,7 @@ Adding a **new** vendored dependency: add a `[dependencies.<name>]` block with
 the same fields, a `[dependencies.<name>.files]` table for every file you check
 in, and a `[dependencies.<name>.osv]` block (`name`, and `ecosystem` when OSV
 has one that tracks the upstream version — the Bitnami database covers many C
-libraries). `check_vendor.sh` fails if a tracked file under `grayc/src/vendor/`
+libraries). `check_vendor` fails if a tracked file under `grayc/src/vendor/`
 is not listed.
 
 ---
@@ -401,9 +401,9 @@ grayscale/
 | Add a new keyword/token | `grayc/src/lexer/lexer.c` + `grayc/src/lexer/token.h` |
 | Modify type checking | `grayc/src/typechecker/typechecker.c` |
 | Change code generation | `grayc/src/codegen/codegen.c` |
-| Add/modify error codes | `grayc/src/util/error_codes.h` + run `scripts/generate_errors.sh` |
-| Add/modify stdlib docs | `@man` block in header + run `scripts/generate_stdlib_man.sh` |
-| Add/modify builtin docs | `@man` block in header + run `scripts/generate_builtins_man.sh` |
+| Add/modify error codes | `grayc/src/util/error_codes.h` + run `scripts/generate_errors.gray` |
+| Add/modify stdlib docs | `@man` block in header + run `scripts/generate_stdlib_man.gray` |
+| Add/modify builtin docs | `@man` block in header + run `scripts/generate_builtins_man.gray` |
 | Change source formatting | `grayc/src/fmt/` + `cli/fmt.go` |
 | Fix module/import resolution | `grayc/src/parser/imports.c` + `grayc/src/parser/module_table.c` |
 | Scaffold a new project type | `cli/new.go` + `cli/templates/` |
@@ -522,8 +522,8 @@ For more details, see `TESTING.md`.
 
 - Add comments only for non-obvious logic — don't explain what the code already says
 - Add yourself to the `Contributors:` section of the header of any source file you change; add the section if it isn't there. GitHub handle at minimum, first and last name if you choose — one line.
-- When adding error codes, register them in `grayc/src/util/error_codes.h` (the canonical source). After adding or changing codes, run `scripts/generate_errors.sh` to regenerate `ERRORS.md` for the docs site.
-- When adding any user-facing stdlib function, builtin, constant, or type: add `@man` blocks to the header, update `STANDARD.md`, and run the appropriate generation script (`scripts/generate_stdlib_man.sh` or `scripts/generate_builtins_man.sh`). See [Adding a Stdlib Function, Builtin, Constant, or Type](#adding-a-stdlib-function-builtin-constant-or-type) for the full checklist.
+- When adding error codes, register them in `grayc/src/util/error_codes.h` (the canonical source). After adding or changing codes, run `scripts/generate_errors.gray` to regenerate `ERRORS.md` for the docs site.
+- When adding any user-facing stdlib function, builtin, constant, or type: add `@man` blocks to the header, update `STANDARD.md`, and run the appropriate generation script (`scripts/generate_stdlib_man.gray` or `scripts/generate_builtins_man.gray`). See [Adding a Stdlib Function, Builtin, Constant, or Type](#adding-a-stdlib-function-builtin-constant-or-type) for the full checklist.
 
 ---
 

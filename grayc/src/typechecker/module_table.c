@@ -529,8 +529,13 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
     }
 
     /* Leaf. Only type declarations name a type; a function or constant that
-     * happens to share the spelling must not capture it. */
-    DeclarationEntry *entry = module_resolve_written(table, scope, written);
+     * happens to share the spelling must not capture it. A leading '.' names
+     * the entry module's declaration, which no module qualifier can spell: it
+     * is how a type argument written in the entry module stays that type inside
+     * an imported module that declares a type of the same name. */
+    DeclarationEntry *entry = written[0] == '.'
+        ? module_scope_lookup(module_table_find(table, ""), written + 1)
+        : module_resolve_written(table, scope, written);
     if (!entry) return written;
     if (entry->kind != DECLARATION_STRUCT && entry->kind != DECLARATION_ENUM && entry->kind != DECLARATION_ALIAS)
         return written;

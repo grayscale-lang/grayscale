@@ -1,0 +1,9 @@
+import @math
+
+const E enum {
+    A = math.abs(-1)
+}
+
+do main() {
+    println("${cast(E.A, i64)}")
+}

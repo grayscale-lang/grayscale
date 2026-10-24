@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2053 - enum declared inside a function
+ */
+// expect-error: E2053
+
+do main() {
+    const Color enum {
+        RED
+        GREEN
+    }
+}

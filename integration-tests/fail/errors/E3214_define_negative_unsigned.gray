@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - a negative -define: value for an unsigned type
+ */
+
+// expect-error: E3214
+// define: COUNT=-1
+
+#define
+const COUNT u32 = 1
+
+do main() {
+    println(COUNT)
+}

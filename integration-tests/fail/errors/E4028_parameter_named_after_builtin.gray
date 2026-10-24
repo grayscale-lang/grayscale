@@ -1,0 +1,8 @@
+/*
+ * Error Test: E4028 - parameter named after a built-in function
+ */
+// expect-error: E4028
+
+do f(len i64) { }
+
+do main() { }

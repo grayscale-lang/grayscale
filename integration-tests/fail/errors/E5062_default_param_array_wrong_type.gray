@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5062 - default value is not assignable to an array parameter
+ * Expected: "default value for parameter 'values' has wrong type; expected [i64], got string" error
+ */
+// expect-error: E5062
+// expect-error-count: 1
+
+do total(values [i64] = "none") {
+    println(len(values))
+}
+
+do main() {
+    total()
+}

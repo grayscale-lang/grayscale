@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3193 - pointer to a const-declared variable passed to a
+ * stdlib function that writes through it
+ * Expected: E3193 error — atomic.add would modify the constant
+ */
+
+import @atomic
+
+const K i64 = 5
+
+do main() {
+    unsafe {
+        mut old = atomic.add(addr(K), 10)
+        println(old)
+    }
+}

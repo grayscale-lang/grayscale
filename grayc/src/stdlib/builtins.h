@@ -335,6 +335,50 @@ void gray_builtin_sleep_ns(int64_t nanoseconds);
  *@end
  */
 
+/*@man wrap_add
+ *@sig wrap_add(a T, b T) -> T
+ *@desc Adds two integers and wraps modulo 2^N instead of panicking on overflow, in two's complement for signed types. T is any integer type; a literal takes the other operand's type. Unsafe: requires an unsafe block or an unsafe function.
+ *@example
+ *   unsafe {
+ *       mut x u8 = 255
+ *       println(wrap_add(x, 1))
+ *   }
+ *@end
+ */
+
+/*@man wrap_sub
+ *@sig wrap_sub(a T, b T) -> T
+ *@desc Subtracts two integers and wraps modulo 2^N instead of panicking on overflow. Wrapping negation is wrap_sub(0, x). Unsafe: requires an unsafe block or an unsafe function.
+ *@example
+ *   unsafe {
+ *       mut x u32 = 0
+ *       println(wrap_sub(x, 1))
+ *   }
+ *@end
+ */
+
+/*@man wrap_mult
+ *@sig wrap_mult(a T, b T) -> T
+ *@desc Multiplies two integers and wraps modulo 2^N instead of panicking on overflow, as a hash or random number generator needs. Unsafe: requires an unsafe block or an unsafe function.
+ *@example
+ *   unsafe {
+ *       mut hash u64 = 14695981039346656037
+ *       hash = wrap_mult(hash bit_xor 97, 1099511628211)
+ *   }
+ *@end
+ */
+
+/*@man wrap_div
+ *@sig wrap_div(a T, b T) -> T
+ *@desc Divides two integers, returning the type's minimum for MIN / -1 instead of panicking. Division by zero still panics. Unsafe: requires an unsafe block or an unsafe function.
+ *@example
+ *   unsafe {
+ *       mut x i8 = -128
+ *       println(wrap_div(x, -1))
+ *   }
+ *@end
+ */
+
 /*@man copy
  *@sig copy(value T) -> T
  *@desc Creates a deep copy of any value. Mutations to the copy do not affect the original.

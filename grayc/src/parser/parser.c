@@ -69,6 +69,7 @@ typedef enum {
     ATTRIBUTE_DEPRECATED = 1u << 5,
     ATTRIBUTE_DOC        = 1u << 6,
     ATTRIBUTE_ERROR_CODE = 1u << 7,
+    ATTRIBUTE_DEFINE     = 1u << 8,
 } AttributeBit;
 
 /* Returns true when this attribute was already applied to the current
@@ -101,7 +102,33 @@ static AttributeBit attribute_bit_for_name(const char *name) {
     if (strcmp(name, "deprecated") == 0) return ATTRIBUTE_DEPRECATED;
     if (strcmp(name, "doc") == 0)        return ATTRIBUTE_DOC;
     if (strcmp(name, "error_code") == 0) return ATTRIBUTE_ERROR_CODE;
+    if (strcmp(name, "define") == 0)     return ATTRIBUTE_DEFINE;
     return (AttributeBit)0;
+}
+
+/* The types a #define constant may have: the primitives -define: can parse. */
+static bool is_define_type(const char *type_name) {
+    if (!type_name) return false;
+    static const char *const names[] = {
+        "i8", "i16", "i32", "i64", "i128", "i256", "u8", "u16", "u32", "u64", "u128", "u256",
+        "f32", "f64", "bool", "char", "string",
+    };
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (strcmp(type_name, names[i]) == 0) return true;
+    }
+    return false;
+}
+
+/* Marks `statement` as a #define constant, or emits E2094 when it is not a
+ * top-level const of a primitive type. */
+static void apply_define_attribute(Parser *parser, AstNode *statement, int line, int column) {
+    if (statement && statement->kind == NODE_VARIABLE_DECLARATION && parser->depth == 0 &&
+        !statement->data.variable_declaration.is_mutable &&
+        is_define_type(statement->data.variable_declaration.type_name)) {
+        statement->data.variable_declaration.is_define = true;
+        return;
+    }
+    emit_attribute_error(parser, arena_copy_string(parser->arena, "#define attribute can only be applied to a top-level const declaration of an integer, float, bool, char, or string type"), line, column);
 }
 
 /* Applies one attribute (identified by its bare name) to the declaration that
@@ -143,6 +170,8 @@ static void apply_named_attribute(Parser *parser, AstNode *statement,
             diagnostic_error_code(parser->diagnostics, "E3144",
                 parser->file, where.line, where.column, 0);
         }
+    } else if (strcmp(name, "define") == 0) {
+        apply_define_attribute(parser, statement, where.line, where.column);
     } else if (strcmp(name, "strict") == 0) {
         if (statement && statement->kind == NODE_WHEN_STATEMENT) {
             statement->data.when_statement.is_strict = true;
@@ -248,7 +277,7 @@ static void synchronize_parser(Parser *parser) {
         case TOKEN_RETURN: case TOKEN_IF: case TOKEN_FOR:
         case TOKEN_FOR_EACH: case TOKEN_AS_LONG_AS: case TOKEN_LOOP:
         case TOKEN_WHEN: case TOKEN_IMPORT: case TOKEN_USING:
-        case TOKEN_BREAK: case TOKEN_CONTINUE: case TOKEN_ALIAS:
+        case TOKEN_BREAK: case TOKEN_CONTINUE: case TOKEN_ALIAS: case TOKEN_DISTINCT:
         case TOKEN_RIGHT_BRACE:
         case TOKEN_IDENTIFIER:
             return;
@@ -428,7 +457,28 @@ static const char *parse_bracketed_type(Parser *parser) {
     return built_type_name;
 }
 
+static const char *parse_complex_type_unbounded(Parser *parser);
+
+/* `[T]` and `^T` count their own nesting; `map[K:V]` and `func(...)` nest
+ * through here. */
 static const char *parse_complex_type(Parser *parser) {
+    bool nests_through_wrapper = current_token_is(parser, TOKEN_IDENTIFIER) &&
+        ((strcmp(parser->current_token.literal, "map") == 0 && peek_token_is(parser, TOKEN_LEFT_BRACKET)) ||
+         strcmp(parser->current_token.literal, "func") == 0);
+    if (!nests_through_wrapper) return parse_complex_type_unbounded(parser);
+    if (++parser->type_nesting > 64) {
+        diagnostic_error_message(parser->diagnostics, "E2001",
+            arena_copy_string(parser->arena,"type nesting is too deep; maximum depth is 64"),
+            parser->file, parser->current_token.line, parser->current_token.column, 0);
+        parser->type_nesting--;
+        return NULL;
+    }
+    const char *parsed_type = parse_complex_type_unbounded(parser);
+    parser->type_nesting--;
+    return parsed_type;
+}
+
+static const char *parse_complex_type_unbounded(Parser *parser) {
     if (current_token_is(parser, TOKEN_GENERIC)) return reject_generic_type(parser);
     if (current_token_is(parser, TOKEN_LEFT_BRACKET)) {
         /* Array type [T] or fixed-size [T, N] for any element type T, or the
@@ -1787,6 +1837,7 @@ static int multi_variable_counter = 0;
 static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) {
     AstNode *node = ast_allocate(parser->arena, NODE_VARIABLE_DECLARATION, parser->current_token);
 
+    node->data.variable_declaration.is_bare = is_bare;
     if (is_bare) {
         node->data.variable_declaration.is_mutable = true;
         /* current_token is already the variable name — don't advance */
@@ -2744,11 +2795,12 @@ static AstNode *parse_import_statement(Parser *parser) {
                     arena_copy_string(parser->arena,"'extern' is reserved for C interop; rename the file or use an alias (e.g., 'import mymod \"./extern.gray\"')"),
                     parser->file, parser->current_token.line, parser->current_token.column, 0);
             }
-        } else if (current_token_is(parser, TOKEN_IDENTIFIER)) {
+        } else {
             char message[MESSAGE_BUFFER_SIZE];
             snprintf(message, sizeof(message),
                 "expected '@module' or '\"path\"' after 'import', got '%s'",
-                parser->current_token.literal);
+                parser->current_token.literal && parser->current_token.literal[0]
+                    ? parser->current_token.literal : token_display_name(parser->current_token));
             diagnostic_error_message(parser->diagnostics, "E6014", arena_copy_string(parser->arena, message),
                 parser->file, parser->current_token.line, parser->current_token.column, 0);
             return node;
@@ -2807,7 +2859,16 @@ static AstNode *parse_if_statement(Parser *parser) {
     if (peek_token_is(parser, TOKEN_OR_KEYWORD)) {
         next_token(parser); /* skip 'or' */
         /* 'or' acts like 'else if' */
+        /* One level is left for the next branch's condition. */
+        if (parser->depth + 1 >= MAX_PARSE_DEPTH) {
+            diagnostic_error_message(parser->diagnostics, "E2001",
+                arena_copy_string(parser->arena, "'or' chain is too long; it shares the nesting limit of 256"),
+                parser->file, parser->current_token.line, parser->current_token.column, 0);
+            return NULL;
+        }
+        parser->depth++;
         node->data.if_statement.alternative = parse_if_statement(parser);
+        parser->depth--;
     } else if (peek_token_is(parser, TOKEN_OTHERWISE)) {
         next_token(parser); /* skip 'otherwise'/'else' */
         node->data.if_statement.else_token = parser->current_token;
@@ -3660,6 +3721,59 @@ static bool is_assignment_operator(TokenType type) {
            type == TOKEN_ASTERISK_ASSIGN || type == TOKEN_SLASH_ASSIGN || type == TOKEN_PERCENT_ASSIGN;
 }
 
+/* True for `name operand <operator> ...` on one line where `name` is a near
+ * miss of a statement word: no declaration can continue with an operator, so
+ * this is a misspelled statement over an expression such as `retrun x + 1`. */
+static bool is_misspelled_statement_before_operand(Parser *parser) {
+    if (!current_token_is(parser, TOKEN_IDENTIFIER) || !peek_token_is(parser, TOKEN_IDENTIFIER) ||
+        parser->peek_token.line != parser->current_token.line ||
+        !diagnostic_suggest_statement_name(parser->current_token.literal)) return false;
+    ParserSnapshot snapshot;
+    parser_snapshot_save(parser, &snapshot);
+    next_token(parser);
+    TokenType following = parser->peek_token.type;
+    bool is_operator = parser->peek_token.line == parser->current_token.line &&
+        following != TOKEN_LESS_THAN && get_token_precedence(following) > PRECEDENCE_LOWEST &&
+        get_token_precedence(following) < PRECEDENCE_CALL;
+    parser_snapshot_restore(parser, &snapshot);
+    return is_operator;
+}
+
+/* `name: for ...` — a label before a loop. Current token is the name. */
+static AstNode *parse_labeled_statement(Parser *parser) {
+    Token label_token = parser->current_token;
+    next_token(parser);  /* ':' */
+    next_token(parser);  /* first token of the loop */
+    TokenType kind = parser->current_token.type;
+    bool is_loop = kind == TOKEN_FOR || kind == TOKEN_FOR_EACH || kind == TOKEN_AS_LONG_AS || kind == TOKEN_LOOP;
+    if (!is_loop) {
+        diagnostic_error_code_formatted(parser->diagnostics, "E2103", parser->file,
+            label_token.line, label_token.column, 0, label_token.literal);
+        return kind == TOKEN_LEFT_BRACE ? parse_block_statement(parser) : parse_statement(parser);
+    }
+    AstNode *loop = parse_statement(parser);
+    if (loop) loop->loop_label = label_token.literal;
+    return loop;
+}
+
+/* `break` / `continue`, with the label of the loop it leaves on the same line. */
+static AstNode *parse_loop_jump_statement(Parser *parser, NodeKind kind) {
+    AstNode *node = ast_allocate(parser->arena, kind, parser->current_token);
+    if (peek_token_is(parser, TOKEN_IDENTIFIER) && parser->peek_token.line == parser->current_token.line) {
+        next_token(parser);
+        node->data.loop_jump.label = parser->current_token.literal;
+    } else if (parser->peek_token.line == parser->current_token.line &&
+               !peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_END_OF_FILE) &&
+               !peek_token_is(parser, TOKEN_ILLEGAL)) {
+        char message[MESSAGE_BUFFER_SIZE];
+        snprintf(message, sizeof(message), "unexpected token '%s' after '%s'; only a loop label may follow",
+            token_display_name(parser->peek_token), kind == NODE_BREAK_STATEMENT ? "break" : "continue");
+        diagnostic_error_message(parser->diagnostics, "E2002", arena_copy_string(parser->arena, message),
+            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
+    }
+    return node;
+}
+
 static AstNode *parse_statement(Parser *parser) {
     switch (parser->current_token.type) {
     case TOKEN_PRIVATE: {
@@ -3737,13 +3851,20 @@ static AstNode *parse_statement(Parser *parser) {
     case TOKEN_LOOP:
         return parse_loop_statement(parser);
     case TOKEN_BREAK:
-        return ast_allocate(parser->arena, NODE_BREAK_STATEMENT, parser->current_token);
+        return parse_loop_jump_statement(parser, NODE_BREAK_STATEMENT);
     case TOKEN_CONTINUE:
-        return ast_allocate(parser->arena, NODE_CONTINUE_STATEMENT, parser->current_token);
+        return parse_loop_jump_statement(parser, NODE_CONTINUE_STATEMENT);
     case TOKEN_WHEN:
         return parse_when_statement(parser);
     case TOKEN_ALIAS:
         return parse_alias_declaration(parser);
+    case TOKEN_DISTINCT: {
+        /* `distinct alias Name = Type` */
+        if (!expect_peek_token(parser, TOKEN_ALIAS)) return NULL;
+        AstNode *declaration = parse_alias_declaration(parser);
+        if (declaration) declaration->data.alias_declaration.is_distinct = true;
+        return declaration;
+    }
     case TOKEN_STRICT: {
         /* #strict; applies to the next when statement */
         bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_STRICT, "#strict");
@@ -3803,6 +3924,15 @@ static AstNode *parse_statement(Parser *parser) {
         } else {
             emit_attribute_error(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), parser->current_token.line, parser->current_token.column);
         }
+        return statement;
+    }
+    case TOKEN_DEFINE: {
+        /* #define; applies to the next top-level const declaration */
+        Token site = parser->current_token;
+        bool is_duplicate = reject_duplicate_attribute(parser, ATTRIBUTE_DEFINE, "#define");
+        next_token(parser);
+        AstNode *statement = parse_statement(parser);
+        if (!is_duplicate) apply_define_attribute(parser, statement, site.line, site.column);
         return statement;
     }
     case TOKEN_TEST: {
@@ -3872,7 +4002,7 @@ static AstNode *parse_statement(Parser *parser) {
             if (current_token_is(parser, TOKEN_STRICT) || current_token_is(parser, TOKEN_FLAGS) ||
                 current_token_is(parser, TOKEN_DOC)    || current_token_is(parser, TOKEN_JSON_ATTRIBUTE) ||
                 current_token_is(parser, TOKEN_DISCARD)|| current_token_is(parser, TOKEN_DEPRECATED) ||
-                current_token_is(parser, TOKEN_TEST)) {
+                current_token_is(parser, TOKEN_TEST) || current_token_is(parser, TOKEN_DEFINE)) {
                 diagnostic_error_code_help(parser->diagnostics, "E2093",
                     parser->file, parser->current_token.line, parser->current_token.column, 0,
                     "write attributes without '#' inside '#[...]'");
@@ -4047,6 +4177,19 @@ static AstNode *parse_statement(Parser *parser) {
          * Whitespace before '[' disambiguates from index expressions (E2075).
          * The name and what follows it must share a line, so a bare
          * identifier cannot swallow the next statement's first token. */
+        if (current_token_is(parser, TOKEN_IDENTIFIER) && peek_token_is(parser, TOKEN_COLON)) {
+            return parse_labeled_statement(parser);
+        }
+        if (is_misspelled_statement_before_operand(parser)) {
+            /* `retrun x + 1`: the typechecker reports the misspelled name, so
+             * keep it as the statement and drop the rest of the line. */
+            AstNode *node = ast_allocate(parser->arena, NODE_EXPRESSION_STATEMENT, parser->current_token);
+            node->data.expression_statement.expression = parse_expression(parser, PRECEDENCE_LOWEST);
+            int statement_line = parser->current_token.line;
+            while (!peek_token_is(parser, TOKEN_END_OF_FILE) && parser->peek_token.line == statement_line)
+                next_token(parser);
+            return node;
+        }
         if (current_token_is(parser, TOKEN_IDENTIFIER) &&
             parser->peek_token.line == parser->current_token.line &&
             (peek_token_is(parser, TOKEN_IDENTIFIER) || peek_token_is(parser, TOKEN_COMMA) ||

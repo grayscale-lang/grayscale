@@ -1,0 +1,11 @@
+/*
+ * Warning Test: W2002 - for variable shadows an outer variable
+ */
+
+do main() {
+    mut i i64 = 1
+    for i in range(0, 2) {
+        println(i)
+    }
+    println(i)
+}

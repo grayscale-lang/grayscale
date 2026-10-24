@@ -1,0 +1,624 @@
+//
+// Grayscale Integration Test Runner
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+//
+// This script runs all integration tests and reports results.
+// - Tests in pass/ should execute successfully
+// - Tests in fail/ should fail with expected errors
+//
+// Usage (run from the repo root):
+//   grayc scripts/run_tests.gray && ./run_tests
+//
+
+import @io, @os, @strings, @arrays
+
+const TIMEOUT_SECONDS string = "30"  // per test — prevents infinite loops from hanging CI
+
+const RED string = "\x1b[0;31m"
+const GREEN string = "\x1b[0;32m"
+const BOLD string = "\x1b[1m"
+const NC string = "\x1b[0m"
+
+// Tally counts the results of the run.
+const Tally struct {
+    passed i64
+    failed i64
+}
+
+// Runner launches gray under a timeout. tool is the timeout program found on
+// PATH: GNU timeout, gtimeout, or perl's alarm as the fallback.
+const Runner struct {
+    tool string
+    gray string
+}
+
+// Markers are the directives a test pins in its marker comments:
+//
+//     // expect-error: E5008
+//     // expect-error-count: 1
+//     // expect-not: <text>
+//     // expect-contains: <text>
+//     // expect-build
+//     // define: COUNT=7
+const Markers struct {
+    expected_error string
+    expected_count string
+    forbidden string
+    required string
+    defines [string]
+    build bool
+}
+
+do pass(tally ^Tally, label string) {
+    println("  ${GREEN}PASS${NC}  ${label}")
+    tally^.passed = tally^.passed + 1
+}
+
+do fail(tally ^Tally, label string, detail string) {
+    println("  ${RED}FAIL${NC}  ${label} ${detail}")
+    tally^.failed = tally^.failed + 1
+}
+
+// find_runner picks the first timeout program that launches.
+do find_runner(gray string) -> Runner {
+    mut _, timeout_err = os.exec("timeout", {"--version"})
+    if timeout_err == nil {
+        return Runner{tool: "timeout", gray: gray}
+    }
+    mut _, gtimeout_err = os.exec("gtimeout", {"--version"})
+    if gtimeout_err == nil {
+        return Runner{tool: "gtimeout", gray: gray}
+    }
+    return Runner{tool: "perl", gray: gray}
+}
+
+// run_gray runs gray with args under the timeout and returns its output
+// (stdout followed by stderr) and whether it exited 0.
+do run_gray(runner Runner, args [string]) -> (string, bool) {
+    mut command [string] = {}
+    if runner.tool == "perl" {
+        arrays.append(command, "-e")
+        arrays.append(command, "alarm shift; exec @ARGV")
+    }
+    arrays.append(command, TIMEOUT_SECONDS)
+    arrays.append(command, runner.gray)
+    for_each arg in args {
+        arrays.append(command, arg)
+    }
+    mut result, err = os.exec(runner.tool, command)
+    if err != nil {
+        return "", false
+    }
+    return "${result.stdout}${result.stderr}", result.exit_code == 0
+}
+
+// directive_text returns the text after "// <name>:" on a line, and whether
+// the line is that directive.
+do directive_text(line string, name string) -> (string, bool) {
+    mut text string = strings.trim_left(line)
+    if !strings.starts_with(text, "//") {
+        return "", false
+    }
+    text = strings.trim_left(strings.slice(text, 2, len(text)))
+    mut prefix string = "${name}:"
+    if !strings.starts_with(text, prefix) {
+        return "", false
+    }
+    return strings.trim_left(strings.slice(text, len(prefix), len(text))), true
+}
+
+do is_digit(c char) -> bool {
+    return c >= '0' && c <= '9'
+}
+
+// leading_digits returns the run of digits at the start of text.
+do leading_digits(text string) -> string {
+    mut end i64 = 0
+    for end < len(text) && is_digit(strings.char_at(text, end)) {
+        end = end + 1
+    }
+    return strings.slice(text, 0, end)
+}
+
+// leading_code returns the E/P/W code at the start of text, or "".
+do leading_code(text string) -> string {
+    if len(text) == 0 {
+        return ""
+    }
+    mut kind char = strings.char_at(text, 0)
+    if kind != 'E' && kind != 'P' && kind != 'W' {
+        return ""
+    }
+    mut digits string = leading_digits(strings.slice(text, 1, len(text)))
+    if digits == "" {
+        return ""
+    }
+    return strings.slice(text, 0, 1 + len(digits))
+}
+
+// load_markers reads the marker comments of a test file. The first
+// expect-error, expect-error-count, expect-not and expect-contains directive
+// wins; every define directive counts.
+do load_markers(path string) -> Markers {
+    mut markers Markers = Markers{}
+    mut lines, read_err = io.read_lines(path)
+    if read_err != nil {
+        return markers
+    }
+    mut forbidden_set bool = false
+    mut required_set bool = false
+    for_each line in lines {
+        mut error_text, is_error = directive_text(line, "expect-error")
+        if is_error && markers.expected_error == "" {
+            markers.expected_error = leading_code(error_text)
+        }
+        mut count_text, is_count = directive_text(line, "expect-error-count")
+        if is_count && markers.expected_count == "" {
+            markers.expected_count = leading_digits(count_text)
+        }
+        mut not_text, is_not = directive_text(line, "expect-not")
+        if is_not && !forbidden_set {
+            markers.forbidden = not_text
+            forbidden_set = true
+        }
+        mut contains_text, is_contains = directive_text(line, "expect-contains")
+        if is_contains && !required_set {
+            markers.required = contains_text
+            required_set = true
+        }
+        mut define_text, is_define = directive_text(line, "define")
+        if is_define && define_text != "" {
+            arrays.append(markers.defines, "-define:${define_text}")
+        }
+
+        mut head string = strings.trim_left(line)
+        if strings.starts_with(head, "//") {
+            head = strings.trim_left(strings.slice(head, 2, len(head)))
+            if strings.starts_with(head, "expect-build") {
+                markers.build = true
+            }
+        }
+    }
+    return markers
+}
+
+// has_mangled_name reports whether the output quotes a module-mangled type
+// name: 'mod_Type'.
+do has_mangled_name(output string) -> bool {
+    mut i i64 = 0
+    for i < len(output) {
+        if strings.char_at(output, i) != '\'' {
+            i = i + 1
+            continue
+        }
+        mut j i64 = i + 1
+        if j < len(output) && strings.char_at(output, j) >= 'a' && strings.char_at(output, j) <= 'z' {
+            j = j + 1
+            for j < len(output) && is_alnum(strings.char_at(output, j)) {
+                j = j + 1
+            }
+            if j + 1 < len(output) && strings.char_at(output, j) == '_' &&
+                    strings.char_at(output, j + 1) >= 'A' && strings.char_at(output, j + 1) <= 'Z' {
+                j = j + 2
+                for j < len(output) && is_alnum(strings.char_at(output, j)) {
+                    j = j + 1
+                }
+                if j < len(output) && strings.char_at(output, j) == '\'' {
+                    return true
+                }
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+do is_alnum(c char) -> bool {
+    return is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// has_diagnostic reports whether the output carries a Grayscale diagnostic:
+// (error|warning|panic)[E/P/W digits].
+do has_diagnostic(output string) -> bool {
+    for_each kind in {"error[", "warning[", "panic["} {
+        mut rest string = output
+        mut at i64 = strings.index_of(rest, kind)
+        for at != -1 {
+            rest = strings.slice(rest, at + len(kind), len(rest))
+            mut code string = leading_code(rest)
+            if code != "" && strings.starts_with(strings.slice(rest, len(code), len(rest)), "]") {
+                return true
+            }
+            at = strings.index_of(rest, kind)
+        }
+    }
+    return false
+}
+
+// count_error_lines counts the lines that start a diagnostic: "error[".
+do count_error_lines(output string) -> i64 {
+    mut count i64 = 0
+    for_each line in strings.split(output, "\n") {
+        if strings.starts_with(line, "error[") {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+// has_source_location reports whether any line ends in "--> <file>:<line>:<col>".
+do has_source_location(output string) -> bool {
+    for_each line in strings.split(output, "\n") {
+        mut arrow i64 = strings.index_of(line, "--> ")
+        if arrow == -1 {
+            continue
+        }
+        mut rest string = strings.slice(line, arrow + 4, len(line))
+        mut parts [string] = strings.split(rest, ":")
+        if len(parts) < 3 {
+            continue
+        }
+        mut column string = parts[len(parts) - 1]
+        mut row string = parts[len(parts) - 2]
+        if column != "" && leading_digits(column) == column && row != "" && leading_digits(row) == row {
+            return true
+        }
+    }
+    return false
+}
+
+// output_problem returns why the output violates the expect-not and
+// expect-contains markers, or "".
+do output_problem(output string, markers Markers) -> string {
+    if markers.forbidden != "" && strings.contains(output, markers.forbidden) {
+        return "(output contains '${markers.forbidden}')"
+    }
+    if markers.required != "" && !strings.contains(output, markers.required) {
+        return "(output missing '${markers.required}')"
+    }
+    return ""
+}
+
+// run_fail_test runs a test that must fail. A test may pin the exact
+// diagnostic with marker comments in marker_file.
+//
+// With expect-error the file runs through 'check' and must produce that code.
+// Without it the file only has to fail, but the failure must still carry a
+// Grayscale diagnostic — a bare compile failure is a C compiler error the
+// typechecker let through, not the rejection the test is there to pin.
+// expect-error-count additionally pins how many errors the file produces, so
+// one mistake reported twice does not slip by.
+// expect-not: <text> — the run's diagnostics must not contain <text>. The
+// mangled-name guard catches a module-mangled type name (mod_Type) on its
+// shape alone; a mangled function name, or a warning code that must not
+// appear, has no such shape and is named here instead.
+// expect-contains: <text> — the run's output must contain <text>. Used to pin
+// that a runtime panic carries a source location (expect-contains: .gray:).
+do run_fail_test(tally ^Tally, runner Runner, label string, entry string, marker_file string) {
+    mut markers Markers = load_markers(marker_file)
+
+    if markers.expected_error != "" {
+        // expect-build runs the file as a build, for a diagnostic that only a
+        // build reports (check requires no main(), for one).
+        mut args [string] = {"check", entry}
+        if markers.build {
+            args = {"build", entry}
+        }
+        for_each define in markers.defines {
+            arrays.append(args, define)
+        }
+        mut output, _ = run_gray(runner, args)
+        mut actual_count i64 = count_error_lines(output)
+        if markers.expected_count != "" && "${actual_count}" != markers.expected_count {
+            fail(tally, label, "(expected ${markers.expected_count} error(s), got ${actual_count})")
+        } or strings.contains(output, "error[${markers.expected_error}]") && !has_mangled_name(output) {
+            mut problem string = output_problem(output, markers)
+            if problem != "" {
+                fail(tally, label, problem)
+            } otherwise {
+                pass(tally, label)
+            }
+        } otherwise {
+            fail(tally, label, "(expected ${markers.expected_error})")
+        }
+        return
+    }
+
+    mut args [string] = {entry}
+    for_each define in markers.defines {
+        arrays.append(args, define)
+    }
+    mut output, succeeded = run_gray(runner, args)
+    if succeeded {
+        fail(tally, label, "(expected error, got success)")
+    } or !has_diagnostic(output) {
+        // The compile failed with no Grayscale diagnostic, which means the
+        // typechecker accepted the program and the C compiler rejected it.
+        // Without this the branch passed on any failure at all, so a leaked
+        // C error read as the test doing its job.
+        fail(tally, label, "(no grayscale diagnostic; C compiler error leaked)")
+    } otherwise {
+        mut problem string = output_problem(output, markers)
+        if problem != "" {
+            fail(tally, label, problem)
+        } otherwise {
+            pass(tally, label)
+        }
+    }
+}
+
+// run_pass_test runs a test that must exit 0 without reporting failed
+// assertions.
+do run_pass_test(tally ^Tally, runner Runner, label string, entry string, defines [string]) {
+    mut args [string] = {entry}
+    for_each define in defines {
+        arrays.append(args, define)
+    }
+    mut output, succeeded = run_gray(runner, args)
+    if !succeeded {
+        fail(tally, label, "(execution error)")
+    } or strings.contains(output, "SOME TESTS FAILED") {
+        fail(tally, label, "(assertions failed)")
+    } otherwise {
+        pass(tally, label)
+    }
+}
+
+// sorted_entries returns the sorted entries of dir, or none if it is missing.
+do sorted_entries(dir string) -> [string] {
+    mut entries, err = io.list_dir(dir)
+    if err != nil {
+        return {}
+    }
+    arrays.sort_asc(entries)
+    return entries
+}
+
+// test_files returns the sorted paths of the .gray files directly in dir.
+do test_files(dir string) -> [string] {
+    mut files [string] = {}
+    for_each name in sorted_entries(dir) {
+        if strings.ends_with(name, ".gray") && io.is_file("${dir}/${name}") {
+            arrays.append(files, "${dir}/${name}")
+        }
+    }
+    return files
+}
+
+// sub_directories returns the sorted paths of the directories directly in dir.
+do sub_directories(dir string) -> [string] {
+    mut dirs [string] = {}
+    for_each name in sorted_entries(dir) {
+        if io.is_directory("${dir}/${name}") {
+            arrays.append(dirs, "${dir}/${name}")
+        }
+    }
+    return dirs
+}
+
+// base_name returns the last path component, minus the .gray extension.
+do base_name(path string) -> string {
+    mut parts [string] = strings.split(path, "/")
+    return strings.remove_suffix(parts[len(parts) - 1], ".gray")
+}
+
+// find_main returns the first main.gray under dir, or "".
+do find_main(dir string) -> string {
+    mut found, _ = io.walk(dir)
+    arrays.sort_asc(found)
+    for_each path in found {
+        if path == "main.gray" || strings.ends_with(path, "/main.gray") {
+            if strings.starts_with(path, dir) {
+                return path
+            }
+            return "${dir}/${path}"
+        }
+    }
+    return ""
+}
+
+// find_marker_file returns the first file under dir that holds an
+// expect-error marker, or "".
+do find_marker_file(dir string) -> string {
+    mut found, _ = io.walk(dir)
+    arrays.sort_asc(found)
+    for_each path in found {
+        mut full string = path
+        if !strings.starts_with(path, dir) {
+            full = "${dir}/${path}"
+        }
+        if !io.is_file(full) {
+            continue
+        }
+        mut content, read_err = io.read_file(full)
+        if read_err == nil && strings.contains(content, "expect-error:") {
+            return full
+        }
+    }
+    return ""
+}
+
+// run_dir_tests runs every .gray file in dir as a pass test labelled prefix/name.
+do run_dir_tests(tally ^Tally, runner Runner, dir string, prefix string, with_defines bool) {
+    for_each file in test_files(dir) {
+        mut defines [string] = {}
+        if with_defines {
+            defines = load_markers(file).defines
+        }
+        run_pass_test(tally, runner, "${prefix}/${base_name(file)}", file, defines)
+    }
+}
+
+// run_main_dir_tests runs the main.gray of every subdirectory of dir as a pass
+// test labelled prefix/name. check_forbidden pins the expect-not marker.
+do run_main_dir_tests(tally ^Tally, runner Runner, dir string, prefix string, check_forbidden bool) {
+    for_each sub in sub_directories(dir) {
+        mut main_file string = find_main(sub)
+        if main_file == "" {
+            continue
+        }
+        mut label string = "${prefix}/${base_name(sub)}"
+        if check_forbidden {
+            mut output, succeeded = run_gray(runner, {main_file})
+            mut forbidden string = load_markers(main_file).forbidden
+            if !succeeded {
+                fail(tally, label, "(execution error)")
+            } or forbidden != "" && strings.contains(output, forbidden) {
+                fail(tally, label, "(output contains '${forbidden}')")
+            } otherwise {
+                pass(tally, label)
+            }
+        } otherwise {
+            run_pass_test(tally, runner, label, main_file, {})
+        }
+    }
+}
+
+// build runs a command, printing its output, and exits 1 with message if it fails.
+do build_or_exit(command string, args [string], failure string) {
+    mut result, err = os.exec(command, args)
+    if err != nil {
+        println(failure)
+        exit(1)
+    }
+    print(result.stdout)
+    print(result.stderr)
+    if result.exit_code != 0 {
+        println(failure)
+        exit(1)
+    }
+}
+
+do main() {
+    mut root string = os.current_dir()
+    mut test_dir string = "${root}/integration-tests"
+    mut gray string = "${root}/gray"
+
+    // Always rebuild to ensure we test current code
+    println("Building grayc...")
+    build_or_exit("make", {"-C", "grayc", "build"}, "grayc build failed")
+    println("Building gray CLI...")
+    build_or_exit("go", {"build", "-o", "gray", "./cli"}, "gray build failed")
+
+    // Point gray at the local grayc binary
+    os.set_env("GRAY_COMPILER_PATH", "${root}/grayc/grayc")
+
+    println("")
+
+    mut tally Tally = Tally{}
+    mut runner Runner = find_runner(gray)
+
+    println("========================================")
+    println("  Grayscale Integration Test Suite")
+    println("========================================")
+    println("")
+
+    // Run pass tests (should succeed)
+    println("${BOLD}PASS tests:${NC}")
+    run_dir_tests(addr(tally), runner, "${test_dir}/pass/core", "core", true)
+    run_dir_tests(addr(tally), runner, "${test_dir}/pass/stdlib", "stdlib", true)
+    run_main_dir_tests(addr(tally), runner, "${test_dir}/pass/multi-file", "multi-file", true)
+
+    // new template tests — single files, then multi-file
+    if io.is_directory("${test_dir}/pass/new") {
+        println("")
+        println("${BOLD}NEW template tests:${NC}")
+        run_dir_tests(addr(tally), runner, "${test_dir}/pass/new", "new", false)
+        run_main_dir_tests(addr(tally), runner, "${test_dir}/pass/new", "new", false)
+    }
+
+    // Stress tests
+    if io.is_directory("${test_dir}/pass/stress/core") {
+        println("")
+        println("${BOLD}STRESS tests:${NC}")
+        run_dir_tests(addr(tally), runner, "${test_dir}/pass/stress/core", "stress/core", false)
+    }
+    if io.is_directory("${test_dir}/pass/stress/stdlib") {
+        run_dir_tests(addr(tally), runner, "${test_dir}/pass/stress/stdlib", "stress/stdlib", false)
+    }
+
+    // Warning tests
+    if io.is_directory("${test_dir}/pass/warnings") {
+        println("")
+        println("${BOLD}WARNING tests:${NC}")
+        for_each file in test_files("${test_dir}/pass/warnings") {
+            mut test_name string = base_name(file)
+            mut expected_warning string = ""
+            if strings.starts_with(test_name, "W") {
+                expected_warning = leading_code(test_name)
+            }
+            mut output, _ = run_gray(runner, {"check", file})
+            if strings.contains(output, "warning[${expected_warning}]") && has_source_location(output) {
+                pass(addr(tally), "warnings/${test_name}")
+            } otherwise {
+                fail(addr(tally), "warnings/${test_name}", "(expected ${expected_warning})")
+            }
+        }
+    }
+
+    // Directory check tests: gray check on a directory, and on dir/... for the
+    // directory and each subdirectory as their own modules, must both pass.
+    for_each sub in sub_directories("${test_dir}/pass/check-directory") {
+        mut _, directory_ok = run_gray(runner, {"check", "${sub}/"})
+        mut _, tree_ok = run_gray(runner, {"check", "${sub}/..."})
+        if directory_ok && tree_ok {
+            pass(addr(tally), "check-directory/${base_name(sub)}")
+        } otherwise {
+            fail(addr(tally), "check-directory/${base_name(sub)}", "(expected no errors)")
+        }
+    }
+
+    println("")
+    println("${BOLD}FAIL tests (expecting errors):${NC}")
+
+    // Error tests (should fail). See run_fail_test for the marker comments a
+    // test can use to pin the exact diagnostic and how many errors it produces.
+    for_each file in test_files("${test_dir}/fail/errors") {
+        run_fail_test(addr(tally), runner, "errors/${base_name(file)}", file, file)
+    }
+
+    // Cleanup any .graydb files
+    for_each name in sorted_entries(".") {
+        if strings.ends_with(name, ".graydb") && io.is_file(name) {
+            mut _, _ = io.delete_file(name)
+        }
+    }
+
+    // Multi-file error tests (single files)
+    for_each file in test_files("${test_dir}/fail/multi-file") {
+        run_fail_test(addr(tally), runner, "multi-file/${base_name(file)}", file, file)
+    }
+
+    // Multi-file error tests (directories with main.gray)
+    for_each sub in sub_directories("${test_dir}/fail/multi-file") {
+        mut main_file string = find_main(sub)
+        if main_file != "" {
+            run_fail_test(addr(tally), runner, "multi-file/${base_name(sub)}", main_file, main_file)
+        }
+    }
+
+    // Directory check error tests (marker in any file of the directory)
+    for_each sub in sub_directories("${test_dir}/fail/check-directory") {
+        run_fail_test(addr(tally), runner, "check-directory/${base_name(sub)}", sub, find_marker_file(sub))
+    }
+
+    // Summary
+    println("")
+    println("========================================")
+    println("  Test Summary")
+    println("========================================")
+    println("")
+    println("  ${GREEN}Passed:${NC}  ${tally.passed}")
+    println("  ${RED}Failed:${NC}  ${tally.failed}")
+    println("  Total:   ${tally.passed + tally.failed}")
+    println("")
+
+    if tally.failed == 0 {
+        println("  ${BOLD}${GREEN}ALL TESTS PASSED!${NC}")
+        exit(0)
+    }
+    println("  ${BOLD}${RED}SOME TESTS FAILED${NC}")
+    exit(1)
+}

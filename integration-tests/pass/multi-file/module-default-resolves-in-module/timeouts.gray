@@ -1,0 +1,7 @@
+const BASE i64 = 5
+
+do default_timeout() -> i64 { return 30 }
+
+do wait(seconds i64 = default_timeout(), extra i64 = BASE + 1) -> i64 {
+    return seconds + extra
+}

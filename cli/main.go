@@ -36,6 +36,13 @@ const asciiBanner = "" +
 	"Simple to write. Safe to run.\n"
 
 func main() {
+	args, defines, err := extractDefineFlags(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defineOverrides = defines
+	rootCmd.SetArgs(args)
 	if err := rootCmd.Execute(); err != nil {
 		var exitErr *ExitError
 		if errors.As(err, &exitErr) {

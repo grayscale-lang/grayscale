@@ -1,0 +1,88 @@
+/*
+ * A distinct alias of every primitive kind: literal assignment, same-type
+ * arithmetic and comparison, and cast to and from the underlying type.
+ */
+
+distinct alias Small = i8
+distinct alias Medium = i32
+distinct alias Large = i64
+distinct alias Huge = i128
+distinct alias Byte = u8
+distinct alias Count = u64
+distinct alias Giant = u256
+distinct alias Ratio = f32
+distinct alias Meters = f64
+distinct alias Enabled = bool
+distinct alias Letter = char
+distinct alias Name = string
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut small Small = -100
+    small = small + 50
+    if small == -50 { passed += 1 } otherwise { failed += 1 }
+    if cast(small, i8) == -50 { passed += 1 } otherwise { failed += 1 }
+
+    mut medium Medium = 40000
+    medium *= 2
+    if medium == 80000 { passed += 1 } otherwise { failed += 1 }
+
+    mut large Large = 1
+    large = large - 3
+    if large < 0 { passed += 1 } otherwise { failed += 1 }
+    if cast(large, i64) == -2 { passed += 1 } otherwise { failed += 1 }
+    mut from_plain i64 = 9
+    large = cast(from_plain, Large)
+    if large == 9 { passed += 1 } otherwise { failed += 1 }
+
+    mut huge Huge = 170141183460469231731687303715884105727
+    huge = huge - 1
+    if huge == 170141183460469231731687303715884105726 { passed += 1 } otherwise { failed += 1 }
+
+    mut byte Byte = 200
+    byte = byte + 55
+    if byte == 255 { passed += 1 } otherwise { failed += 1 }
+
+    mut count Count = 18446744073709551615
+    count = count - 1
+    if count == 18446744073709551614 { passed += 1 } otherwise { failed += 1 }
+
+    mut giant Giant = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    giant = giant - 1
+    if giant > 0 { passed += 1 } otherwise { failed += 1 }
+
+    mut ratio Ratio = 1.5
+    ratio = ratio * 2.0
+    if ratio == 3.0 { passed += 1 } otherwise { failed += 1 }
+
+    mut meters Meters = 2.5
+    meters = meters + meters
+    if meters == 5.0 { passed += 1 } otherwise { failed += 1 }
+    if cast(meters, f64) == 5.0 { passed += 1 } otherwise { failed += 1 }
+
+    mut enabled Enabled = true
+    enabled = !enabled
+    if enabled == false { passed += 1 } otherwise { failed += 1 }
+    mut both Enabled = enabled || true
+    if both { passed += 1 } otherwise { failed += 1 }
+
+    mut letter Letter = 'a'
+    if letter < 'b' { passed += 1 } otherwise { failed += 1 }
+    mut as_char char = cast(letter, char)
+    if as_char == 'a' { passed += 1 } otherwise { failed += 1 }
+
+    mut name Name = "ada"
+    name = name + "!"
+    if name == "ada!" { passed += 1 } otherwise { failed += 1 }
+    if len(name) == 4 { passed += 1 } otherwise { failed += 1 }
+    mut plain string = cast(name, string)
+    if plain == "ada!" { passed += 1 } otherwise { failed += 1 }
+    mut again Name = cast(plain, Name)
+    if again == name { passed += 1 } otherwise { failed += 1 }
+
+    println("distinct kinds: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -61,7 +61,9 @@ jobs:
         run: make test-integration
 
       - name: Check for stray binaries
-        run: ./scripts/check_stray_binaries.sh
+        run: |
+          ./grayc/grayc scripts/check_stray_binaries.gray -o "$RUNNER_TEMP/check_stray_binaries"
+          "$RUNNER_TEMP/check_stray_binaries"
 
       - name: Run Grayscale UBSan tests
         run: make test-ubsan

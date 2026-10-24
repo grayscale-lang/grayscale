@@ -1,0 +1,25 @@
+/*
+ * Error Test: E3215 - distinct alias: distinct struct
+ */
+
+// expect-error: E3215
+// expect-error-count: 1
+
+distinct alias UserId = i64
+distinct alias OrderId = i64
+distinct alias Score = f64
+distinct alias Flag = bool
+distinct alias Letter = char
+distinct alias Label = string
+distinct alias Tiny = u8
+distinct alias Huge = i128
+distinct alias Wide = u256
+const Pt struct {
+    id UserId
+    tag Label
+}
+const P struct { x i64 }
+distinct alias Q = P
+do main() {
+    println(1)
+}

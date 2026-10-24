@@ -1,0 +1,44 @@
+/*
+ * Test: io.walk visits entries in sorted order and does not descend into symlinked directories
+ */
+
+import @io
+import @os
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut _, _ = io.make_dir_all("/tmp/gray_walk_sorted/root/b")
+    mut _, _ = io.make_dir_all("/tmp/gray_walk_sorted/root/a")
+    mut _, _ = io.write_file("/tmp/gray_walk_sorted/root/c.txt", "c")
+    mut _, _ = io.write_file("/tmp/gray_walk_sorted/root/b/z.txt", "z")
+    mut _, _ = io.write_file("/tmp/gray_walk_sorted/root/b/y.txt", "y")
+    mut _, _ = io.make_dir_all("/tmp/gray_walk_sorted/outside")
+    mut _, _ = io.write_file("/tmp/gray_walk_sorted/outside/secret.txt", "s")
+    mut _, _ = os.exec("ln", {"-s", "/tmp/gray_walk_sorted/outside", "/tmp/gray_walk_sorted/root/a/out"})
+    mut _, _ = os.exec("ln", {"-s", "/tmp/gray_walk_sorted/root", "/tmp/gray_walk_sorted/root/b/loop"})
+
+    mut entries, _ = io.walk("/tmp/gray_walk_sorted/root")
+    mut expected = {"a", "a/out", "b", "b/loop", "b/y.txt", "b/z.txt", "c.txt"}
+
+    if len(entries) != len(expected) {
+        failed += 1
+        println("  [FAIL] expected ${len(expected)} entries, got ${len(entries)}")
+    } otherwise {
+        for i in range(0, len(expected)) {
+            if entries[i] == expected[i] {
+                passed += 1
+            } otherwise {
+                failed += 1
+                println("  [FAIL] entry ${i}: expected ${expected[i]}, got ${entries[i]}")
+            }
+        }
+    }
+
+    mut _, _ = io.remove_dir_all("/tmp/gray_walk_sorted")
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        exit(1)
+    }
+}

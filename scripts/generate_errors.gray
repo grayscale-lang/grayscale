@@ -4,7 +4,7 @@
 // Reads error codes from grayc/src/util/error_codes.h and produces
 // ERRORS.md
 //
-// Usage: grayscale scripts/generate_errors.gray
+// Usage: grayc scripts/generate_errors.gray && ./generate_errors
 //
 // Copyright (c) 2025-Present Marshall A Burns
 // Licensed under the MIT License. See LICENSE for details.
@@ -85,7 +85,7 @@ do main() {
         arrays.append(out, "# Grayscale Error Code Reference")
         arrays.append(out, "")
         arrays.append(out, "> Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.")
-        arrays.append(out, "> Run `./scripts/generate_errors.gray` to regenerate.")
+        arrays.append(out, "> Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.")
         arrays.append(out, "")
         arrays.append(out, "**Total: ${total} codes** (${error_count} errors, ${warning_count} warnings, ${panic_count} panics)")
         arrays.append(out, "")

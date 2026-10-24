@@ -1,0 +1,8 @@
+/*
+ * Error Test: E6014 - import followed by a bare identifier
+ */
+// expect-error: E6014
+
+import foo
+
+do main() { }

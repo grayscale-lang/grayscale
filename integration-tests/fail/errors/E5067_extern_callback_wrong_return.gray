@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5067 - callback returns nothing where the C function pointer
+ * type returns an int
+ * Expected: E5067 error — qsort calls the comparator expecting an int
+ */
+
+extern import "stdlib.h"
+
+do compare(a ^i64, b ^i64) {
+    println("compared")
+}
+
+do main() {
+    unsafe {
+        mut buf ^i64 = extern.malloc(24)
+        extern.memset(buf, 0, 24)
+        extern.qsort(buf, 3, 8, ()compare)
+        extern.free(buf)
+    }
+}

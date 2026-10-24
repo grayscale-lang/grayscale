@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5065 - wrap_add outside an unsafe block
+ */
+// expect-error: E5065
+// expect-error-count: 1
+
+do main() {
+    mut a u8 = 255
+    println(wrap_add(a, 1))
+}

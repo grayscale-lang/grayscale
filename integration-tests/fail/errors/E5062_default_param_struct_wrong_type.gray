@@ -1,0 +1,19 @@
+/*
+ * Error Test: E5062 - default value is not assignable to a struct parameter
+ * Expected: "default value for parameter 'point' has wrong type; expected Point, got i64" error
+ */
+// expect-error: E5062
+// expect-error-count: 1
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do show(point Point = 1) {
+    println(point.x)
+}
+
+do main() {
+    show()
+}

@@ -1,0 +1,15 @@
+import @atomic
+
+do via_atomic(p ^i64) {
+    atomic.store(p, 9)
+}
+
+do via_via(p ^i64) {
+    via_atomic(p)
+}
+
+do main() {
+    const c i64 = 1
+    via_via(addr(c))
+    println("${c}")
+}

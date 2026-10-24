@@ -1,0 +1,10 @@
+/*
+ * Panic Test: P0169 - channels.send on a zero-value channel
+ */
+
+import @channels
+
+do main() {
+    mut c channels.Channel
+    channels.send(c, 1)
+}

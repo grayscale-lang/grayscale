@@ -1,0 +1,10 @@
+/*
+ * Error Test: E2053 - struct declared inside a function
+ */
+// expect-error: E2053
+
+do main() {
+    const Point struct {
+        x i64
+    }
+}

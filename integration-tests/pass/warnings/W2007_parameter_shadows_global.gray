@@ -1,0 +1,14 @@
+/*
+ * Warning Test: W2007 - function parameter shadows a global variable
+ */
+
+mut g i64 = 1
+
+do param(g i64) {
+    println(g)
+}
+
+do main() {
+    param(2)
+    println(g)
+}

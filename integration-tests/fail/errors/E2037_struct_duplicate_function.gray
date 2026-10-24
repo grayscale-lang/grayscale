@@ -1,0 +1,20 @@
+/*
+ * Error Test: E2037 - struct declares two functions with the same name
+ * Expected: "duplicate function 'bump' in struct 'Counter'" error
+ */
+// expect-error: E2037
+// expect-error-count: 1
+
+const Counter struct {
+    value i64
+
+    do bump() {
+    }
+
+    do bump(amount i64) {
+    }
+}
+
+do main() {
+    println("unused")
+}

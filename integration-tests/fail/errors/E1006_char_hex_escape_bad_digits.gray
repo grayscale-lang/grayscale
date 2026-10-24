@@ -1,0 +1,9 @@
+/*
+ * Error Test: E1006 - hex escape with bad digits in a char literal
+ */
+// expect-error: E1006
+
+do main() {
+    mut c char = '\xZZ'
+    println(c)
+}

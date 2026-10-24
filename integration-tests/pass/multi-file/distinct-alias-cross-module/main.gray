@@ -1,0 +1,23 @@
+import "./ids"
+
+distinct alias UserId = i64
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut imported ids.UserId = ids.make_user(4)
+    if ids.label(imported) == "user 4" { passed += 1 } otherwise { failed += 1 }
+    if imported + 5 == 9 { passed += 1 } otherwise { failed += 1 }
+
+    mut account ids.Account = ids.Account{id: imported}
+    if account.id == imported { passed += 1 } otherwise { failed += 1 }
+
+    mut local UserId = 4
+    if local == 4 { passed += 1 } otherwise { failed += 1 }
+    if cast(local, i64) == cast(imported, i64) { passed += 1 } otherwise { failed += 1 }
+
+    println("distinct cross-module: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

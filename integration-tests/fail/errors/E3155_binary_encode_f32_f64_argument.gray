@@ -1,0 +1,6 @@
+import @binary
+
+do main() {
+    mut v f64 = 1e300
+    println(binary.encode_f32_be(v))
+}

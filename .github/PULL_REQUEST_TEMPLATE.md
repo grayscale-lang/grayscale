@@ -36,4 +36,4 @@ None.
 - [ ] Typechecker wired: signature, argument types, fallibility
 - [ ] Codegen wired: emits the C call
 - [ ] `STANDARD.md` updated
-- [ ] `./scripts/generate_stdlib_man.sh` run and output committed
+- [ ] `./grayc/grayc scripts/generate_stdlib_man.gray && ./generate_stdlib_man` run and output committed

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5035 - function named after a stdlib module
+ */
+// expect-error: E5035
+
+do math() { }
+
+do main() { }

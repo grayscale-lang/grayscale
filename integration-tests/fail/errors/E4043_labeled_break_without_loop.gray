@@ -1,0 +1,8 @@
+/*
+ * Error Test: E4043 - a labeled break in a function with no loop
+ */
+// expect-error: E4043
+
+do main() {
+    break outer
+}

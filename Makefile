@@ -300,7 +300,7 @@ test: build
 ifdef WINDOWS
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -NoBuild
 else
-	@bash scripts/run_tests.sh
+	@./grayc/grayc scripts/run_tests.gray -o run_tests && { ./run_tests; status=$$?; rm -f run_tests; exit $$status; }
 endif
 	@"$(MAKE)" test-ubsan
 ifeq ($(shell uname -s),Linux)
@@ -320,7 +320,7 @@ test-integration: build
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -NoBuild
 else
 test-integration: build
-	@bash scripts/run_tests.sh
+	@./grayc/grayc scripts/run_tests.gray -o run_tests && { ./run_tests; status=$$?; rm -f run_tests; exit $$status; }
 endif
 
 test-go: stubs

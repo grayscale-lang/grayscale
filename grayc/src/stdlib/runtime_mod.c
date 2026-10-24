@@ -46,6 +46,14 @@ int64_t gray_runtime_call_depth(void) {
     return (int64_t)gray_call_depth;
 }
 
+GrayString gray_runtime_caller_name(void) {
+    return gray_string_lit(gray_call_depth > 1 ? gray_call_names[gray_call_depth - 1] : "");
+}
+
+GrayString gray_runtime_current_name(void) {
+    return gray_string_lit(gray_call_depth > 0 ? gray_call_names[gray_call_depth] : "");
+}
+
 int64_t gray_runtime_call_limit(void) {
     return GRAY_MAX_CALL_DEPTH;
 }

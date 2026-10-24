@@ -1,0 +1,8 @@
+// expect-error: E4041
+
+do main() {
+    mut x i64 = 1
+    for k in range(0, 2) {
+        printn("a")
+    }
+}

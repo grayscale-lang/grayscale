@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3038 - void used as a constant type
+ */
+// expect-error: E3038
+
+const x void = 1
+
+do main() { }

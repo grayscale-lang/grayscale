@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3187 - void call used as an if condition
+ */
+// expect-error: E3187
+
+do nothing() { }
+
+do main() {
+    if nothing() { println(1) }
+}

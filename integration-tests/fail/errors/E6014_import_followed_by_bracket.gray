@@ -1,0 +1,5 @@
+import {
+
+do main() {
+    println("no errors!")
+}

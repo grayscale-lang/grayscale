@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - the -define: value is more than one codepoint
+ */
+
+// expect-error: E3214
+// define: LETTER=ab
+
+#define
+const LETTER char = 'a'
+
+do main() {
+    println(LETTER)
+}

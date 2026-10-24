@@ -1,0 +1,8 @@
+/*
+ * Error Test: E4028 - parameter named after a stdlib module
+ */
+// expect-error: E4028
+
+do f(math i64) { }
+
+do main() { }

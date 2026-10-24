@@ -1,0 +1,6 @@
+import @binary
+
+do main() {
+    mut b = binary.encode_u8(1) or_panic
+    println(len(b))
+}

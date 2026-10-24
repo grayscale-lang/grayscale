@@ -93,6 +93,10 @@ static const char *const gray_builtin_function_names[] = {
     "to_c_string",
     "to_char",
     "type_of",
+    "wrap_add",
+    "wrap_div",
+    "wrap_mult",
+    "wrap_sub",
 };
 
 #define GRAY_BUILTIN_FUNCTION_NAMES_COUNT \

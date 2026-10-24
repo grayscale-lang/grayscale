@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5054 - an i64 passed to a parameter whose type is a typedef of a pointer
+ * Expected: E5054 error
+ */
+
+extern import "pthread.h"
+
+do main() {
+    unsafe {
+        mut t i64 = 0
+        mut r i32 = extern.pthread_join(t, nil)
+        println(r)
+    }
+}

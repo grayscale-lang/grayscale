@@ -1,0 +1,12 @@
+const A struct {
+    v i64
+    do get(self ^A) -> i64 { return 1 }
+}
+
+do call_get(kind generic, x kind) -> i64 { return x.get() }
+
+do main() {
+    mut a = A{v: 1}
+    println(call_get(A, a))
+    println(call_get(i64, 3))
+}

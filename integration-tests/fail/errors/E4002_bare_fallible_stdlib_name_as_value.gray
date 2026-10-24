@@ -1,0 +1,6 @@
+import @strconv
+
+do main() {
+    mut x = to_i64("1")
+    println("${x}")
+}

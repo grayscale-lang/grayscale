@@ -1,0 +1,14 @@
+/*
+ * Panic Test: P0170 - threads.join twice on the same handle
+ */
+
+import @threads
+
+do worker() {
+}
+
+unsafe do main() {
+    mut t = threads.spawn(()worker)
+    threads.join(t)
+    threads.join(t)
+}

@@ -1,0 +1,12 @@
+/*
+ * Panic Test: P0171 - mem.usage on a zero-value arena
+ */
+
+import @mem
+
+do main() {
+    unsafe {
+        mut a mem.Arena
+        println(mem.usage(a))
+    }
+}

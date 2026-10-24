@@ -1,0 +1,24 @@
+// Test: an importer's file-scope names do not replace same-named names inside an imported module
+import "./counter"
+
+const LIMIT i64 = 100
+mut calls i64 = 50
+
+do helper() -> i64 { return 1000 }
+
+do tag(first string, second string) -> i64 { return 7 }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if counter.run() == 7 { passed += 1 } otherwise { failed += 1 }
+    if counter.calls == 1 { passed += 1 } otherwise { failed += 1 }
+    if calls == 50 { passed += 1 } otherwise { failed += 1 }
+    if counter.run_through_reference() == "counter2" { passed += 1 } otherwise { failed += 1 }
+    if helper() == 1000 && LIMIT == 100 && tag("a", "b") == 7 { passed += 1 } otherwise { failed += 1 }
+
+    println("importer names: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,92 @@
+//
+// man_blocks.gray - Parse @man doc blocks out of C header comments
+//
+// Shared by generate_builtins_man.gray and generate_stdlib_man.gray.
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @strings, @arrays
+
+const ManBlock struct {
+    name string
+    module string
+    group string
+    kind string
+    sig string
+    field_text string
+    desc string
+    example string
+}
+
+// after returns the trimmed text following tag on line.
+do after(line string, tag string) -> string {
+    mut start i64 = strings.index_of(line, tag) + len(tag)
+    return strings.trim(strings.slice(line, start, len(line)))
+}
+
+// go_quote escapes the double quotes in s for a Go string literal.
+do go_quote(s string) -> string {
+    return strings.replace(s, "\"", "\\\"")
+}
+
+// parse_man_blocks returns every /*@man ... */ block found in lines.
+do parse_man_blocks(lines [string]) -> [ManBlock] {
+    mut blocks [ManBlock] = {}
+    mut in_block bool = false
+    mut in_example bool = false
+    mut current ManBlock = ManBlock{}
+
+    for_each line in lines {
+        if strings.starts_with(line, "/*@man ") {
+            current = ManBlock{}
+            current.name = strings.trim(strings.slice(line, 7, len(line)))
+            current.kind = "func"
+            in_block = true
+            in_example = false
+            continue
+        }
+        if !in_block {
+            continue
+        }
+        if strings.contains(line, "*@module ") {
+            current.module = after(line, "@module ")
+        } or strings.contains(line, "*@group ") {
+            current.group = after(line, "@group ")
+        } or strings.contains(line, "*@kind ") {
+            current.kind = after(line, "@kind ")
+        } or strings.contains(line, "*@sig ") {
+            current.sig = go_quote(after(line, "@sig "))
+        } or strings.contains(line, "*@field ") {
+            mut field string = go_quote(after(line, "@field "))
+            if current.field_text == "" {
+                current.field_text = field
+            } otherwise {
+                current.field_text = "${current.field_text}\\n${field}"
+            }
+        } or strings.contains(line, "*@desc ") {
+            current.desc = go_quote(after(line, "@desc "))
+        } or strings.contains(line, "*@example") {
+            in_example = true
+        } or strings.contains(line, "*@end") {
+            in_example = false
+        } or in_example {
+            mut text string = line
+            if strings.starts_with(text, " *   ") {
+                text = strings.slice(text, 5, len(text))
+            } or text == " *" {
+                text = ""
+            }
+            text = go_quote(strings.replace(text, "\\", "\\\\"))
+            if current.example == "" {
+                current.example = text
+            } otherwise {
+                current.example = "${current.example}\\n${text}"
+            }
+        } or strings.contains(line, "*/") {
+            arrays.append(blocks, current)
+            in_block = false
+        }
+    }
+    return blocks
+}

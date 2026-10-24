@@ -1,0 +1,9 @@
+/*
+ * Error Test: E1006 - out-of-range unicode escape inside an interpolated string
+ */
+// expect-error: E1006
+
+do main() {
+    mut n i64 = 1
+    println("${n} \u{110000}")
+}

@@ -1,0 +1,7 @@
+// expect-contains: byte array has the wrong length to decode
+import @binary
+
+do main() {
+    mut wide [u8] = binary.encode_i64_le(5000000000)
+    println(binary.decode_i32_le(wide))
+}

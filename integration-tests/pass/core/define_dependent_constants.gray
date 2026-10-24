@@ -1,0 +1,34 @@
+/*
+ * A constant initialized from an overridden #define constant sees the new
+ * value; a flag on the dependent constant wins for that constant.
+ */
+
+// define: FOO=Yo
+// define: QUX=Hey
+
+#define
+const FOO string = "Hi"
+const BAR string = FOO
+#define
+const BAZ string = FOO
+#define
+const QUX string = FOO
+const COUNT_BASE i64 = 10
+#define
+const SCALE i64 = 3
+const TOTAL i64 = COUNT_BASE * SCALE
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if FOO == "Yo" { passed += 1 } otherwise { failed += 1 }
+    if BAR == "Yo" { passed += 1 } otherwise { failed += 1 }
+    if BAZ == "Yo" { passed += 1 } otherwise { failed += 1 }
+    if QUX == "Hey" { passed += 1 } otherwise { failed += 1 }
+    if TOTAL == 30 { passed += 1 } otherwise { failed += 1 }
+
+    println("define dependent: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

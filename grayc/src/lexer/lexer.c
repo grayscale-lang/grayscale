@@ -453,6 +453,7 @@ static const struct { const char *spelling; TokenType type; } attribute_keywords
     {"#deprecated", TOKEN_DEPRECATED},
     {"#error_code", TOKEN_ERROR_CODE_ATTRIBUTE},
     {"#test",       TOKEN_TEST},
+    {"#define",     TOKEN_DEFINE},
 };
 
 Lexer *lexer_create(Arena *arena, const char *input, const char *file) {

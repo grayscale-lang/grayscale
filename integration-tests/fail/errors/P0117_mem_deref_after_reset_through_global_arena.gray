@@ -1,0 +1,23 @@
+// expect-contains: .gray:
+/*
+ * Panic Test: P0117 - dereferencing a pointer into a global arena after mem.reset
+ * Expected: "dereferenced a pointer into an arena that has been destroyed or reset"
+ */
+
+import @mem
+
+mut shared_arena mem.Arena
+
+unsafe do release() {
+    mem.reset(shared_arena)
+}
+
+unsafe do main() {
+    shared_arena = mem.arena(1024)
+    mut p = mem.alloc(shared_arena, 5)
+    p^ = 7
+    release()
+    mut q = mem.alloc(shared_arena, 5)
+    q^ = 99
+    println(p^)
+}

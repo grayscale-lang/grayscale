@@ -1,0 +1,13 @@
+/*
+ * Error Test: P0019 - an extern value beyond U+10FFFF stored into a char declaration
+ * Expected: P0019 panic
+ */
+
+extern import "stdlib.h", "stdint.h"
+
+do main() {
+    unsafe {
+        mut a char = extern.labs(0x7fffffffff)
+        println(cast(a, i64))
+    }
+}

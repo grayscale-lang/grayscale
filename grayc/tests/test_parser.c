@@ -1119,6 +1119,174 @@ static void test_parse_test_attribute_on_var_is_error(void) {
     ASSERT(parser_has_code(diagnostics, "E2094"));
 }
 
+/* ===== attributes ===== */
+
+static bool diagnostics_have_code(const char *code) {
+    for (int i = 0; i < diagnostics->count; i++)
+        if (diagnostics->items[i].code && strcmp(diagnostics->items[i].code, code) == 0) return true;
+    return false;
+}
+
+static void test_parse_container_attribute_test_on_function(void) {
+    AstNode *program = parse_test_input("#[test]\ndo check() { }");
+    AstNode *statement = first_statement(program);
+    ASSERT_EQ(statement->kind, NODE_FUNCTION_DECLARATION);
+    ASSERT(statement->data.function_declaration.is_test);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_container_attribute_discard_on_function(void) {
+    AstNode *program = parse_test_input("#[discard]\ndo work() -> i64 { return 1 }");
+    ASSERT(first_statement(program)->data.function_declaration.is_discard);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_container_attribute_json_on_struct(void) {
+    AstNode *program = parse_test_input("#[json]\nconst User struct {\n    name string\n}");
+    ASSERT(first_statement(program)->data.struct_declaration.is_json);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_container_attribute_flags_and_error_code_on_enum(void) {
+    AstNode *flags = first_statement(parse_test_input("#[flags]\nconst Permission enum {\n    READ\n    WRITE\n}"));
+    ASSERT(flags->data.enum_declaration.is_flags);
+    AstNode *codes = first_statement(parse_test_input("#[error_code]\nconst Failure enum {\n    BAD\n}"));
+    ASSERT(codes->data.enum_declaration.is_error_code);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_container_attribute_strict_on_when(void) {
+    AstNode *program = parse_test_input(
+        "const Color enum {\n    RED\n    GREEN\n}\n"
+        "do main() {\n    mut c Color = Color.RED\n    #[strict]\n    when c {\n        is Color.RED { }\n        is Color.GREEN { }\n    }\n}");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    AstNode *function = program->data.program.statements[1];
+    AstNode *body = function->data.function_declaration.body;
+    bool found_strict = false;
+    for (int i = 0; i < body->data.block.count; i++) {
+        AstNode *inner = body->data.block.statements[i];
+        if (inner->kind == NODE_WHEN_STATEMENT && inner->data.when_statement.is_strict) found_strict = true;
+    }
+    ASSERT(found_strict);
+}
+
+static void test_parse_container_attribute_deprecated_with_and_without_message(void) {
+    AstNode *plain = first_statement(parse_test_input("#[deprecated]\ndo old() { }"));
+    ASSERT(plain->data.function_declaration.is_deprecated);
+    ASSERT(plain->data.function_declaration.deprecated_message == NULL);
+    AstNode *messaged = first_statement(parse_test_input("#[deprecated(\"use fresh\")]\ndo old() { }"));
+    ASSERT(messaged->data.function_declaration.is_deprecated);
+    ASSERT_STR_EQ(messaged->data.function_declaration.deprecated_message, "use fresh");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_deprecated_on_struct_and_enum(void) {
+    AstNode *structure = first_statement(parse_test_input("#deprecated(\"gone\")\nconst Old struct {\n    x i64\n}"));
+    ASSERT(structure->data.struct_declaration.is_deprecated);
+    ASSERT_STR_EQ(structure->data.struct_declaration.deprecated_message, "gone");
+    AstNode *enumeration = first_statement(parse_test_input("#deprecated\nconst Old enum {\n    A\n}"));
+    ASSERT(enumeration->data.enum_declaration.is_deprecated);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_stacked_attributes_apply_in_any_order(void) {
+    AstNode *first = first_statement(parse_test_input("#doc(\"A user\")\n#json\nconst User struct {\n    name string\n}"));
+    ASSERT(first->data.struct_declaration.is_json);
+    AstNode *second = first_statement(parse_test_input("#json\n#doc(\"A user\")\nconst User struct {\n    name string\n}"));
+    ASSERT(second->data.struct_declaration.is_json);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_container_and_stacked_attributes_mix(void) {
+    AstNode *statement = first_statement(parse_test_input("#[test, discard]\n#deprecated\ndo check() { }"));
+    ASSERT(statement->data.function_declaration.is_test);
+    ASSERT(statement->data.function_declaration.is_discard);
+    ASSERT(statement->data.function_declaration.is_deprecated);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_attribute_followed_by_blank_lines(void) {
+    AstNode *statement = first_statement(parse_test_input("#test\n\n\ndo check() { }"));
+    ASSERT(statement->data.function_declaration.is_test);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_define_attribute_on_top_level_constant(void) {
+    AstNode *statement = first_statement(parse_test_input("#define\nconst LIMIT i64 = 5"));
+    ASSERT_EQ(statement->kind, NODE_VARIABLE_DECLARATION);
+    ASSERT(statement->data.variable_declaration.is_define);
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    AstNode *container = first_statement(parse_test_input("#[define]\nconst NAME string = \"x\""));
+    ASSERT(container->data.variable_declaration.is_define);
+}
+
+static void test_parse_define_attribute_on_mutable_or_composite_is_rejected(void) {
+    parse_test_input("#define\nmut LIMIT i64 = 5");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#define\nconst LIMIT [i64] = {1}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[define]\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2094"));
+}
+
+static void test_parse_attribute_on_the_wrong_declaration_is_rejected(void) {
+    parse_test_input("#json\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#test\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#flags\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#discard\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[strict]\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[deprecated]\nconst x i64 = 1");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[json]\nconst Color enum {\n    A\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[flags]\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[test]\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+    parse_test_input("#[discard]\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2094"));
+}
+
+static void test_parse_error_code_attribute_on_non_enum_is_rejected(void) {
+    parse_test_input("#error_code\ndo f() { }");
+    ASSERT(diagnostic_has_errors(diagnostics));
+    parse_test_input("#[error_code]\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_repeated_attribute_is_rejected(void) {
+    parse_test_input("#test\n#test\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2090"));
+    parse_test_input("#[test, test]\ndo f() { }");
+    ASSERT(diagnostics_have_code("E2090"));
+    parse_test_input("#json\n#[json]\nconst S struct {\n    x i64\n}");
+    ASSERT(diagnostics_have_code("E2090"));
+}
+
+static void test_parse_unknown_attribute_is_rejected(void) {
+    parse_test_input("#nonsense\ndo f() { }");
+    ASSERT(diagnostic_has_errors(diagnostics));
+    parse_test_input("#[nonsense]\ndo f() { }");
+    ASSERT(diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_attribute_with_nothing_after_it_is_rejected(void) {
+    parse_test_input("#test");
+    ASSERT(diagnostic_has_errors(diagnostics));
+    parse_test_input("#[test]");
+    ASSERT(diagnostic_has_errors(diagnostics));
+}
+
+static void test_parse_discard_statement_forms(void) {
+    parse_test_input("do work() -> i64 { return 1 }\ndo main() {\n    _ = work()\n}");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -1246,6 +1414,26 @@ int main(void) {
     RUN_TEST(test_parse_test_attribute_on_struct_is_error);
     RUN_TEST(test_parse_test_attribute_on_var_is_error);
     RUN_TEST(test_parse_deprecated_on_struct_func);
+
+    printf("--- attributes ---\n");
+    RUN_TEST(test_parse_container_attribute_test_on_function);
+    RUN_TEST(test_parse_container_attribute_discard_on_function);
+    RUN_TEST(test_parse_container_attribute_json_on_struct);
+    RUN_TEST(test_parse_container_attribute_flags_and_error_code_on_enum);
+    RUN_TEST(test_parse_container_attribute_strict_on_when);
+    RUN_TEST(test_parse_container_attribute_deprecated_with_and_without_message);
+    RUN_TEST(test_parse_deprecated_on_struct_and_enum);
+    RUN_TEST(test_parse_stacked_attributes_apply_in_any_order);
+    RUN_TEST(test_parse_container_and_stacked_attributes_mix);
+    RUN_TEST(test_parse_attribute_followed_by_blank_lines);
+    RUN_TEST(test_parse_define_attribute_on_top_level_constant);
+    RUN_TEST(test_parse_define_attribute_on_mutable_or_composite_is_rejected);
+    RUN_TEST(test_parse_attribute_on_the_wrong_declaration_is_rejected);
+    RUN_TEST(test_parse_error_code_attribute_on_non_enum_is_rejected);
+    RUN_TEST(test_parse_repeated_attribute_is_rejected);
+    RUN_TEST(test_parse_unknown_attribute_is_rejected);
+    RUN_TEST(test_parse_attribute_with_nothing_after_it_is_rejected);
+    RUN_TEST(test_parse_discard_statement_forms);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

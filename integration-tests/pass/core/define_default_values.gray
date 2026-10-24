@@ -1,0 +1,65 @@
+/*
+ * #define constants keep their declared value when no -define: flag names them.
+ */
+
+#define
+const SMALL i8 = -8
+#define
+const MEDIUM i16 = -16
+#define
+const REGULAR i32 = -32
+#define
+const LARGE i64 = -64
+#define
+const HUGE i128 = -128
+#define
+const GIANT i256 = -256
+#define
+const USMALL u8 = 8
+#define
+const UMEDIUM u16 = 16
+#define
+const UREGULAR u32 = 32
+#define
+const ULARGE u64 = 64
+#define
+const UHUGE u128 = 128
+#define
+const UGIANT u256 = 256
+#define
+const SINGLE f32 = 0.5
+#define
+const DOUBLE f64 = 0.25
+#define
+const ENABLED bool = false
+#define
+const LETTER char = 'a'
+#define
+const NAME string = "default"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if SMALL == -8 { passed += 1 } otherwise { failed += 1 }
+    if MEDIUM == -16 { passed += 1 } otherwise { failed += 1 }
+    if REGULAR == -32 { passed += 1 } otherwise { failed += 1 }
+    if LARGE == -64 { passed += 1 } otherwise { failed += 1 }
+    if HUGE == -128 { passed += 1 } otherwise { failed += 1 }
+    if GIANT == -256 { passed += 1 } otherwise { failed += 1 }
+    if USMALL == 8 { passed += 1 } otherwise { failed += 1 }
+    if UMEDIUM == 16 { passed += 1 } otherwise { failed += 1 }
+    if UREGULAR == 32 { passed += 1 } otherwise { failed += 1 }
+    if ULARGE == 64 { passed += 1 } otherwise { failed += 1 }
+    if UHUGE == 128 { passed += 1 } otherwise { failed += 1 }
+    if UGIANT == 256 { passed += 1 } otherwise { failed += 1 }
+    if SINGLE == 0.5 { passed += 1 } otherwise { failed += 1 }
+    if DOUBLE == 0.25 { passed += 1 } otherwise { failed += 1 }
+    if ENABLED == false { passed += 1 } otherwise { failed += 1 }
+    if LETTER == 'a' { passed += 1 } otherwise { failed += 1 }
+    if NAME == "default" { passed += 1 } otherwise { failed += 1 }
+
+    println("define defaults: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

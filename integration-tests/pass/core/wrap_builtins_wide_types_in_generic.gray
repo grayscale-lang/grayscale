@@ -1,0 +1,51 @@
+/*
+ * wrap_add, wrap_sub, wrap_mult and wrap_div inside a generic function bound
+ * to a 128- or 256-bit type.
+ */
+
+unsafe do wrapped_sub(kind generic, a kind, b kind) -> kind {
+    return wrap_sub(a, b)
+}
+
+unsafe do wrapped_add(kind generic, a kind, b kind) -> kind {
+    mut result kind = wrap_add(a, b)
+    return result
+}
+
+unsafe do wrapped_mult(kind generic, a kind, b kind) -> kind {
+    return wrap_mult(a, b)
+}
+
+unsafe do wrapped_div(kind generic, a kind, b kind) -> kind {
+    return wrap_div(a, b)
+}
+
+do main() {
+    unsafe {
+        mut passed i64 = 0
+        mut failed i64 = 0
+
+        mut a i128 = 7
+        mut b i128 = 3
+        if wrapped_sub(i128, a, b) == 4 && wrapped_add(i128, a, b) == 10 &&
+           wrapped_mult(i128, a, b) == 21 && wrapped_div(i128, a, b) == 2 {
+            println("  [PASS] i128 through a generic")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] i128 through a generic")
+            failed += 1
+        }
+
+        mut c u256 = 0
+        mut d u256 = 1
+        if wrapped_sub(u256, c, d) == wrapped_sub(u256, c, d) && wrapped_sub(u256, c, d) > 0 {
+            println("  [PASS] u256 wraps through a generic")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] u256 wraps through a generic")
+            failed += 1
+        }
+
+        println("Passed: ${passed}, Failed: ${failed}")
+    }
+}

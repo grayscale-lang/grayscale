@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2103 - a label cannot go on a when
+ */
+// expect-error: E2103
+
+do main() {
+    mut x i64 = 1
+    outer: when x {
+        is 1 { println("one") }
+        default { println("other") }
+    }
+}

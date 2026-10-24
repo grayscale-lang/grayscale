@@ -13,6 +13,7 @@
 #include "../src/lexer/lexer.h"
 #include "../src/parser/parser.h"
 #include "../src/typechecker/typechecker.h"
+#include "typechecker_programs.h"
 
 static Arena *arena;
 
@@ -2811,6 +2812,44 @@ static void test_no_false_positive_func_param_call_forward_reference(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* ===== one minimal program per diagnostic code ===== */
+
+static bool program_emits_code(const DiagnosticProgram *program) {
+    DiagnosticList *program_diagnostics = diagnostic_create();
+    program_diagnostics->should_use_color = false;
+    Lexer *lexer = lexer_create(arena, program->source, program->name);
+    Parser *parser = parser_create(arena, lexer, program->name, program_diagnostics);
+    AstNode *tree = parser_parse_program(parser);
+    if (!diagnostic_has_errors(program_diagnostics)) {
+        TypeChecker *checker = typechecker_create(program_diagnostics, program->name);
+        typechecker_check(checker, tree);
+    }
+    bool found = false;
+    for (int i = 0; i < program_diagnostics->count; i++) {
+        const char *code = program_diagnostics->items[i].code;
+        if (code && strcmp(code, program->expected_code) == 0) found = true;
+    }
+    diagnostic_destroy(program_diagnostics);
+    return found;
+}
+
+static void test_every_diagnostic_program_emits_its_code(void) {
+    int failures = 0;
+    for (int i = 0; i < DIAGNOSTIC_PROGRAM_COUNT; i++) {
+        if (!program_emits_code(&diagnostic_programs[i])) {
+            fprintf(stderr, "  %s did not emit %s\n", diagnostic_programs[i].name, diagnostic_programs[i].expected_code);
+            failures++;
+        }
+    }
+    ASSERT_EQ(failures, 0);
+}
+
+static void test_diagnostic_programs_cover_many_distinct_codes(void) {
+    ASSERT_GT(DIAGNOSTIC_PROGRAM_COUNT, 300);
+    for (int i = 1; i < DIAGNOSTIC_PROGRAM_COUNT; i++)
+        ASSERT(strcmp(diagnostic_programs[i - 1].expected_code, diagnostic_programs[i].expected_code) != 0);
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -3145,6 +3184,10 @@ int main(void) {
     RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_call);
     RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_in_helper);
     RUN_TEST(test_no_false_positive_func_param_call_forward_reference);
+
+    printf("--- diagnostic programs ---\n");
+    RUN_TEST(test_every_diagnostic_program_emits_its_code);
+    RUN_TEST(test_diagnostic_programs_cover_many_distinct_codes);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

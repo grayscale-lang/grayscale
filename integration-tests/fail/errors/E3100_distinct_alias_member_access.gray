@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3100 - distinct alias: a type name has no members
+ */
+
+// expect-error: E3100
+// expect-error-count: 1
+
+distinct alias UserId = i64
+
+do main() {
+    println(UserId.MAX)
+}

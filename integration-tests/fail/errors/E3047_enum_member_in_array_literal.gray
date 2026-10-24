@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3047 - array literal element names a variant the enum lacks
+ */
+// expect-error: E3047
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Shape enum {
+    Circle(i64)
+    Square(i64)
+}
+
+do main() {
+    mut xs [Color] = {Color.RED, Color.PURPLE}
+    println(len(xs))
+}

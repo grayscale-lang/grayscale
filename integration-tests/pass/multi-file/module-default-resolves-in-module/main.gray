@@ -1,0 +1,19 @@
+// Test: a default parameter value resolves its names in the declaring module, not at the call site
+import "./timeouts"
+
+const BASE i64 = 1000
+
+do default_timeout() -> i64 { return 1000 }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if timeouts.wait() == 36 { passed += 1 } otherwise { failed += 1 }
+    if timeouts.wait(1) == 7 { passed += 1 } otherwise { failed += 1 }
+    if default_timeout() == 1000 && BASE == 1000 { passed += 1 } otherwise { failed += 1 }
+
+    println("module defaults: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E2103 - a label cannot go on a bare block
+ */
+// expect-error: E2103
+
+do main() {
+    outer: {
+        println("x")
+    }
+}

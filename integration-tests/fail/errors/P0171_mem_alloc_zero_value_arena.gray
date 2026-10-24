@@ -1,0 +1,13 @@
+/*
+ * Panic Test: P0171 - mem.alloc on a zero-value arena
+ */
+
+import @mem
+
+do main() {
+    unsafe {
+        mut a mem.Arena
+        mut p = mem.alloc(a, 5)
+        println(p^)
+    }
+}

@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0157 - time.start_of_day result exceeds the i64 range */
+import @time
+
+do main() {
+    mut earliest i64 = -9223372036854775807 - 1
+    println(time.start_of_day(earliest))
+}

@@ -20,7 +20,7 @@
 typedef struct {
     pthread_t posix_thread;
     int alive;       /* 1 between entry and exit, 0 otherwise */
-    int detached;    /* 1 once detach() has been called */
+    int released;    /* 1 once join() or detach() has taken the handle */
 } GrayThreadInternal;
 
 static int64_t gray_threads_live_count = 0;
@@ -57,11 +57,6 @@ static void *thread_entry(void *raw_argument) {
     gray_heap_arena = NULL;
     __atomic_fetch_sub(&gray_threads_live_count, 1, __ATOMIC_SEQ_CST);
     __atomic_store_n(&state->alive, 0, __ATOMIC_SEQ_CST);
-    /* Rendezvous with detach(): both sides increment detached, and
-     * whichever sees the old value as 1 is the last to arrive and
-     * owns the free.  If join() is used instead, the increment is
-     * harmless — join() frees after pthread_join returns. */
-    if (__atomic_fetch_add(&state->detached, 1, __ATOMIC_SEQ_CST) == 1) free(state);
     free(thread_argument);
     return NULL;
 }
@@ -72,7 +67,7 @@ static GrayThread spawn_thread(ThreadArg *thread_argument) {
      * after spawn() returns; otherwise callers race the scheduler. The
      * thread wrapper clears it on exit. */
     __atomic_store_n(&state->alive, 1, __ATOMIC_SEQ_CST);
-    __atomic_store_n(&state->detached, 0, __ATOMIC_SEQ_CST);
+    __atomic_store_n(&state->released, 0, __ATOMIC_SEQ_CST);
     __atomic_fetch_add(&gray_threads_live_count, 1, __ATOMIC_SEQ_CST);
     int result_code = pthread_create(&state->posix_thread, NULL, thread_entry, thread_argument);
     if (result_code != 0) {
@@ -117,25 +112,38 @@ GrayThread gray_threads_spawn_arg(void (*entry)(int64_t), int64_t argument) {
     return spawn_thread(thread_argument);
 }
 
-void gray_threads_join(GrayThread thread) {
-    if (!thread._internal) return;
-    GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
-    pthread_join(state->posix_thread, NULL);
-    free(state);
+/* A joined or detached thread keeps its state, marked released: a copy of
+ * the handle made before the join still points here, and freeing the state
+ * would leave that copy reading a freed object. */
+static void thread_unusable(const char *function_name) {
+    gray_panic_code("P0170", "threads.%s on a thread handle that was never returned by threads.spawn() or was already joined or detached", function_name);
 }
 
-void gray_threads_detach(GrayThread thread) {
-    if (!thread._internal) return;
+static GrayThreadInternal *live_thread(GrayThread thread, const char *function_name) {
     GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
+    if (!state || __atomic_load_n(&state->released, __ATOMIC_SEQ_CST)) thread_unusable(function_name);
+    return state;
+}
+
+static GrayThreadInternal *release_thread(GrayThread *thread, const char *function_name) {
+    GrayThreadInternal *state = (GrayThreadInternal *)thread->_internal;
+    if (!state || __atomic_exchange_n(&state->released, 1, __ATOMIC_SEQ_CST)) thread_unusable(function_name);
+    thread->_internal = NULL;
+    return state;
+}
+
+void gray_threads_join(GrayThread *thread) {
+    GrayThreadInternal *state = release_thread(thread, "join");
+    pthread_join(state->posix_thread, NULL);
+}
+
+void gray_threads_detach(GrayThread *thread) {
+    GrayThreadInternal *state = release_thread(thread, "detach");
     pthread_detach(state->posix_thread);
-    /* Rendezvous with thread exit: both sides increment detached, and
-     * whichever sees the old value as 1 is last to arrive and frees. */
-    if (__atomic_fetch_add(&state->detached, 1, __ATOMIC_SEQ_CST) == 1) free(state);
 }
 
 bool gray_threads_is_alive(GrayThread thread) {
-    if (!thread._internal) return false;
-    GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
+    GrayThreadInternal *state = live_thread(thread, "is_alive");
     return __atomic_load_n(&state->alive, __ATOMIC_SEQ_CST) != 0;
 }
 

@@ -24,17 +24,22 @@ GrayArena *gray_mem_arena(int64_t size) {
     return arena;
 }
 
-void gray_mem_destroy(GrayArena *arena, const char *file, int line) {
-    if (arena) gray_arena_destroy(arena, file, line);
+GrayArena *gray_mem_live(GrayArena *arena, const char *function_name) {
+    if (!arena) gray_panic_code("P0171", "mem.%s on an arena that was never created with mem.arena() or was already destroyed", function_name);
+    return arena;
+}
+
+void gray_mem_destroy(GrayArena **arena, const char *file, int line) {
+    gray_arena_destroy(gray_mem_live(*arena, "destroy"), file, line);
+    *arena = NULL;
 }
 
 void gray_mem_reset(GrayArena *arena) {
-    if (arena) gray_arena_reset(arena);
+    gray_arena_reset(gray_mem_live(arena, "reset"));
 }
 
 int64_t gray_mem_usage(GrayArena *arena) {
-    if (!arena) return 0;
-    return (int64_t)gray_arena_usage(arena);
+    return (int64_t)gray_arena_usage(gray_mem_live(arena, "usage"));
 }
 
 void gray_mem_copy(void *dest, const void *source, int64_t byte_count) {

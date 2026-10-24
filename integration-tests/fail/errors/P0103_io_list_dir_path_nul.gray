@@ -1,0 +1,11 @@
+// expect-contains: .gray:
+/* Panic Test: P0103 - io.list_dir with an embedded null byte in the path */
+import @io
+
+do main() {
+    mut nul string = "\x00"
+    mut bad string = "file" + nul + "name"
+    mut result, err = io.list_dir(bad)
+    println(result)
+    println(err)
+}

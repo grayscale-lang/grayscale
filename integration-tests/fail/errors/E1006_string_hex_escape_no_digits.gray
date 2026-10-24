@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1006 - hex escape with no digits in a string
+ */
+// expect-error: E1006
+
+do main() {
+    println("a\xZZ")
+}

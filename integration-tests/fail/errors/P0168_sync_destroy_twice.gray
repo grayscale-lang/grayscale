@@ -1,0 +1,11 @@
+/*
+ * Panic Test: P0168 - sync.destroy twice on the same mutex
+ */
+
+import @sync
+
+do main() {
+    mut m = sync.mutex()
+    sync.destroy(m)
+    sync.destroy(m)
+}

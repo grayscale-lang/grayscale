@@ -251,6 +251,89 @@ static void trigger_P0063(void) {
 }
 static void test_panic_P0063(void) { ASSERT_PANICS("P0063", trigger_P0063); }
 
+static void trigger_P0158(void) {
+    gray_random_char_range(0xD800, 0xE000);
+}
+static void test_panic_P0158(void) { ASSERT_PANICS("P0158", trigger_P0158); }
+
+static void trigger_P0156(void) {
+    gray_random_roll_dice(1000, INT64_MAX);
+}
+static void test_panic_P0156(void) { ASSERT_PANICS("P0156", trigger_P0156); }
+
+/* ===========================================================================
+ * Range length
+ * ===========================================================================*/
+
+static void trigger_P0155_i64(void) {
+    GrayRange_i64 range = {INT64_MIN, INT64_MAX, 1};
+    GrayRange_i64_len(range, __FILE__, __LINE__);
+}
+static void test_panic_P0155_i64(void) { ASSERT_PANICS("P0155", trigger_P0155_i64); }
+
+static void trigger_P0155_i64_descending(void) {
+    GrayRange_i64 range = {INT64_MAX, INT64_MIN, -1};
+    GrayRange_i64_len(range, __FILE__, __LINE__);
+}
+static void test_panic_P0155_i64_descending(void) { ASSERT_PANICS("P0155", trigger_P0155_i64_descending); }
+
+static void trigger_P0155_u64(void) {
+    GrayRange_u64 range = {0, UINT64_MAX, 1};
+    GrayRange_u64_len(range, __FILE__, __LINE__);
+}
+static void test_panic_P0155_u64(void) { ASSERT_PANICS("P0155", trigger_P0155_u64); }
+
+static void trigger_P0155_i128(void) {
+    GrayRange_i128 range = {gray_i128_from_u64(0), gray_i128_from_u64(1ULL << 63), gray_i128_from_u64(1)};
+    GrayRange_i128_len(range, __FILE__, __LINE__);
+}
+static void test_panic_P0155_i128(void) { ASSERT_PANICS("P0155", trigger_P0155_i128); }
+
+static void test_range_len_of_i64_max_elements_does_not_panic(void) {
+    GrayRange_i64 range = {0, INT64_MAX, 1};
+    ASSERT_EQ(GrayRange_i64_len(range, __FILE__, __LINE__), INT64_MAX);
+}
+
+/* ===========================================================================
+ * Time
+ * ===========================================================================*/
+
+static void trigger_P0157_diff(void) { gray_time_diff(INT64_MIN, INT64_MAX); }
+static void test_panic_P0157_diff(void) { ASSERT_PANICS("P0157", trigger_P0157_diff); }
+
+static void trigger_P0157_since(void) { gray_time_since(INT64_MIN); }
+static void test_panic_P0157_since(void) { ASSERT_PANICS("P0157", trigger_P0157_since); }
+
+static void trigger_P0157_add_days(void) { gray_time_add_days(0, INT64_MAX); }
+static void test_panic_P0157_add_days(void) { ASSERT_PANICS("P0157", trigger_P0157_add_days); }
+
+static void trigger_P0157_add_hours(void) { gray_time_add_hours(0, INT64_MAX); }
+static void test_panic_P0157_add_hours(void) { ASSERT_PANICS("P0157", trigger_P0157_add_hours); }
+
+static void trigger_P0157_add_minutes(void) { gray_time_add_minutes(0, INT64_MAX); }
+static void test_panic_P0157_add_minutes(void) { ASSERT_PANICS("P0157", trigger_P0157_add_minutes); }
+
+static void trigger_P0157_add_seconds(void) { gray_time_add_seconds(INT64_MAX, 1); }
+static void test_panic_P0157_add_seconds(void) { ASSERT_PANICS("P0157", trigger_P0157_add_seconds); }
+
+static void trigger_P0157_add_months(void) { gray_time_add_months(0, INT64_MAX); }
+static void test_panic_P0157_add_months(void) { ASSERT_PANICS("P0157", trigger_P0157_add_months); }
+
+static void trigger_P0157_start_of_day(void) { gray_time_start_of_day(INT64_MIN); }
+static void test_panic_P0157_start_of_day(void) { ASSERT_PANICS("P0157", trigger_P0157_start_of_day); }
+
+static void trigger_P0140_add_months(void) { gray_time_add_months(INT64_MAX, 1); }
+static void test_panic_P0140_add_months(void) { ASSERT_PANICS("P0140", trigger_P0140_add_months); }
+
+static void trigger_P0140_start_of_month(void) { gray_time_start_of_month(INT64_MAX); }
+static void test_panic_P0140_start_of_month(void) { ASSERT_PANICS("P0140", trigger_P0140_start_of_month); }
+
+static void trigger_P0140_end_of_month(void) { gray_time_end_of_month(INT64_MAX); }
+static void test_panic_P0140_end_of_month(void) { ASSERT_PANICS("P0140", trigger_P0140_end_of_month); }
+
+static void trigger_P0157_end_of_day(void) { gray_time_end_of_day(INT64_MAX); }
+static void test_panic_P0157_end_of_day(void) { ASSERT_PANICS("P0157", trigger_P0157_end_of_day); }
+
 /* ===========================================================================
  * Strings
  * ===========================================================================*/
@@ -464,6 +547,25 @@ int main(void) {
 
     printf("--- Random ---\n");
     RUN_TEST(test_panic_P0063);
+    RUN_TEST(test_panic_P0158);
+    RUN_TEST(test_panic_P0156);
+    RUN_TEST(test_panic_P0155_i64);
+    RUN_TEST(test_panic_P0155_i64_descending);
+    RUN_TEST(test_panic_P0155_u64);
+    RUN_TEST(test_panic_P0155_i128);
+    RUN_TEST(test_range_len_of_i64_max_elements_does_not_panic);
+    RUN_TEST(test_panic_P0157_diff);
+    RUN_TEST(test_panic_P0157_since);
+    RUN_TEST(test_panic_P0157_add_days);
+    RUN_TEST(test_panic_P0157_add_hours);
+    RUN_TEST(test_panic_P0157_add_minutes);
+    RUN_TEST(test_panic_P0157_add_seconds);
+    RUN_TEST(test_panic_P0157_add_months);
+    RUN_TEST(test_panic_P0157_start_of_day);
+    RUN_TEST(test_panic_P0157_end_of_day);
+    RUN_TEST(test_panic_P0140_add_months);
+    RUN_TEST(test_panic_P0140_start_of_month);
+    RUN_TEST(test_panic_P0140_end_of_month);
 
     printf("--- Strings ---\n");
     RUN_TEST(test_panic_P0071);

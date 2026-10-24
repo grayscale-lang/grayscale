@@ -1,0 +1,31 @@
+import @arrays
+import @maps
+
+distinct alias Id = i64
+distinct alias Name = string
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut ids [Id] = {1, 2, 3}
+    mut id Id = 2
+    if arrays.contains(ids, id) { passed += 1 } otherwise { failed += 1 }
+    if arrays.index_of(ids, id) == 1 { passed += 1 } otherwise { failed += 1 }
+    arrays.append(ids, id)
+    arrays.prepend(ids, id)
+    arrays.insert_at(ids, 0, id)
+    arrays.remove(ids, id)
+    if len(ids) == 5 { passed += 1 } otherwise { failed += 1 }
+
+    mut names [Name] = {"a"}
+    mut name Name = "a"
+    if arrays.contains(names, name) { passed += 1 } otherwise { failed += 1 }
+
+    mut lookup map[Id:Name] = {1: "a"}
+    if maps.contains_key(lookup, 1) && maps.contains_value(lookup, name) { passed += 1 } otherwise { failed += 1 }
+
+    println("distinct elements: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

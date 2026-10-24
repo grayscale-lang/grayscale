@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5054 - a ^i64 passed to a FILE * parameter
+ * Expected: E5054 error
+ */
+
+extern import "stdio.h"
+
+do main() {
+    unsafe {
+        mut p ^i64 = new(i64)
+        mut x i32 = extern.fclose(p)
+        println(x)
+    }
+}

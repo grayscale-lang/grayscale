@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - the -define: value is not a finite float
+ */
+
+// expect-error: E3214
+// define: RATIO=inf
+
+#define
+const RATIO f64 = 1.5
+
+do main() {
+    println(RATIO)
+}

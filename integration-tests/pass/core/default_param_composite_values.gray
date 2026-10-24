@@ -1,0 +1,50 @@
+/*
+ * default_param_composite_values.gray - A parameter default may be a struct
+ * literal, an array literal, or an enum member (STANDARD 7.2.4).
+ */
+
+const Point struct {
+    x i64
+    y i64
+}
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do point_sum(point Point = Point{x: 3, y: 4}) -> i64 {
+    return point.x + point.y
+}
+
+do array_total(values [i64] = {1, 2, 3}) -> i64 {
+    mut total i64 = 0
+    for_each value in values {
+        total += value
+    }
+    return total
+}
+
+do color_is_green(color Color = Color.GREEN) -> bool {
+    return color == Color.GREEN
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if point_sum() == 7 { passed += 1 } otherwise { println("  [FAIL] struct literal default"); failed += 1 }
+    const custom Point = Point{x: 10, y: 20}
+    if point_sum(custom) == 30 { passed += 1 } otherwise { println("  [FAIL] struct literal override"); failed += 1 }
+    if array_total() == 6 { passed += 1 } otherwise { println("  [FAIL] array literal default"); failed += 1 }
+    if array_total({10, 20}) == 30 { passed += 1 } otherwise { println("  [FAIL] array literal override"); failed += 1 }
+    if color_is_green() { passed += 1 } otherwise { println("  [FAIL] enum member default"); failed += 1 }
+    if !color_is_green(Color.RED) { passed += 1 } otherwise { println("  [FAIL] enum member override"); failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+    println("ALL TESTS PASSED")
+}

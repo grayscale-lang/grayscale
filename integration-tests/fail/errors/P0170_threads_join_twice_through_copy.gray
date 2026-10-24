@@ -1,0 +1,16 @@
+/*
+ * Panic Test: P0170 - threads.join through a copy of a joined thread handle
+ */
+
+import @threads
+
+do noop() {}
+
+do main() {
+    unsafe {
+        mut t = threads.spawn(()noop)
+        mut t2 = t
+        threads.join(t)
+        threads.join(t2)
+    }
+}

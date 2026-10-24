@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3048 - the quoted source line holds raw ESC and BEL bytes
+ * Expected: E3048 error, with the bytes shown as visible escapes rather
+ * than sent to the terminal
+ */
+
+do main() {
+    mut s string = "]0;title[2J" + 1
+    println(s)
+}

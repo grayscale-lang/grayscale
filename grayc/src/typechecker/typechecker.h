@@ -230,6 +230,8 @@ typedef struct {
  * catching a misspelled C function/constant/macro name. A call whose result
  * is declared or cast to a type also records that type, so the real C return
  * type can be checked against it. */
+#define EXTERN_CALLBACK_ARGUMENTS 8
+
 typedef struct {
     const char *function_name;
     int argument_count;
@@ -240,7 +242,17 @@ typedef struct {
     const AstNode *node;       /* the call expression, to attach an assertion */
     GrayType *asserted_type;        /* type the result is declared or cast to, or NULL */
     bool is_asserted_via_cast;    /* cast() converts explicitly; a declaration asserts */
+    /* The Grayscale function passed as a callback at each of the first
+     * EXTERN_CALLBACK_ARGUMENTS arguments, or NULL, so main.c can compare it
+     * with the function-pointer type the header declares. */
+    const FunctionSignature *callback_signatures[EXTERN_CALLBACK_ARGUMENTS];
 } ExternCallSite;
+
+/* One enclosing loop; `break name` and `continue name` look the name up here. */
+typedef struct LoopFrame {
+    const char *label;             /* NULL when the loop is unlabeled */
+    struct LoopFrame *enclosing;
+} LoopFrame;
 
 typedef struct {
     DiagnosticList *diagnostics;
@@ -282,7 +294,7 @@ typedef struct {
     int error_code_enum_count;
 
     /* Control flow tracking */
-    int loop_depth;               /* >0 means inside a loop */
+    LoopFrame *innermost_loop;  /* NULL outside a loop */
     int function_depth;               /* >0 means inside a function body */
     bool is_in_file_scope_initializer;      /* checking a file-scope declaration's initializer */
     const char **hidden_group_names;        /* names the file-scope initializer being checked cannot see */
@@ -401,12 +413,23 @@ typedef struct {
     ArenaLifetime *arenas;
     int arena_count;
     int arena_capacity;
+    /* One entry per assignment to an arena field path (`h.arena = other`),
+     * naming the path as it was keyed at the time. The arena the path names
+     * is a different one after the assignment, so the count of entries equal
+     * to a path is its generation, and pointer_checker_arena_path_key()
+     * keys each generation apart. */
+    const char **reassigned_arena_paths;
+    int reassigned_arena_path_count;
+    int reassigned_arena_path_capacity;
     /* True while a structural cross-function @mem summary walk is in progress.
      * That walk runs detached from the summarised function's scope, so arena
      * path keys must be taken literally (a parameter's own name) rather than
      * resolved through checker->current_scope, which belongs to whichever
      * caller triggered the lazy summary. */
     bool is_pointer_checker_in_mem_summary;
+    /* True while a `when` case value or a `.P(x)` callee is being checked: the
+     * payload variant is named without its payload on purpose. */
+    bool allows_payloadless_variant;
 
     /*  true during register_declarations to allow forward references */
     bool is_registering;
@@ -449,6 +472,7 @@ typedef struct {
     const char **type_alias_names;
     const char **type_alias_targets;
     AstNode **type_alias_nodes;
+    bool *type_alias_is_distinct;
     int type_alias_count;
     int type_alias_capacity;
 
@@ -496,6 +520,9 @@ typedef struct {
      * in, an is arm, a copy or assignment, type_of) resolves it. Any other
      * use of a range is E3205. */
     const AstNode *range_use;
+    /* The expression of the expression statement being checked: the one name
+     * or call whose misspelling may be a misspelled statement (E4041). */
+    const AstNode *statement_expression;
 
     /* How many enclosing `unsafe` blocks / `unsafe do` bodies the node being
      * checked sits inside. Non-zero permits raw(), @mem, @threads, and

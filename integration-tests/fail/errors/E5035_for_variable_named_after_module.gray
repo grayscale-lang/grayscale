@@ -1,0 +1,7 @@
+import @math
+
+do main() {
+    for math in range(0, 2) {
+        println(math.abs(-5))
+    }
+}

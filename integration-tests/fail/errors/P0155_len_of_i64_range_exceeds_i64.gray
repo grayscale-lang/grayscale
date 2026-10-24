@@ -1,0 +1,5 @@
+// expect-contains: .gray:
+/* Panic Test: P0155 - len of a range with more than i64.MAX elements */
+do main() {
+    println(len(range(-9223372036854775807, 9223372036854775807)))
+}

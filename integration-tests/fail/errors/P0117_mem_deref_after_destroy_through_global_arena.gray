@@ -1,0 +1,16 @@
+// expect-contains: .gray:
+/* Panic Test: P0117 - dereference of a pointer into a destroyed arena the checker cannot trace (a global) */
+import @mem
+
+mut shared_arena mem.Arena
+
+unsafe do release() {
+    mem.destroy(shared_arena)
+}
+
+unsafe do main() {
+    shared_arena = mem.arena(1024)
+    mut p = mem.alloc(shared_arena, 5)
+    release()
+    println(p^)
+}

@@ -1,0 +1,25 @@
+/*
+ * Error Test: E5026 - distinct alias: bool mismatch arg
+ */
+
+// expect-error: E5026
+// expect-error-count: 1
+
+distinct alias UserId = i64
+distinct alias OrderId = i64
+distinct alias Score = f64
+distinct alias Flag = bool
+distinct alias Letter = char
+distinct alias Label = string
+distinct alias Tiny = u8
+distinct alias Huge = i128
+distinct alias Wide = u256
+const Pt struct {
+    id UserId
+    tag Label
+}
+do f(a Flag) { println(a) }
+do main() {
+    mut b bool = true
+    f(b)
+}

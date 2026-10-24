@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5062 - default value is not assignable to an enum parameter
+ * Expected: "default value for parameter 'color' has wrong type; expected Color, got string" error
+ */
+// expect-error: E5062
+// expect-error-count: 1
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do paint(color Color = "red") {
+    println(color)
+}
+
+do main() {
+    paint()
+}

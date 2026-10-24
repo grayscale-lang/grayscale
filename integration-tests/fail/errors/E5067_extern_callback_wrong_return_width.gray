@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5067 - callback returns an i64 where the C function pointer
+ * type returns an int
+ * Expected: E5067 error — qsort reads a 32-bit comparison result
+ */
+
+extern import "stdlib.h"
+
+do compare(a ^i64, b ^i64) -> i64 {
+    return 0
+}
+
+do main() {
+    unsafe {
+        mut buf ^i64 = extern.malloc(24)
+        extern.memset(buf, 0, 24)
+        extern.qsort(buf, 3, 8, ()compare)
+        extern.free(buf)
+    }
+}

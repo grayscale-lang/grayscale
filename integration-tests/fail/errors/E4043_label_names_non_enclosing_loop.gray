@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4043 - the label belongs to a loop that does not enclose the statement
+ */
+// expect-error: E4043
+
+do main() {
+    first: for i in range(0, 3) {
+        if i == 5 { break first }
+    }
+    for j in range(0, 3) {
+        if j == 1 { continue first }
+    }
+}
