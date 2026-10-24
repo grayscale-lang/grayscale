@@ -6656,7 +6656,7 @@ static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expressi
     if (signature && signature->return_count > 1) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3040", file, line, column, 0,
             name, signature->return_count, name);
-    } else if (name && !signature) {
+    } else if (name && !signature && module_name) {
         if (typechecker_is_fallible_stdlib(module_name, name)) {
             /* or_panic needs a single-variable declaration, so a call that
              * returns a used/total pair is offered or_default instead. */
