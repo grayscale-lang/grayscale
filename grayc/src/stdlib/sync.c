@@ -11,6 +11,7 @@
 #include "sync.h"
 #include <pthread.h>
 #include <stdlib.h>
+#include "../runtime/atomic.h"
 
 /* A destroyed mutex keeps its allocation, marked destroyed: a copy of the
  * handle made before the destroy still points here, and freeing the memory
