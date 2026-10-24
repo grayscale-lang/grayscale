@@ -18515,6 +18515,15 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         }
         /* E3099: enum name collides with a stdlib opaque type */
         check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
+        /* An explicit variant value is a C constant, so it is checked as any
+         * expression would be (unsafe use, undefined names) and may hold no
+         * runtime call. */
+        for (int j = 0; j < node->data.enum_declaration.value_count; j++) {
+            AstNode *variant_value = node->data.enum_declaration.values[j].value;
+            if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
+            resolve_expression(checker, variant_value);
+            if (expression_contains_call(variant_value)) NODE_ERROR(checker, variant_value, "E5040");
+        }
         /* E4016: a tagged variant's payload type must name a type, at any depth */
         for (int variant_index = 0; variant_index < node->data.enum_declaration.value_count; variant_index++) {
             EnumValue *variant = &node->data.enum_declaration.values[variant_index];

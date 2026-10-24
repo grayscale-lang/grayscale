@@ -1,0 +1,7 @@
+const E enum {
+    A = wrap_add(255, 1)
+}
+
+do main() {
+    println("${cast(E.A, i64)}")
+}
