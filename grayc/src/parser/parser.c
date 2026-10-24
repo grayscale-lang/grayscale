@@ -2859,7 +2859,16 @@ static AstNode *parse_if_statement(Parser *parser) {
     if (peek_token_is(parser, TOKEN_OR_KEYWORD)) {
         next_token(parser); /* skip 'or' */
         /* 'or' acts like 'else if' */
+        /* One level is left for the next branch's condition. */
+        if (parser->depth + 1 >= MAX_PARSE_DEPTH) {
+            diagnostic_error_message(parser->diagnostics, "E2001",
+                arena_copy_string(parser->arena, "'or' chain is too long; it shares the nesting limit of 256"),
+                parser->file, parser->current_token.line, parser->current_token.column, 0);
+            return NULL;
+        }
+        parser->depth++;
         node->data.if_statement.alternative = parse_if_statement(parser);
+        parser->depth--;
     } else if (peek_token_is(parser, TOKEN_OTHERWISE)) {
         next_token(parser); /* skip 'otherwise'/'else' */
         node->data.if_statement.else_token = parser->current_token;
