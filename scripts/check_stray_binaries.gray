@@ -38,8 +38,20 @@ do is_binary(path string) -> bool {
     if (b0 == 0xce || b0 == 0xcf) && b1 == 0xfa && b2 == 0xed && b3 == 0xfe {
         return true
     }
-    // Mach-O universal
-    return b0 == 0xca && b1 == 0xfe && b2 == 0xba && b3 == 0xbe
+    // Mach-O universal: a Java class file has the same magic, and is told apart
+    // by bytes 4-7, which count architectures here (at most 30) and hold the
+    // class file's minor and major version there (45 or more).
+    if b0 == 0xca && b1 == 0xfe && b2 == 0xba && b3 == 0xbe && len(bytes) >= 8 {
+        return bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] >= 1 && bytes[7] <= 30
+    }
+    return false
+}
+
+// is_symlink reports whether the path is a symbolic link; io.is_file follows
+// links, so a link to a binary would otherwise be reported and removed.
+do is_symlink(path string) -> bool {
+    mut result, exec_err = os.exec("test", {"-L", path})
+    return exec_err == nil && result.exit_code == 0
 }
 
 do main() {
@@ -59,7 +71,7 @@ do main() {
 
     mut stray [string] = {}
     for_each entry in entries {
-        if strings.starts_with(entry, ".") || entry == "gray" || !io.is_file(entry) {
+        if strings.starts_with(entry, ".") || entry == "gray" || !io.is_file(entry) || is_symlink(entry) {
             continue
         }
         if is_binary(entry) {
