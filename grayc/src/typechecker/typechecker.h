@@ -413,6 +413,14 @@ typedef struct {
     ArenaLifetime *arenas;
     int arena_count;
     int arena_capacity;
+    /* One entry per assignment to an arena field path (`h.arena = other`),
+     * naming the path as it was keyed at the time. The arena the path names
+     * is a different one after the assignment, so the count of entries equal
+     * to a path is its generation, and pointer_checker_arena_path_key()
+     * keys each generation apart. */
+    const char **reassigned_arena_paths;
+    int reassigned_arena_path_count;
+    int reassigned_arena_path_capacity;
     /* True while a structural cross-function @mem summary walk is in progress.
      * That walk runs detached from the summarised function's scope, so arena
      * path keys must be taken literally (a parameter's own name) rather than

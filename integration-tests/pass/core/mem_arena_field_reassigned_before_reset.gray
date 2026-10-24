@@ -1,0 +1,32 @@
+import @mem
+
+const Holder struct {
+    arena mem.Arena
+}
+
+do swap_arena(h ^Holder, other mem.Arena) -> i64 {
+    unsafe {
+        mut p = mem.init(h^.arena, i64)
+        p^ = 4
+        h^.arena = other
+        mem.reset(h^.arena)
+        return p^
+    }
+}
+
+do main() {
+    unsafe {
+        mut h Holder = Holder{arena: mem.arena(4096)}
+        mut o mem.Arena = mem.arena(4096)
+        mut passed i64 = 0
+        mut failed i64 = 0
+        if swap_arena(addr(h), o) == 4 {
+            println("  [PASS] pointer from the old arena survives a reset of the new one")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] pointer from the old arena was lost")
+            failed += 1
+        }
+        println("Passed: ${passed}, Failed: ${failed}")
+    }
+}

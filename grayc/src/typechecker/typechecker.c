@@ -226,6 +226,7 @@ static bool pointer_checker_is_mem_call(TypeChecker *checker, AstNode *call,
 static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *report_node, const char *display_text);
 static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expression);
+static void pointer_checker_retire_arena_path(TypeChecker *checker, AstNode *target);
 static void pointer_checker_bind_arena_handle(TypeChecker *checker, Symbol *symbol,
                                               AstNode *value, const char *bind_name);
 static void pointer_checker_check_mem_escape(TypeChecker *checker, AstNode *expression, AstNode *report_node);
@@ -15467,6 +15468,9 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    if (node->data.assign.operator == TOKEN_ASSIGN)
+        pointer_checker_retire_arena_path(checker, node->data.assign.target);
+
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
      * resolve_infix_expression() for the corresponding binary operator. */
@@ -16210,9 +16214,28 @@ static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode 
         if (!base || !expression->data.member.member) return NULL;
         char message[MESSAGE_BUFFER_SIZE];
         snprintf(message, sizeof(message), "%s.%s", base, expression->data.member.member);
+        int generation = 0;
+        for (int i = 0; i < checker->reassigned_arena_path_count; i++)
+            if (strcmp(checker->reassigned_arena_paths[i], message) == 0) generation++;
+        if (generation > 0) {
+            size_t length = strlen(message);
+            snprintf(message + length, sizeof(message) - length, "#%d", generation);
+        }
         return arena_copy_string(checker->arena, message);
     }
     return NULL;
+}
+
+/* An assignment to an arena field path makes the path name a different arena
+ * from here on, so a later lifecycle call through it must not reach the state
+ * of the arena it named before. */
+static void pointer_checker_retire_arena_path(TypeChecker *checker, AstNode *target) {
+    if (target->kind != NODE_MEMBER_EXPRESSION) return;
+    const char *key = pointer_checker_arena_path_key(checker, target);
+    if (!key) return;
+    GROW_ARRAY(checker->reassigned_arena_paths, checker->reassigned_arena_path_count,
+               checker->reassigned_arena_path_capacity);
+    checker->reassigned_arena_paths[checker->reassigned_arena_path_count++] = key;
 }
 
 static bool pointer_checker_is_mem_call(TypeChecker *checker, AstNode *call,
@@ -17255,6 +17278,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
     checker->current_function_scope_depth = function_scope->depth + 1;
     checker->function_depth++;
     checker->arena_count = 0;
+    checker->reassigned_arena_path_count = 0;
 
     /* The `generic` parameters stand for unknown types while the body is
      * checked once for every call; each instantiation is re-checked later with
@@ -20035,6 +20059,7 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->using_module_import_indices);
 
     free(checker->arenas);
+    free(checker->reassigned_arena_paths);
 
     free(checker->type_alias_names);
     free(checker->type_alias_targets);
