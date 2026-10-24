@@ -17434,6 +17434,15 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                     parameter->name, parameter->type_name, type_name(default_type));
             }
         }
+        /* W2007: the parameter shadows a global constant or variable */
+        if (strcmp(parameter->name, "_") != 0) {
+            Symbol *global_symbol = scope_lookup(outer, parameter->name);
+            if (global_symbol && global_symbol->definition_line > 0) {
+                diagnostic_warning_code_formatted(checker->diagnostics, "W2007",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    parameter->name, global_symbol->definition_line);
+            }
+        }
         scope_define(function_scope, parameter->name, parameter_type, parameter->is_mutable);
         Symbol *parameter_symbol = scope_lookup_local(function_scope, parameter->name);
         if (parameter_symbol) parameter_symbol->parameter_line = node->token.line;
@@ -18062,7 +18071,14 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                         int limit = pattern_binding_count < payload_count ? pattern_binding_count : payload_count;
                         for (int binding_index = 0; binding_index < limit; binding_index++) {
                             GrayType *base_type = typechecker_type_from_name(checker, checker->enum_payload_types[pattern_enum_index][pattern_variant_index][binding_index]);
-                            scope_define(checker->current_scope, value_node->data.when_pattern.bindings[binding_index], base_type, false);
+                            const char *binding_name = value_node->data.when_pattern.bindings[binding_index];
+                            Symbol *outer_symbol = strcmp(binding_name, "_") != 0 ? scope_lookup(case_outer, binding_name) : NULL;
+                            if (outer_symbol) {
+                                diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
+                                    NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
+                                    "when binding", binding_name, outer_symbol->definition_line);
+                            }
+                            scope_define(checker->current_scope, binding_name, base_type, false);
                             /* A payload read out of a value that holds a pointer
                              * to a const-declared variable is such a pointer. */
                             propagate_const_source(checker,
