@@ -1929,6 +1929,12 @@ static const char *resolve_wide_integer_type(CodeGen *codegen, AstNode *node) {
             is_wide_integer_type_name(pointer_type->element_type))
             return pointer_type->element_type;
     }
+    /* wrap_add/sub/mult/div take their operands' type; inside a generic body
+     * the checker could not type the call, so it is the first operand's. */
+    if (node->kind == NODE_CALL_EXPRESSION && node->data.call.function->kind == NODE_LABEL &&
+        node->data.call.argument_count == 2 &&
+        strncmp(node->data.call.function->data.label.value, "wrap_", 5) == 0)
+        return resolve_wide_integer_type(codegen, node->data.call.arguments[0]);
     /* Array indexing arr[i] and user-function calls: the typechecker records
      * the resolved element / return type, so trust that when it is wide integer. */
     if (node->kind == NODE_INDEX_EXPRESSION || node->kind == NODE_CALL_EXPRESSION) {
