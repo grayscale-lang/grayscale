@@ -3762,6 +3762,14 @@ static AstNode *parse_loop_jump_statement(Parser *parser, NodeKind kind) {
     if (peek_token_is(parser, TOKEN_IDENTIFIER) && parser->peek_token.line == parser->current_token.line) {
         next_token(parser);
         node->data.loop_jump.label = parser->current_token.literal;
+    } else if (parser->peek_token.line == parser->current_token.line &&
+               !peek_token_is(parser, TOKEN_RIGHT_BRACE) && !peek_token_is(parser, TOKEN_END_OF_FILE) &&
+               !peek_token_is(parser, TOKEN_ILLEGAL)) {
+        char message[MESSAGE_BUFFER_SIZE];
+        snprintf(message, sizeof(message), "unexpected token '%s' after '%s'; only a loop label may follow",
+            token_display_name(parser->peek_token), kind == NODE_BREAK_STATEMENT ? "break" : "continue");
+        diagnostic_error_message(parser->diagnostics, "E2002", arena_copy_string(parser->arena, message),
+            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
     }
     return node;
 }
