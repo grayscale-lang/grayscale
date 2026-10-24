@@ -17853,6 +17853,10 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
         }
     }
     GrayType *when_type = resolve_expression(checker, node->data.when_statement.value);
+    if (when_type && when_type->kind == TYPE_KIND_VOID) {
+        reject_void_in_context(checker, node->data.when_statement.value, when_type, "a when subject");
+        when_type = NULL;
+    }
     /* W2012: floating-point subjects use bit-equality, which is rarely what the
      * user wants given 0.1 + 0.2 != 0.3. */
     if (when_type && when_type->kind == TYPE_KIND_FLOATING_POINT) {
