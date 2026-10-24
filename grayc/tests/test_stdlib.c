@@ -40,9 +40,15 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 
 static GrayArena *arena;
+
+static void sleep_microseconds(long microseconds) {
+    struct timespec pause = { 0, microseconds * 1000 };
+    nanosleep(&pause, NULL);
+}
 
 /* Helper: assert a GrayString equals a C string literal */
 #define ASSERT_GRAY_STR(gs, expected) do { \
@@ -2750,7 +2756,7 @@ static void test_channels_blocking_send_and_receive_across_threads(void) {
 }
 
 static void *channel_closer(void *raw) {
-    usleep(50000);
+    sleep_microseconds(50000);
     gray_channels_close(*(GrayChannel *)raw);
     return NULL;
 }
@@ -5349,7 +5355,7 @@ static void test_threads_detach_lets_the_thread_finish_on_its_own(void) {
     gray_atomic_store(&thread_test_flag, 0);
     GrayThread thread = gray_threads_spawn(thread_sets_flag);
     gray_threads_detach(&thread);
-    for (int attempts = 0; attempts < 2000 && gray_atomic_load(&thread_test_flag) == 0; attempts++) usleep(1000);
+    for (int attempts = 0; attempts < 2000 && gray_atomic_load(&thread_test_flag) == 0; attempts++) sleep_microseconds(1000);
     ASSERT_EQ(gray_atomic_load(&thread_test_flag), 1);
 }
 
@@ -5360,7 +5366,7 @@ static void test_threads_detach_of_a_running_thread_then_release(void) {
     gray_threads_detach(&thread);
     ASSERT_EQ(gray_threads_thread_count(), before + 1);
     gray_atomic_store(&thread_test_gate, 1);
-    for (int attempts = 0; attempts < 2000 && gray_threads_thread_count() != before; attempts++) usleep(1000);
+    for (int attempts = 0; attempts < 2000 && gray_threads_thread_count() != before; attempts++) sleep_microseconds(1000);
     ASSERT_EQ(gray_threads_thread_count(), before);
 }
 
