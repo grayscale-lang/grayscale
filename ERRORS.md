@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
 
-**Total: 573 codes** (402 errors, 17 warnings, 154 panics)
+**Total: 574 codes** (403 errors, 17 warnings, 154 panics)
 
 ---
 
@@ -382,6 +382,7 @@
 | `E5066` | usage | -define: names '%s', which is not marked #define |
 | `E5067` | arguments | callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares |
 | `E5068` | arguments | '%s' wraps integers only; got %s and %s |
+| `E5069` | usage | 'size_of()' requires a type, not a value |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -624,4 +625,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-24 15:32:51 UTC*
+*Generated on 2026-10-24 16:32:35 UTC*

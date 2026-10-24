@@ -9338,9 +9338,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 return result;
             }
             const char *written = size_of_type_spelling(checker, argument);
+            if (!written) {
+                NODE_ERROR(checker, argument, "E5069");
+                result = &TYPE_I64;
+                return result;
+            }
             /* A type parameter is checked where its argument is named; codegen
              * sizes whatever it is bound to in each instantiation. */
-            if (written && generic_bindings_find(&checker->generics, written) < 0) {
+            if (generic_bindings_find(&checker->generics, written) < 0) {
                 reject_private_type(checker, argument, written);
                 /* A container spelling types as TYPE_KIND_ARRAY or TYPE_KIND_MAP whatever
                  * its parts name, so the check has to look at every leaf. */

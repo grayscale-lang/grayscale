@@ -6492,33 +6492,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
     if (strcmp(function_name, "size_of") == 0 && node->data.call.argument_count == 1) {
         AstNode *type_argument = node->data.call.arguments[0];
         bool wrapped = emit_type_builtin_argument_prefix(codegen, type_argument);
-        if (type_argument->kind == NODE_LABEL) {
-            emit_formatted(codegen, "(int64_t)sizeof(%s)", gray_type_to_c_codegen(codegen, type_argument->data.label.value));
-        } else {
-            /* Literal or expression: infer C type and emit sizeof() */
-            const char *c_type = NULL;
-            if (type_argument->kind == NODE_INTEGER_LITERAL) {
-                c_type = "int64_t";
-            } else if (type_argument->kind == NODE_FLOATING_POINT_LITERAL) {
-                c_type = "double";
-            } else if (type_argument->kind == NODE_BOOL_VALUE) {
-                c_type = "bool";
-            } else if (type_argument->kind == NODE_STRING_VALUE ||
-                       type_argument->kind == NODE_INTERPOLATED_STRING) {
-                c_type = "GrayString";
-            } else if (type_argument->kind == NODE_CHAR_VALUE) {
-                c_type = "int32_t";
-            } else {
-                /* Fallback: consult the type table */
-                GrayType *type = codegen_type_of(codegen, type_argument);
-                if (type && type->name) c_type = gray_type_to_c_codegen(codegen, type->name);
-            }
-            if (c_type) {
-                emit_formatted(codegen, "(int64_t)sizeof(%s)", c_type);
-            } else {
-                emit(codegen, "0");
-            }
-        }
+        emit_formatted(codegen, "(int64_t)sizeof(%s)", gray_type_to_c_codegen(codegen, type_argument->data.label.value));
         if (wrapped) emit(codegen, "; })");
         return true;
     }

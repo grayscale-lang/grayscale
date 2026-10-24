@@ -1,0 +1,9 @@
+do one() -> i64 {
+    println("one called")
+    return 1
+}
+
+do main() {
+    mut y i64 = size_of(one())
+    println("${y}")
+}
