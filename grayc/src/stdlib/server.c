@@ -346,19 +346,24 @@ static int64_t monotonic_milliseconds(void) {
  * NUL-terminated. The whole request has GRAY_SERVER_READ_TIMEOUT_MILLISECONDS
  * to arrive: a socket timeout alone restarts with every byte, so a client
  * sending one byte at a time could hold the connection forever. A request
- * not complete by then returns 0, so the caller drops it. */
+ * not complete by then returns 0, so the caller drops it. A request whose
+ * body is cut short by the peer closing returns RECEIVE_INCOMPLETE, and one that
+ * cannot fit in the buffer returns RECEIVE_TOO_LARGE. */
+#define RECEIVE_INCOMPLETE (-1)
+#define RECEIVE_TOO_LARGE  (-2)
+
 static int64_t receive_request(int client_descriptor, char *buffer, int capacity) {
     int64_t total = 0;
     int64_t needed = -1;
     int64_t deadline = monotonic_milliseconds() + GRAY_SERVER_READ_TIMEOUT_MILLISECONDS;
     while (total < capacity - 1) {
         int64_t remaining = deadline - monotonic_milliseconds();
-        if (remaining <= 0) { total = 0; break; }
+        if (remaining <= 0) { buffer[0] = '\0'; return 0; }
         GRAY_SOCK_TIMEOUT_TYPE timeout_value;
         gray_sock_timeout_value((int)remaining, &timeout_value);
         setsockopt(client_descriptor, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(timeout_value), sizeof(timeout_value));
         int64_t received = (int64_t)recv(client_descriptor, buffer + total, (int)(capacity - 1 - total), 0);
-        if (received < 0) { total = 0; break; }  /* timed out or failed: drop it */
+        if (received < 0) { buffer[0] = '\0'; return 0; }  /* timed out or failed: drop it */
         if (received == 0) break;
         total += received;
         if (needed < 0) {
@@ -366,9 +371,11 @@ static int64_t receive_request(int client_descriptor, char *buffer, int capacity
             if (header_end < 0) continue;
             int64_t content_length = declared_content_length(buffer, header_end);
             needed = header_end + 4 + (content_length > 0 ? content_length : 0);
+            if (needed > capacity - 1) return RECEIVE_TOO_LARGE;
         }
         if (total >= needed) break;
     }
+    if (needed >= 0 && total < needed) return RECEIVE_INCOMPLETE;
     buffer[total] = '\0';
     return total;
 }
@@ -387,6 +394,13 @@ static void *handle_connection(void *argument) {
     /* Receive request data */
     char buffer[GRAY_SERVER_BUFFER_SIZE];
     int64_t bytes_received = receive_request(connection_context->client_descriptor, buffer, (int)sizeof(buffer));
+    if (bytes_received == RECEIVE_INCOMPLETE || bytes_received == RECEIVE_TOO_LARGE) {
+        const char *error_text = bytes_received == RECEIVE_INCOMPLETE
+            ? "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            : "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        send(connection_context->client_descriptor, error_text, strlen(error_text), 0);
+        return cleanup_connection(connection_context, arena);
+    }
     if (bytes_received <= 0) {
         return cleanup_connection(connection_context, arena);
     }

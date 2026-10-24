@@ -4411,7 +4411,7 @@ An HTTP server module with dynamic handlers and path parameters.
 
 A handler returns an `HttpResponse` (see the HttpResponse Type under `@http`). The server sends every entry in its `headers` map, and sets `Content-Length` and `Connection` itself: a `Content-Length`, `Transfer-Encoding` or `Connection` entry in the map is not sent. A header key or value containing CR or LF panics.
 
-A request has 30 seconds in total to arrive, counted from the connection being accepted. A connection that has not sent a complete request by then is closed without a response, however slowly it is still sending.
+A request has 30 seconds in total to arrive, counted from the connection being accepted. A connection that has not sent a complete request by then is closed without a response, however slowly it is still sending. A request whose body ends before its declared `Content-Length` because the peer closed the connection is answered `400 Bad Request`, and one whose headers and declared body do not fit in 64 KiB is answered `413 Payload Too Large`; the handler runs for neither.
 
 #### Request Type
 
