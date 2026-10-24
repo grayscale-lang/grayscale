@@ -4521,7 +4521,7 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | `yield` | `()` | Hint the scheduler to run another runnable thread |
 | `thread_count` | `() -> i64` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
 
-A `Thread` that `spawn` did not return (a zero-value one), or one already passed to `join` or `detach`, is a runtime panic (P0170) in `join`, `detach`, and `is_alive`. `join` and `detach` clear the handle they are given.
+A `Thread` that `spawn` did not return (a zero-value one), or one already passed to `join` or `detach`, is a runtime panic (P0170) in `join`, `detach`, and `is_alive`. `join` and `detach` clear the handle they are given, and a copy of that handle made earlier is rejected the same way.
 
 ### 9.22 Sync Module (`@sync`)
 
@@ -4535,7 +4535,7 @@ Synchronization primitives for thread-safe access to shared data. Compiler-only 
 | `try_lock` | `(m Mutex) -> bool` | Try to acquire a mutex (non-blocking); true if acquired, false if already locked |
 | `destroy` | `(m Mutex)` | Destroy a mutex |
 
-A `Mutex` that `mutex()` did not create (a zero-value one, such as a `Mutex` field of a struct made with `new()`), or one already destroyed, is a runtime panic (P0168) in every function above, rather than a lock that excludes nothing. `destroy` clears the handle it is given.
+A `Mutex` that `mutex()` did not create (a zero-value one, such as a `Mutex` field of a struct made with `new()`), or one already destroyed, is a runtime panic (P0168) in every function above, rather than a lock that excludes nothing. `destroy` clears the handle it is given, and a copy of that handle made earlier is rejected the same way.
 
 ### 9.23 Channels Module (`@channels`)
 
@@ -4572,7 +4572,7 @@ Arena-based memory allocation. Compiler-only feature.
 | `zero` | `(p ptr, n i64)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value i64, n i64)` | Set `n` bytes at `p` to `value` |
 
-An `Arena` that `arena` did not create (a zero-value one), or one already destroyed, is a runtime panic (P0171) in `destroy`, `reset`, `usage`, `init`, and `alloc`. `destroy` clears the handle it is given.
+An `Arena` that `arena` did not create (a zero-value one), or one already destroyed, is a runtime panic (P0171) in `destroy`, `reset`, `usage`, `init`, and `alloc`. `destroy` clears the handle it is given, and a copy of that handle made earlier is rejected the same way.
 
 ### 9.25 Atomic Module (`@atomic`)
 
