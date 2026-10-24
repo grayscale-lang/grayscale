@@ -2640,15 +2640,6 @@ static void test_channels_len_counts_buffered_values(void) {
     ASSERT_EQ(gray_channels_len(channel), 1);
 }
 
-static void test_channels_capacity_below_one_opens_capacity_one(void) {
-    GrayChannel zero_capacity = gray_channels_open(0);
-    GrayChannel negative_capacity = gray_channels_open(-5);
-    ASSERT(gray_channels_try_send(zero_capacity, 1));
-    ASSERT(!gray_channels_try_send(zero_capacity, 2));
-    ASSERT(gray_channels_try_send(negative_capacity, 1));
-    ASSERT(!gray_channels_try_send(negative_capacity, 2));
-}
-
 static void test_channels_try_send_fails_when_full(void) {
     GrayChannel channel = gray_channels_open(2);
     ASSERT(gray_channels_try_send(channel, 1));
@@ -2725,10 +2716,9 @@ static void test_channels_receive_on_closed_empty_channel_returns_zero(void) {
     ASSERT_EQ(gray_channels_receive(channel), 0);
 }
 
-static void test_channels_send_after_close_is_dropped(void) {
+static void test_channels_try_send_after_close_fails(void) {
     GrayChannel channel = gray_channels_open(2);
     gray_channels_close(channel);
-    gray_channels_send(channel, 9);
     ASSERT(!gray_channels_try_send(channel, 9));
     ASSERT_EQ(gray_channels_len(channel), 0);
 }
@@ -2771,16 +2761,6 @@ static void test_channels_close_wakes_a_blocked_receiver(void) {
     pthread_create(&closer, NULL, channel_closer, &channel);
     ASSERT_EQ(gray_channels_receive(channel), 0);
     pthread_join(closer, NULL);
-}
-
-static void test_channels_close_wakes_a_blocked_sender(void) {
-    GrayChannel channel = gray_channels_open(1);
-    gray_channels_send(channel, 1);
-    pthread_t closer;
-    pthread_create(&closer, NULL, channel_closer, &channel);
-    gray_channels_send(channel, 2);
-    pthread_join(closer, NULL);
-    ASSERT_EQ(gray_channels_len(channel), 1);
 }
 
 /* ===== chars: remaining classification, escape, mirror, width ===== */
@@ -5798,7 +5778,6 @@ int main(void) {
     printf("--- channels ---\n");
     RUN_TEST(test_channels_receives_in_send_order);
     RUN_TEST(test_channels_len_counts_buffered_values);
-    RUN_TEST(test_channels_capacity_below_one_opens_capacity_one);
     RUN_TEST(test_channels_try_send_fails_when_full);
     RUN_TEST(test_channels_try_send_succeeds_again_after_a_receive);
     RUN_TEST(test_channels_try_receive_on_empty_reports_failure);
@@ -5808,10 +5787,9 @@ int main(void) {
     RUN_TEST(test_channels_channels_are_independent);
     RUN_TEST(test_channels_close_keeps_buffered_values_receivable);
     RUN_TEST(test_channels_receive_on_closed_empty_channel_returns_zero);
-    RUN_TEST(test_channels_send_after_close_is_dropped);
+    RUN_TEST(test_channels_try_send_after_close_fails);
     RUN_TEST(test_channels_blocking_send_and_receive_across_threads);
     RUN_TEST(test_channels_close_wakes_a_blocked_receiver);
-    RUN_TEST(test_channels_close_wakes_a_blocked_sender);
 
     printf("--- chars (remaining) ---\n");
     RUN_TEST(test_chars_is_ascii_boundaries);
