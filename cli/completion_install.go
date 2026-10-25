@@ -4,6 +4,9 @@
 // Author:  Marshall A Burns (@SchoolyB)
 // Copyright (c) 2025-Present Marshall A Burns
 // Licensed under the MIT License. See LICENSE for details.
+//
+// Contributors:
+//  - @SAY-5
 
 package main
 
@@ -107,6 +110,15 @@ func completionHint(shell string) string {
 	return "run `gray completion <bash|zsh|fish|powershell>` and load the output"
 }
 
+// completionInstalledLine is the line printed once the script is written.
+// PowerShell loads no directory on its own, so it names the profile line too.
+func completionInstalledLine(shell, path string) string {
+	if shell == "powershell" {
+		return fmt.Sprintf("Shell completion written to %s; add `. \"%s\"` to your profile to load it", path, path)
+	}
+	return "Shell completion installed: " + path
+}
+
 // writeFileIfChanged writes content to path, creating its directory when
 // asked, and leaves an identical file untouched.
 func writeFileIfChanged(path string, content []byte, createDirectory bool) error {
@@ -152,7 +164,7 @@ func installCompletionScript(binaryPath string) {
 			return exec.Command(binaryPath, "completion", shell).Output()
 		}
 		if path := placeCompletionScript(shell, home, os.Getenv, queryZshFpath, generate); path != "" {
-			fmt.Printf("Shell completion installed: %s\n", path)
+			fmt.Println(completionInstalledLine(shell, path))
 			return
 		}
 	}
