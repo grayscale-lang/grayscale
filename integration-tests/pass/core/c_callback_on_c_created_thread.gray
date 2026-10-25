@@ -4,7 +4,7 @@
  * new() pointer inside it must work (#3229).
  */
 
-extern import "pthread.h", "stdlib.h", "unistd.h"
+extern import "pthread.h", "stdlib.h"
 
 mut done i64 = 0
 
@@ -23,7 +23,7 @@ do main() {
     unsafe {
         mut tid ^i64 = extern.malloc(16)
         extern.pthread_create(tid, nil, ()worker, nil)
-        extern.usleep(300000)
+        sleep_ms(300)
         if done == 1 {
             println("ALL TESTS PASSED")
         } otherwise {
