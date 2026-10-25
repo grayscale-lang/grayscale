@@ -32,7 +32,12 @@ unsafe do main() {
     mut _, _ = net.send(conn, "POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n\r\n")
     sleep_ms(300)
     mut _, _ = net.send(conn, "hello")
-    mut reply, _ = net.receive(conn, 65536)
+    mut reply string = ""
+    for _ in range(0, 10) {
+        mut part, _ = net.receive(conn, 65536)
+        reply = reply + part
+        if strings.contains(reply, "body=hello") { break }
+    }
     net.close(conn)
 
     if strings.contains(reply, "len=5 body=hello") {
