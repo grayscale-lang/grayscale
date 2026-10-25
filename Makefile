@@ -333,7 +333,7 @@ test-ubsan:
 
 # Leak detection is off, as in CI.
 test-asan:
-	@ASAN_OPTIONS=detect_leaks=0 "$(MAKE)" -C grayc test-asan
+	@ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1 "$(MAKE)" -C grayc test-asan
 
 leaks:
 	@"$(MAKE)" -C grayc leaks
