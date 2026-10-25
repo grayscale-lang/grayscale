@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0140 - time.start_of_month on a timestamp outside the range of dates */
+import @time
+
+do main() {
+    println(time.start_of_month(9223372036854775807))
+}

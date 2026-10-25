@@ -1,0 +1,44 @@
+/*
+ * generic_struct_function_call_per_instantiation.gray - a struct function
+ * called on a receiver typed by a generic name resolves against each
+ * instantiation's struct, through a value, a pointer && a new() result.
+ */
+
+const A struct {
+    v i64
+    do name(self ^A) -> string { return "A" }
+    do add(self A, n i64) -> i64 { return self.v + n }
+}
+
+const B struct {
+    v string
+    do name(self ^B) -> string { return "B" }
+    do add(self ^B, n i64) -> i64 { return n * 2 }
+}
+
+do by_value(kind generic, x kind) -> string { return x.name() }
+do by_pointer(kind generic, x ^kind) -> string { return x^.name() }
+do by_new(kind generic) -> string {
+    mut p = new(kind)
+    return p^.name()
+}
+do with_argument(kind generic, x kind) -> i64 { return x.add(5) }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut a = A{v: 1}
+    mut b = B{v: "b"}
+
+    if by_value(A, a) == "A" && by_value(B, b) == "B" { passed += 1 } otherwise { failed += 1 }
+    if by_pointer(A, addr(a)) == "A" && by_pointer(B, addr(b)) == "B" { passed += 1 } otherwise { failed += 1 }
+    if by_new(A) == "A" && by_new(B) == "B" { passed += 1 } otherwise { failed += 1 }
+    if with_argument(A, a) == 6 && with_argument(B, b) == 10 { passed += 1 } otherwise { failed += 1 }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

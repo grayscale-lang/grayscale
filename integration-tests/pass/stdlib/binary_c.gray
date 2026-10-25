@@ -289,8 +289,8 @@ do main() {
     mut be_check [u8] = binary.encode_i32_be(1)
     // For value 1: LE = [01,00,00,00], BE = [00,00,00,01]
     // First u8 should differ
-    mut le_first i64 = binary.decode_u8(le_check)
-    mut be_first i64 = binary.decode_u8(be_check)
+    mut le_first i64 = cast(le_check[0], i64)
+    mut be_first i64 = cast(be_check[0], i64)
     if le_first == 1 && be_first == 0 {
         println("  [PASS] endianness differs")
         passed += 1

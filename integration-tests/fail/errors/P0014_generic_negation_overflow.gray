@@ -1,0 +1,8 @@
+do negate(kind generic, x kind) -> kind {
+    return -x
+}
+
+do main() {
+    mut a i8 = -128
+    println(negate(i8, a))
+}

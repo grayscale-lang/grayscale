@@ -42,7 +42,11 @@ GrayArena *gray_mem_arena(int64_t size);
  *@end
  */
 /* mem.destroy(arena) — destroy an arena and free all its memory */
-void gray_mem_destroy(GrayArena *arena, const char *file, int line);
+void gray_mem_destroy(GrayArena **arena, const char *file, int line);
+
+/* The arena, or a P0171 panic naming `function_name` when it is a zero-value
+ * or destroyed handle. */
+GrayArena *gray_mem_live(GrayArena *arena, const char *function_name);
 
 /*@man reset
  *@module mem

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1006 - unknown escape letter in a string
+ */
+// expect-error: E1006
+
+do main() {
+    println("a\qb")
+}

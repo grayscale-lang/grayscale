@@ -35,6 +35,26 @@ const char *ast_member_qualifier(const AstNode *node) {
     return object->data.label.value;
 }
 
+void ast_call_form_capture(const AstNode *call, CallForm *form) {
+    form->function = call->data.call.function;
+    form->object = form->function && form->function->kind == NODE_MEMBER_EXPRESSION ? form->function->data.member.object : NULL;
+    form->object_label = form->object && form->object->kind == NODE_LABEL ? form->object->data.label.value : NULL;
+    form->arguments = call->data.call.arguments;
+    form->argument_count = call->data.call.argument_count;
+    form->ignored_receiver = call->data.call.ignored_receiver;
+}
+
+void ast_call_form_apply(AstNode *call, const CallForm *form) {
+    call->data.call.function = form->function;
+    if (form->object) {
+        form->function->data.member.object = form->object;
+        if (form->object_label) form->object->data.label.value = form->object_label;
+    }
+    call->data.call.arguments = form->arguments;
+    call->data.call.argument_count = form->argument_count;
+    call->data.call.ignored_receiver = form->ignored_receiver;
+}
+
 int ast_string_decode(const AstNode *node, char *out) {
     const char *cursor = node->data.string_value.value;
     if (node->data.string_value.is_raw) {

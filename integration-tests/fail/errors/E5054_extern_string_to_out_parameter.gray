@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5054 - a string passed to an int * out-parameter
+ * Expected: E5054 error
+ */
+
+extern import "math.h"
+
+do main() {
+    unsafe {
+        mut x f64 = extern.frexp(1.0, "abc")
+        println(x)
+    }
+}

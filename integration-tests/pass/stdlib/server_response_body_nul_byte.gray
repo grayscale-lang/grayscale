@@ -1,0 +1,44 @@
+/*
+ * Test: a response body containing a NUL byte is sent with its exact length
+ */
+
+import @http
+import @server
+import @threads
+
+const TEST_PORT i64 = 47233
+
+do nul_handler(req HttpRequest) -> HttpResponse {
+    return server.text(200, "head\0tail")
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "GET", "/nul", ()nul_handler)
+    server.listen(router, TEST_PORT, "127.0.0.1")
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut listener = threads.spawn(()serve)
+    sleep_ms(300)
+
+    mut response, response_error = http.get("http://127.0.0.1:47233/nul")
+
+    if response_error == nil && len(response.body) == 9 {
+        println("  [PASS] NUL byte did not truncate the body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] body length: ${len(response.body)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E2103 - a label cannot go on an if
+ */
+// expect-error: E2103
+
+do main() {
+    outer: if true {
+        println("x")
+    }
+}

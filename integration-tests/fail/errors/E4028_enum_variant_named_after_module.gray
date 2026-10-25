@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4028 - enum variant named after a stdlib module
+ */
+// expect-error: E4028
+
+const Kind enum {
+    math
+    other
+}
+
+do main() { }

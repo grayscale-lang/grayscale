@@ -1,0 +1,5 @@
+import "./first"
+
+do sibling_sum() -> i64 {
+    return first.first_value() + 2
+}

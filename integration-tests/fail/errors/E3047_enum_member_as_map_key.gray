@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3047 - map literal key names a variant the enum lacks
+ */
+// expect-error: E3047
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Shape enum {
+    Circle(i64)
+    Square(i64)
+}
+
+do main() {
+    mut m map[Color:i64] = {Color.PURPLE: 1}
+    println(len(m))
+}

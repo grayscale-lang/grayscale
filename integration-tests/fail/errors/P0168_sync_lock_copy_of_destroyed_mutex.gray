@@ -1,0 +1,14 @@
+/*
+ * Panic Test: P0168 - sync.lock through a copy of a destroyed mutex handle
+ */
+
+import @sync
+
+do main() {
+    unsafe {
+        mut m = sync.mutex()
+        mut m2 = m
+        sync.destroy(m)
+        sync.lock(m2)
+    }
+}

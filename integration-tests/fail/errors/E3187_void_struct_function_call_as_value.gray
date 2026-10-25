@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3187 - void struct function call used as a value
+ */
+// expect-error: E3187
+
+const S struct {
+    x i64
+
+    do poke(self ^S) { }
+}
+
+do main() {
+    mut s = new(S)
+    mut y = s.poke()
+}

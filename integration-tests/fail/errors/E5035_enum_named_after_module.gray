@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5035 - enum named after a stdlib module
+ */
+// expect-error: E5035
+
+const math enum {
+    A
+    B
+}
+
+do main() { }

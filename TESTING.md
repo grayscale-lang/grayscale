@@ -24,8 +24,8 @@ Unit tests validate individual compiler components:
 - **Module Table Tests** (`grayc/tests/test_module_table.c`): Per-module symbol table — scope creation, file-to-module attribution, qualified/unqualified resolution, visibility, aliases, and name mangling.
 - **Util Tests** (`grayc/tests/test_util.c`): Arena allocator (create, alloc, alignment, multi-block, oversized, strdup/strndup), growable buffer (create, append, growth, formatting, indentation), and scope (lookup, define/update, hash rebuild, many symbols, immutability).
 - **Runtime Tests** (`grayc/tests/test_runtime.c`): GrayArena (create, alloc, alignment, multi-block, oversized, reset, usage, scope save/restore, nested scopes), GrayString (lit, new, eq, concat, format, c_string_dup, empty), GrayArray (new, push, growth, set, from, typed macros, copy, multiple element sizes), and GrayMap (new, i64/string keys, has, remove, overwrite, clear, insertion order, rehash, copy, float normalization).
-- **Panic Tests** (`grayc/tests/test_panics.c`): Fork-based tests that verify runtime panic codes (P-codes) are correctly emitted. Covers sized arithmetic overflow, encoding (base64/hex), array/string bounds, math domain errors, strconv, random, strings, builtins, IO, bigint casts, and bigint parsing.
-- **Stdlib Tests** (`grayc/tests/test_stdlib.c`): Unit tests for 10 stdlib modules — strings (case, trim, search, transform, split/join, chars, classification), arrays (modify, access, query, transform, computation, sort), maps (keys/values, membership, equality, merge), math (arithmetic, rounding, powers, logs, trig, properties, factorial/gcd/lcm/prime), fmt (padding, center, hex/binary/octal, float formatting), encoding (base64, hex, URL encode/decode with roundtrip), strconv (parsing, result variants, formatting, query), json (encode/decode, validation, pretty-printing, result variants, roundtrip), io (file read/write, append, line/byte IO, directories, path manipulation, result variants), and regex (validation, match, find/find_all, replace, split, result variants).
+- **Panic Tests** (`grayc/tests/test_panics.c`): Fork-based tests that verify runtime panic codes (P-codes) are correctly emitted. Covers sized arithmetic overflow, encoding (base64/hex), array/string bounds, math domain errors, strconv, random, range length, time, strings, builtins, IO, bigint casts, and bigint parsing.
+- **Stdlib Tests** (`grayc/tests/test_stdlib.c`): Unit tests for stdlib modules and builtin conversions — strings (case, trim, search, transform, split/join, chars, classification), arrays (modify, access, query, transform, computation, sort), maps (keys/values, membership, equality, merge), math (arithmetic, rounding, powers, logs, trig, properties, factorial/gcd/lcm/prime), fmt (padding, center, hex/binary/octal, float formatting), encoding (base64, hex, URL encode/decode with roundtrip), strconv (parsing, result variants, formatting, query), json (encode/decode, validation, pretty-printing, result variants, roundtrip), io (file read/write, append, line/byte IO, directories, path manipulation, result variants), regex (validation, match, find/find_all, replace, split, result variants), random (seeded reproducibility, range bounds, shuffle, sample), mem (arena usage, reset, raw copy/zero/set), runtime (arena and heap usage, call depth, function names), and builtins (to_string and string_to conversions, UTF-8 helpers).
 
 ### End-to-End Tests
 
@@ -70,8 +70,8 @@ Integration tests compile and run `.gray` programs end-to-end through the full c
 ```bash
 make test-integration
 
-# With verbose output on failures
-bash scripts/run_tests.sh --verbose
+# Run the runner directly
+./grayc/grayc scripts/run_tests.gray && ./run_tests
 ```
 
 ### Sanitizer Tests
@@ -108,14 +108,14 @@ TinyCC does not support the sanitizers. Homebrew GCC on macOS does not ship with
 
 ### Vendored Dependency Checks
 
-`scripts/check_vendor.sh` verifies the recorded SHA256 of every third-party C
+`scripts/check_vendor.gray` verifies the recorded SHA256 of every third-party C
 source file under `grayc/src/vendor/` against `grayc/src/vendor/MANIFEST.toml`
 and reports OSV.dev advisories for each pinned version. It exits non-zero on a
 hash mismatch, a missing file, or a tracked-directory file the manifest does not
 list; advisories are informational and do not fail it.
 
 ```bash
-bash scripts/check_vendor.sh
+./grayc/grayc scripts/check_vendor.gray && ./check_vendor
 ```
 
 ---
@@ -156,7 +156,7 @@ All tests run automatically on push to `main` via GitHub Actions:
 CI workflow: `.github/workflows/ci.yml`
 
 A separate **Vendor Audit** workflow (`.github/workflows/vendor-audit.yml`) runs
-`check_vendor.sh` monthly, on manual dispatch, and on any pull request that
+`check_vendor` monthly, on manual dispatch, and on any pull request that
 touches `grayc/src/vendor/**` or the check script.
 
 ---

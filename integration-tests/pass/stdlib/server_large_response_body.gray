@@ -1,0 +1,46 @@
+/*
+ * Test: a response body larger than 64 KB is sent in full
+ */
+
+import @http
+import @server
+import @strings
+import @threads
+
+const TEST_PORT i64 = 47232
+const BODY_SIZE i64 = 200000
+
+do big_handler(req HttpRequest) -> HttpResponse {
+    return server.text(200, strings.repeat("A", BODY_SIZE))
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "GET", "/big", ()big_handler)
+    server.listen(router, TEST_PORT, "127.0.0.1")
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut listener = threads.spawn(()serve)
+    sleep_ms(300)
+
+    mut response, response_error = http.get("http://127.0.0.1:47232/big")
+
+    if response_error == nil && len(response.body) == BODY_SIZE {
+        println("  [PASS] 200000 byte body arrived in full")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] body length: ${len(response.body)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

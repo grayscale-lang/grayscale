@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - the -define: value is not true or false
+ */
+
+// expect-error: E3214
+// define: ENABLED=yes
+
+#define
+const ENABLED bool = false
+
+do main() {
+    println(ENABLED)
+}

@@ -1,0 +1,7 @@
+const Item struct {
+    a i64
+}
+
+do show(kind generic, x kind) -> string { return type_of(x) }
+
+do show_pointer(kind generic, x ^kind) -> string { return type_of(x^) }

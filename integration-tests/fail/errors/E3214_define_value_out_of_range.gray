@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - the -define: value is out of range for the declared type
+ */
+
+// expect-error: E3214
+// define: COUNT=300
+
+#define
+const COUNT u8 = 1
+
+do main() {
+    println(COUNT)
+}

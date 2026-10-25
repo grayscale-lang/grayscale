@@ -57,6 +57,7 @@ SRC = src/main.c \
       src/parser/ast.c \
       src/parser/parser.c \
       src/parser/imports.c \
+      src/parser/defines.c \
       src/typechecker/types.c \
       src/typechecker/scope.c \
       src/typechecker/module_table.c \
@@ -224,7 +225,7 @@ PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                   src/runtime/test.o \
                   src/stdlib/encoding.o src/stdlib/arrays.o src/stdlib/builtins.o \
                   src/stdlib/strconv.o src/stdlib/random.o src/stdlib/strings.o \
-                  src/stdlib/io.o src/stdlib/threads.o src/stdlib/time.o $(ATOMIC_OBJ)
+                  src/stdlib/io.o src/stdlib/threads.o src/stdlib/time.o src/stdlib/threads.o $(ATOMIC_OBJ)
 
 tests/test_lexer$(EXE): tests/test_lexer.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
@@ -247,7 +248,7 @@ tests/test_codegen$(EXE): tests/test_codegen.c
 	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L $(INCLUDES) -o $@ $< $(LDFLAGS)
 
 tests/test_runtime$(EXE): tests/test_runtime.c $(RT_TEST_DEPS)
-	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread
 
 tests/test_panics$(EXE): tests/test_panics.c $(PANIC_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) -D_DARWIN_C_SOURCE -D_XOPEN_SOURCE=700 $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread
@@ -259,7 +260,8 @@ STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                    src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
                    src/stdlib/strconv.o src/stdlib/json.o src/stdlib/io.o \
                    src/stdlib/regex.o src/stdlib/builtins.o src/stdlib/net.o \
-                   src/stdlib/csv.o src/stdlib/crypto.o src/stdlib/uuid.o src/stdlib/binary.o $(ATOMIC_OBJ)
+                   src/stdlib/csv.o src/stdlib/crypto.o src/stdlib/uuid.o src/stdlib/binary.o \
+                   src/stdlib/random.o src/stdlib/mem.o src/stdlib/runtime_mod.o src/stdlib/atomic.o src/stdlib/channels.o src/stdlib/time.o src/stdlib/threads.o $(ATOMIC_OBJ)
 
 tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread
@@ -296,7 +298,7 @@ test-integration: build
 	@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/run_tests.ps1 -NoBuild
 else
 test-integration: build
-	@../scripts/run_tests.sh
+	@cd .. && ./grayc/grayc scripts/run_tests.gray -o run_tests && { ./run_tests; status=$$?; rm -f run_tests; exit $$status; }
 endif
 
 # Sanitizer builds — catch undefined behavior (and memory bugs on Linux)

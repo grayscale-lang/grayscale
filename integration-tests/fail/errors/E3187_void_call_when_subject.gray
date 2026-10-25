@@ -1,0 +1,7 @@
+do nothing() {}
+
+do main() {
+    when nothing() {
+        default { println("x") }
+    }
+}

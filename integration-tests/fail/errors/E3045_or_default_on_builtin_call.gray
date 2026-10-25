@@ -1,0 +1,4 @@
+do main() {
+    mut n = len({1}) or_default 0
+    println(n)
+}

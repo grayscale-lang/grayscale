@@ -1,0 +1,3 @@
+do g(m map[string:void]) { }
+
+do main() { }

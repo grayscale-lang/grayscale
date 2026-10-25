@@ -1,0 +1,46 @@
+/*
+ * An imported module's enum is its own type: the importing file may declare an
+ * enum or a struct of the same name.
+ */
+
+import "./lib.gray"
+
+const Mode enum {
+    A
+    B
+}
+
+const Tag enum {
+    One
+    Two
+}
+
+const Shape struct {
+    sides i64
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut mine Mode = Mode.B
+    if mine == Mode.B { passed += 1 } otherwise { failed += 1 }
+
+    mut theirs lib.Mode = lib.first_mode()
+    if theirs == lib.Mode.X { passed += 1 } otherwise { failed += 1 }
+
+    mut shape Shape = Shape{sides: 4}
+    if shape.sides == 4 { passed += 1 } otherwise { failed += 1 }
+
+    mut tag Tag = Tag.Two
+    if tag == Tag.Two { passed += 1 } otherwise { failed += 1 }
+
+    if lib.read_tag(lib.make_tag()) == 7 { passed += 1 } otherwise { failed += 1 }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

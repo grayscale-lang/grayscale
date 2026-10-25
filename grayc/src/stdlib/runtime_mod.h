@@ -138,6 +138,34 @@ int64_t gray_runtime_arena_limit(void);
  */
 int64_t gray_runtime_call_depth(void);
 
+/*@man function_name
+ *@module runtime
+ *@group Execution
+ *@sig function_name() -> string
+ *@desc Return the name of the currently executing function. A struct function reports as Type.func. Resolved at compile time.
+ *@example
+ *   import @runtime
+ *   do greet() { println(runtime.function_name()) }
+ *@end
+ */
+/* runtime.function_name() is handled by codegen directly — it emits the
+ * enclosing function's name as a string literal. No C function needed. */
+
+/*@man caller_name
+ *@module runtime
+ *@group Execution
+ *@sig caller_name() -> string
+ *@desc Return the name of the function that called the currently executing function, or the empty string from main.
+ *@example
+ *   import @runtime
+ *   do inner() { println("called by ${runtime.caller_name()}") }
+ *@end
+ */
+GrayString gray_runtime_caller_name(void);
+
+/* The running function's own name; codegen emits it for caller_name() in a parameter default. */
+GrayString gray_runtime_current_name(void);
+
 /*@man call_limit
  *@module runtime
  *@group Execution

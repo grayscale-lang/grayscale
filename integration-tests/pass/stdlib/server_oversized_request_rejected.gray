@@ -1,0 +1,44 @@
+/*
+ * Test: a request declaring more body than the server can hold is answered
+ * 413 and the handler does not run
+ */
+
+import @net
+import @server
+import @strings
+import @threads
+
+const TEST_PORT i64 = 47234
+
+do echo_route(req HttpRequest) -> HttpResponse {
+    return server.text(200, "len=${len(req.body)}")
+}
+
+do serve() {
+    mut router = server.add_router()
+    server.add_route(router, "POST", "/echo", ()echo_route)
+    server.listen(router, TEST_PORT, "127.0.0.1")
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut listener = threads.spawn(()serve)
+    sleep_ms(300)
+
+    mut conn, _ = net.connect("127.0.0.1", TEST_PORT)
+    mut _, _ = net.send(conn, "POST /echo HTTP/1.1\r\nHost: x\r\nContent-Length: 70000\r\n\r\nabcde")
+    mut reply, _ = net.receive(conn, 65536)
+    net.close(conn)
+
+    if strings.contains(reply, "413 Payload Too Large") && !strings.contains(reply, "len=") {
+        println("  [PASS] oversized request answered 413 without running the handler")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reply: ${reply}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+}

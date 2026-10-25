@@ -1,0 +1,12 @@
+/*
+ * Warning Test: W2002 - for_each variable shadows an outer variable
+ */
+
+do main() {
+    mut item i64 = 5
+    mut items [i64] = {1, 2}
+    for_each item in items {
+        println(item)
+    }
+    println(item)
+}

@@ -1,0 +1,53 @@
+/*
+ * A labeled break or continue that leaves loops allocating strings, arrays and
+ * structs on every iteration still returns the values built in them, and the
+ * enclosing loops keep working with their own arenas afterwards.
+ */
+import @arrays
+
+const Cell struct {
+    id i64
+    label string
+}
+
+do labeled_break() -> i64 {
+    mut total i64 = 0
+    outer: for_each seed in {1, 2, 3} {
+        mut words [string] = {"a", "b"}
+        for round in range(0, 4) {
+            mut text string = "round ${round} of ${seed}"
+            mut cell Cell = Cell{ id: round, label: text }
+            arrays.append(words, cell.label)
+            total += len(words)
+            if round == 2 { break outer }
+        }
+    }
+    return total
+}
+
+do labeled_continue() -> i64 {
+    mut total i64 = 0
+    outer: for seed in range(0, 3) {
+        as_long_as true {
+            mut text string = "seed ${seed}"
+            mut cell Cell = Cell{ id: seed, label: text }
+            total += len(cell.label)
+            continue outer
+        }
+    }
+    return total
+}
+
+do main() {
+    for i in range(0, 1000) {
+        if labeled_break() != 3 + 4 + 5 {
+            println("FAILED labeled_break")
+            exit(1)
+        }
+        if labeled_continue() != 6 + 6 + 6 {
+            println("FAILED labeled_continue")
+            exit(1)
+        }
+    }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,132 @@
+/*
+ * A label before a loop lets `break name` and `continue name` leave or
+ * continue an enclosing loop, through two and three levels, on each loop form.
+ */
+do for_for(target i64) -> i64 {
+    mut hits i64 = 0
+    outer: for y in range(0, 5) {
+        for x in range(0, 5) {
+            if x == 2 { continue outer }
+            if y * 5 + x == target { break outer }
+            hits += 1
+        }
+    }
+    return hits
+}
+
+do three_levels() -> i64 {
+    mut count i64 = 0
+    outer: for a in range(0, 4) {
+        for b in range(0, 4) {
+            for c in range(0, 4) {
+                if c == 1 { continue outer }
+                if a == 2 { break outer }
+                count += 1
+            }
+        }
+    }
+    return count
+}
+
+do for_each_form() -> i64 {
+    mut sum i64 = 0
+    rows: for_each row in {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}} {
+        for_each value in row {
+            if value == 5 { continue rows }
+            if value == 8 { break rows }
+            sum += value
+        }
+    }
+    return sum
+}
+
+do while_form() -> i64 {
+    mut steps i64 = 0
+    mut i i64 = 0
+    pass: as_long_as i < 10 {
+        i += 1
+        mut j i64 = 0
+        as_long_as j < 10 {
+            j += 1
+            steps += 1
+            if j == 3 { continue pass }
+            if i == 4 { break pass }
+        }
+    }
+    return steps
+}
+
+do loop_form() -> i64 {
+    mut n i64 = 0
+    top: loop {
+        loop {
+            n += 1
+            if n < 5 { continue top }
+            break top
+        }
+    }
+    return n
+}
+
+do from_when() -> i64 {
+    mut seen i64 = 0
+    top: for i in range(0, 10) {
+        for j in range(0, 10) {
+            when j {
+                is 3 { continue top }
+                is 1 { if i == 2 { break top } }
+                default { seen += 1 }
+            }
+        }
+    }
+    return seen
+}
+
+do loop_only_exit_is_labeled_break() -> i64 {
+    mut n i64 = 0
+    top: loop {
+        for i in range(0, 100) {
+            n += i
+            if n > 20 { break top }
+        }
+    }
+    return n + 1000
+}
+
+do unlabeled_unchanged() -> i64 {
+    mut n i64 = 0
+    for i in range(0, 5) {
+        for j in range(0, 5) {
+            if j == 2 { break }
+            n += 1
+        }
+        if i == 3 { continue }
+        n += 10
+    }
+    return n
+}
+
+do shadowed_by_variable() -> i64 {
+    const outer i64 = 7
+    mut n i64 = 0
+    outer: for i in range(0, 3) {
+        for j in range(0, 3) {
+            if j == 1 { continue outer }
+            n += 1
+        }
+    }
+    return n + outer
+}
+
+do main() {
+    if for_for(6) != 3 || for_for(100) != 10 { println("FAILED for_for"); exit(1) }
+    if three_levels() != 2 { println("FAILED three_levels"); exit(1) }
+    if for_each_form() != 1 + 2 + 3 + 4 + 0 + 7 { println("FAILED for_each_form"); exit(1) }
+    if while_form() != 3 * 3 + 1 { println("FAILED while_form"); exit(1) }
+    if loop_form() != 5 { println("FAILED loop_form"); exit(1) }
+    if from_when() != 2 + 2 + 1 { println("FAILED from_when"); exit(1) }
+    if loop_only_exit_is_labeled_break() != 1021 { println("FAILED loop_only_exit"); exit(1) }
+    if unlabeled_unchanged() != 2 * 5 + 10 * 4 { println("FAILED unlabeled"); exit(1) }
+    if shadowed_by_variable() != 3 + 7 { println("FAILED shadowed"); exit(1) }
+    println("ALL TESTS PASSED")
+}

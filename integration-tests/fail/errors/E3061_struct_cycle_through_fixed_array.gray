@@ -1,0 +1,11 @@
+const A struct {
+    b [B,2]
+}
+
+const B struct {
+    a A
+}
+
+do main() {
+    mut a A = A{}
+}

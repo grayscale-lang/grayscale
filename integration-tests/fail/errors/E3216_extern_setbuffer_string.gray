@@ -1,0 +1,11 @@
+extern import "stdio.h"
+import @strings
+
+unsafe do setup() {
+    mut entry string = strings.repeat("v", 64)
+    extern.setbuffer(extern.stdout, entry, 32)
+}
+
+unsafe do main() {
+    setup()
+}

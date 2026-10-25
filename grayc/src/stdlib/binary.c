@@ -36,12 +36,14 @@ static GrayArray make_bytes_reversed(GrayArena *arena, const void *data, int32_t
 /* Every decode_* reads a fixed number of bytes from `bytes->data` starting
  * at offset 0; nothing about that memcpy stops it from reading past
  * `bytes->len`. Panic P0113 instead of silently exposing whatever
- * uninitialized or stale arena memory follows a too-short array. */
+ * uninitialized or stale arena memory follows a too-short array. An array
+ * longer than the width is the wrong width too: decoding it would return the
+ * leading bytes and ignore the rest. */
 static void gray_binary_check_length(GrayArray *bytes, int32_t need, const char *function_name,
                                   const char *file, int line) {
-    if (bytes->len < need) {
+    if (bytes->len != need) {
         gray_panic_code_at(file, line, "P0113",
-            "binary.%s: byte array too short to decode; need %d bytes but have %d",
+            "binary.%s: byte array has the wrong length to decode; need %d bytes but have %d",
             function_name, (int)need, (int)bytes->len);
     }
 }

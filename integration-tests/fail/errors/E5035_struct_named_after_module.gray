@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5035 - struct named after a stdlib module
+ */
+// expect-error: E5035
+
+const math struct {
+    x i64
+}
+
+do main() { }

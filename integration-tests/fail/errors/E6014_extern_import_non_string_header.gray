@@ -1,0 +1,8 @@
+/*
+ * Error Test: E6014 - extern import followed by a non-string
+ */
+// expect-error: E6014
+
+extern import foo
+
+do main() { }

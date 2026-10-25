@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4040 - -define: only reaches constants, not mut variables
+ */
+
+// expect-error: E4040
+// define: COUNT=1
+
+mut COUNT i64 = 0
+
+do main() {
+    println(COUNT)
+}

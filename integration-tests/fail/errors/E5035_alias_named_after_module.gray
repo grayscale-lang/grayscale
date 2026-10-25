@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5035 - alias named after a stdlib module
+ */
+// expect-error: E5035
+
+const math = i64
+
+do main() { }

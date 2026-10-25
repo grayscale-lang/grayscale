@@ -1,0 +1,34 @@
+/*
+ * Test: FNV-1a and xorshift64 written with wrapping arithmetic, plus a call
+ * inside an unsafe function.
+ */
+
+unsafe do fnv1a(text string) -> u64 {
+    mut hash u64 = 14695981039346656037
+    for i in range(0, len(text)) {
+        hash = wrap_mult(hash bit_xor cast(text[i], u64), 1099511628211)
+    }
+    return hash
+}
+
+unsafe do lcg(state u32) -> u32 {
+    return wrap_add(wrap_mult(state, 1664525), 1013904223)
+}
+
+do xorshift64(state u64) -> u64 {
+    mut x u64 = state
+    x = x bit_xor (x bit_shift_left 13)
+    x = x bit_xor (x bit_shift_right 7)
+    x = x bit_xor (x bit_shift_left 17)
+    return x
+}
+
+do main() {
+    assert(fnv1a("") == 14695981039346656037)
+    assert(fnv1a("a") == 12638187200555641996)
+    assert(fnv1a("foobar") == 9625390261332436968)
+    assert(lcg(0) == 1013904223)
+    assert(lcg(1013904223) == 1196435762)
+    assert(xorshift64(1) == 1082269761)
+    println("ok")
+}

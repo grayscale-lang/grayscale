@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3047 - assignment names a variant the enum lacks
+ */
+// expect-error: E3047
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Shape enum {
+    Circle(i64)
+    Square(i64)
+}
+
+do main() {
+    mut c Color = Color.RED
+    c = Color.PURPLE
+    println(c)
+}

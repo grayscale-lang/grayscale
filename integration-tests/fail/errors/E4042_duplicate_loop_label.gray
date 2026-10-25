@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4042 - a label repeats one already in scope from an enclosing loop
+ */
+// expect-error: E4042
+
+do main() {
+    outer: for i in range(0, 3) {
+        outer: for j in range(0, 3) {
+            if j == 1 { break outer }
+        }
+    }
+}

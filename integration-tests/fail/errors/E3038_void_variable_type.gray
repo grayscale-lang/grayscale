@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3038 - void used as a variable type
+ */
+// expect-error: E3038
+
+do main() {
+    mut x void
+}

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5035 - constant named after a stdlib module
+ */
+// expect-error: E5035
+
+const math i64 = 1
+
+do main() { }

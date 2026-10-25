@@ -1,0 +1,13 @@
+/*
+ * Error Test: P0018 - an extern unsigned 64-bit value above INT64_MAX stored into an i16 declaration
+ * Expected: P0018 panic
+ */
+
+extern import "stdlib.h", "stdint.h"
+
+do main() {
+    unsafe {
+        mut a i16 = extern.SIZE_MAX
+        println(a)
+    }
+}

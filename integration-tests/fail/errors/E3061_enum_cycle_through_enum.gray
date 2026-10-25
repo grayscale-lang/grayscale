@@ -1,0 +1,11 @@
+const T enum {
+    A(U)
+    B
+}
+
+const U enum {
+    C(T)
+    D
+}
+
+do main() { println("x") }

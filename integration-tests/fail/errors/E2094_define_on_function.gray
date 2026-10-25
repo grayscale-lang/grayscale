@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2094 - #define on a function
+ */
+
+// expect-error: E2094
+
+#define
+do helper() { }
+
+do main() {
+    helper()
+}

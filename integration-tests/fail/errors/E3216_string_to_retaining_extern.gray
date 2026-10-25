@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3216 - string passed to a C function that keeps the pointer
+ * Expected: E3216 error — putenv keeps entry's storage past the function
+ */
+
+extern import "stdlib.h"
+import @strings
+
+do setit() {
+    unsafe {
+        mut entry string = "GRAYVAR=" + strings.repeat("v", 10)
+        extern.putenv(entry)
+    }
+}
+
+do main() {
+    setit()
+}

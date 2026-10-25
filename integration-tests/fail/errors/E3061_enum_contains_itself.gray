@@ -1,0 +1,6 @@
+const T enum {
+    A(T)
+    B
+}
+
+do main() { println("x") }

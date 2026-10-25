@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include "../runtime/net_rt.h"
 #include <pthread.h>
+#include <time.h>
 
 #define GRAY_SERVER_BUFFER_SIZE          65536
 #define GRAY_SERVER_REQUEST_ARENA     (64 * 1024)
@@ -244,6 +245,17 @@ typedef struct {
     GrayRouter *router;
 } ConnCtx;
 
+/* Sends the whole buffer, looping over partial sends. Returns false on error. */
+static bool send_all(int descriptor, const char *data, size_t length) {
+    size_t sent = 0;
+    while (sent < length) {
+        int written = (int)send(descriptor, data + sent, length - sent, 0);
+        if (written <= 0) return false;
+        sent += (size_t)written;
+    }
+    return true;
+}
+
 static void *cleanup_connection(ConnCtx *connection_context, GrayArena *arena) {
     gray_default_arena = NULL;
     gray_arena_destroy(gray_heap_arena, __FILE__, __LINE__);
@@ -322,25 +334,48 @@ static int64_t declared_content_length(const char *data, int header_end) {
     return 0;
 }
 
+static int64_t monotonic_milliseconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+}
+
 /* Reads one request into `buffer`: until the headers are complete and the
  * Content-Length bytes of body after them have arrived, the buffer is full,
  * or the peer stops sending. Returns the bytes read; the buffer is
- * NUL-terminated. */
+ * NUL-terminated. The whole request has GRAY_SERVER_READ_TIMEOUT_MILLISECONDS
+ * to arrive: a socket timeout alone restarts with every byte, so a client
+ * sending one byte at a time could hold the connection forever. A request
+ * not complete by then returns 0, so the caller drops it. A request whose
+ * body is cut short by the peer closing returns RECEIVE_INCOMPLETE, and one that
+ * cannot fit in the buffer returns RECEIVE_TOO_LARGE. */
+#define RECEIVE_INCOMPLETE (-1)
+#define RECEIVE_TOO_LARGE  (-2)
+
 static int64_t receive_request(int client_descriptor, char *buffer, int capacity) {
     int64_t total = 0;
     int64_t needed = -1;
+    int64_t deadline = monotonic_milliseconds() + GRAY_SERVER_READ_TIMEOUT_MILLISECONDS;
     while (total < capacity - 1) {
+        int64_t remaining = deadline - monotonic_milliseconds();
+        if (remaining <= 0) { buffer[0] = '\0'; return 0; }
+        GRAY_SOCK_TIMEOUT_TYPE timeout_value;
+        gray_sock_timeout_value((int)remaining, &timeout_value);
+        setsockopt(client_descriptor, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(timeout_value), sizeof(timeout_value));
         int64_t received = (int64_t)recv(client_descriptor, buffer + total, (int)(capacity - 1 - total), 0);
-        if (received <= 0) break;
+        if (received < 0) { buffer[0] = '\0'; return 0; }  /* timed out or failed: drop it */
+        if (received == 0) break;
         total += received;
         if (needed < 0) {
             int header_end = find_header_end(buffer, (int)total);
             if (header_end < 0) continue;
             int64_t content_length = declared_content_length(buffer, header_end);
             needed = header_end + 4 + (content_length > 0 ? content_length : 0);
+            if (needed > capacity - 1) return RECEIVE_TOO_LARGE;
         }
         if (total >= needed) break;
     }
+    if (needed >= 0 && total < needed) return RECEIVE_INCOMPLETE;
     buffer[total] = '\0';
     return total;
 }
@@ -356,14 +391,16 @@ static void *handle_connection(void *argument) {
      * inherit from main; it lives until the connection is cleaned up. */
     gray_heap_arena = gray_capped_arena_create(GRAY_SERVER_REQUEST_ARENA);
 
-    /* Apply read timeout so slow or idle connections don't hold threads indefinitely */
-    GRAY_SOCK_TIMEOUT_TYPE timeout_value;
-    gray_sock_timeout_value(GRAY_SERVER_READ_TIMEOUT_MILLISECONDS, &timeout_value);
-    setsockopt(connection_context->client_descriptor, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(timeout_value), sizeof(timeout_value));
-
     /* Receive request data */
     char buffer[GRAY_SERVER_BUFFER_SIZE];
     int64_t bytes_received = receive_request(connection_context->client_descriptor, buffer, (int)sizeof(buffer));
+    if (bytes_received == RECEIVE_INCOMPLETE || bytes_received == RECEIVE_TOO_LARGE) {
+        const char *error_text = bytes_received == RECEIVE_INCOMPLETE
+            ? "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            : "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        send(connection_context->client_descriptor, error_text, strlen(error_text), 0);
+        return cleanup_connection(connection_context, arena);
+    }
     if (bytes_received <= 0) {
         return cleanup_connection(connection_context, arena);
     }
@@ -424,25 +461,23 @@ static void *handle_connection(void *argument) {
     char response_headers[GRAY_SERVER_BUFFER_SIZE];
     format_response_headers(&resp.headers, response_headers, sizeof(response_headers));
 
-    char response_buffer[GRAY_SERVER_BUFFER_SIZE];
+    char response_head[GRAY_SERVER_BUFFER_SIZE + GRAY_SERVER_CORS_BUFFER_SIZE + 256];
     int status = (int)resp.status;
-    int response_length = snprintf(response_buffer, sizeof(response_buffer),
+    int head_length = snprintf(response_head, sizeof(response_head),
         "HTTP/1.1 %d %s\r\n"
         "%s"
         "Content-Length: %d\r\n"
         "%s"
         "Connection: close\r\n"
-        "\r\n"
-        "%.*s",
+        "\r\n",
         status, http_reason_phrase(status),
         response_headers,
         (int)resp.body.len,
-        cors_hdrs,
-        (int)resp.body.len, resp.body.data);
+        cors_hdrs);
 
-    size_t send_length = (response_length > 0 && (size_t)response_length < sizeof(response_buffer))
-        ? (size_t)response_length : sizeof(response_buffer) - 1;
-    send(connection_context->client_descriptor, response_buffer, send_length, 0);
+    if (send_all(connection_context->client_descriptor, response_head, (size_t)head_length)) {
+        send_all(connection_context->client_descriptor, resp.body.data, (size_t)resp.body.len);
+    }
     return cleanup_connection(connection_context, arena);
 }
 

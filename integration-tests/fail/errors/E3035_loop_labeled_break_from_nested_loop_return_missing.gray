@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3035 - a loop left only by a labeled break from a nested loop,
+ * with no return after it
+ */
+// expect-error: E3035
+
+do first(limit i64) -> i64 {
+    outer: loop {
+        for i in range(0, 10) {
+            if i > limit { break outer }
+        }
+        return limit
+    }
+}
+
+do main() {
+    println(first(3))
+}

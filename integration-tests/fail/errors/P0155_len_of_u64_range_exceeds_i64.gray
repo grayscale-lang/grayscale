@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0155 - len of a u64 range with more than i64.MAX elements */
+do main() {
+    mut start u64 = 0
+    mut stop u64 = 18446744073709551615
+    println(len(range(start, stop)))
+}

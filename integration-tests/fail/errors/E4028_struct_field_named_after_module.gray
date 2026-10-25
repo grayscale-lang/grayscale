@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4028 - struct field named after a stdlib module
+ */
+// expect-error: E4028
+
+const S struct {
+    math i64
+}
+
+do main() { }

@@ -1,0 +1,34 @@
+/*
+ * A Grayscale function passed to pthread_create runs on a thread C created,
+ * which has no arenas of its own. Allocating a string, an array, and a
+ * new() pointer inside it must work (#3229).
+ */
+
+extern import "pthread.h", "stdlib.h"
+
+mut done i64 = 0
+
+do worker(arg ^i64) -> ^i64 {
+    mut s string = "a" + "b"
+    mut xs [i64] = {1, 2}
+    mut p ^i64 = new(i64)
+    p^ = 7
+    if "${s} ${xs[1]} ${p^}" == "ab 2 7" {
+        done = 1
+    }
+    return nil
+}
+
+do main() {
+    unsafe {
+        mut tid ^i64 = extern.malloc(16)
+        extern.pthread_create(tid, nil, ()worker, nil)
+        sleep_ms(300)
+        if done == 1 {
+            println("ALL TESTS PASSED")
+        } otherwise {
+            println("SOME TESTS FAILED")
+        }
+        extern.free(tid)
+    }
+}

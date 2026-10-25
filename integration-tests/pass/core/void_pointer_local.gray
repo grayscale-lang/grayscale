@@ -1,0 +1,40 @@
+/*
+ * void_pointer_local.gray - a local ^void variable, a ^void parameter and a
+ * ^void array element are accepted: ^void is a C void *.
+ */
+
+extern import "stdlib.h"
+
+do release(p ^void) {
+    unsafe {
+        extern.free(p)
+    }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    unsafe {
+        mut p ^void = extern.malloc(16)
+        if p != nil {
+            passed += 1
+        } otherwise {
+            failed += 1
+        }
+        release(p)
+        mut q ^void = nil
+        if q == nil {
+            passed += 1
+        } otherwise {
+            failed += 1
+        }
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

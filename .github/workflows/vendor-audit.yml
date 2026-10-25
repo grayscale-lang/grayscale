@@ -21,7 +21,7 @@ on:
       - main
     paths:
       - 'grayc/src/vendor/**'
-      - 'scripts/check_vendor.sh'
+      - 'scripts/check_vendor.gray'
       - '.github/workflows/vendor-audit.yml'
 
 jobs:
@@ -32,8 +32,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run check_vendor.sh
-        run: ./scripts/check_vendor.sh | tee vendor-audit.txt
+      - name: Build grayc
+        run: make -C grayc build
+
+      - name: Run check_vendor
+        run: |
+          ./grayc/grayc scripts/check_vendor.gray -o "$RUNNER_TEMP/check_vendor"
+          "$RUNNER_TEMP/check_vendor" | tee vendor-audit.txt
 
       - name: Publish report to job summary
         if: always()

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5068 - wrap_sub with char arguments
+ */
+// expect-error: E5068
+// expect-error-count: 1
+
+do main() {
+    mut a char = 'a'
+    unsafe {
+        println(wrap_sub(a, 'b'))
+    }
+}

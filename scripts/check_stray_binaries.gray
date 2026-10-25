@@ -1,0 +1,110 @@
+//
+// check_stray_binaries.gray - Detect (and optionally remove) compiled
+// binaries accidentally left at the repo root.
+//
+// Usage (run from the repo root):
+//   grayc scripts/check_stray_binaries.gray && ./check_stray_binaries          # detect and fail
+//   grayc scripts/check_stray_binaries.gray && ./check_stray_binaries --clean  # detect and remove
+//
+// Exit codes:
+//   0  No stray binaries found (or --clean removed them all)
+//   1  Stray binaries detected (without --clean)
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @io, @os, @strings, @arrays
+
+const MAX_LISTED i64 = 10
+
+// is_binary reports whether the file starts with an ELF or Mach-O magic number.
+do is_binary(path string) -> bool {
+    mut bytes, read_err = io.read_bytes(path)
+    if read_err != nil || len(bytes) < 4 {
+        return false
+    }
+    mut b0 u8 = bytes[0]
+    mut b1 u8 = bytes[1]
+    mut b2 u8 = bytes[2]
+    mut b3 u8 = bytes[3]
+    // ELF
+    if b0 == 0x7f && b1 == 0x45 && b2 == 0x4c && b3 == 0x46 {
+        return true
+    }
+    // Mach-O, 32- and 64-bit, either byte order
+    if b0 == 0xfe && b1 == 0xed && b2 == 0xfa && (b3 == 0xce || b3 == 0xcf) {
+        return true
+    }
+    if (b0 == 0xce || b0 == 0xcf) && b1 == 0xfa && b2 == 0xed && b3 == 0xfe {
+        return true
+    }
+    // Mach-O universal: a Java class file has the same magic, and is told apart
+    // by bytes 4-7, which count architectures here (at most 30) and hold the
+    // class file's minor and major version there (45 or more).
+    if b0 == 0xca && b1 == 0xfe && b2 == 0xba && b3 == 0xbe && len(bytes) >= 8 {
+        return bytes[4] == 0 && bytes[5] == 0 && bytes[6] == 0 && bytes[7] >= 1 && bytes[7] <= 30
+    }
+    return false
+}
+
+// is_symlink reports whether the path is a symbolic link; io.is_file follows
+// links, so a link to a binary would otherwise be reported and removed.
+do is_symlink(path string) -> bool {
+    mut result, exec_err = os.exec("test", {"-L", path})
+    return exec_err == nil && result.exit_code == 0
+}
+
+do main() {
+    mut clean bool = false
+    for_each arg in os.args() {
+        if arg == "--clean" {
+            clean = true
+        }
+    }
+
+    mut entries, list_err = io.list_dir(".")
+    if list_err != nil {
+        eprintln("check_stray_binaries: cannot read the current directory")
+        exit(1)
+    }
+    arrays.sort_asc(entries)
+
+    mut stray [string] = {}
+    for_each entry in entries {
+        if strings.starts_with(entry, ".") || entry == "gray" || entry == "check_stray_binaries" || !io.is_file(entry) || is_symlink(entry) {
+            continue
+        }
+        if is_binary(entry) {
+            arrays.append(stray, entry)
+        }
+    }
+
+    if len(stray) == 0 {
+        println("No stray binaries at repo root.")
+        exit(0)
+    }
+
+    if clean {
+        for_each path in stray {
+            mut _, _ = io.delete_file(path)
+        }
+        println("Removed ${len(stray)} stray binary(ies) from repo root.")
+        exit(0)
+    }
+
+    println("ERROR: ${len(stray)} stray compiled binary(ies) found at repo root:")
+    mut shown i64 = 0
+    for_each path in stray {
+        if shown >= MAX_LISTED {
+            break
+        }
+        println(path)
+        shown = shown + 1
+    }
+    if len(stray) > MAX_LISTED {
+        println("  ... and ${len(stray) - MAX_LISTED} more")
+    }
+    println("")
+    println("Run the check again with --clean to remove them.")
+    exit(1)
+}

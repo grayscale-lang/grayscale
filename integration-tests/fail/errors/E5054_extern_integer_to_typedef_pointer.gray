@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5054 - an i64 passed to a parameter whose type is a typedef of a pointer
+ * Expected: E5054 error
+ */
+
+extern import "iconv.h"
+
+do main() {
+    unsafe {
+        mut handle i64 = 0
+        mut r i32 = extern.iconv_close(handle)
+        println(r)
+    }
+}

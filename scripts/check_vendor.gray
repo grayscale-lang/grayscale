@@ -1,0 +1,312 @@
+//
+// check_vendor.gray - verify vendored third-party C source against
+// grayc/src/vendor/MANIFEST.toml and report known security advisories.
+//
+// For each dependency in the manifest this:
+//   * recomputes the SHA256 of every listed file and compares it to the
+//     recorded hash
+//   * checks that every tracked file under grayc/src/vendor/ is covered by
+//     the manifest
+//   * queries the OSV.dev API for advisories against the pinned version and
+//     prints any that come back, grouped by CVE
+//
+// Exit codes:
+//   0  every recorded hash matched (advisories, if any, printed as warnings)
+//   1  a hash mismatch, a missing/uncovered file, or a malformed manifest
+//   2  usage error
+//
+// Advisories never affect the exit code — they are informational, surfaced
+// so a pinned version with a new CVE gets noticed on the monthly CI run. The
+// manifest's `advisories_reviewed_through` date is the human review record.
+//
+// Requirements: git. The OSV step additionally needs curl and jq; without
+// them (or with --offline) the hash check still runs and the OSV step is
+// skipped with a warning.
+//
+// Usage (run from the repo root):
+//   grayc scripts/check_vendor.gray && ./check_vendor [--offline]
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @io, @os, @strings, @arrays, @crypto
+
+const VENDOR_DIR string = "grayc/src/vendor"
+const MANIFEST string = "grayc/src/vendor/MANIFEST.toml"
+const OSV_URL string = "https://api.osv.dev/v1/query"
+
+// The jq program that turns an OSV response into one "  - <id>: <summary>"
+// line per advisory, keyed by CVE id when the advisory has one.
+const OSV_FILTER string = "[ .vulns[]? | { id: (((.aliases // []) | map(select(startswith(\"CVE-\"))) | first) // .id), s: ((.summary // (.details // \"\")) | gsub(\"\\\\s+\"; \" \") | .[0:110]) } ] | unique_by(.id) | sort_by(.id) | .[] | \"  - \\(.id): \\(.s)\""
+
+// Entry is one parsed manifest line: the dependency it belongs to, its key and
+// its value. A [dependencies.<dep>.files] line has kind "file" (key is the file
+// name, value its hash); [dependencies.<dep>.osv] keys are prefixed "osv_".
+const Entry struct {
+    dep string
+    key string
+    value string
+}
+
+// manifest_key strips whitespace and quotes from the text left of "=".
+do manifest_key(text string) -> string {
+    mut key string = strings.replace(text, " ", "")
+    key = strings.replace(key, "\t", "")
+    return strings.replace(key, "\"", "")
+}
+
+// manifest_value strips a trailing comment, surrounding whitespace and the
+// surrounding quotes from the text right of "=".
+do manifest_value(text string) -> string {
+    mut value string = text
+    mut hash i64 = strings.index_of(value, "#")
+    if hash != -1 {
+        value = strings.slice(value, 0, hash)
+    }
+    value = strings.trim(value)
+    if strings.starts_with(value, "\"") {
+        value = strings.slice(value, 1, len(value))
+    }
+    if strings.ends_with(value, "\"") {
+        value = strings.slice(value, 0, len(value) - 1)
+    }
+    return value
+}
+
+// parse_manifest flattens the manifest. Deliberately a tiny subset of TOML —
+// regular key = "value" lines under the section headers this script writes
+// about, nothing more.
+do parse_manifest(lines [string]) -> [Entry] {
+    mut entries [Entry] = {}
+    mut dep string = ""
+    mut section string = ""
+    for_each raw in lines {
+        mut line string = strings.trim(raw)
+        if strings.starts_with(line, "#") {
+            continue
+        }
+        if strings.starts_with(line, "[dependencies.") && strings.ends_with(line, "]") {
+            mut name string = strings.slice(line, 14, len(line) - 1)
+            if strings.ends_with(name, ".files") {
+                dep = strings.remove_suffix(name, ".files")
+                section = "files"
+            } or strings.ends_with(name, ".osv") {
+                dep = strings.remove_suffix(name, ".osv")
+                section = "osv"
+            } otherwise {
+                dep = name
+                section = "root"
+            }
+            continue
+        }
+        if strings.starts_with(line, "[") {
+            section = "other"
+            continue
+        }
+        mut equals i64 = strings.index_of(line, "=")
+        if equals == -1 || dep == "" || section == "other" {
+            continue
+        }
+        mut key string = manifest_key(strings.slice(line, 0, equals))
+        mut value string = manifest_value(strings.slice(line, equals + 1, len(line)))
+        if key == "" || value == "" {
+            continue
+        }
+        if section == "files" {
+            arrays.append(entries, Entry{dep: dep, key: "file|${key}", value: value})
+        } or section == "osv" {
+            arrays.append(entries, Entry{dep: dep, key: "osv_${key}", value: value})
+        } otherwise {
+            arrays.append(entries, Entry{dep: dep, key: key, value: value})
+        }
+    }
+    return entries
+}
+
+// field returns the first value recorded for key under dep, or "".
+do field(entries [Entry], dep string, key string) -> string {
+    for_each entry in entries {
+        if entry.dep == dep && entry.key == key {
+            return entry.value
+        }
+    }
+    return ""
+}
+
+// or_unknown returns "?" for an empty value.
+do or_unknown(value string) -> string {
+    if value == "" {
+        return "?"
+    }
+    return value
+}
+
+// tool_available reports whether name can be launched.
+do tool_available(name string) -> bool {
+    mut _, err = os.exec(name, {"--version"})
+    return err == nil
+}
+
+// advisories prints the OSV advisories for one dependency; informational only.
+do advisories(entries [Entry], dep string, version string, offline bool) {
+    mut osv_name string = field(entries, dep, "osv_name")
+    mut osv_ecosystem string = field(entries, dep, "osv_ecosystem")
+    mut reviewed string = field(entries, dep, "advisories_reviewed_through")
+    if osv_name == "" {
+        println("  advisories: no [dependencies.${dep}.osv] name — skipped")
+        return
+    }
+    if offline {
+        println("  advisories: --offline — OSV check skipped")
+        return
+    }
+    if !tool_available("curl") || !tool_available("jq") {
+        println("  advisories: curl/jq not available — OSV check skipped")
+        return
+    }
+
+    mut payload string = "{\"version\":\"${version}\",\"package\":{\"name\":\"${osv_name}\"}}"
+    if osv_ecosystem != "" {
+        payload = "{\"version\":\"${version}\",\"package\":{\"name\":\"${osv_name}\",\"ecosystem\":\"${osv_ecosystem}\"}}"
+    }
+    mut response, curl_err = os.exec("curl", {"-sS", "--max-time", "30", "-X", "POST", "-d", payload, OSV_URL})
+    if curl_err != nil || response.stdout == "" {
+        println("  advisories: OSV query failed (network?) — skipped")
+        return
+    }
+
+    // jq reads the response from a file; os.exec has no stdin.
+    mut response_path, temp_err = io.temp_file()
+    if temp_err != nil {
+        println("  advisories: OSV query failed (no temp file) — skipped")
+        return
+    }
+    mut _, _ = io.write_file(response_path, response.stdout)
+    mut parsed, jq_err = os.exec("jq", {"-r", OSV_FILTER, response_path})
+    mut _, _ = io.delete_file(response_path)
+
+    mut listing string = ""
+    if jq_err == nil && parsed.exit_code == 0 {
+        listing = strings.trim_right(parsed.stdout)
+    }
+    if listing == "" {
+        println("  advisories: none reported by OSV for ${osv_name} ${version}")
+        return
+    }
+    mut reviewed_through string = reviewed
+    if reviewed == "" {
+        reviewed_through = "never"
+    }
+    println("  advisories: OSV reports ${strings.count(listing, "  - ") } for ${version} (reviewed through ${reviewed_through}):")
+    println(listing)
+    println("  NOTE: triage these, then update advisories_reviewed_through")
+    println("        in MANIFEST.toml (and bump the dependency if warranted).")
+}
+
+do main() {
+    mut offline bool = false
+    mut arguments [string] = os.args()
+    for position in range(1, len(arguments)) {
+        mut arg string = arguments[position]
+        if arg == "--offline" {
+            offline = true
+        } or arg == "-h" || arg == "--help" {
+            println("usage: check_vendor [--offline]")
+            println("  Verifies grayc/src/vendor/MANIFEST.toml hashes and reports OSV advisories.")
+            exit(0)
+        } otherwise {
+            eprintln("unknown argument: ${arg}")
+            exit(2)
+        }
+    }
+
+    mut lines, read_err = io.read_lines(MANIFEST)
+    if read_err != nil {
+        eprintln("ERROR: ${MANIFEST} not found")
+        exit(1)
+    }
+    mut entries [Entry] = parse_manifest(lines)
+    if len(entries) == 0 {
+        eprintln("ERROR: no [dependencies.*] entries parsed from ${MANIFEST}")
+        exit(1)
+    }
+
+    mut failed bool = false
+    mut deps [string] = {}
+    mut covered [string] = {}
+    for_each entry in entries {
+        if !arrays.contains(deps, entry.dep) {
+            arrays.append(deps, entry.dep)
+        }
+        if strings.starts_with(entry.key, "file|") {
+            arrays.append(covered, strings.remove_prefix(entry.key, "file|"))
+        }
+    }
+    arrays.sort_asc(deps)
+
+    // Every tracked vendor source file must be listed by some dependency.
+    mut inside_repo, repo_err = os.exec("git", {"rev-parse"})
+    if repo_err == nil && inside_repo.exit_code == 0 {
+        mut tracked_result, _ = os.exec("git", {"ls-files", "${VENDOR_DIR}/*.c", "${VENDOR_DIR}/*.h"})
+        for_each tracked in strings.split(tracked_result.stdout, "\n") {
+            if tracked == "" {
+                continue
+            }
+            mut parts [string] = strings.split(tracked, "/")
+            if !arrays.contains(covered, parts[len(parts) - 1]) {
+                println("ERROR: ${tracked} is tracked but not listed in MANIFEST.toml")
+                failed = true
+            }
+        }
+    }
+
+    for_each dep in deps {
+        mut version string = field(entries, dep, "version")
+        println("== ${dep} ${version}  (license: ${or_unknown(field(entries, dep, "license"))}, modifications: ${or_unknown(field(entries, dep, "modifications"))})")
+
+        // --- hashes ---
+        mut listed i64 = 0
+        for_each entry in entries {
+            if entry.dep != dep || !strings.starts_with(entry.key, "file|") {
+                continue
+            }
+            listed = listed + 1
+            mut name string = strings.remove_prefix(entry.key, "file|")
+            mut path string = "${VENDOR_DIR}/${name}"
+            if !io.is_file(path) {
+                println("  MISSING  ${name}")
+                failed = true
+                continue
+            }
+            mut content, content_err = io.read_file(path)
+            if content_err != nil {
+                println("  MISSING  ${name}")
+                failed = true
+                continue
+            }
+            mut actual string = crypto.sha256(content)
+            if actual == entry.value {
+                println("  ok       ${name}")
+            } otherwise {
+                println("  MISMATCH ${name}")
+                println("             recorded ${entry.value}")
+                println("             actual   ${actual}")
+                failed = true
+            }
+        }
+        if listed == 0 {
+            println("  ERROR: no files listed for ${dep}")
+            failed = true
+        }
+
+        advisories(entries, dep, version, offline)
+        println("")
+    }
+
+    if failed {
+        println("check_vendor: FAILED (hash mismatch or manifest problem)")
+        exit(1)
+    }
+    println("check_vendor: all recorded hashes verified")
+    exit(0)
+}

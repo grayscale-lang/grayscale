@@ -99,15 +99,15 @@ var langManDocs = map[string]LangManEntry{
 	},
 	"break": {
 		Kind:    "keyword",
-		Syntax:  "break",
-		Desc:    "Terminates the innermost enclosing loop immediately.",
-		Example: "for i in range(0, 100) {\n    if i == 5 { break }\n}",
+		Syntax:  "break [label]",
+		Desc:    "Terminates the innermost enclosing loop immediately, or the enclosing loop named by a label.",
+		Example: "outer: for y in range(0, 10) {\n    for x in range(0, 10) {\n        if x == y { break outer }\n    }\n}",
 	},
 	"continue": {
 		Kind:    "keyword",
-		Syntax:  "continue",
-		Desc:    "Skips the remainder of the current loop iteration and begins the next.",
-		Example: "for i in range(0, 10) {\n    if i % 2 == 0 { continue }\n    println(i)\n}",
+		Syntax:  "continue [label]",
+		Desc:    "Skips the remainder of the current loop iteration and begins the next, of the innermost enclosing loop or of the loop named by a label.",
+		Example: "outer: for y in range(0, 10) {\n    for x in range(0, 10) {\n        if x == y { continue outer }\n    }\n}",
 	},
 	"default": {
 		Kind:    "keyword",
@@ -231,8 +231,15 @@ var langManDocs = map[string]LangManEntry{
 	"alias": {
 		Kind:    "keyword",
 		Syntax:  "alias <Name> = <Type>",
-		Desc:    "Creates an interchangeable name for an existing type. Aliases are erased at compile time; type_of() returns the underlying type. Can alias primitives, structs, enums, and collections. File-scope only. Use 'private alias' to restrict to the declaring file.",
+		Desc:    "Creates an interchangeable name for an existing type. Aliases are erased at compile time; type_of() returns the underlying type. Can alias primitives, structs, enums, and collections. File-scope only. Use 'private alias' to restrict to the declaring file. Prefix with 'distinct' for a type that does not convert implicitly.",
 		Example: "alias Meters = f64\nalias Vec2 = Point\nalias Names = [string]\n\ndo main() {\n    mut d Meters = 10.5\n    println(type_of(d))  // f64\n}",
+	},
+
+	"distinct": {
+		Kind:    "keyword",
+		Syntax:  "distinct alias <Name> = <PrimitiveType>",
+		Desc:    "Prefix on 'alias' that declares a new type with the representation of a primitive type but no implicit conversion to or from it, or any other distinct type. Literals of a compatible kind are accepted; every other conversion goes through cast(). Same-type arithmetic and comparison are allowed. Erased in generated C, so it has no runtime cost. Primitive targets only (E3215). Combine with 'private' as 'private distinct alias'.",
+		Example: "distinct alias UserId = i64\ndistinct alias OrderId = i64\n\ndo delete_user(id UserId) { }\n\ndo main() {\n    mut user UserId = 5\n    mut order OrderId = 7\n    delete_user(user)                 // ok\n    delete_user(order)                // error: expected UserId, got OrderId\n    delete_user(cast(order, UserId))  // ok\n}",
 	},
 
 	// ── Keywords: Operators ─────────────────────────────────────────────
@@ -484,6 +491,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).",
 		Example: "#discard\ndo tryInsert(value i64) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
 	},
+	"#define": {
+		Kind:    "attribute",
+		Syntax:  "#define",
+		Desc:    "Marks a top-level const of a primitive type so 'gray -define:NAME=VALUE' can override its value at build time. The declared value is the default.",
+		Example: "#define\nconst ROSTER_PATH string = \"./roster.txt\"\n\n// gray build main.gray -define:ROSTER_PATH=./my/path",
+	},
 	"#test": {
 		Kind:    "attribute",
 		Syntax:  "#test",
@@ -503,7 +516,7 @@ var langCategories = map[string][]langGroup{
 	"keywords": {
 		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
 		{Label: "Error handling", Names: []string{"ensure", "defer", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "generic", "import", "using", "use", "new", "private"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "distinct", "generic", "import", "using", "use", "new", "private"}},
 		{Label: "Operators     ", Names: []string{"in", "not_in", "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "cast", "range"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},
@@ -520,7 +533,7 @@ var langCategories = map[string][]langGroup{
 		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#"}},
 	},
 	"attributes": {
-		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard", "#test"}},
+		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard", "#test", "#define"}},
 	},
 }
 
@@ -539,6 +552,7 @@ var langSymbolAliases = map[string]string{
 	"strict":  "#strict",
 	"discard": "#discard",
 	"test":    "#test",
+	"define":  "#define",
 }
 
 // langDisplayName strips the _type suffix used to avoid builtin key collisions.

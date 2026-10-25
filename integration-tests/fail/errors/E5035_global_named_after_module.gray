@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5035 - global named after a stdlib module
+ */
+// expect-error: E5035
+
+mut math i64 = 1
+
+do main() { }

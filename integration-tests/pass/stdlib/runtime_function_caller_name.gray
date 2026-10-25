@@ -1,0 +1,34 @@
+import @runtime
+
+const Counter struct {
+    n i64
+
+    do bump(c Counter) -> string {
+        return "${runtime.function_name()}<${runtime.caller_name()}"
+    }
+}
+
+do inner() -> string {
+    return "${runtime.function_name()}<${runtime.caller_name()}"
+}
+
+do outer() -> string {
+    return inner()
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if runtime.function_name() == "main" { passed += 1 } otherwise { failed += 1 }
+    if runtime.caller_name() == "" { passed += 1 } otherwise { failed += 1 }
+    if inner() == "inner<main" { passed += 1 } otherwise { failed += 1 }
+    if outer() == "inner<outer" { passed += 1 } otherwise { failed += 1 }
+
+    mut counter Counter = Counter{n: 1}
+    if Counter.bump(counter) == "Counter.bump<main" { passed += 1 } otherwise { failed += 1 }
+
+    println("runtime function names: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

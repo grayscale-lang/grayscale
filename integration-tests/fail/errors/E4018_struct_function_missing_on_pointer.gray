@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4018 - call of a missing struct function through a pointer
+ */
+// expect-error: E4018
+
+const S struct {
+    x i64
+}
+
+do main() {
+    mut s = new(S)
+    mut p ^S = addr(s)
+    p.missing()
+}

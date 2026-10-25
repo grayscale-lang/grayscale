@@ -11,37 +11,52 @@
 #include "sync.h"
 #include <pthread.h>
 #include <stdlib.h>
+#include "../runtime/atomic.h"
+
+/* A destroyed mutex keeps its allocation, marked destroyed: a copy of the
+ * handle made before the destroy still points here, and freeing the memory
+ * would leave that copy reading a freed object. */
+typedef struct {
+    pthread_mutex_t mutex;
+    int destroyed;
+} GrayMutexInternal;
 
 GrayMutex gray_sync_mutex(void) {
-    pthread_mutex_t *handle = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(handle, NULL);
+    GrayMutexInternal *handle = malloc(sizeof(GrayMutexInternal));
+    pthread_mutex_init(&handle->mutex, NULL);
+    handle->destroyed = 0;
     GrayMutex result;
     result._internal = handle;
     return result;
 }
 
+/* A zero-value or destroyed mutex gives no mutual exclusion, so using one is
+ * a bug the program must hear about rather than a silent no-op. */
+static void mutex_unusable(const char *function_name) {
+    gray_panic_code("P0168", "sync.%s on a mutex that was never created with sync.mutex() or was already destroyed", function_name);
+}
+
+static GrayMutexInternal *live_mutex(GrayMutex mutex, const char *function_name) {
+    GrayMutexInternal *handle = (GrayMutexInternal *)mutex._internal;
+    if (!handle || __atomic_load_n(&handle->destroyed, __ATOMIC_SEQ_CST)) mutex_unusable(function_name);
+    return handle;
+}
+
 void gray_sync_lock(GrayMutex mutex) {
-    if (mutex._internal) {
-        pthread_mutex_lock((pthread_mutex_t *)mutex._internal);
-    }
+    pthread_mutex_lock(&live_mutex(mutex, "lock")->mutex);
 }
 
 void gray_sync_unlock(GrayMutex mutex) {
-    if (mutex._internal) {
-        pthread_mutex_unlock((pthread_mutex_t *)mutex._internal);
-    }
+    pthread_mutex_unlock(&live_mutex(mutex, "unlock")->mutex);
 }
 
 bool gray_sync_try_lock(GrayMutex mutex) {
-    if (mutex._internal) {
-        return pthread_mutex_trylock((pthread_mutex_t *)mutex._internal) == 0;
-    }
-    return false;
+    return pthread_mutex_trylock(&live_mutex(mutex, "try_lock")->mutex) == 0;
 }
 
-void gray_sync_destroy(GrayMutex mutex) {
-    if (mutex._internal) {
-        pthread_mutex_destroy((pthread_mutex_t *)mutex._internal);
-        free(mutex._internal);
-    }
+void gray_sync_destroy(GrayMutex *mutex) {
+    GrayMutexInternal *handle = (GrayMutexInternal *)mutex->_internal;
+    if (!handle || __atomic_exchange_n(&handle->destroyed, 1, __ATOMIC_SEQ_CST)) mutex_unusable("destroy");
+    pthread_mutex_destroy(&handle->mutex);
+    mutex->_internal = NULL;
 }

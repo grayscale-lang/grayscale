@@ -11,6 +11,12 @@
 #include "../src/runtime/runtime.h"
 #include "../src/runtime/array.h"
 #include "../src/runtime/map.h"
+#include "../src/runtime/atomic.h"
+#include "../src/runtime/bigint.h"
+#include "../src/runtime/test.h"
+#include <unistd.h>
+#include <pthread.h>
+#include <math.h>
 #include <stdint.h>
 
 /* Global arena used by string, array, and map tests. Arena tests create
@@ -480,6 +486,587 @@ static void test_gray_map_empty(void) {
     ASSERT(gray_map_get(&m, &key) == NULL);
 }
 
+/* ===== atomics ===== */
+
+static void test_atomic_load_store(void) {
+    int64_t cell = 5;
+    ASSERT_EQ(gray_atomic_load(&cell), 5);
+    gray_atomic_store(&cell, -9);
+    ASSERT_EQ(gray_atomic_load(&cell), -9);
+    ASSERT_EQ(cell, -9);
+}
+
+static void test_atomic_add_returns_previous_value(void) {
+    int64_t cell = 10;
+    ASSERT_EQ(gray_atomic_add(&cell, 5), 10);
+    ASSERT_EQ(cell, 15);
+    ASSERT_EQ(gray_atomic_add(&cell, -20), 15);
+    ASSERT_EQ(cell, -5);
+}
+
+static void test_atomic_sub_returns_previous_value(void) {
+    int64_t cell = 10;
+    ASSERT_EQ(gray_atomic_sub(&cell, 3), 10);
+    ASSERT_EQ(cell, 7);
+}
+
+static void test_atomic_exchange_returns_previous_value(void) {
+    int64_t cell = 1;
+    ASSERT_EQ(gray_atomic_exchange(&cell, 2), 1);
+    ASSERT_EQ(cell, 2);
+}
+
+static void test_atomic_cas_succeeds_when_expected_matches(void) {
+    int64_t cell = 4;
+    ASSERT(gray_atomic_cas(&cell, 4, 8));
+    ASSERT_EQ(cell, 8);
+}
+
+static void test_atomic_cas_fails_and_leaves_value_when_expected_differs(void) {
+    int64_t cell = 4;
+    ASSERT(!gray_atomic_cas(&cell, 5, 8));
+    ASSERT_EQ(cell, 4);
+}
+
+static void test_atomic_bitwise_return_previous_value(void) {
+    int64_t cell = 0xF0;
+    ASSERT_EQ(gray_atomic_and(&cell, 0x3C), 0xF0);
+    ASSERT_EQ(cell, 0x30);
+    ASSERT_EQ(gray_atomic_or(&cell, 0x05), 0x30);
+    ASSERT_EQ(cell, 0x35);
+    ASSERT_EQ(gray_atomic_xor(&cell, 0xFF), 0x35);
+    ASSERT_EQ(cell, 0xCA);
+}
+
+static void test_atomic_add_wraps_at_i64_max(void) {
+    int64_t cell = INT64_MAX;
+    ASSERT_EQ(gray_atomic_add(&cell, 1), INT64_MAX);
+    ASSERT_EQ(cell, INT64_MIN);
+}
+
+static void test_atomic_sub_wraps_at_i64_min(void) {
+    int64_t cell = INT64_MIN;
+    ASSERT_EQ(gray_atomic_sub(&cell, 1), INT64_MIN);
+    ASSERT_EQ(cell, INT64_MAX);
+}
+
+static void test_atomic32_load_store(void) {
+    int32_t cell = 5;
+    ASSERT_EQ(gray_atomic_load32(&cell), 5);
+    gray_atomic_store32(&cell, -9);
+    ASSERT_EQ(gray_atomic_load32(&cell), -9);
+}
+
+static void test_atomic32_add_and_sub_return_previous_value(void) {
+    int32_t cell = 10;
+    ASSERT_EQ(gray_atomic_add32(&cell, 5), 10);
+    ASSERT_EQ(cell, 15);
+    ASSERT_EQ(gray_atomic_sub32(&cell, 20), 15);
+    ASSERT_EQ(cell, -5);
+}
+
+static void test_atomic32_add_wraps_at_i32_max(void) {
+    int32_t cell = INT32_MAX;
+    gray_atomic_add32(&cell, 1);
+    ASSERT_EQ(cell, INT32_MIN);
+}
+
+static void test_atomic32_exchange_returns_previous_value(void) {
+    int32_t cell = 1;
+    ASSERT_EQ(gray_atomic_exchange32(&cell, 2), 1);
+    ASSERT_EQ(cell, 2);
+}
+
+static void test_atomic32_cas(void) {
+    int32_t cell = 4;
+    ASSERT(!gray_atomic_cas32(&cell, 5, 8));
+    ASSERT_EQ(cell, 4);
+    ASSERT(gray_atomic_cas32(&cell, 4, 8));
+    ASSERT_EQ(cell, 8);
+}
+
+static void test_atomic32_operations_leave_neighbouring_words_untouched(void) {
+    int32_t cells[3] = {7, 0, 9};
+    gray_atomic_store32(&cells[1], -1);
+    gray_atomic_add32(&cells[1], 1);
+    ASSERT_EQ(cells[0], 7);
+    ASSERT_EQ(cells[1], 0);
+    ASSERT_EQ(cells[2], 9);
+}
+
+static void test_atomic8_load_store(void) {
+    uint8_t cell = 5;
+    ASSERT_EQ(gray_atomic_load8(&cell), 5);
+    gray_atomic_store8(&cell, 250);
+    ASSERT_EQ(gray_atomic_load8(&cell), 250);
+}
+
+static void test_atomic8_exchange_returns_previous_value(void) {
+    uint8_t cell = 1;
+    ASSERT_EQ(gray_atomic_exchange8(&cell, 2), 1);
+    ASSERT_EQ(cell, 2);
+}
+
+static void test_atomic8_cas(void) {
+    uint8_t cell = 4;
+    ASSERT(!gray_atomic_cas8(&cell, 5, 8));
+    ASSERT_EQ(cell, 4);
+    ASSERT(gray_atomic_cas8(&cell, 4, 8));
+    ASSERT_EQ(cell, 8);
+}
+
+static void test_atomic8_operations_leave_neighbouring_bytes_untouched(void) {
+    uint8_t cells[3] = {7, 0, 9};
+    gray_atomic_store8(&cells[1], 255);
+    gray_atomic_exchange8(&cells[1], 0);
+    ASSERT_EQ(cells[0], 7);
+    ASSERT_EQ(cells[1], 0);
+    ASSERT_EQ(cells[2], 9);
+}
+
+static void test_atomic_spinlock_trylock_and_unlock(void) {
+    int32_t lock = 0;
+    ASSERT(gray_spin_trylock(&lock));
+    ASSERT(!gray_spin_trylock(&lock));
+    gray_spin_unlock(&lock);
+    ASSERT(gray_spin_trylock(&lock));
+    gray_spin_unlock(&lock);
+}
+
+static void test_atomic_spin_lock_acquires_free_lock(void) {
+    int32_t lock = 0;
+    gray_spin_lock(&lock);
+    ASSERT(!gray_spin_trylock(&lock));
+    gray_spin_unlock(&lock);
+}
+
+static void test_atomic_fence_returns(void) {
+    gray_atomic_fence();
+}
+
+#define ATOMIC_THREAD_COUNT 4
+#define ATOMIC_THREAD_ITERATIONS 20000
+
+static int64_t shared_atomic_counter;
+static int64_t shared_locked_counter;
+static int32_t shared_spinlock;
+
+static void *atomic_add_worker(void *unused) {
+    (void)unused;
+    for (int i = 0; i < ATOMIC_THREAD_ITERATIONS; i++) gray_atomic_add(&shared_atomic_counter, 1);
+    return NULL;
+}
+
+static void *spinlock_worker(void *unused) {
+    (void)unused;
+    for (int i = 0; i < ATOMIC_THREAD_ITERATIONS; i++) {
+        gray_spin_lock(&shared_spinlock);
+        shared_locked_counter = shared_locked_counter + 1;
+        gray_spin_unlock(&shared_spinlock);
+    }
+    return NULL;
+}
+
+static void run_workers(void *(*worker)(void *)) {
+    pthread_t threads[ATOMIC_THREAD_COUNT];
+    for (int i = 0; i < ATOMIC_THREAD_COUNT; i++) pthread_create(&threads[i], NULL, worker, NULL);
+    for (int i = 0; i < ATOMIC_THREAD_COUNT; i++) pthread_join(threads[i], NULL);
+}
+
+static void test_atomic_add_loses_no_updates_across_threads(void) {
+    shared_atomic_counter = 0;
+    run_workers(atomic_add_worker);
+    ASSERT_EQ(shared_atomic_counter, (int64_t)ATOMIC_THREAD_COUNT * ATOMIC_THREAD_ITERATIONS);
+}
+
+static void test_atomic_spinlock_gives_mutual_exclusion_across_threads(void) {
+    shared_locked_counter = 0;
+    shared_spinlock = 0;
+    run_workers(spinlock_worker);
+    ASSERT_EQ(shared_locked_counter, (int64_t)ATOMIC_THREAD_COUNT * ATOMIC_THREAD_ITERATIONS);
+}
+
+/* ===== element helpers ===== */
+
+#define ASSERT_FLOAT_COMPARE(actual, expected) do { \
+    double actual_value_ = (actual), expected_value_ = (expected); \
+    if (fabs(actual_value_ - expected_value_) > 1e-9 * (fabs(expected_value_) > 1.0 ? fabs(expected_value_) : 1.0)) { \
+        fprintf(stderr, "  FAIL %s:%d: %g != %g\n", __FILE__, __LINE__, actual_value_, expected_value_); \
+        _test_failed_this = 1; \
+        return; \
+    } \
+} while (0)
+
+#define ELEM_COMPARE_CASE(KIND, TYPE, SMALL, LARGE) do { \
+    TYPE small_value = (SMALL), large_value = (LARGE); \
+    ASSERT_EQ(gray_elem_compare(KIND, sizeof(TYPE), &small_value, &large_value), -1); \
+    ASSERT_EQ(gray_elem_compare(KIND, sizeof(TYPE), &large_value, &small_value), 1); \
+    ASSERT_EQ(gray_elem_compare(KIND, sizeof(TYPE), &small_value, &small_value), 0); \
+} while (0)
+
+static void test_elem_compare_orders_every_integer_kind(void) {
+    ELEM_COMPARE_CASE(GRAY_ELEM_I8, int8_t, -5, 5);
+    ELEM_COMPARE_CASE(GRAY_ELEM_I16, int16_t, -300, 300);
+    ELEM_COMPARE_CASE(GRAY_ELEM_I32, int32_t, -70000, 70000);
+    ELEM_COMPARE_CASE(GRAY_ELEM_CHAR, int32_t, 'a', 'b');
+    ELEM_COMPARE_CASE(GRAY_ELEM_I64, int64_t, INT64_MIN, INT64_MAX);
+    ELEM_COMPARE_CASE(GRAY_ELEM_U8, uint8_t, 1, 200);
+    ELEM_COMPARE_CASE(GRAY_ELEM_BOOL, bool, false, true);
+    ELEM_COMPARE_CASE(GRAY_ELEM_U16, uint16_t, 1, 60000);
+    ELEM_COMPARE_CASE(GRAY_ELEM_U32, uint32_t, 1, 4000000000u);
+    ELEM_COMPARE_CASE(GRAY_ELEM_U64, uint64_t, 1, UINT64_MAX);
+}
+
+static void test_elem_compare_floats_with_nan_ordered_last(void) {
+    double one = 1.0, two = 2.0, not_a_number = NAN, other_nan = -NAN;
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &one, &two), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &two, &one), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &one, &one), 0);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &one, &not_a_number), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &not_a_number, &one), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F64, 8, &not_a_number, &other_nan), 0);
+    float small = 1.5f, large = 2.5f, float_nan = NAN;
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F32, 4, &small, &large), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_F32, 4, &float_nan, &small), 1);
+}
+
+static void test_elem_compare_wide_integers(void) {
+    gray_i128 negative = {UINT64_MAX, -1}, positive = {1, 0};
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I128, 16, &negative, &positive), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I128, 16, &positive, &negative), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I128, 16, &positive, &positive), 0);
+    gray_u128 low = {5, 0}, high = {0, 1};
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U128, 16, &low, &high), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U128, 16, &high, &low), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U128, 16, &low, &low), 0);
+    gray_i256 minus_one = {{UINT64_MAX, UINT64_MAX, UINT64_MAX, UINT64_MAX}}, one = {{1, 0, 0, 0}};
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I256, 32, &minus_one, &one), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I256, 32, &one, &minus_one), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_I256, 32, &one, &one), 0);
+    gray_u256 small = {{9, 0, 0, 0}}, big = {{0, 0, 0, 1}};
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U256, 32, &small, &big), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U256, 32, &big, &small), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_U256, 32, &big, &big), 0);
+}
+
+static void test_elem_compare_strings_bytewise_then_by_length(void) {
+    GrayString apple = gray_string_lit("apple"), apricot = gray_string_lit("apricot"), app = gray_string_lit("app"), empty = gray_string_lit("");
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &apple, &apricot), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &apricot, &apple), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &app, &apple), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &apple, &apple), 0);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &empty, &app), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_STRING, sizeof(GrayString), &empty, &empty), 0);
+}
+
+static void test_elem_compare_other_kinds_compare_bytes(void) {
+    uint8_t first[4] = {1, 2, 3, 4}, second[4] = {1, 2, 3, 5};
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_OTHER, 4, first, second), -1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_OTHER, 4, second, first), 1);
+    ASSERT_EQ(gray_elem_compare(GRAY_ELEM_OTHER, 4, first, first), 0);
+}
+
+static void test_elem_equal_floats_follow_ieee_equality(void) {
+    double zero = 0.0, negative_zero = -0.0, not_a_number = NAN, one = 1.0;
+    ASSERT(gray_elem_equal(GRAY_ELEM_F64, 8, &zero, &negative_zero));
+    ASSERT(!gray_elem_equal(GRAY_ELEM_F64, 8, &not_a_number, &not_a_number));
+    ASSERT(!gray_elem_equal(GRAY_ELEM_F64, 8, &zero, &one));
+    float float_zero = 0.0f, float_negative_zero = -0.0f;
+    ASSERT(gray_elem_equal(GRAY_ELEM_F32, 4, &float_zero, &float_negative_zero));
+}
+
+static void test_elem_equal_strings_and_raw_bytes(void) {
+    GrayString same_a = gray_string_lit("abc"), same_b = gray_string_lit("abc"), different = gray_string_lit("abd"), shorter = gray_string_lit("ab");
+    GrayString empty_a = gray_string_lit(""), empty_b = gray_string_lit("");
+    ASSERT(gray_elem_equal(GRAY_ELEM_STRING, sizeof(GrayString), &same_a, &same_b));
+    ASSERT(!gray_elem_equal(GRAY_ELEM_STRING, sizeof(GrayString), &same_a, &different));
+    ASSERT(!gray_elem_equal(GRAY_ELEM_STRING, sizeof(GrayString), &same_a, &shorter));
+    ASSERT(gray_elem_equal(GRAY_ELEM_STRING, sizeof(GrayString), &empty_a, &empty_b));
+    int64_t left = 7, right = 7, other = 8;
+    ASSERT(gray_elem_equal(GRAY_ELEM_I64, 8, &left, &right));
+    ASSERT(!gray_elem_equal(GRAY_ELEM_I64, 8, &left, &other));
+}
+
+static void test_elem_hash_equal_values_hash_equal(void) {
+    int64_t first = 12345, second = 12345, different = 12346;
+    ASSERT_EQ(gray_elem_hash(GRAY_ELEM_I64, 8, &first), gray_elem_hash(GRAY_ELEM_I64, 8, &second));
+    ASSERT_NE(gray_elem_hash(GRAY_ELEM_I64, 8, &first), gray_elem_hash(GRAY_ELEM_I64, 8, &different));
+}
+
+static void test_elem_hash_strings_by_content(void) {
+    GrayString first = gray_string_lit("hello"), second = gray_string_lit("hello"), different = gray_string_lit("world");
+    ASSERT_EQ(gray_elem_hash(GRAY_ELEM_STRING, sizeof(GrayString), &first), gray_elem_hash(GRAY_ELEM_STRING, sizeof(GrayString), &second));
+    ASSERT_NE(gray_elem_hash(GRAY_ELEM_STRING, sizeof(GrayString), &first), gray_elem_hash(GRAY_ELEM_STRING, sizeof(GrayString), &different));
+}
+
+static void test_elem_hash_negative_zero_hashes_as_zero(void) {
+    double zero = 0.0, negative_zero = -0.0;
+    ASSERT_EQ(gray_elem_hash(GRAY_ELEM_F64, 8, &zero), gray_elem_hash(GRAY_ELEM_F64, 8, &negative_zero));
+    float float_zero = 0.0f, float_negative_zero = -0.0f;
+    ASSERT_EQ(gray_elem_hash(GRAY_ELEM_F32, 4, &float_zero), gray_elem_hash(GRAY_ELEM_F32, 4, &float_negative_zero));
+    double one = 1.0;
+    ASSERT_NE(gray_elem_hash(GRAY_ELEM_F64, 8, &zero), gray_elem_hash(GRAY_ELEM_F64, 8, &one));
+}
+
+static void test_elem_add_accumulates_each_kind(void) {
+    int8_t i8 = 100; int8_t i8_add = 20;
+    gray_elem_add(GRAY_ELEM_I8, &i8, &i8_add, __FILE__, __LINE__);
+    ASSERT_EQ(i8, 120);
+    int16_t i16 = 1000; int16_t i16_add = 234;
+    gray_elem_add(GRAY_ELEM_I16, &i16, &i16_add, __FILE__, __LINE__);
+    ASSERT_EQ(i16, 1234);
+    int32_t i32 = 100000; int32_t i32_add = 23;
+    gray_elem_add(GRAY_ELEM_I32, &i32, &i32_add, __FILE__, __LINE__);
+    ASSERT_EQ(i32, 100023);
+    int64_t i64 = 5; int64_t i64_add = -8;
+    gray_elem_add(GRAY_ELEM_I64, &i64, &i64_add, __FILE__, __LINE__);
+    ASSERT_EQ(i64, -3);
+    uint8_t u8 = 200; uint8_t u8_add = 55;
+    gray_elem_add(GRAY_ELEM_U8, &u8, &u8_add, __FILE__, __LINE__);
+    ASSERT_EQ(u8, 255);
+    uint16_t u16 = 60000; uint16_t u16_add = 5535;
+    gray_elem_add(GRAY_ELEM_U16, &u16, &u16_add, __FILE__, __LINE__);
+    ASSERT_EQ(u16, 65535);
+    uint32_t u32 = 1; uint32_t u32_add = 2;
+    gray_elem_add(GRAY_ELEM_U32, &u32, &u32_add, __FILE__, __LINE__);
+    ASSERT_EQ(u32, 3);
+    uint64_t u64 = 10; uint64_t u64_add = 20;
+    gray_elem_add(GRAY_ELEM_U64, &u64, &u64_add, __FILE__, __LINE__);
+    ASSERT_EQ(u64, 30);
+    double f64 = 1.5; double f64_add = 2.25;
+    gray_elem_add(GRAY_ELEM_F64, &f64, &f64_add, __FILE__, __LINE__);
+    ASSERT_FLOAT_COMPARE(f64, 3.75);
+    float f32 = 0.5f; float f32_add = 0.25f;
+    gray_elem_add(GRAY_ELEM_F32, &f32, &f32_add, __FILE__, __LINE__);
+    ASSERT_FLOAT_COMPARE(f32, 0.75);
+}
+
+static void test_elem_add_wide_integers(void) {
+    gray_i128 i128 = {UINT64_MAX, 0}; gray_i128 i128_add = {1, 0};
+    gray_elem_add(GRAY_ELEM_I128, &i128, &i128_add, __FILE__, __LINE__);
+    ASSERT(i128.low == 0 && i128.high == 1);
+    gray_u128 u128 = {UINT64_MAX, 0}; gray_u128 u128_add = {1, 0};
+    gray_elem_add(GRAY_ELEM_U128, &u128, &u128_add, __FILE__, __LINE__);
+    ASSERT(u128.low == 0 && u128.high == 1);
+    gray_i256 i256 = {{UINT64_MAX, 0, 0, 0}}; gray_i256 i256_add = {{1, 0, 0, 0}};
+    gray_elem_add(GRAY_ELEM_I256, &i256, &i256_add, __FILE__, __LINE__);
+    ASSERT(i256.w[0] == 0 && i256.w[1] == 1);
+    gray_u256 u256 = {{UINT64_MAX, 0, 0, 0}}; gray_u256 u256_add = {{1, 0, 0, 0}};
+    gray_elem_add(GRAY_ELEM_U256, &u256, &u256_add, __FILE__, __LINE__);
+    ASSERT(u256.w[0] == 0 && u256.w[1] == 1);
+}
+
+static void test_elem_add_ignores_kinds_that_are_not_numbers(void) {
+    int64_t accumulator = 9; int64_t value = 4;
+    gray_elem_add(GRAY_ELEM_STRING, &accumulator, &value, __FILE__, __LINE__);
+    gray_elem_add(GRAY_ELEM_OTHER, &accumulator, &value, __FILE__, __LINE__);
+    ASSERT_EQ(accumulator, 9);
+}
+
+static void test_elem_to_double_every_kind(void) {
+    int8_t i8 = -3; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I8, &i8), -3.0);
+    int16_t i16 = -300; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I16, &i16), -300.0);
+    int32_t i32 = 70000; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I32, &i32), 70000.0);
+    int32_t character = 'A'; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_CHAR, &character), 65.0);
+    int64_t i64 = -9; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I64, &i64), -9.0);
+    uint8_t u8 = 250; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U8, &u8), 250.0);
+    bool flag = true; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_BOOL, &flag), 1.0);
+    uint16_t u16 = 60000; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U16, &u16), 60000.0);
+    uint32_t u32 = 4000000000u; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U32, &u32), 4000000000.0);
+    uint64_t u64 = 1u << 20; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U64, &u64), 1048576.0);
+    float f32 = 0.5f; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_F32, &f32), 0.5);
+    double f64 = -2.5; ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_F64, &f64), -2.5);
+    GrayString text = gray_string_lit("x"); ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_STRING, &text), 0.0);
+}
+
+static void test_elem_to_double_wide_integers(void) {
+    gray_i128 negative = {0, -1};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I128, &negative), -18446744073709551616.0);
+    gray_i128 positive = {5, 0};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I128, &positive), 5.0);
+    gray_u128 two_to_64 = {0, 1};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U128, &two_to_64), 18446744073709551616.0);
+    gray_i256 minus_five = {{UINT64_MAX - 4, UINT64_MAX, UINT64_MAX, UINT64_MAX}};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I256, &minus_five), -5.0);
+    gray_u256 seven = {{7, 0, 0, 0}};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_U256, &seven), 7.0);
+    gray_i256 wide_positive = {{3, 1, 0, 0}};
+    ASSERT_FLOAT_COMPARE(gray_elem_to_double(GRAY_ELEM_I256, &wide_positive), 18446744073709551619.0);
+}
+
+static void test_elem_to_i64_and_to_u64(void) {
+    int8_t i8 = -3; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_I8, &i8), -3);
+    int16_t i16 = -300; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_I16, &i16), -300);
+    int32_t i32 = -70000; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_I32, &i32), -70000);
+    int32_t character = 'z'; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_CHAR, &character), 'z');
+    int64_t i64 = INT64_MIN; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_I64, &i64), INT64_MIN);
+    uint8_t u8 = 250; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_U8, &u8), 250);
+    uint16_t u16 = 60000; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_U16, &u16), 60000);
+    uint32_t u32 = 4000000000u; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_U32, &u32), 4000000000LL);
+    bool flag = true; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_BOOL, &flag), 1);
+    double f64 = 9.75; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_F64, &f64), 9);
+    float f32 = -2.5f; ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_F32, &f32), -2);
+    GrayString text = gray_string_lit("x"); ASSERT_EQ(gray_elem_to_i64(GRAY_ELEM_STRING, &text), 0);
+    uint64_t big = UINT64_MAX;
+    ASSERT(gray_elem_to_u64(GRAY_ELEM_U64, &big) == UINT64_MAX);
+    ASSERT_EQ(gray_elem_to_u64(GRAY_ELEM_I64, &i64) == (uint64_t)INT64_MIN, 1);
+    uint32_t small = 7; ASSERT(gray_elem_to_u64(GRAY_ELEM_U32, &small) == 7);
+}
+
+/* ===== gray test runner protocol ===== */
+
+#ifdef _WIN32
+#define setenv(name, value, overwrite) _putenv_s((name), (value))
+#define unsetenv(name) _putenv_s((name), "")
+#endif
+
+static char runner_output[4096];
+
+static const char *capture_runner_output(void (*emit)(void)) {
+    fflush(stdout);
+    int saved_descriptor = dup(fileno(stdout));
+    FILE *sink = tmpfile();
+    dup2(fileno(sink), fileno(stdout));
+    emit();
+    fflush(stdout);
+    dup2(saved_descriptor, fileno(stdout));
+    close(saved_descriptor);
+    rewind(sink);
+    size_t length = fread(runner_output, 1, sizeof(runner_output) - 1, sink);
+    runner_output[length] = '\0';
+    fclose(sink);
+    return runner_output;
+}
+
+static void runner_passing_body(void) {}
+static void runner_failing_body(void) { gray_test_fail("P0075", "body.gray", 42, "expected %d got %d", 1, 2); }
+static void runner_failing_without_message(void) { gray_test_fail("P0075", "body.gray", 7, "%s", ""); }
+static void runner_failing_without_location(void) { gray_test_fail("P0075", NULL, 0, "no location"); }
+static void runner_failing_with_control_characters(void) { gray_test_fail("P0075", "body.gray", 1, "tab\there\nnewline\rreturn"); }
+static void runner_panicking_body(void) { gray_panic_code("P0090", "range step cannot be zero"); }
+static void runner_deep_failure(void) { gray_enter_func("a.gray", 1, "outer"); gray_enter_func("a.gray", 2, "inner"); gray_test_fail("P0075", "a.gray", 2, "deep"); }
+
+static void emit_pass(void) { gray_test_run("passes", runner_passing_body, "file.gray", 3); }
+static void emit_fail(void) { gray_test_run("fails", runner_failing_body, "file.gray", 3); }
+static void emit_fail_without_message(void) { gray_test_run("quiet", runner_failing_without_message, "file.gray", 3); }
+static void emit_fail_without_location(void) { gray_test_run("lost", runner_failing_without_location, "decl.gray", 9); }
+static void emit_fail_with_control_characters(void) { gray_test_run("messy", runner_failing_with_control_characters, "file.gray", 3); }
+static void emit_panic(void) { gray_test_run("panics", runner_panicking_body, "file.gray", 3); }
+static void emit_deep_failure(void) { gray_test_run("deep", runner_deep_failure, "file.gray", 3); }
+
+static void test_runner_passing_test_prints_a_pass_line(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    ASSERT_STR_EQ(capture_runner_output(emit_pass), "GRAYTEST PASS passes\n");
+}
+
+static void test_runner_failing_test_prints_name_location_and_message(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    ASSERT_STR_EQ(capture_runner_output(emit_fail), "GRAYTEST FAIL fails\tbody.gray:42\texpected 1 got 2\n");
+}
+
+static void test_runner_empty_message_becomes_test_failed(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    ASSERT_STR_EQ(capture_runner_output(emit_fail_without_message), "GRAYTEST FAIL quiet\tbody.gray:7\ttest failed\n");
+}
+
+static void test_runner_failure_without_a_location_uses_the_declaration(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    ASSERT_STR_EQ(capture_runner_output(emit_fail_without_location), "GRAYTEST FAIL lost\tdecl.gray:9\tno location\n");
+}
+
+static void test_runner_message_cannot_forge_protocol_delimiters(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    const char *output = capture_runner_output(emit_fail_with_control_characters);
+    ASSERT_STR_EQ(output, "GRAYTEST FAIL messy\tbody.gray:1\ttab here newline return\n");
+}
+
+static void test_runner_runtime_panic_inside_a_test_is_a_failure(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    const char *output = capture_runner_output(emit_panic);
+    ASSERT(strstr(output, "GRAYTEST FAIL panics\t") != NULL);
+    ASSERT(strstr(output, "range step cannot be zero") != NULL);
+}
+
+static void test_runner_restores_call_depth_after_a_failure(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    int depth_before = gray_call_depth;
+    capture_runner_output(emit_deep_failure);
+    ASSERT_EQ(gray_call_depth, depth_before);
+}
+
+static void test_runner_nonce_prefixes_every_line(void) {
+    setenv("GRAY_TEST_PROTOCOL_NONCE", "abc123:", 1);
+    gray_test_begin();
+    const char *passed = capture_runner_output(emit_pass);
+    ASSERT_STR_EQ(passed, "abc123:GRAYTEST PASS passes\n");
+    const char *failed = capture_runner_output(emit_fail);
+    ASSERT_STR_EQ(failed, "abc123:GRAYTEST FAIL fails\tbody.gray:42\texpected 1 got 2\n");
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+}
+
+static void test_runner_nonce_is_captured_once_per_begin(void) {
+    setenv("GRAY_TEST_PROTOCOL_NONCE", "first:", 1);
+    gray_test_begin();
+    setenv("GRAY_TEST_PROTOCOL_NONCE", "forged:", 1);
+    ASSERT_STR_EQ(capture_runner_output(emit_pass), "first:GRAYTEST PASS passes\n");
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+}
+
+static int runner_exit_code;
+static void emit_trailer(void) { runner_exit_code = gray_test_end(); }
+
+static void test_runner_end_prints_counts_and_exit_code_zero_when_all_pass(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    capture_runner_output(emit_pass);
+    capture_runner_output(emit_pass);
+    ASSERT_STR_EQ(capture_runner_output(emit_trailer), "GRAYTEST DONE 2 0\n");
+    ASSERT_EQ(runner_exit_code, 0);
+}
+
+static void test_runner_end_reports_failures_with_exit_code_one(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    capture_runner_output(emit_pass);
+    capture_runner_output(emit_fail);
+    capture_runner_output(emit_fail);
+    ASSERT_STR_EQ(capture_runner_output(emit_trailer), "GRAYTEST DONE 1 2\n");
+    ASSERT_EQ(runner_exit_code, 1);
+}
+
+static void test_runner_begin_resets_the_counts(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    capture_runner_output(emit_fail);
+    gray_test_begin();
+    ASSERT_STR_EQ(capture_runner_output(emit_trailer), "GRAYTEST DONE 0 0\n");
+    ASSERT_EQ(runner_exit_code, 0);
+}
+
+static void test_runner_a_failure_does_not_stop_the_next_test(void) {
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    capture_runner_output(emit_fail);
+    ASSERT_STR_EQ(capture_runner_output(emit_pass), "GRAYTEST PASS passes\n");
+}
+
+static void test_runner_active_flag_is_set_only_while_a_test_runs(void) {
+    ASSERT(!gray_test_active);
+    unsetenv("GRAY_TEST_PROTOCOL_NONCE");
+    gray_test_begin();
+    capture_runner_output(emit_fail);
+    ASSERT(!gray_test_active);
+    capture_runner_output(emit_pass);
+    ASSERT(!gray_test_active);
+}
+
 int main(void) {
     arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
 
@@ -536,6 +1123,66 @@ int main(void) {
     RUN_TEST(test_gray_map_copy);
     RUN_TEST(test_gray_map_float_normalization);
     RUN_TEST(test_gray_map_empty);
+
+    printf("--- atomics ---\n");
+    RUN_TEST(test_atomic_load_store);
+    RUN_TEST(test_atomic_add_returns_previous_value);
+    RUN_TEST(test_atomic_sub_returns_previous_value);
+    RUN_TEST(test_atomic_exchange_returns_previous_value);
+    RUN_TEST(test_atomic_cas_succeeds_when_expected_matches);
+    RUN_TEST(test_atomic_cas_fails_and_leaves_value_when_expected_differs);
+    RUN_TEST(test_atomic_bitwise_return_previous_value);
+    RUN_TEST(test_atomic_add_wraps_at_i64_max);
+    RUN_TEST(test_atomic_sub_wraps_at_i64_min);
+    RUN_TEST(test_atomic32_load_store);
+    RUN_TEST(test_atomic32_add_and_sub_return_previous_value);
+    RUN_TEST(test_atomic32_add_wraps_at_i32_max);
+    RUN_TEST(test_atomic32_exchange_returns_previous_value);
+    RUN_TEST(test_atomic32_cas);
+    RUN_TEST(test_atomic32_operations_leave_neighbouring_words_untouched);
+    RUN_TEST(test_atomic8_load_store);
+    RUN_TEST(test_atomic8_exchange_returns_previous_value);
+    RUN_TEST(test_atomic8_cas);
+    RUN_TEST(test_atomic8_operations_leave_neighbouring_bytes_untouched);
+    RUN_TEST(test_atomic_spinlock_trylock_and_unlock);
+    RUN_TEST(test_atomic_spin_lock_acquires_free_lock);
+    RUN_TEST(test_atomic_fence_returns);
+    RUN_TEST(test_atomic_add_loses_no_updates_across_threads);
+    RUN_TEST(test_atomic_spinlock_gives_mutual_exclusion_across_threads);
+
+    printf("--- element helpers ---\n");
+    RUN_TEST(test_elem_compare_orders_every_integer_kind);
+    RUN_TEST(test_elem_compare_floats_with_nan_ordered_last);
+    RUN_TEST(test_elem_compare_wide_integers);
+    RUN_TEST(test_elem_compare_strings_bytewise_then_by_length);
+    RUN_TEST(test_elem_compare_other_kinds_compare_bytes);
+    RUN_TEST(test_elem_equal_floats_follow_ieee_equality);
+    RUN_TEST(test_elem_equal_strings_and_raw_bytes);
+    RUN_TEST(test_elem_hash_equal_values_hash_equal);
+    RUN_TEST(test_elem_hash_strings_by_content);
+    RUN_TEST(test_elem_hash_negative_zero_hashes_as_zero);
+    RUN_TEST(test_elem_add_accumulates_each_kind);
+    RUN_TEST(test_elem_add_wide_integers);
+    RUN_TEST(test_elem_add_ignores_kinds_that_are_not_numbers);
+    RUN_TEST(test_elem_to_double_every_kind);
+    RUN_TEST(test_elem_to_double_wide_integers);
+    RUN_TEST(test_elem_to_i64_and_to_u64);
+
+    printf("--- gray test runner ---\n");
+    RUN_TEST(test_runner_passing_test_prints_a_pass_line);
+    RUN_TEST(test_runner_failing_test_prints_name_location_and_message);
+    RUN_TEST(test_runner_empty_message_becomes_test_failed);
+    RUN_TEST(test_runner_failure_without_a_location_uses_the_declaration);
+    RUN_TEST(test_runner_message_cannot_forge_protocol_delimiters);
+    RUN_TEST(test_runner_runtime_panic_inside_a_test_is_a_failure);
+    RUN_TEST(test_runner_restores_call_depth_after_a_failure);
+    RUN_TEST(test_runner_nonce_prefixes_every_line);
+    RUN_TEST(test_runner_nonce_is_captured_once_per_begin);
+    RUN_TEST(test_runner_end_prints_counts_and_exit_code_zero_when_all_pass);
+    RUN_TEST(test_runner_end_reports_failures_with_exit_code_one);
+    RUN_TEST(test_runner_begin_resets_the_counts);
+    RUN_TEST(test_runner_a_failure_does_not_stop_the_next_test);
+    RUN_TEST(test_runner_active_flag_is_set_only_while_a_test_runs);
 
     PRINT_RESULTS();
     gray_arena_destroy(arena, __FILE__, __LINE__);

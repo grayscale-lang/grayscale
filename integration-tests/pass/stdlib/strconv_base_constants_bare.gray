@@ -1,0 +1,29 @@
+/*
+ * strconv_base_constants_bare.gray - After `import and use @strconv` the
+ * base constants are usable without the module prefix (STANDARD 9.27).
+ */
+
+import and use @strconv
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if BASE_2 == 2 && BASE_8 == 8 && BASE_10 == 10 && BASE_16 == 16 && BASE_36 == 36 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare base constant values")
+        failed += 1
+    }
+
+    mut value, value_err = to_i64("ff", BASE_16)
+    if value_err == nil && value == 255 { passed += 1 } otherwise { println("  [FAIL] to_i64 with bare BASE_16"); failed += 1 }
+
+    if format_i64(255, BASE_2) == "11111111" { passed += 1 } otherwise { println("  [FAIL] format_i64 with bare BASE_2"); failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+    println("ALL TESTS PASSED")
+}

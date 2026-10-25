@@ -1,0 +1,8 @@
+// expect-error: E5026
+
+distinct alias UserId = i64
+
+do main() {
+    mut user UserId = 1
+    for i in range(user, 5) { println(i) }
+}

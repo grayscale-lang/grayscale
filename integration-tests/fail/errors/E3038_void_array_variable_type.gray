@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3038 - void used as an array element type
+ */
+// expect-error: E3038
+
+do main() {
+    mut xs [void]
+}

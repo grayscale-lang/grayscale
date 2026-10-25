@@ -1,0 +1,38 @@
+/*
+ * generic_default_argument_omitted.gray - a call to a generic function that
+ * omits a defaulted parameter, after a parameter typed by the generic name or
+ * a pointer to it, compiles and runs.
+ */
+
+do by_value(kind generic, x kind, y i64 = 5) -> i64 {
+    return y
+}
+
+do by_pointer(kind generic, x ^kind, y i64 = 5) -> i64 {
+    return y
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if by_value(i64, 1) == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    mut v i64 = 1
+    if by_pointer(i64, addr(v)) == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

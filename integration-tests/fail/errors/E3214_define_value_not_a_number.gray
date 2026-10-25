@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3214 - the -define: value does not parse as the declared type
+ */
+
+// expect-error: E3214
+// define: COUNT=abc
+
+#define
+const COUNT i64 = 1
+
+do main() {
+    println(COUNT)
+}

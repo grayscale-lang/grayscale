@@ -1,0 +1,13 @@
+import @runtime
+
+const Box struct {
+    n i64
+
+    do show(b Box) -> string {
+        return "${runtime.function_name()}<${runtime.caller_name()}"
+    }
+}
+
+do describe() -> string {
+    return "${runtime.function_name()}<${runtime.caller_name()}"
+}

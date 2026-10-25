@@ -1,0 +1,9 @@
+do divide_in_place(kind generic, x kind, y kind) -> kind {
+    mut result kind = x
+    result /= y
+    return result
+}
+
+do main() {
+    println(divide_in_place(i64, 5, 0))
+}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3002 - wrap_mult operands of different types
+ */
+// expect-error: E3002
+// expect-error-count: 1
+
+do main() {
+    mut a u64 = 1
+    mut b i64 = 2
+    unsafe {
+        println(wrap_mult(a, b))
+    }
+}

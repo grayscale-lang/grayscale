@@ -136,4 +136,11 @@ void diagnostic_print_all(DiagnosticList *diagnostics);
 /* Print summary line: "grayc: 2 errors, 1 warning" */
 void diagnostic_print_summary(DiagnosticList *diagnostics);
 
+/* Levenshtein distance between two strings. */
+int diagnostic_edit_distance(const char *left, const char *right);
+
+/* The statement keyword or builtin call a misspelled statement name was
+ * probably meant to be, or NULL. */
+const char *diagnostic_suggest_statement_name(const char *name);
+
 #endif

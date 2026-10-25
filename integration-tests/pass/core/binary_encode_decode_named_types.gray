@@ -30,7 +30,8 @@ do main() {
 
     mut half [u8] = {0, 0, 192, 63}
     mut f f32 = binary.decode_f32_le(half)
-    if f == 1.5 && type_of(binary.decode_u16_be(half)) == "u16" {
+    mut pair [u8] = {0, 0}
+    if f == 1.5 && type_of(binary.decode_u16_be(pair)) == "u16" {
         passed++
     } otherwise {
         println("FAIL: decode_f32_le/decode_u16_be")

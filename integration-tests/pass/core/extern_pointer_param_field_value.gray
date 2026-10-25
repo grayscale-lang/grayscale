@@ -1,0 +1,48 @@
+/*
+ * extern_pointer_param_field_value.gray - a helper that passes a number read
+ * through its pointer parameter to a C function sends C a plain value, so
+ * callers may pass the address of a stack variable.
+ */
+
+extern import "stdlib.h"
+
+const W struct { v i64 }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut w W = W{v: -4}
+    if direct(addr(w)) == 8 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+    if copied(addr(w)) == 8 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
+
+do direct(p ^W) -> i64 {
+    unsafe {
+        mut r i64 = extern.abs(p^.v)
+        return r * 2
+    }
+}
+
+do copied(p ^W) -> i64 {
+    unsafe {
+        mut a i64 = p^.v
+        mut r i64 = extern.abs(a)
+        return r * 2
+    }
+}

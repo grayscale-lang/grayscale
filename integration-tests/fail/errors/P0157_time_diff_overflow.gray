@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0157 - time.diff result exceeds the i64 range */
+import @time
+
+do main() {
+    println(time.diff(-9223372036854775807, 9223372036854775807))
+}

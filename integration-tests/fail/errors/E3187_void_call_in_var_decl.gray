@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3187 - void call used as a variable initializer
+ */
+// expect-error: E3187
+
+do nothing() { }
+
+do main() {
+    mut x = nothing()
+}

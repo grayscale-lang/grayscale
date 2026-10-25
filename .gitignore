@@ -13,6 +13,12 @@
 /gray
 /grayc/grayc
 /generate_errors
+/generate_builtins_man
+/generate_stdlib_man
+/run_tests
+/check_vendor
+/check_stray_binaries
+/generate_sized_type_tests
 /check_error_codes
 /grayc/libgrayrt.a
 /grayc/tests/test_lexer

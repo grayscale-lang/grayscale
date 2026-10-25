@@ -1,0 +1,11 @@
+// expect-not: redundant
+/*
+ * Pass Test: a file inside an imported directory that imports a sibling
+ * gets no redundant-import warning (STANDARD 8.2).
+ */
+
+import "./lib"
+
+do main() {
+    println(lib.sibling_sum())
+}

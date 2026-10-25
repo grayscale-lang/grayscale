@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5013 - wrap_add in a file-scope const initializer. File scope
+ * has no unsafe block to put the call in, so E5065 is reported too.
+ */
+// expect-error: E5013
+// expect-error-count: 2
+
+const SUM i64 = wrap_add(1, 2)
+
+do main() {
+    println(SUM)
+}

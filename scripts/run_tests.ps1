@@ -99,11 +99,23 @@ function Invoke-GrayTest {
     }
 }
 
+function Get-DefineArguments {
+    <#
+        .SYNOPSIS
+        The -define: arguments a test asks for with `// define: NAME=VALUE`
+        marker comments.
+    #>
+    param([string]$File)
+
+    Select-String -Path $File -Pattern '^\s*//\s*define:\s*(.+?)\s*$' |
+        ForEach-Object { "-define:$($_.Matches[0].Groups[1].Value)" }
+}
+
 function Test-ShouldPass {
     <# Run a program that must succeed and must not report failed assertions. #>
     param([string]$Label, [string[]]$Arguments)
 
-    $r = Invoke-GrayTest -Arguments $Arguments
+    $r = Invoke-GrayTest -Arguments ($Arguments + @(Get-DefineArguments $Arguments[-1]))
     if ($r.ExitCode -ne 0) {
         Write-Fail $Label '(execution error)' $r.Output
     } elseif ($r.Output -match 'SOME TESTS FAILED') {
@@ -117,7 +129,7 @@ function Test-ShouldFail {
     <# Run a program that must be rejected. #>
     param([string]$Label, [string[]]$Arguments)
 
-    $r = Invoke-GrayTest -Arguments $Arguments
+    $r = Invoke-GrayTest -Arguments ($Arguments + @(Get-DefineArguments $Arguments[-1]))
     if ($r.ExitCode -eq 0) {
         Write-Fail $Label '(expected error, got success)' $r.Output
     } else {

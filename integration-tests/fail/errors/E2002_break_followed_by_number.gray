@@ -1,0 +1,10 @@
+do main() {
+    mut n i64 = 0
+    for i in range(0, 3) {
+        for j in range(0, 3) {
+            n += 1
+            if j == 1 { break 2 }
+        }
+    }
+    println("${n}")
+}

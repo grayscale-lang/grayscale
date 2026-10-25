@@ -1,0 +1,10 @@
+// expect-error: E3001
+import "./ids"
+
+distinct alias UserId = i64
+
+do main() {
+    mut local UserId = 4
+    mut imported ids.UserId = local
+    println(imported)
+}

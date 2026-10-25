@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3047 - when pattern names a variant the enum lacks
+ */
+// expect-error: E3047
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Shape enum {
+    Circle(i64)
+    Square(i64)
+}
+
+do main() {
+    mut c Color = Color.RED
+    when c {
+        is Color.PURPLE { println("purple") }
+        default { println("other") }
+    }
+}

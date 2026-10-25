@@ -59,9 +59,14 @@ static inline char *read_file_to_string(const char *path) {
     if (!file)
         return NULL;
 
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    /* A pipe or FIFO cannot seek: ftell reports -1, which must not become
+     * the allocation size. */
+    long size = -1;
+    if (fseek(file, 0, SEEK_END) == 0) size = ftell(file);
+    if (size < 0 || fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
 
     char *buffer = malloc((size_t)size + 1);
     if (!buffer) {

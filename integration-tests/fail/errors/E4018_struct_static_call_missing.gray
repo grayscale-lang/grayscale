@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4018 - namespaced call of a struct function that does not exist
+ */
+// expect-error: E4018
+
+const S struct {
+    x i64
+}
+
+do main() {
+    S.missing()
+}

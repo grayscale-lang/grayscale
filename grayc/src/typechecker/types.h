@@ -70,6 +70,10 @@ typedef struct GrayType {
     const char *value_type;     /* For maps: value type name */
     GrayFunctionSignature *function_signature; /* For TYPE_KIND_FUNCTION: parsed signature */
     bool is_decimal;            /* For TYPE_KIND_LITERAL: written with a decimal point or exponent */
+    /* For a `distinct alias` type: its registry name. kind and name are those
+     * of the underlying primitive, so every rule keyed on them applies
+     * unchanged; this field alone makes the type incompatible with others. */
+    const char *distinct;
 } GrayType;
 
 /* Built-in type singletons */
@@ -146,6 +150,14 @@ static inline bool type_kind_is_number(TypeKind kind) {
 
 /* Resolve a type name string to an GrayType */
 GrayType *type_from_name(const char *name);
+
+/* Declare `name` a distinct type over the primitive `underlying_name`.
+ * type_from_name(name) then returns one shared type that has the primitive's
+ * kind and name but is compatible with nothing but itself. */
+void type_register_distinct(const char *name, const char *underlying_name);
+
+/* True when two types are the same distinct type, or neither is distinct. */
+bool type_same_distinct(const GrayType *left, const GrayType *right);
 /* The first ',' in `text` outside any brackets or parentheses, or NULL. Given
  * the text after the '[' of an array spelling, it is the comma before N in
  * [T,N] even when T is itself a fixed-size array. */

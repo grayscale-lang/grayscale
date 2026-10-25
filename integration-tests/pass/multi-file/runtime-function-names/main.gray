@@ -1,0 +1,14 @@
+import "./helper"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut box helper.Box = helper.Box{n: 1}
+    if helper.describe() == "describe<main" { passed += 1 } otherwise { failed += 1 }
+    if helper.Box.show(box) == "Box.show<main" { passed += 1 } otherwise { failed += 1 }
+
+    println("module function names: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,27 @@
+import @math
+
+distinct alias Id = i64
+distinct alias Ratio = f64
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a Id = 3
+    mut b Id = 4
+    mut largest Id = math.max(a, b)
+    mut smallest Id = math.min(a, 10)
+    mut clamped Id = math.clamp(a, 1, 2)
+    mut negated Id = math.neg(a)
+    mut magnitude Id = math.abs(negated)
+    if largest == 4 && smallest == 3 && clamped == 2 && magnitude == 3 { passed += 1 } otherwise { failed += 1 }
+    if math.sign(negated) == -1 { passed += 1 } otherwise { failed += 1 }
+
+    mut ratio Ratio = -2.5
+    mut ratio_magnitude Ratio = math.abs(ratio)
+    if ratio_magnitude == 2.5 { passed += 1 } otherwise { failed += 1 }
+
+    println("distinct math: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

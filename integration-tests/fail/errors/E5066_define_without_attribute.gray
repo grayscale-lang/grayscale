@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5066 - -define: names a constant that is not marked #define
+ */
+
+// expect-error: E5066
+// define: PLAIN=2
+
+const PLAIN i64 = 1
+
+do main() {
+    println(PLAIN)
+}

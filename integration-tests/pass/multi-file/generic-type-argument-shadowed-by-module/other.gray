@@ -1,0 +1,5 @@
+const Item struct {
+    b string
+}
+
+do show(kind generic, x kind) -> string { return type_of(x) }

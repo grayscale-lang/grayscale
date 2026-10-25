@@ -23,7 +23,7 @@ typedef struct {
  *@module channels
  *@group Lifecycle
  *@sig open(capacity i64) -> Channel
- *@desc Create a buffered channel with the given capacity.
+ *@desc Create a buffered channel with the given capacity. A capacity below 1 is a runtime panic.
  *@example
  *   import @channels
  *   mut ch Channel = channels.open(10)
@@ -36,7 +36,7 @@ GrayChannel gray_channels_open(int64_t capacity);
  *@module channels
  *@group Send/Receive
  *@sig send(ch Channel, value i64)
- *@desc Send a value into a channel. Blocks if the channel is full.
+ *@desc Send a value into a channel. Blocks if the channel is full. Sending on a closed channel is a runtime panic.
  *@example
  *   import @channels
  *   channels.send(ch, 42)

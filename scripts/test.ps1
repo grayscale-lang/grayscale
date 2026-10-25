@@ -87,7 +87,7 @@ foreach ($suite in $Skipped.Keys) {
     Write-Host ("SKIPPED test_{0,-10} - {1} (Windows runtime port pending)" -f $suite, $Skipped[$suite]) `
         -ForegroundColor DarkGray
 }
-Write-Host 'SKIPPED integration suite - scripts/run_tests.sh needs bash' -ForegroundColor DarkGray
+Write-Host 'SKIPPED integration suite - scripts/run_tests.gray needs a Unix shell' -ForegroundColor DarkGray
 
 if (-not $SkipGo) {
     Write-Host ''

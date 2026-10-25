@@ -731,3 +731,61 @@ func TestE2E_Check_DiagnosticsWindowALongSourceLine(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// gray check: redundant directory imports
+// ---------------------------------------------------------------------------
+
+func TestE2E_Check_DirectoryThenFileImportWarnsW2015(t *testing.T) {
+	src := filepath.Join(findRepoRoot(), "integration-tests", "pass", "multi-file", "directory-then-file-redundant", "main.gray")
+
+	stdout, stderr, code := runGray(t, "check", src)
+	if code != 0 {
+		t.Fatalf("gray check exited %d; a redundant import is a warning, not an error:\n%s", code, combinedOutput(stdout, stderr))
+	}
+	out := combinedOutput(stdout, stderr)
+	if !strings.Contains(out, "warning[W2015]") {
+		t.Errorf("expected warning[W2015] for the redundant file import, got:\n%s", out)
+	}
+	if !strings.Contains(out, "import of './lib/helper_a' is redundant; already included by directory import") {
+		t.Errorf("expected the redundant-import message naming './lib/helper_a', got:\n%s", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// atomic: nil pointer
+// ---------------------------------------------------------------------------
+
+// A nil pointer is not diagnosed by any atomic operation (STANDARD 9.25): the
+// program dies on the segmentation fault.
+func TestE2E_Run_AtomicNilPointerSegfaults(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal death is a POSIX notion")
+	}
+	calls := map[string]string{
+		"load":     "println(atomic.load(target))",
+		"store":    "atomic.store(target, 1)",
+		"add":      "println(atomic.add(target, 1))",
+		"sub":      "println(atomic.sub(target, 1))",
+		"exchange": "println(atomic.exchange(target, 1))",
+		"cas":      "println(atomic.cas(target, 0, 1))",
+		"and":      "println(atomic.and(target, 1))",
+		"or":       "println(atomic.or(target, 1))",
+		"xor":      "println(atomic.xor(target, 1))",
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			src := filepath.Join(t.TempDir(), "nil_atomic.gray")
+			program := "import @atomic\n\ndo main() {\n    mut target ^i64 = nil\n    " + call + "\n}\n"
+			os.WriteFile(src, []byte(program), 0644)
+
+			_, stderr, code := runGray(t, src)
+			if code != 128+11 {
+				t.Errorf("atomic.%s on a nil pointer exited %d, want %d", name, code, 128+11)
+			}
+			if !strings.Contains(stderr, "program crashed: signal 11") {
+				t.Errorf("atomic.%s: expected a crash message naming signal 11, got:\n%s", name, stderr)
+			}
+		})
+	}
+}

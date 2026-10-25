@@ -1,0 +1,5 @@
+// expect-error: E4016
+
+do main() {
+    mut assrt Strng
+}

@@ -1,0 +1,7 @@
+// expect-contains: formatted result exceeds maximum string length
+import @fmt
+
+do main() {
+    mut s string = fmt.sprintf("%2147483647d%d", {5, 6})
+    println(len(s))
+}

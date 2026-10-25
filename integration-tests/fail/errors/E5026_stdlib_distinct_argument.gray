@@ -1,0 +1,10 @@
+// expect-error: E5026
+
+import @strings
+
+distinct alias Name = string
+
+do main() {
+    mut name Name = "a"
+    println(strings.contains(name, "a"))
+}

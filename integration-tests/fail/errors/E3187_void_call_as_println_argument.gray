@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3187 - void call passed to println
+ */
+// expect-error: E3187
+
+do nothing() { }
+
+do main() {
+    println(nothing())
+}

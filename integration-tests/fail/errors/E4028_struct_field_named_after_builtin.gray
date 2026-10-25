@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4028 - struct field named after a built-in function
+ */
+// expect-error: E4028
+
+const S struct {
+    len i64
+}
+
+do main() { }

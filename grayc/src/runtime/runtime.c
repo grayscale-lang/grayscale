@@ -16,9 +16,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <errno.h>
-#if defined(__TINYC__)
 #include <pthread.h>
-#endif
 
 static inline int panic_use_color(void) {
     return gray_runtime_isatty(gray_runtime_stderr_fileno()) && !getenv("NO_COLOR");
@@ -95,6 +93,7 @@ GrayArena *gray_arena_create(size_t initial_size) {
     arena->peak_bytes = initial_size;
     arena->alloc_count = 0;
     arena->is_destroyed = false;
+    arena->reset_count = 0;
     arena->counts_toward_total = true;
     return arena;
 }
@@ -152,6 +151,7 @@ void gray_arena_reset(GrayArena *arena) {
     }
     arena->current = arena->first;
     arena->total_allocated = arena->first ? arena->first->size : 0;
+    arena->reset_count++;
 }
 
 void gray_arena_destroy(GrayArena *arena, const char *file, int line) {
@@ -273,7 +273,7 @@ GrayString gray_string_format(GrayArena *arena, const char *format, ...) {
     va_end(arguments);
 
     if (needed < 0) {
-        return gray_string_lit("");
+        gray_panic_code("P0167", "formatted result exceeds maximum string length");
     }
 
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)needed + 1);
@@ -370,9 +370,45 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark) {
 /* --- Stack depth guard --- */
 #if !defined(__TINYC__)
 _Thread_local int gray_call_depth = 0;
+_Thread_local const char *gray_call_names[GRAY_MAX_CALL_DEPTH + 1];
 #endif
 
 /* --- Runtime Init/Shutdown --- */
+
+typedef struct {
+    GrayArena *default_arena;
+    GrayArena *heap_arena;
+} GrayCallbackThreadArenas;
+
+static pthread_key_t gray_callback_arenas_key;
+static pthread_once_t gray_callback_arenas_once = PTHREAD_ONCE_INIT;
+
+static void gray_callback_thread_exit(void *raw_arenas) {
+    GrayCallbackThreadArenas *arenas = (GrayCallbackThreadArenas *)raw_arenas;
+    gray_arena_destroy(arenas->default_arena, __FILE__, __LINE__);
+    free(arenas->default_arena);
+    if (gray_arena_usage(arenas->heap_arena) == 0) {
+        gray_arena_destroy(arenas->heap_arena, __FILE__, __LINE__);
+        free(arenas->heap_arena);
+    }
+    free(arenas);
+}
+
+static void gray_callback_arenas_make_key(void) {
+    pthread_key_create(&gray_callback_arenas_key, gray_callback_thread_exit);
+}
+
+void gray_callback_thread_init(void) {
+    if (gray_default_arena) return;
+    pthread_once(&gray_callback_arenas_once, gray_callback_arenas_make_key);
+    GrayCallbackThreadArenas *arenas = (GrayCallbackThreadArenas *)malloc(sizeof(GrayCallbackThreadArenas));
+    if (!arenas) abort();
+    arenas->default_arena = gray_capped_arena_create(GRAY_DEFAULT_ARENA_SIZE);
+    arenas->heap_arena = gray_capped_arena_create(GRAY_DEFAULT_ARENA_SIZE);
+    gray_default_arena = arenas->default_arena;
+    gray_heap_arena = arenas->heap_arena;
+    pthread_setspecific(gray_callback_arenas_key, arenas);
+}
 
 static struct timespec gray_runtime_start_time;
 
@@ -405,6 +441,8 @@ double gray_runtime_uptime(void) {
 
 void gray_runtime_shutdown(void) {
     if (gray_default_arena) {
+        /* A panic inside a global arena swap leaves both names on one arena. */
+        if (gray_heap_arena == gray_default_arena) gray_heap_arena = NULL;
         gray_arena_destroy(gray_default_arena, __FILE__, __LINE__);
         gray_default_arena = NULL;
     }

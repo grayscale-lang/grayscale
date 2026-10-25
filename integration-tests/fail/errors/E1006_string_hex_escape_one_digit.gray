@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1006 - hex escape with one digit in a string
+ */
+// expect-error: E1006
+
+do main() {
+    println("a\x4")
+}

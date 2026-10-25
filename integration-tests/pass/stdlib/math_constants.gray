@@ -1,0 +1,48 @@
+/*
+ * math_constants.gray - Value of every constant in the math module
+ * (STANDARD 9.5, Constants).
+ */
+
+import @math
+
+do near(actual f64, expected f64) -> bool {
+    return math.abs(actual - expected) < 0.000000000001
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if near(math.PI, 3.141592653589793) { passed += 1 } otherwise { println("  [FAIL] PI"); failed += 1 }
+    if near(math.E, 2.718281828459045) { passed += 1 } otherwise { println("  [FAIL] E"); failed += 1 }
+    if near(math.PHI, 1.618033988749895) { passed += 1 } otherwise { println("  [FAIL] PHI"); failed += 1 }
+    if near(math.SQRT2, 1.4142135623730951) { passed += 1 } otherwise { println("  [FAIL] SQRT2"); failed += 1 }
+    if near(math.LN2, 0.6931471805599453) { passed += 1 } otherwise { println("  [FAIL] LN2"); failed += 1 }
+    if near(math.LN10, 2.302585092994046) { passed += 1 } otherwise { println("  [FAIL] LN10"); failed += 1 }
+    if near(math.TAU, 2.0 * math.PI) { passed += 1 } otherwise { println("  [FAIL] TAU is 2 * PI"); failed += 1 }
+    if near(math.PHI * math.PHI, math.PHI + 1.0) { passed += 1 } otherwise { println("  [FAIL] PHI squared is PHI + 1"); failed += 1 }
+    if near(math.SQRT2 * math.SQRT2, 2.0) { passed += 1 } otherwise { println("  [FAIL] SQRT2 squared is 2"); failed += 1 }
+    if near(math.exp(math.LN2), 2.0) { passed += 1 } otherwise { println("  [FAIL] exp(LN2) is 2"); failed += 1 }
+    if near(math.log(math.E), 1.0) { passed += 1 } otherwise { println("  [FAIL] log(E) is 1"); failed += 1 }
+
+    if math.INF > math.MAX_F64 { passed += 1 } otherwise { println("  [FAIL] INF exceeds MAX_F64"); failed += 1 }
+    if math.NEG_INF < math.MIN_F64 { passed += 1 } otherwise { println("  [FAIL] NEG_INF is below MIN_F64"); failed += 1 }
+    if math.is_infinite(math.INF) && math.is_infinite(math.NEG_INF) { passed += 1 } otherwise { println("  [FAIL] INF and NEG_INF are infinite"); failed += 1 }
+    if math.INF == -math.NEG_INF { passed += 1 } otherwise { println("  [FAIL] NEG_INF is -INF"); failed += 1 }
+
+    if math.MAX_F64 == 1.7976931348623157e308 { passed += 1 } otherwise { println("  [FAIL] MAX_F64"); failed += 1 }
+    if math.MIN_F64 == -1.7976931348623157e308 { passed += 1 } otherwise { println("  [FAIL] MIN_F64"); failed += 1 }
+    if math.MAX_F64 + math.MIN_F64 == 0.0 { passed += 1 } otherwise { println("  [FAIL] MIN_F64 mirrors MAX_F64"); failed += 1 }
+
+    if math.MAX_I64 == 9223372036854775807 { passed += 1 } otherwise { println("  [FAIL] MAX_I64"); failed += 1 }
+    if math.MIN_I64 == -9223372036854775807 - 1 { passed += 1 } otherwise { println("  [FAIL] MIN_I64"); failed += 1 }
+
+    if math.EPSILON > 0.0 && math.EPSILON < 0.000001 { passed += 1 } otherwise { println("  [FAIL] EPSILON is a small positive number"); failed += 1 }
+    if 1.0 + math.EPSILON > 1.0 { passed += 1 } otherwise { println("  [FAIL] 1.0 + EPSILON differs from 1.0"); failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+    if failed > 0 {
+        exit(1)
+    }
+    println("ALL TESTS PASSED")
+}

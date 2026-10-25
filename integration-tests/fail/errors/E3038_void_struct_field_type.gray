@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3038 - void used as a struct field type
+ */
+// expect-error: E3038
+
+const S struct {
+    x void
+}
+
+do main() { }

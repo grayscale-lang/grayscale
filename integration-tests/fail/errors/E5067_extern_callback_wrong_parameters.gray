@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5067 - callback takes floating-point parameters where the C
+ * function pointer type takes two pointers
+ * Expected: E5067 error — qsort passes the comparator two pointers
+ */
+
+extern import "stdlib.h"
+
+do compare(a f64, b f64) -> i32 {
+    return 0
+}
+
+do main() {
+    unsafe {
+        mut buf ^i64 = extern.malloc(24)
+        extern.memset(buf, 0, 24)
+        extern.qsort(buf, 3, 8, ()compare)
+        extern.free(buf)
+    }
+}

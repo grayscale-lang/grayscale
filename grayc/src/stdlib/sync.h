@@ -80,6 +80,6 @@ GrayMutex gray_sync_mutex(void);
 void gray_sync_lock(GrayMutex mutex);
 void gray_sync_unlock(GrayMutex mutex);
 bool gray_sync_try_lock(GrayMutex mutex);
-void gray_sync_destroy(GrayMutex mutex);
+void gray_sync_destroy(GrayMutex *mutex);
 
 #endif

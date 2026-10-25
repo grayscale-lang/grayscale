@@ -85,6 +85,18 @@ typedef enum {
 /* Forward declaration */
 typedef struct AstNode AstNode;
 
+/* The shape a call takes once the typechecker has dispatched it. A call in a
+ * generic body is dispatched once per instantiation, each to its own struct
+ * function, so the shapes are kept beside the call as written. */
+typedef struct CallForm {
+    AstNode *function;
+    AstNode *object;
+    const char *object_label;
+    AstNode **arguments;
+    int argument_count;
+    AstNode *ignored_receiver;
+} CallForm;
+
 /* Parameter for function declarations */
 typedef struct {
     const char *name;
@@ -150,6 +162,10 @@ struct AstNode {
      * NULL on nodes that name no declaration. Opaque here: ast.h is included
      * by the parser, which has no symbol table. */
     struct DeclarationEntry_ *resolved_declaration;
+
+    /* The label written before a loop (`outer: for ...`); NULL when the loop
+     * has none and on every node that is not a loop. */
+    const char *loop_label;
 
     /* Set by the type checker on a value stored into a fixed-size [T,N]
      * struct field when the value's length can't be proven at compile time:
@@ -270,6 +286,9 @@ struct AstNode {
             /* The receiver of `recv.f(args)` when `f` takes no self: it binds
              * to nothing but is still evaluated, before the call. */
             AstNode *ignored_receiver;
+            /* How each instantiation of the enclosing generic function
+             * dispatched this call, keyed by that instantiation's bindings. */
+            char **instantiation_keys; CallForm *instantiation_forms; int instantiation_form_count;
         } call;
 
         /* NODE_INDEX_EXPRESSION */
@@ -314,8 +333,10 @@ struct AstNode {
             const char *type_name;
             AstNode *value;
             bool is_mutable;
+            bool is_bare;              /* written `name type` with no mut or const */
             bool is_private;
             bool is_synthetic;         /* parser-generated temporary, not user-written */
+            bool is_define;            /* top-level const marked #define: -define: may override its value */
             /* File-scope multi-name declaration: the names declared before
              * this one on the same line. The initializer cannot see them. */
             const char **earlier_group_names;
@@ -395,10 +416,14 @@ struct AstNode {
         /* NODE_LOOP_STATEMENT */
         struct { AstNode *body; } loop_statement;
 
+        /* NODE_BREAK_STATEMENT, NODE_CONTINUE_STATEMENT */
+        struct { const char *label; } loop_jump;  /* the loop it names; NULL when unlabeled */
+
         /* NODE_FUNCTION_DECLARATION */
         struct {
             const char *name;
             const char *original_name; /* pre-prefix name for error messages */
+            const char *runtime_name;  /* `Type.func` for a struct function; NULL otherwise */
             Parameter *parameters;
             int parameter_count;
             const char **return_types;
@@ -410,6 +435,9 @@ struct AstNode {
             bool is_test;                    /* #test attribute — test-only function */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
+            /* Passed to a C function as a callback, so a thread C created may
+             * run it. Set by the typechecker. */
+            bool is_c_callback;
             /* The type arguments each call binds the `generic` parameters to,
              * recorded by the typechecker (see GENERIC_BINDING_SEPARATOR).
              * Codegen emits one specialised C function for each entry.
@@ -467,6 +495,7 @@ struct AstNode {
             const char *name;
             const char *target_type;
             bool is_private;
+            bool is_distinct;   /* `distinct alias`: a new type, not interchangeable with its target */
         } alias_declaration;
 
         /* NODE_MODULE_DECLARATION */
@@ -545,6 +574,10 @@ void ast_convert_to_label(AstNode *node, const char *value);
  * "Type" in Type.VARIANT, "v" in v.field — or NULL when the object is not a
  * plain name. */
 const char *ast_member_qualifier(const AstNode *node);
+
+/* Read a call's current shape into `form`, and make a call take a shape. */
+void ast_call_form_capture(const AstNode *call, CallForm *form);
+void ast_call_form_apply(AstNode *call, const CallForm *form);
 
 /* Like ast_member_qualifier, but sees through an explicit deref: `p^.f` is
  * written against `p`. */

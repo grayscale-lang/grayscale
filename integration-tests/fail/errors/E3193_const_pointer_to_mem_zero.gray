@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3193 - pointer to a const-declared variable passed to
+ * mem.zero, which writes through it
+ * Expected: E3193 error — mem.zero would modify the constant
+ */
+
+import @mem
+
+do main() {
+    unsafe {
+        const L i64 = 5
+        mut p = addr(L)
+        mem.zero(p, 8)
+    }
+}

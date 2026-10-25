@@ -1,0 +1,17 @@
+/*
+ * Panic Test: P0168 - sync.lock on a zero-value mutex inside a new() struct
+ */
+
+import @sync
+
+const Counter struct {
+    lock sync.Mutex
+    n i64
+}
+
+do main() {
+    unsafe {
+        mut shared ^Counter = new(Counter)
+        sync.lock(shared^.lock)
+    }
+}

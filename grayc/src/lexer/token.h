@@ -88,6 +88,7 @@ typedef enum {
     TOKEN_DEPRECATED,     /* #deprecated */
     TOKEN_TEST,           /* #test */
     TOKEN_ERROR_CODE_ATTRIBUTE, /* #error_code */
+    TOKEN_DEFINE,         /* #define */
 
     /* Keywords */
     TOKEN_MUT,
@@ -134,6 +135,7 @@ typedef enum {
 
     /* Type aliasing */
     TOKEN_ALIAS,
+    TOKEN_DISTINCT,
 
     /* Type conversion */
     TOKEN_CAST,

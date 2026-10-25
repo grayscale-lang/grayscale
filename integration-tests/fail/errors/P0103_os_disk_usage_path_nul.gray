@@ -1,0 +1,10 @@
+// expect-contains: .gray:
+/* Panic Test: P0103 - os.disk_usage with an embedded null byte in the path */
+import @os
+
+do main() {
+    mut nul string = "\x00"
+    mut bad string = "dir" + nul + "name"
+    mut used, total, err = os.disk_usage(bad)
+    println(used)
+}

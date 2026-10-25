@@ -1,0 +1,14 @@
+distinct alias UserId = i64
+private distinct alias Hidden = i64
+
+const Account struct {
+    id UserId
+}
+
+do make_user(value i64) -> UserId {
+    return cast(value, UserId)
+}
+
+do label(id UserId) -> string {
+    return "user ${id}"
+}

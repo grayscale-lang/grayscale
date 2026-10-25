@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3187 - void call used as an operand
+ */
+// expect-error: E3187
+
+do nothing() { }
+
+do main() {
+    mut x i64 = 1 + nothing()
+    println(x)
+}

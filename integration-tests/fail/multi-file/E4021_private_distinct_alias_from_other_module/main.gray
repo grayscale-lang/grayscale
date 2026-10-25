@@ -1,0 +1,7 @@
+// expect-error: E4021
+import "./ids"
+
+do main() {
+    mut hidden ids.Hidden = 5
+    println(hidden)
+}

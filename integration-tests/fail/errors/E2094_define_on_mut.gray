@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2094 - #define on a mut declaration
+ */
+
+// expect-error: E2094
+
+#define
+mut COUNT i64 = 1
+
+do main() {
+    println(COUNT)
+}

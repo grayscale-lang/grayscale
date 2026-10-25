@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.sh` to regenerate.
+> Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
 
-**Total: 557 codes** (391 errors, 17 warnings, 149 panics)
+**Total: 576 codes** (403 errors, 17 warnings, 156 panics)
 
 ---
 
@@ -93,6 +93,7 @@
 | `E2100` | syntax | %d names but %d values in declaration; give one value per name, or a single value for all of them |
 | `E2101` | syntax | a declaration with a list of values takes one shared type after the last name; per-name types are not supported |
 | `E2102` | syntax | 'or_default' needs a binding to substitute into; write 'mut value = call() or_default fallback' |
+| `E2103` | syntax | a label can only be placed before a loop; '%s' is followed by something that is not 'for', 'for_each', 'as_long_as' or 'loop' |
 | `E3001` | types | type mismatch: cannot assign %s to %s |
 | `E3002` | types | invalid operands: cannot use '%s' with %s and %s |
 | `E3003` | types | %s index must be an integer, got %s |
@@ -140,7 +141,7 @@
 | `E3057` | types | type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable |
 | `E3058` | types | in instantiation of generic function '%s' with %s |
 | `E3059` | types | maps cannot be declared const; use 'mut' for maps or a struct for fixed data |
-| `E3061` | types | struct '%s' cannot contain itself by value |
+| `E3061` | types | %s '%s' cannot contain itself by value |
 | `E3062` | types | '%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state) |
 | `E3066` | types | function reference signature mismatch: expected %s, got %s |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
@@ -286,6 +287,9 @@
 | `E3211` | types | '%s' requires a function that returns (T, Error); the operand is not a function call |
 | `E3212` | types | '%s' only works on bool; got '%s' |
 | `E3213` | types | enum '%s': variant '%s' takes the value after the largest i64, which does not fit in i64 |
+| `E3214` | types | -define:%s: '%s' is not a valid %s value |
+| `E3215` | types | 'distinct alias %s' must target a primitive type (an integer, f32, f64, bool, char, or string), not '%s' |
+| `E3216` | safety | cannot pass a string to '%s'; the C function keeps the pointer past the string's scope. Pass to_c_string(...) instead |
 | `E4001` | names | undefined variable '%s' |
 | `E4002` | names | undefined function '%s' |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -322,6 +326,10 @@
 | `E4037` | names | '%s.%s()' expects a type name as argument %d |
 | `E4038` | names | cannot take a function reference to '%s.%s'; stdlib functions are not first-class values |
 | `E4039` | names | generic parameter '%s' is used in the type of parameter '%s' before it is declared; declare it earlier in the parameter list |
+| `E4040` | names | -define: names '%s', but the program declares no such constant |
+| `E4041` | names | '%s' is not a known statement; did you mean '%s'? |
+| `E4042` | names | loop label '%s' is already used by an enclosing loop |
+| `E4043` | names | no enclosing loop is labeled '%s' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | '%s()' expects %s argument(s), got %d |
 | `E5009` | arguments | invalid base %lld for 'strconv.%s'; base must be between 2 and 36 |
@@ -371,6 +379,10 @@
 | `E5063` | arguments | 'to_char()' index %lld is out of bounds |
 | `E5064` | arguments | cannot call a bare 'func' value; its signature is not known, so pass it to a function with a typed 'func(...) -> T' parameter instead |
 | `E5065` | usage | '%s' is unsafe; use it inside an 'unsafe' block or an 'unsafe' function |
+| `E5066` | usage | -define: names '%s', which is not marked #define |
+| `E5067` | arguments | callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares |
+| `E5068` | arguments | '%s' wraps integers only; got %s and %s |
+| `E5069` | usage | 'size_of()' requires a type, not a value |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -533,7 +545,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
 | `P0110` | strconv | strconv.format_i64: invalid base %lld; must be between 2 and 36 |
 | `P0111` | strconv | strconv.format_u64: invalid base %lld; must be between 2 and 36 |
-| `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
+| `P0113` | bounds | binary.%s: byte array has the wrong length to decode; need %d bytes but have %d |
 | `P0115` | runtime | read of '%s' on a nil Error; check the error is non-nil before reading its fields |
 | `P0116` | strings | string builder size exceeds maximum string length |
 | `P0117` | memory | dereferenced a pointer into an arena that has been destroyed or reset |
@@ -584,6 +596,13 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0164` | functions | function reference signature mismatch: expected %s, got %s |
 | `P0165` | net | net: a host contains an embedded null byte |
 | `P0166` | net | net: a host is longer than the maximum hostname length |
+| `P0167` | strings | formatted result exceeds maximum string length |
+| `P0168` | sync | sync.%s on a mutex that was never created with sync.mutex() or was already destroyed |
+| `P0169` | channels | channels.%s on a channel that was never created with channels.open() |
+| `P0170` | threads | threads.%s on a thread handle that was never returned by threads.spawn() or was already joined or detached |
+| `P0171` | mem | mem.%s on an arena that was never created with mem.arena() or was already destroyed |
+| `P0172` | channels | channels.send on a closed channel |
+| `P0173` | channels | channels.open capacity %lld is below 1 |
 
 ---
 
@@ -608,4 +627,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-20 19:37:17 UTC*
+*Generated on 2026-10-24 17:31:11 UTC*

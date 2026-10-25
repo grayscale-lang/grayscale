@@ -1,0 +1,10 @@
+const S struct {
+    t T
+}
+
+const T enum {
+    A(S)
+    B
+}
+
+do main() { println("x") }

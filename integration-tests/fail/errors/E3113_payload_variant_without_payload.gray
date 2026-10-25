@@ -1,0 +1,12 @@
+const E enum {
+    P(i64)
+    Q
+}
+
+do main() {
+    mut e E = E.P
+    when e {
+        is E.P(n) { println("P ${n}") }
+        is E.Q { println("Q") }
+    }
+}

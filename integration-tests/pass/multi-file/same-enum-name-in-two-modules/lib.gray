@@ -1,0 +1,25 @@
+const Mode enum {
+    X
+    Y
+}
+
+const Shape enum {
+    Round
+    Square
+}
+
+do first_mode() -> Mode { return Mode.X }
+
+const Tag enum {
+    Num(i64)
+    None
+}
+
+do make_tag() -> Tag { return Tag.Num(7) }
+
+do read_tag(tag Tag) -> i64 {
+    when tag {
+        is Tag.Num(value) { return value }
+        default { return 0 }
+    }
+}

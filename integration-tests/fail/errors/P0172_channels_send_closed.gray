@@ -1,0 +1,11 @@
+/*
+ * Panic Test: P0172 - channels.send on a closed channel
+ */
+
+import @channels
+
+do main() {
+    mut c = channels.open(2)
+    channels.close(c)
+    channels.send(c, 42)
+}

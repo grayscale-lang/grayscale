@@ -1,0 +1,28 @@
+/*
+ * A string handed to a C function that keeps the pointer goes through
+ * to_c_string, whose copy lives for the rest of the program (#3222).
+ */
+
+extern import "stdlib.h"
+import @strings
+import @arrays
+
+do setit() {
+    unsafe {
+        mut entry string = "GRAYVAR=" + strings.repeat("v", 10)
+        extern.putenv(to_c_string(entry))
+    }
+}
+
+do main() {
+    setit()
+    mut junk [string] = {}
+    for i in range(0, 20000) { arrays.append(junk, strings.repeat("zzzz", 8) + "${i}") }
+    unsafe {
+        if from_c_string(extern.getenv("GRAYVAR")) == "vvvvvvvvvv" {
+            println("ALL TESTS PASSED")
+        } otherwise {
+            println("SOME TESTS FAILED")
+        }
+    }
+}

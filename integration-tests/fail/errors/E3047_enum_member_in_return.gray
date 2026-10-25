@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3047 - return value names a variant the enum lacks
+ */
+// expect-error: E3047
+
+const Color enum {
+    RED
+    GREEN
+}
+
+const Shape enum {
+    Circle(i64)
+    Square(i64)
+}
+
+do pick() -> Color { return Color.PURPLE }
+
+do main() { println(pick()) }

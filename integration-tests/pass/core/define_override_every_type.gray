@@ -1,0 +1,84 @@
+/*
+ * A -define: flag replaces the declared value of a #define constant of every
+ * primitive type, including the extremes of each integer range.
+ */
+
+// define: SMALL=-128
+// define: MEDIUM=-32768
+// define: REGULAR=2147483647
+// define: LARGE=-9223372036854775808
+// define: HUGE=170141183460469231731687303715884105727
+// define: GIANT=-57896044618658097711785492504343953926634992332820282019728792003956564819968
+// define: USMALL=255
+// define: UMEDIUM=65535
+// define: UREGULAR=4294967295
+// define: ULARGE=18446744073709551615
+// define: UHUGE=340282366920938463463374607431768211455
+// define: UGIANT=115792089237316195423570985008687907853269984665640564039457584007913129639935
+// define: SINGLE=-1.5
+// define: DOUBLE=2.5e3
+// define: ENABLED=true
+// define: LETTER=é
+// define: NAME=./my path/with "quotes" and ${braces}
+
+#define
+const SMALL i8 = 0
+#define
+const MEDIUM i16 = 0
+#define
+const REGULAR i32 = 0
+#define
+const LARGE i64 = 0
+#define
+const HUGE i128 = 0
+#define
+const GIANT i256 = 0
+#define
+const USMALL u8 = 0
+#define
+const UMEDIUM u16 = 0
+#define
+const UREGULAR u32 = 0
+#define
+const ULARGE u64 = 0
+#define
+const UHUGE u128 = 0
+#define
+const UGIANT u256 = 0
+#define
+const SINGLE f32 = 0.0
+#define
+const DOUBLE f64 = 0.0
+#define
+const ENABLED bool = false
+#define
+const LETTER char = 'a'
+#define
+const NAME string = "default"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if SMALL == -128 { passed += 1 } otherwise { failed += 1 }
+    if MEDIUM == -32768 { passed += 1 } otherwise { failed += 1 }
+    if REGULAR == 2147483647 { passed += 1 } otherwise { failed += 1 }
+    if LARGE == -9223372036854775808 { passed += 1 } otherwise { failed += 1 }
+    if HUGE == 170141183460469231731687303715884105727 { passed += 1 } otherwise { failed += 1 }
+    if GIANT == -57896044618658097711785492504343953926634992332820282019728792003956564819968 { passed += 1 } otherwise { failed += 1 }
+    if USMALL == 255 { passed += 1 } otherwise { failed += 1 }
+    if UMEDIUM == 65535 { passed += 1 } otherwise { failed += 1 }
+    if UREGULAR == 4294967295 { passed += 1 } otherwise { failed += 1 }
+    if ULARGE == 18446744073709551615 { passed += 1 } otherwise { failed += 1 }
+    if UHUGE == 340282366920938463463374607431768211455 { passed += 1 } otherwise { failed += 1 }
+    if UGIANT == 115792089237316195423570985008687907853269984665640564039457584007913129639935 { passed += 1 } otherwise { failed += 1 }
+    if SINGLE == -1.5 { passed += 1 } otherwise { failed += 1 }
+    if DOUBLE == 2500.0 { passed += 1 } otherwise { failed += 1 }
+    if ENABLED == true { passed += 1 } otherwise { failed += 1 }
+    if LETTER == 'é' { passed += 1 } otherwise { failed += 1 }
+    if NAME == "./my path/with \"quotes\" and \${braces}" { passed += 1 } otherwise { failed += 1 }
+
+    println("define overrides: ${passed} passed, ${failed} failed")
+    if failed > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}

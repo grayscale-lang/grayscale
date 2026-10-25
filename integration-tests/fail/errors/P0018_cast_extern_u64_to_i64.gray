@@ -1,0 +1,13 @@
+/*
+ * Error Test: P0018 - cast() of an extern unsigned 64-bit value above INT64_MAX to i64
+ * Expected: P0018 panic
+ */
+
+extern import "stdlib.h", "stdint.h"
+
+do main() {
+    unsafe {
+        mut a i64 = cast(extern.strtoull("18446744073709551615", nil, 10), i64)
+        println(a)
+    }
+}

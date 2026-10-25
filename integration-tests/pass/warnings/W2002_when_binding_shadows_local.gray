@@ -1,0 +1,18 @@
+/*
+ * Warning Test: W2002 - when payload binding shadows an outer variable
+ */
+
+const E enum {
+    P(i64)
+    Q
+}
+
+do main() {
+    mut e E = E.P(1)
+    mut p i64 = 4
+    when e {
+        is P(p) { println(p) }
+        default { println("q") }
+    }
+    println(p)
+}

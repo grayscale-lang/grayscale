@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5068 - wrap_add with f64 arguments
+ */
+// expect-error: E5068
+// expect-error-count: 1
+
+do main() {
+    mut a f64 = 1.5
+    unsafe {
+        println(wrap_add(a, 2.5))
+    }
+}

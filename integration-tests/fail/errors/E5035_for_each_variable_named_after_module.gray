@@ -1,0 +1,8 @@
+import @math
+
+do main() {
+    mut xs [i64] = {1, 2}
+    for_each math in xs {
+        println(math)
+    }
+}

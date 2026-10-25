@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1006 - unicode escape with seven hex digits
+ */
+// expect-error: E1006
+
+do main() {
+    println("\u{1234567}")
+}
