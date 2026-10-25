@@ -3,12 +3,12 @@
  * Expected: E5054 error
  */
 
-extern import "pthread.h"
+extern import "iconv.h"
 
 do main() {
     unsafe {
-        mut t i64 = 0
-        mut r i32 = extern.pthread_join(t, nil)
+        mut handle i64 = 0
+        mut r i32 = extern.iconv_close(handle)
         println(r)
     }
 }

@@ -1005,33 +1005,46 @@ static CReturnClass classify_c_typedef(const char *dump, const char *name) {
     return classify_c_typedef_text(dump, name, NULL, 0);
 }
 
-/* What a plain data-pointer parameter such as "FILE *", "const char *" or
- * "char **" points at. The words after the last '*' are qualifiers of the
- * pointer itself. */
-static void classify_c_pointee(const char *dump, const char *parameter_text, CReturnClass *pointee_class,
-                               bool *is_byte, bool *is_const) {
-    *pointee_class = C_RETURN_UNKNOWN;
-    *is_byte = false;
-    *is_const = false;
+/* Splits the pointee of a plain data-pointer parameter such as "FILE *",
+ * "const char *" or "char **" from the pointer. The words after the last '*'
+ * are qualifiers of the pointer itself. False for anything that is not one. */
+static bool split_c_pointee(const char *parameter_text, char *pointee, size_t pointee_size) {
     const char *last_star = strrchr(parameter_text, '*');
-    if (!last_star || strchr(parameter_text, '(') || strchr(parameter_text, '[')) return;
-    char pointee[128];
+    if (!last_star || strchr(parameter_text, '(') || strchr(parameter_text, '[')) return false;
     size_t pointee_length = (size_t)(last_star - parameter_text);
-    if (pointee_length >= sizeof(pointee)) return;
+    if (pointee_length >= pointee_size) return false;
     memcpy(pointee, parameter_text, pointee_length);
     pointee[pointee_length] = '\0';
-    if (strchr(pointee, '*')) { *pointee_class = C_RETURN_POINTER; return; }
+    return true;
+}
 
-    char name[128];
+/* The type name left in `pointee` once const and volatile are dropped. */
+static void strip_c_pointee_qualifiers(const char *pointee, char *name, size_t name_size, bool *is_const) {
     name[0] = '\0';
+    *is_const = false;
     char buffer[128];
     snprintf(buffer, sizeof(buffer), "%s", pointee);
     for (char *save = NULL, *word = strtok_r(buffer, " ", &save); word; word = strtok_r(NULL, " ", &save)) {
         if (strcmp(word, "const") == 0) { *is_const = true; continue; }
         if (strcmp(word, "volatile") == 0) continue;
         size_t used = strlen(name);
-        snprintf(name + used, sizeof(name) - used, "%s%s", used ? " " : "", word);
+        snprintf(name + used, name_size - used, "%s%s", used ? " " : "", word);
     }
+}
+
+/* What a plain data-pointer parameter such as "FILE *", "const char *" or
+ * "char **" points at. */
+static void classify_c_pointee(const char *dump, const char *parameter_text, CReturnClass *pointee_class,
+                               bool *is_byte, bool *is_const) {
+    *pointee_class = C_RETURN_UNKNOWN;
+    *is_byte = false;
+    *is_const = false;
+    char pointee[128];
+    if (!split_c_pointee(parameter_text, pointee, sizeof(pointee))) return;
+    if (strchr(pointee, '*')) { *pointee_class = C_RETURN_POINTER; return; }
+
+    char name[128];
+    strip_c_pointee_qualifiers(pointee, name, sizeof(name), is_const);
     CReturnClass pointee_kind = classify_c_return(name);
     char resolved[128];
     snprintf(resolved, sizeof(resolved), "%s", name);
@@ -1701,9 +1714,17 @@ static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char 
         CFunctionSignature parsed;
         if (!count_c_parameters(signature, &parsed)) continue;
         note_unresolved_typedef(typedef_names, &typedef_count, parsed.return_class, parsed.return_text);
-        for (int index = 0; index < parsed.parameter_count; index++)
+        for (int index = 0; index < parsed.parameter_count; index++) {
             note_unresolved_typedef(typedef_names, &typedef_count, parsed.parameter_class[index],
                                     parsed.parameter_text[index]);
+            /* A pointer to a typedef ("FILE *") needs the typedef classified too. */
+            char pointee[128], pointee_name[128];
+            bool is_pointee_const;
+            if (parsed.parameter_class[index] != C_RETURN_POINTER ||
+                !split_c_pointee(parsed.parameter_text[index], pointee, sizeof(pointee))) continue;
+            strip_c_pointee_qualifiers(pointee, pointee_name, sizeof(pointee_name), &is_pointee_const);
+            note_unresolved_typedef(typedef_names, &typedef_count, classify_c_return(pointee_name), pointee_name);
+        }
     }
     free(auxiliary_info);
 
