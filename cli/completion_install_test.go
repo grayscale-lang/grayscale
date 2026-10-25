@@ -4,12 +4,16 @@
 // Author:  Marshall A Burns (@SchoolyB)
 // Copyright (c) 2025-Present Marshall A Burns
 // Licensed under the MIT License. See LICENSE for details.
+//
+// Contributors:
+//  - @SAY-5
 
 package main
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -128,5 +132,16 @@ func TestPlaceCompletionScript(t *testing.T) {
 	}
 	if got := placeCompletionScript("zsh", home, noEnv, func() []string { return nil }, generate); got != "" {
 		t.Errorf("zsh without a writable fpath directory should skip, got %q", got)
+	}
+}
+
+func TestCompletionInstalledLine(t *testing.T) {
+	file := filepath.Join("home", "user", ".config", "fish", "completions", "gray.fish")
+	if got, want := completionInstalledLine("fish", file), "Shell completion installed: "+file; got != want {
+		t.Errorf("fish = %q, want %q", got, want)
+	}
+	script := filepath.Join("home", "user", ".gray", "completions", "gray.ps1")
+	if got := completionInstalledLine("powershell", script); !strings.Contains(got, "`. \""+script+"\"`") {
+		t.Errorf("powershell line %q does not say to dot-source %s", got, script)
 	}
 }
