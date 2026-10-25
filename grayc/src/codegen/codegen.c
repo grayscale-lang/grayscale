@@ -1682,13 +1682,15 @@ static void unregister_mem_variable(CodeGen *codegen, const char *name, bool kee
 /* Emit `GrayArena *gray_arena_<name> = <arena>; uint64_t gray_epoch_<name> =
  * gray_arena_<name>->reset_count;` or, when the companions already exist, the
  * assignments that refresh them. The arena is kept because mem.destroy()
- * clears the handle the arena expression names. */
-static void emit_mem_epoch_record(CodeGen *codegen, const char *name, AstNode *arena_expression, bool is_declaration) {
+ * clears the handle the arena expression names, and it is checked live before
+ * its reset count is read. */
+static void emit_mem_epoch_record(CodeGen *codegen, const char *name, AstNode *arena_expression,
+                                  const char *function_name, bool is_declaration) {
     const char *safe_name = sanitize_name(name);
     if (is_declaration) emit(codegen, "GrayArena *");
-    emit_formatted(codegen, "gray_arena_%s = (", safe_name);
+    emit_formatted(codegen, "gray_arena_%s = gray_mem_live(", safe_name);
     emit_expression(codegen, arena_expression);
-    emit(codegen, ");\n");
+    emit_formatted(codegen, ", \"%s\");\n", function_name);
     emit_indent(codegen);
     if (is_declaration) emit(codegen, "uint64_t ");
     emit_formatted(codegen, "gray_epoch_%s = gray_arena_%s->reset_count;\n", safe_name, safe_name);
@@ -11226,7 +11228,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
                  * mem.reset() on that arena is caught like mem.destroy(). */
                 bool records_epoch = codegen->indent > 0;
                 if (records_epoch) {
-                    emit_mem_epoch_record(codegen, source_name, arena_argument, true);
+                    emit_mem_epoch_record(codegen, source_name, arena_argument, mem_function, true);
                     emit_indent(codegen);
                 }
                 register_mem_variable(codegen, source_name, arena_argument, records_epoch);
@@ -11808,7 +11810,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 bool has_epoch = mem_variable_has_epoch(codegen, variable_name);
                 if (has_epoch) {
                     emit_indent(codegen);
-                    emit_mem_epoch_record(codegen, variable_name, arena_argument, false);
+                    emit_mem_epoch_record(codegen, variable_name, arena_argument, mem_function, false);
                 }
                 register_mem_variable(codegen, variable_name, arena_argument, has_epoch);
                 is_mem_reinit = true;
