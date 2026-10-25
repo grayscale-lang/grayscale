@@ -1,5 +1,91 @@
 # Changelog
 
+## [0.13.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.12.3...grayscale-v0.13.0) (2026-10-25)
+
+
+### Features
+
+* **attributes:** add #define and the -define: flag for build-time constant overrides ([#3210](https://github.com/grayscale-lang/grayscale/issues/3210)) ([d5fff9b](https://github.com/grayscale-lang/grayscale/commit/d5fff9bd67789cd5cc7720bfca1039e427583e6e))
+* **loops:** add labeled break and continue for nested loops ([#3246](https://github.com/grayscale-lang/grayscale/issues/3246)) ([96772b2](https://github.com/grayscale-lang/grayscale/commit/96772b2748bd80d7b7b5a0f76bbc1348ab1d6f09))
+* **runtime:** add function_name and caller_name ([#3135](https://github.com/grayscale-lang/grayscale/issues/3135)) ([96a98c2](https://github.com/grayscale-lang/grayscale/commit/96a98c23f04ef08a7520ae63203e54c418d02dcd))
+* **stdlib:** add wrap_add, wrap_sub, wrap_mult and wrap_div builtins behind unsafe ([#3245](https://github.com/grayscale-lang/grayscale/issues/3245)) ([7484b1a](https://github.com/grayscale-lang/grayscale/commit/7484b1adf3866880e7e0bd6655ed12599d91e704))
+* **types:** add distinct alias for nominal primitive types ([#3211](https://github.com/grayscale-lang/grayscale/issues/3211)) ([d46eb47](https://github.com/grayscale-lang/grayscale/commit/d46eb472d27c458ead858d68b20036fafe1d5c04))
+
+
+### Bug Fixes
+
+* **cli:** tell PowerShell users to dot-source the installed completion script ([a9749d4](https://github.com/grayscale-lang/grayscale/commit/a9749d4617ef0b501cd4c7c18b6764bbc822f049))
+* **cli:** tell PowerShell users to dot-source the installed completion script ([3aa2348](https://github.com/grayscale-lang/grayscale/commit/3aa2348f901e1043b9ff8530f90e8f221afb2884))
+* **codegen:** accept a C value of 2^63 or more as a u64 ([#3227](https://github.com/grayscale-lang/grayscale/issues/3227)) ([60a8043](https://github.com/grayscale-lang/grayscale/commit/60a804349c1a58c605aea79e438b464dc58dc9fc))
+* **codegen:** check an arena is live before recording its reset count ([5c3b521](https://github.com/grayscale-lang/grayscale/commit/5c3b521cd5ff0903a6db380c45271fabd49c3626))
+* **codegen:** check overflow and division by zero in compound assignment and negation on a generic-typed value ([#3239](https://github.com/grayscale-lang/grayscale/issues/3239)) ([5c3d559](https://github.com/grayscale-lang/grayscale/commit/5c3d55906b40e6ee76a8dec1a4d4fb86d60d3079))
+* **codegen:** emit a parameter default in the declaring module's scope ([204a99d](https://github.com/grayscale-lang/grayscale/commit/204a99d7214208808a882ca114bd40f1cb243ea0))
+* **codegen:** range-check an extern u64 above INT64_MAX stored into a narrow signed type ([e936be2](https://github.com/grayscale-lang/grayscale/commit/e936be254af1069bf3602173123ad21388103ac3))
+* **codegen:** resolve generic parameter types when a call omits a defaulted argument ([#3237](https://github.com/grayscale-lang/grayscale/issues/3237)) ([621f248](https://github.com/grayscale-lang/grayscale/commit/621f2481b00e55e0b29772c9a8dd700d5f8aa4d4))
+* **codegen:** type a wrap builtin call by its first operand inside a generic body ([bcd645a](https://github.com/grayscale-lang/grayscale/commit/bcd645a773fe2c1ac68b610d3c6338672a4a6c67))
+* **compiler:** repair generic dispatch segfault, call-result handle temporaries, and global arena liveness guard ([1e935b9](https://github.com/grayscale-lang/grayscale/commit/1e935b921e22f7a482c488319502b63e85b21274))
+* **diagnostics:** escape a lone C1 control byte in quoted source ([9333da9](https://github.com/grayscale-lang/grayscale/commit/9333da9f457f4611da5f03edb9ed578c8c37aeeb))
+* **io:** sort io.walk entries and skip symlinked directories ([#3260](https://github.com/grayscale-lang/grayscale/issues/3260)) ([852c053](https://github.com/grayscale-lang/grayscale/commit/852c053dbe9f4b432837627bddc9365e2883cc64))
+* **parser:** limit the length of an or-branch chain with E2001 ([a3ac88d](https://github.com/grayscale-lang/grayscale/commit/a3ac88d1b8cba8de687f3212c6dedd7e7636d3bb))
+* **parser:** reject a non-label token after break or continue on the same line ([bfd2ab5](https://github.com/grayscale-lang/grayscale/commit/bfd2ab590b459520ab42c0f7cfbf63ad5c4dbaff))
+* **parser:** report E6014 for any token after import that is not a module or path ([#3214](https://github.com/grayscale-lang/grayscale/issues/3214)) ([6a16c9a](https://github.com/grayscale-lang/grayscale/commit/6a16c9a8537029310bf81d25d67de5742732e785))
+* **runtime:** panic when a formatted result exceeds the maximum string length ([#3236](https://github.com/grayscale-lang/grayscale/issues/3236)) ([88ba7ec](https://github.com/grayscale-lang/grayscale/commit/88ba7ecbbb52a0ed0829b7531ec598fb2b013383))
+* **runtime:** panic with P0117 on a dereference after mem.reset ([#3216](https://github.com/grayscale-lang/grayscale/issues/3216)) ([8d1b56f](https://github.com/grayscale-lang/grayscale/commit/8d1b56f843e6094c87b6e26f633631b28baf4cc2))
+* **runtime:** stop a panic inside a global arena swap from destroying the arena twice ([47d34c6](https://github.com/grayscale-lang/grayscale/commit/47d34c6007e882e3b6b09f3e23efdcd383224c3e))
+* **scripts:** ignore the compiled check_stray_binaries and skip it in its own scan ([b30a887](https://github.com/grayscale-lang/grayscale/commit/b30a887e7ece28c3ea687e052492dfa8e946fd12))
+* **scripts:** skip class files and symlinks in check_stray_binaries ([f381f4f](https://github.com/grayscale-lang/grayscale/commit/f381f4f757c53d4def56abae64a7cd995f9d27c2))
+* **server:** send response bodies larger than 64 KB in full ([#3233](https://github.com/grayscale-lang/grayscale/issues/3233)) ([b789d56](https://github.com/grayscale-lang/grayscale/commit/b789d56b745666e187ed6ae90d61dd22322da050))
+* **stdlib:** answer 400 or 413 instead of running the handler on an incomplete request ([8391f59](https://github.com/grayscale-lang/grayscale/commit/8391f59b4d723b8eab24c598306d577931a7df95))
+* **stdlib:** include the atomic header in sync so TinyCC builds the mutex checks ([ddff0c3](https://github.com/grayscale-lang/grayscale/commit/ddff0c3e94e419daea24bd93f464de539b153ed9))
+* **stdlib:** panic on a closed-channel send and a channel capacity below 1 ([2dfbfb2](https://github.com/grayscale-lang/grayscale/commit/2dfbfb2bbd1b9d59d9d301586eefeef8ad7b996b))
+* **stdlib:** panic when a binary decode function gets an array of the wrong length ([#3243](https://github.com/grayscale-lang/grayscale/issues/3243)) ([4e0d50f](https://github.com/grayscale-lang/grayscale/commit/4e0d50feea80eac7184d6e59e936e8fff3b2db94))
+* **stdlib:** reject a copy of a destroyed mutex or joined thread handle ([925f83e](https://github.com/grayscale-lang/grayscale/commit/925f83e28c66ccf6d9a0926da5176421658c3116))
+* **tests:** drop channel unit tests that expect the old capacity and closed-send behavior ([897fd22](https://github.com/grayscale-lang/grayscale/commit/897fd229a3c58fd393d202c9b3296ea25534939e))
+* **tests:** let ASan return NULL for the xalloc failure tests ([1d236c9](https://github.com/grayscale-lang/grayscale/commit/1d236c9099a3fd6f048716193d1c243071e38b68))
+* **tests:** make the sprintf length overflow test exceed INT_MAX on glibc ([5a3ca52](https://github.com/grayscale-lang/grayscale/commit/5a3ca52a50708518fa6ff7541ea3e5e4edce55fc))
+* **tests:** receive the whole reply in the split segment server test ([6ebace0](https://github.com/grayscale-lang/grayscale/commit/6ebace038021e8b22a32357271a8e67f4144bafa))
+* **tests:** replace usleep with nanosleep in the stdlib unit tests ([0a16b7a](https://github.com/grayscale-lang/grayscale/commit/0a16b7a9eca6389a2a854d150e53e778de6328d1))
+* **tests:** stop passing a value to size_of in type_builtins_evaluate_argument ([c4913f6](https://github.com/grayscale-lang/grayscale/commit/c4913f64a448894e8f97801a115d4a365074934b))
+* **tests:** use sleep_ms instead of usleep in the C created thread test ([fd62ada](https://github.com/grayscale-lang/grayscale/commit/fd62adaa145bb63626a146afbfa6d017b7d80ffe))
+* **typechecker:** a number read through a pointer parameter is not its address to C ([#3224](https://github.com/grayscale-lang/grayscale/issues/3224)) ([8ae06ed](https://github.com/grayscale-lang/grayscale/commit/8ae06ed6b81d97d84c920681aaeaeb1a9f034035))
+* **typechecker:** accept ^void as a local variable type ([#3225](https://github.com/grayscale-lang/grayscale/issues/3225)) ([76f72bb](https://github.com/grayscale-lang/grayscale/commit/76f72bbee9fa88ff703dc0a1d00d2f0a5bb47ca2))
+* **typechecker:** accept a distinct element for array and map functions of the same distinct type ([50e2b0b](https://github.com/grayscale-lang/grayscale/commit/50e2b0b2e2afd687eb586565b985288348ad24cf))
+* **typechecker:** accept an imported enum named like a type in the importing file ([#3241](https://github.com/grayscale-lang/grayscale/issues/3241)) ([0748579](https://github.com/grayscale-lang/grayscale/commit/074857970382d7bab0d26c0603969d38e24cc602))
+* **typechecker:** accept distinct numbers for min, max, clamp, abs, neg and sign ([ed55bd8](https://github.com/grayscale-lang/grayscale/commit/ed55bd8c052fa7c3117e94167bc666335e8bb133))
+* **typechecker:** bind a caller's type argument to the caller's type in an imported generic ([#3238](https://github.com/grayscale-lang/grayscale/issues/3238)) ([db61a24](https://github.com/grayscale-lang/grayscale/commit/db61a2444e4159f494ca4f181aba78472d3f0acb))
+* **typechecker:** check an enum variant's explicit value as a compile-time expression ([eaa9289](https://github.com/grayscale-lang/grayscale/commit/eaa9289fa79b9b67bf4b017e47a9e1621e8d34ba))
+* **typechecker:** check binary f32 encoder arguments as f32 ([#3242](https://github.com/grayscale-lang/grayscale/issues/3242)) ([bba303f](https://github.com/grayscale-lang/grayscale/commit/bba303f63e6425c9020b61742e2a8be6923884e5))
+* **typechecker:** classify the typedef a pointer parameter points at on the GCC path ([40f6f46](https://github.com/grayscale-lang/grayscale/commit/40f6f46df02182ccf2b40a906bcca729e0561b90))
+* **typechecker:** count a stdlib pointer writer call as a write through the parameter ([62e9960](https://github.com/grayscale-lang/grayscale/commit/62e99600fd020494c15075c377f35646f84cb0ec))
+* **typechecker:** detect self-containment through a fixed-size array in E3061 ([1f1b1ce](https://github.com/grayscale-lang/grayscale/commit/1f1b1ce3dbc5feb0caf633cd77b35610c57d6b43))
+* **typechecker:** dispatch a struct function call on a generic-typed receiver per instantiation ([#3240](https://github.com/grayscale-lang/grayscale/issues/3240)) ([eb8663f](https://github.com/grayscale-lang/grayscale/commit/eb8663f28625614c9b25088b9a6376a6096c0ce5))
+* **typechecker:** evaluate runtime name defaults in the callee and reject distinct values for primitive builtin and stdlib parameters ([d5e50c1](https://github.com/grayscale-lang/grayscale/commit/d5e50c1c069603e6568769841a66fc92ecd1d78e))
+* **typechecker:** key a reassigned arena field path apart from the arena it named before ([c068ba3](https://github.com/grayscale-lang/grayscale/commit/c068ba3d1b4ea2c7b61bf934d33fad48999a96fd))
+* **typechecker:** limit the misspelled-statement error to bare declarations ([a66d86c](https://github.com/grayscale-lang/grayscale/commit/a66d86c4457e7d1b7cd01a8a135ca779ee580dda))
+* **typechecker:** reject a payload variant named without its payload with E3113 ([a678e79](https://github.com/grayscale-lang/grayscale/commit/a678e79c60537af9e8562d93c64de5382c789fd8))
+* **typechecker:** reject a string passed to extern setbuffer with E3216 ([5c1b806](https://github.com/grayscale-lang/grayscale/commit/5c1b806538ac156fefd587417569a6b50bbd32b0))
+* **typechecker:** reject a tagged enum that contains itself by value ([#3232](https://github.com/grayscale-lang/grayscale/issues/3232)) ([725c3a7](https://github.com/grayscale-lang/grayscale/commit/725c3a7dec9fe6f96e1746ea288685c279b43a2d))
+* **typechecker:** reject a value argument to size_of with E5069 ([2373152](https://github.com/grayscale-lang/grayscale/commit/23731529a7acf119138b3b55fe153cb419a13520))
+* **typechecker:** reject a void call as an array literal element ([#3212](https://github.com/grayscale-lang/grayscale/issues/3212)) ([8e844ef](https://github.com/grayscale-lang/grayscale/commit/8e844efbbdbbaa56acde313e52ccb0a8fa56d664))
+* **typechecker:** reject a void when subject with E3187 ([d584942](https://github.com/grayscale-lang/grayscale/commit/d58494285df65a3a4ee48c533abe09339ac1b348))
+* **typechecker:** reject member access and struct function calls on a void call with E3187 ([589970d](https://github.com/grayscale-lang/grayscale/commit/589970d34946037b43085b9a6c38d4a1187da561))
+* **typechecker:** reject or_panic, or_default and or_return on a non-fallible stdlib or builtin call ([#3244](https://github.com/grayscale-lang/grayscale/issues/3244)) ([1b23479](https://github.com/grayscale-lang/grayscale/commit/1b23479b17a8beabc22d128b06c446240d0d17aa))
+* **typechecker:** reject stdlib module names as for and for_each loop variables ([#3215](https://github.com/grayscale-lang/grayscale/issues/3215)) ([8b2a2df](https://github.com/grayscale-lang/grayscale/commit/8b2a2df9b60194da6ba191f5810ead0ad04a445d))
+* **typechecker:** reject void as a function parameter type ([#3213](https://github.com/grayscale-lang/grayscale/issues/3213)) ([0931db2](https://github.com/grayscale-lang/grayscale/commit/0931db249ce2025efcd17baecf46130976cbae00))
+* **typechecker:** report E4002 for a bare fallible stdlib name used as a value ([841e782](https://github.com/grayscale-lang/grayscale/commit/841e78224322f03824a0822614eb536f071e71ea))
+* **typechecker:** report misspelled statement keyword before an identifier ([#3209](https://github.com/grayscale-lang/grayscale/issues/3209)) ([d7e7b8d](https://github.com/grayscale-lang/grayscale/commit/d7e7b8d126779661861e4d763c6b14b359b8d6f0))
+* **typechecker:** resolve a function pointer typedef when checking an extern callback ([b066d52](https://github.com/grayscale-lang/grayscale/commit/b066d52bb3d63c2c445cf100f2a803aebd84ea73))
+* **typechecker:** resolve names inside an imported module against the module before the importer's file scope ([e4ed121](https://github.com/grayscale-lang/grayscale/commit/e4ed12195bedb6ba228e65efcb19bf4bc58e5458))
+* **typechecker:** suggest the statement word for every misspelled statement shape ([89522a5](https://github.com/grayscale-lang/grayscale/commit/89522a5aac784eef721aa134592e3ee498e0dd5f))
+* **typechecker:** warn when a for loop variable shadows an outer variable ([#3218](https://github.com/grayscale-lang/grayscale/issues/3218)) ([bb10de2](https://github.com/grayscale-lang/grayscale/commit/bb10de2ae1a550f4cde77f16430c68f4921b0d68))
+* **typechecker:** warn when a when binding or function parameter shadows an outer variable ([861a20c](https://github.com/grayscale-lang/grayscale/commit/861a20cee09484d1de630b0697c72912a481bff2))
+* **util:** return NULL instead of overreading when read_file_to_string cannot seek ([40f03d7](https://github.com/grayscale-lang/grayscale/commit/40f03d7f18f5eed68ffe446ac476ef777abe2ee2))
+
+
+### Performance Improvements
+
+* **codegen:** free the dotted struct function names with their namespaced names ([e2b9cdb](https://github.com/grayscale-lang/grayscale/commit/e2b9cdb04824e7b47fc87cda0954f9c27f4ff931))
+
 ## [0.12.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.12.2...grayscale-v0.12.3) (2026-10-20)
 
 
