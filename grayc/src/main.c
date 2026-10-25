@@ -1788,6 +1788,12 @@ static bool callback_scalar_mismatch(CReturnClass c_class, int c_bits, const Gra
  * a different number of parameters, or a parameter or return of another kind
  * or width. Anything this cannot read is accepted. */
 static bool callback_mismatches_function_pointer(const char *dump, const char *pointer_text, const FunctionSignature *callback) {
+    /* A parameter declared through a typedef name ("__compar_fn_t") stands for
+     * the function pointer type its TypedefDecl spells. */
+    char resolved[256];
+    if (!strstr(pointer_text, "(*)") &&
+        classify_c_typedef_text(dump, pointer_text, resolved, sizeof(resolved)) != C_RETURN_UNKNOWN)
+        pointer_text = resolved;
     const char *marker = strstr(pointer_text, "(*)");
     if (!marker || marker[3] != '(') return false;
     char shape[256];
