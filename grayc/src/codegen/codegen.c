@@ -9135,6 +9135,22 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *funct
     return false;
 }
 
+/* --- path module --- */
+
+static bool emit_path_call(CodeGen *codegen, AstNode *node, const char *function_name) {
+    bool needs_arena = (strcmp(function_name, "split_dir_file") != 0 &&
+        strcmp(function_name, "file_extension") != 0 &&
+        strcmp(function_name, "is_absolute") != 0);
+    emit_formatted(codegen, "gray_path_%s(", function_name);
+    if (needs_arena) emit(codegen, "gray_default_arena");
+    for (int i = 0; i < node->data.call.argument_count; i++) {
+        if (i > 0 || needs_arena) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.arguments[i]);
+    }
+    emit(codegen, ")");
+    return true;
+}
+
 /* --- chars module --- */
 
 static bool emit_chars_call(CodeGen *codegen, AstNode *node, const char *function_name) {
@@ -9846,6 +9862,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             {"mem",      emit_mem_call},
             {"net",      emit_net_call},
             {"os",       emit_os_call},
+            {"path",     emit_path_call},
             {"random",   emit_random_call},
             {"regex",    emit_regex_call},
             {"runtime",  emit_runtime_call},
@@ -14816,6 +14833,7 @@ static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *
         {"json",     "json.h"},
         {"strconv",  "strconv.h"},
         {"chars",    "chars.h"},
+        {"path",     "path.h"},
         {"sqlite",   "sqlite.h"},
         {"threads",  "threads.h"},
         {"sync",     "sync.h"},

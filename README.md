@@ -124,7 +124,7 @@ do main() {
 <p align="center">
 
 `@arrays` · `@atomic` · `@binary` · `@channels` · `@chars` · `@crypto` · `@csv` · `@encoding` · `@fmt` · `@http`
-`@io` · `@json` · `@maps` · `@math` · `@mem` · `@net` · `@os` · `@random` · `@regex`
+`@io` · `@json` · `@maps` · `@math` · `@mem` · `@net` · `@os` · `@path` · `@random` · `@regex`
 `@runtime` · `@server` · `@sqlite` · `@strconv` · `@strings` · `@sync` · `@threads` · `@time` · `@uuid`
 
 </p>

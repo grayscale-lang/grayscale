@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut path string = "config.txt"
-    const content string = embed(path)
+    mut file_path string = "config.txt"
+    const content string = embed(file_path)
     println(content)
 }

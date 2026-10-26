@@ -4921,6 +4921,37 @@ println(chars.string_width("中文")) // 4 (two wide chars)
 **Behavior:**
 - No function in this module fails.
 
+### 9.30 Path Module (`@path`)
+
+Separator-aware path manipulation on strings. Every function treats both `/` and `\` as
+separators on every platform, and recognizes Windows drive letters (`C:`) and UNC prefixes
+(`\\server\share`). Results use the platform's separator (`\` on Windows, `/` elsewhere),
+except `to_forward_slashes`. Only `absolute_path` consults the environment (the working directory).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `join_parts` | `(parts [string]) -> string` | Join the non-empty parts and normalize; `""` when all parts are empty |
+| `normalize_path` | `(p string) -> string` | Collapse separators, drop `.`, resolve `..` lexically; empty result becomes `.` |
+| `split_dir_file` | `(p string) -> (string, string)` | Split after the final separator into directory (with trailing separator) and file name |
+| `file_extension` | `(p string) -> string` | Suffix of the final element from its last dot, including the dot; `""` if none |
+| `is_absolute` | `(p string) -> bool` | Leading separator, UNC prefix, or drive letter followed by a separator |
+| `relative_path` | `(base string, target string) -> (string, Error)` | Lexical path from `base` to `target` |
+| `absolute_path` | `(p string) -> (string, Error)` | Normalized absolute path, resolving against the working directory |
+| `to_forward_slashes` | `(p string) -> string` | Replace every `\` with `/` |
+
+`relative_path` and `absolute_path` are fallible: always use destructuring. `relative_path`
+fails when only one path is absolute, when the roots (drive or UNC) differ, or when `base`
+holds unresolvable `..` elements. `absolute_path` fails when the working directory cannot be
+read or when `p` is drive-relative (`C:file`).
+
+```gray
+import @path
+
+println(path.join_parts({"src", "stdlib", "../runtime", "io.c"}))   // src/runtime/io.c
+mut dir, file = path.split_dir_file("src/main.gray")                // "src/", "main.gray"
+mut rel, err = path.relative_path("/a/b", "/a/c/d")                 // "../c/d"
+```
+
 ---
 
 ## 10. Error Handling

@@ -1,0 +1,6 @@
+// expect-error: E5035
+mut path string = "a"
+
+do main() {
+    println(path)
+}

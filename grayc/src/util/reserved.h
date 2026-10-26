@@ -128,6 +128,7 @@ static const char *const gray_stdlib_module_names[] = {
     "mem",
     "net",
     "os",
+    "path",
     "random",
     "regex",
     "runtime",

@@ -3337,6 +3337,15 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"channels", "send",        2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHANNEL}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
     {"channels", "try_receive", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHANNEL}}, "i64"},
     {"channels", "try_send",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHANNEL}, {1, EXPECTED_ARGUMENT_I64}}, "bool"},
+    /* path */
+    {"path", "absolute_path", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "file_extension", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "is_absolute", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"path", "join_parts", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
+    {"path", "normalize_path", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "relative_path", 2, 2, true,  FALLIBLE_TYPE_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "split_dir_file", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "to_forward_slashes", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* chars */
     {"chars", "escape",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"chars", "is_alnum", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHAR}}, "bool"},
@@ -4590,6 +4599,7 @@ static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"math",     "modf",        2, {&TYPE_F64, &TYPE_F64}},
     {"uuid",     "timestamp",   2, {&TYPE_I64, &TYPE_BOOL}},
     {"os",       "lookup_env",  2, {&TYPE_STRING, &TYPE_BOOL}},
+    {"path",     "split_dir_file", 2, {&TYPE_STRING, &TYPE_STRING}},
     {NULL, NULL, 0, {NULL}}
 };
 

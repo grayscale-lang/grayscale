@@ -1,0 +1,6 @@
+// expect-error: E5026
+import @path
+
+do main() {
+    println(path.normalize_path(5))
+}
