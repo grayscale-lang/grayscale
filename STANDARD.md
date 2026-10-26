@@ -4163,6 +4163,7 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `args` | `() -> [string]` | Get command-line arguments |
 | `current_dir` | `() -> string` | Get current working directory |
 | `home_dir` | `() -> string` | Get the current user's home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) |
+| `find_executable` | `(name string) -> (string, bool)` | Full path of the first executable regular file called `name` on `PATH`, and whether one was found. A `name` containing a path separator is checked directly instead of searched. On Windows the `PATHEXT` extensions are tried and `PATH` is split on `;` |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> i64` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |

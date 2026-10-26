@@ -24,6 +24,7 @@
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/stat.h>
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
@@ -123,6 +124,116 @@ GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
     const char *value = getenv(name.data);
     if (!value) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
     return (GrayOsLookupEnvResult){gray_string_new(arena, value, (int32_t)strlen(value)), true};
+}
+
+/* A candidate is an executable regular file. Windows has no execute bit; the
+ * PATHEXT extension on the candidate is what makes it executable there. */
+static bool os_is_executable_file(const char *path) {
+    struct stat file_info;
+    if (stat(path, &file_info) != 0 || !S_ISREG(file_info.st_mode)) return false;
+#if GRAY_RUNTIME_WINDOWS
+    return true;
+#else
+    return access(path, X_OK) == 0;
+#endif
+}
+
+static bool os_has_path_separator(GrayString name) {
+    for (int32_t i = 0; i < name.len; i++) {
+#if GRAY_RUNTIME_WINDOWS
+        if (name.data[i] == '/' || name.data[i] == '\\') return true;
+#else
+        if (name.data[i] == '/') return true;
+#endif
+    }
+    return false;
+}
+
+/* Checks `directory`/`name` (or `name` alone when directory is NULL) as is
+ * and, on Windows, with each PATHEXT extension appended. Writes the first
+ * match into `found`. */
+static bool os_find_in_directory(const char *directory, size_t directory_length,
+                                 GrayString name, const char *extensions,
+                                 char *found, size_t found_size) {
+    size_t prefix = 0;
+    if (directory) {
+        if (directory_length + 1 + (size_t)name.len + 1 > found_size) return false;
+        memcpy(found, directory, directory_length);
+#if GRAY_RUNTIME_WINDOWS
+        found[directory_length] = '\\';
+#else
+        found[directory_length] = '/';
+#endif
+        prefix = directory_length + 1;
+    }
+    if (prefix + (size_t)name.len + 1 > found_size) return false;
+    memcpy(found + prefix, name.data, (size_t)name.len);
+    size_t base_length = prefix + (size_t)name.len;
+    found[base_length] = '\0';
+#if GRAY_RUNTIME_WINDOWS
+    const char *cursor = extensions;
+    while (*cursor) {
+        const char *end = strchr(cursor, ';');
+        size_t extension_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (extension_length > 0 && base_length + extension_length + 1 <= found_size) {
+            memcpy(found + base_length, cursor, extension_length);
+            found[base_length + extension_length] = '\0';
+            if (os_is_executable_file(found)) return true;
+        }
+        if (!end) break;
+        cursor = end + 1;
+    }
+    found[base_length] = '\0';
+    /* name already carries a PATHEXT extension */
+    for (cursor = extensions; *cursor;) {
+        const char *end = strchr(cursor, ';');
+        size_t extension_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (extension_length > 0 && base_length >= extension_length &&
+            _strnicmp(found + base_length - extension_length, cursor, extension_length) == 0 &&
+            os_is_executable_file(found))
+            return true;
+        if (!end) break;
+        cursor = end + 1;
+    }
+    return false;
+#else
+    (void)extensions;
+    return os_is_executable_file(found);
+#endif
+}
+
+GrayOsFindExecutableResult gray_os_find_executable(GrayArena *arena, GrayString name) {
+    GrayOsFindExecutableResult not_found = {gray_string_lit(""), false};
+    if (name.len == 0 || memchr(name.data, '\0', (size_t)name.len)) return not_found;
+
+    const char *extensions = ".COM;.EXE;.BAT;.CMD";
+#if GRAY_RUNTIME_WINDOWS
+    const char path_separator = ';';
+    const char *pathext = getenv("PATHEXT");
+    if (pathext && *pathext) extensions = pathext;
+#else
+    const char path_separator = ':';
+#endif
+    char found[PATH_MAX];
+
+    if (os_has_path_separator(name)) {
+        if (!os_find_in_directory(NULL, 0, name, extensions, found, sizeof(found))) return not_found;
+        return (GrayOsFindExecutableResult){gray_string_new(arena, found, (int32_t)strlen(found)), true};
+    }
+
+    const char *path = getenv("PATH");
+    if (!path) return not_found;
+    const char *cursor = path;
+    while (true) {
+        const char *end = strchr(cursor, path_separator);
+        size_t directory_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (directory_length > 0 &&
+            os_find_in_directory(cursor, directory_length, name, extensions, found, sizeof(found)))
+            return (GrayOsFindExecutableResult){gray_string_new(arena, found, (int32_t)strlen(found)), true};
+        if (!end) break;
+        cursor = end + 1;
+    }
+    return not_found;
 }
 
 GrayArray gray_os_environ(GrayArena *arena) {

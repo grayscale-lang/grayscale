@@ -59,6 +59,23 @@ GrayString gray_os_get_env(GrayArena *arena, GrayString name);
 typedef struct { GrayString v0; bool v1; } GrayOsLookupEnvResult;
 GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name);
 
+/*@man find_executable
+ *@module os
+ *@group System
+ *@sig find_executable(name string) -> (string, bool)
+ *@desc Returns the full path of the first executable regular file called name on PATH, and whether one was found. A name containing a path separator is checked directly instead of searched. On Windows the PATHEXT extensions are tried and PATH is split on ";".
+ *@example
+ *   import @os
+ *   mut path, found = os.find_executable("cc")
+ *   if found { println(path) } otherwise { println("cc not found") }
+ *@end
+ */
+/* os.find_executable(name) — search PATH for an executable regular file.
+ * Layout must match the {GrayString v0; bool v1;} tuple codegen emits for
+ * a multi-return stdlib call. */
+typedef struct { GrayString v0; bool v1; } GrayOsFindExecutableResult;
+GrayOsFindExecutableResult gray_os_find_executable(GrayArena *arena, GrayString name);
+
 /*@man environ
  *@module os
  *@group Environment

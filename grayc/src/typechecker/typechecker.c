@@ -3563,6 +3563,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"os", "current_os",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Platform"},
     {"os", "environ",     0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"[string]"},
     {"os", "exec",        2, 2, true,  FALLIBLE_TYPE_STRUCT_EXEC_RESULT, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_ARRAY}}, "ExecResult"},
+    {"os", "find_executable", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "get_env",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "home_dir",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},
     {"os", "hostname",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},
@@ -4599,6 +4600,7 @@ static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"math",     "modf",        2, {&TYPE_F64, &TYPE_F64}},
     {"uuid",     "timestamp",   2, {&TYPE_I64, &TYPE_BOOL}},
     {"os",       "lookup_env",  2, {&TYPE_STRING, &TYPE_BOOL}},
+    {"os",       "find_executable", 2, {&TYPE_STRING, &TYPE_BOOL}},
     {"path",     "split_dir_file", 2, {&TYPE_STRING, &TYPE_STRING}},
     {NULL, NULL, 0, {NULL}}
 };
