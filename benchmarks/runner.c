@@ -1,5 +1,5 @@
 /*
- * runner.c - a tiny stopwatch for benchmarks/run.sh.
+ * runner.c - a tiny stopwatch for benchmarks/run.gray.
  *
  * `cc` is the one tool we can rely on being present; `date +%N`, python3,
  * and hyperfine are not. This runs a command K times after one discarded

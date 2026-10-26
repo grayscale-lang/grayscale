@@ -344,7 +344,7 @@ benchmark: build
 ifdef WINDOWS
 	@echo "make benchmark is POSIX-only for now; skipping on Windows."
 else
-	@bash benchmarks/run.sh
+	@./grayc/grayc benchmarks/run.gray -o run_benchmarks && { ./run_benchmarks; status=$$?; rm -f run_benchmarks; exit $$status; }
 endif
 
 # Create zero-length embed stubs. go:embed directives in

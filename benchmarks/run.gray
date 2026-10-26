@@ -1,0 +1,448 @@
+//
+// run.gray - build the workloads, time their compile and run phases, print a
+// table, and write benchmarks/results.json.
+//
+// Grayscale-only absolute numbers: no cross-language baseline, no regression
+// gate. POSIX only; the Makefile target skips this on Windows.
+//
+// Usage (run from the repo root):
+//   grayc benchmarks/run.gray -o run && ./run
+//
+//   BENCH_RUNS=N            run-phase iterations   (default 5)
+//   BENCH_COMPILE_RUNS=N    compile-phase iters    (default 3)
+//   GRAY=/path/to/gray      compiler to benchmark  (default ./gray)
+//   GRAY_CC=<compiler>      C compiler gray and the stopwatch build with
+//                           (default: $CC, then cc)
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @io, @os, @strings, @arrays, @strconv, @time, @fmt
+
+const WORKLOADS [string, 7] = {"micro", "json_roundtrip", "raytracer", "lexer", "life", "kvstore", "sha256"}
+
+// Prior is one workload's row from the saved results.json.
+const Prior struct {
+    name    string
+    compile string
+    run     string
+    bytes   i64
+}
+
+// Latest is one workload's timings from this run. The timings stay as the
+// text the stopwatch printed; an empty run_* means a compile-only workload.
+const Latest struct {
+    name           string
+    compile_min    string
+    compile_median string
+    compile_mean   string
+    run_min        string
+    run_median     string
+    run_mean       string
+    bytes          i64
+}
+
+do fail(message string) {
+    eprintln("error: ${message}")
+    exit(1)
+}
+
+// capture runs a command and returns its trimmed stdout, or fallback when it
+// cannot be launched or exits non-zero.
+do capture(command string, args [string], fallback string) -> string {
+    mut result, err = os.exec(command, args)
+    if err != nil || result.exit_code != 0 {
+        return fallback
+    }
+    return strings.trim(result.stdout)
+}
+
+// strip_ansi removes ANSI colour escape sequences.
+do strip_ansi(text string) -> string {
+    mut pieces [string] = strings.split(text, "\x1b[")
+    mut out Builder = strings.builder()
+    strings.builder_append(out, pieces[0])
+    for i in range(1, len(pieces)) {
+        mut end i64 = strings.index_of(pieces[i], "m")
+        if end < 0 {
+            strings.builder_append(out, pieces[i])
+        } otherwise {
+            strings.builder_append(out, strings.slice(pieces[i], end + 1, len(pieces[i])))
+        }
+    }
+    return strings.build(out)
+}
+
+// json_safe drops the characters that would need escaping in results.json.
+do json_safe(text string) -> string {
+    return strings.replace(strings.replace(text, "\\", ""), "\"", "")
+}
+
+// value reads key=<number> out of a stopwatch RESULT line.
+do value(line string, key string) -> string {
+    mut marker string = " ${key}="
+    mut at i64 = strings.index_of(line, marker)
+    if at < 0 {
+        return ""
+    }
+    mut rest string = strings.slice(line, at + len(marker), len(line))
+    return strings.split(rest, " ")[0]
+}
+
+// field cuts text after each marker in turn, then keeps everything before
+// the terminator.
+do field(text string, markers [string], terminator string) -> string {
+    mut rest string = text
+    for_each marker in markers {
+        mut at i64 = strings.index_of(rest, marker)
+        if at < 0 {
+            return ""
+        }
+        rest = strings.slice(rest, at + len(marker), len(rest))
+    }
+    return strings.split(rest, terminator)[0]
+}
+
+do kb(bytes i64) -> string {
+    return fmt.f64_to_fixed(cast(bytes, f64) / 1024.0, 1)
+}
+
+do print_header(title string, width i64) {
+    println("")
+    println(title)
+    println("${fmt.pad_right("workload", 16, ' ')} ${fmt.pad_left("compile_ms", width, ' ')} ${fmt.pad_left("run_ms", width, ' ')} ${fmt.pad_left("bin_kb", width, ' ')}")
+    println(strings.repeat("-", 66))
+}
+
+do print_row(name string, compile string, run string, size string, width i64) {
+    println("${fmt.pad_right(name, 16, ' ')} ${fmt.pad_left(compile, width, ' ')} ${fmt.pad_left(run, width, ' ')} ${fmt.pad_left(size, width, ' ')}")
+}
+
+// signed formats a number like printf %+.1f, with no negative zero.
+do signed(number f64) -> string {
+    mut text string = fmt.f64_to_fixed(number, 1)
+    if text == "-0.0" || text == "0.0" {
+        return "0.0"
+    }
+    if number >= 0.0 {
+        return "+${text}"
+    }
+    return text
+}
+
+// cell renders the change from before to latest as "diff (pct%)".
+do cell(latest string, before string, scale f64) -> string {
+    if latest == "" || before == "" {
+        return "-"
+    }
+    mut latest_number, _ = strconv.to_f64(latest)
+    mut before_number, _ = strconv.to_f64(before)
+    mut diff string = signed((latest_number - before_number) / scale)
+    if before_number == 0.0 {
+        return "${diff} (n/a)"
+    }
+    return "${diff} (${signed((latest_number - before_number) / before_number * 100.0)}%)"
+}
+
+// timed runs the stopwatch and returns its RESULT line.
+do timed(runner string, runs string, label string, command string, args [string]) -> string {
+    mut full [string] = {runs, label, "--", command}
+    for_each arg in args {
+        arrays.append(full, arg)
+    }
+    mut result, err = os.exec(runner, full)
+    if err != nil || result.exit_code != 0 {
+        fail("stopwatch failed for ${label}")
+    }
+    return result.stdout
+}
+
+do read_prior(results string) -> ([Prior], string) {
+    mut rows [Prior] = {}
+    mut timestamp string = ""
+    if !io.file_exists(results) {
+        return rows, timestamp
+    }
+    mut text, err = io.read_file(results)
+    if err != nil {
+        return rows, timestamp
+    }
+    for_each line in strings.split(text, "\n") {
+        if strings.contains(line, "\"timestamp\": \"") {
+            mut stamp string = field(line, {"\"timestamp\": \""}, "\"")
+            timestamp = strings.replace(strings.replace(stamp, "T", " "), "Z", " UTC")
+        }
+        if !strings.contains(line, "\"name\": \"") {
+            continue
+        }
+        mut run string = ""
+        if !strings.contains(line, "\"run_ms\": null") {
+            run = field(line, {"\"run_ms\": {", "\"median\": "}, ",")
+        }
+        mut bytes, _ = strconv.to_i64(field(line, {"\"binary_bytes\": "}, "}"))
+        arrays.append(rows, Prior{
+            name: field(line, {"\"name\": \""}, "\""),
+            compile: field(line, {"\"compile_ms\": {", "\"median\": "}, ","),
+            run: run,
+            bytes: bytes
+        })
+    }
+    return rows, timestamp
+}
+
+do find_prior(rows [Prior], name string) -> (Prior, bool) {
+    for_each row in rows {
+        if row.name == name {
+            return row, true
+        }
+    }
+    return Prior{name: "", compile: "", run: "", bytes: 0}, false
+}
+
+do machine_cpu(os_name string) -> string {
+    if os_name == "Darwin" {
+        return capture("sysctl", {"-n", "machdep.cpu.brand_string"}, "unknown")
+    }
+    mut text, err = io.read_file("/proc/cpuinfo")
+    if err != nil {
+        return "unknown"
+    }
+    for_each line in strings.split(text, "\n") {
+        if strings.starts_with(line, "model name") {
+            return strings.trim(field(line, {":"}, "\n"))
+        }
+    }
+    return "unknown"
+}
+
+do machine_cores(os_name string) -> string {
+    if os_name == "Darwin" {
+        return capture("sysctl", {"-n", "hw.ncpu"}, "0")
+    }
+    return capture("nproc", {}, "0")
+}
+
+// measure compiles and runs one workload, or only compiles it when
+// run_phase is false.
+do measure(runner string, gray string, name string, source string, out string, compile_runs string, run_runs string, run_phase bool) -> Latest {
+    mut compile_line string = timed(runner, compile_runs, "compile:${name}", gray, {"build", source, "-o", out})
+    mut size, _ = io.file_size(out)
+    mut row Latest = Latest{
+        name: name,
+        compile_min: value(compile_line, "min"),
+        compile_median: value(compile_line, "median"),
+        compile_mean: value(compile_line, "mean"),
+        run_min: "",
+        run_median: "",
+        run_mean: "",
+        bytes: size
+    }
+    if run_phase {
+        mut run_line string = timed(runner, run_runs, "run:${name}", out, {})
+        row.run_min = value(run_line, "min")
+        row.run_median = value(run_line, "median")
+        row.run_mean = value(run_line, "mean")
+    }
+    return row
+}
+
+do main() {
+    mut root string = os.current_dir()
+    mut bench_dir string = "${root}/benchmarks"
+    mut gen string = "${bench_dir}/.gen"
+    mut work string = "${bench_dir}/workloads"
+    mut bin string = "${gen}/bin"
+    mut runner string = "${gen}/runner"
+    mut results string = "${bench_dir}/results.json"
+
+    mut gray string = os.get_env("GRAY")
+    if gray == "" {
+        gray = "${root}/gray"
+    }
+    mut run_runs string = os.get_env("BENCH_RUNS")
+    if run_runs == "" {
+        run_runs = "5"
+    }
+    mut compile_runs string = os.get_env("BENCH_COMPILE_RUNS")
+    if compile_runs == "" {
+        compile_runs = "3"
+    }
+    mut c_command string = os.get_env("GRAY_CC")
+    if c_command == "" {
+        c_command = os.get_env("CC")
+    }
+    if c_command == "" {
+        c_command = "cc"
+    }
+
+    os.set_env("BENCH_GEN", gen)
+
+    if !io.is_file(gray) {
+        fail("gray binary not found at ${gray} (run 'make build')")
+    }
+
+    // ---- prior run ----------------------------------------------------------
+    // Read the saved results.json before this run overwrites it.
+    mut prior, prior_timestamp = read_prior(results)
+    if len(prior) > 0 {
+        println("Benchmark suite is running. Your results from the run before this one are below.")
+        print_header("Prior to Latest (${prior_timestamp})", 12)
+        for_each row in prior {
+            mut run string = "-"
+            if row.run != "" {
+                run = row.run
+            }
+            print_row(row.name, row.compile, run, kb(row.bytes), 12)
+        }
+    }
+
+    // Start each run from a clean slate: the fixtures are deterministic and
+    // take under a second to rebuild, so there is nothing to preserve.
+    println("==> resetting ${gen}")
+    mut _, _ = io.remove_dir_all(gen)
+    mut _, bin_err = io.make_dir_all(bin)
+    if bin_err != nil {
+        fail("cannot create ${bin}")
+    }
+
+    println("==> building stopwatch")
+    mut stopwatch, stopwatch_err = os.exec(c_command, {"-O2", "-o", runner, "${bench_dir}/runner.c"})
+    if stopwatch_err != nil || stopwatch.exit_code != 0 {
+        fail("cannot build the stopwatch with ${c_command}")
+    }
+
+    println("==> generating fixtures")
+    mut generator string = "${bin}/gen"
+    mut built, build_err = os.exec(gray, {"build", "${bench_dir}/gen.gray", "-o", generator})
+    if build_err != nil || built.exit_code != 0 {
+        print(built.stdout)
+        print(built.stderr)
+        fail("cannot build the fixture generator")
+    }
+    mut generated, generate_err = os.exec(generator, {})
+    if generate_err != nil || generated.exit_code != 0 {
+        fail("the fixture generator failed")
+    }
+    print(generated.stdout)
+
+    // ---- machine info -------------------------------------------------------
+    mut os_name string = capture("uname", {"-s"}, "unknown")
+    mut arch string = capture("uname", {"-m"}, "unknown")
+    mut kernel string = capture("uname", {"-r"}, "unknown")
+    mut cpu string = json_safe(machine_cpu(os_name))
+    mut cores string = machine_cores(os_name)
+    mut commit string = capture("git", {"-C", root, "rev-parse", "--short", "HEAD"}, "unknown")
+
+    mut version_text string = "unknown"
+    mut version_result, _ = os.exec(gray, {"version"})
+    for_each line in strings.split(strip_ansi(version_result.stdout + version_result.stderr), "\n") {
+        if strings.contains(line, "Installed") {
+            mut parts [string] = strings.split_whitespace(line)
+            if len(parts) > 1 {
+                version_text = parts[1]
+            }
+            break
+        }
+    }
+
+    // The C compiler `gray build` resolves, as `gray report` prints it.
+    mut report_result, _ = os.exec(gray, {"report"})
+    mut report_lines [string] = strings.split(strip_ansi(report_result.stdout + report_result.stderr), "\n")
+    mut c_compiler string = "unknown"
+    mut c_compiler_version string = ""
+    for i in range(0, len(report_lines)) {
+        if strings.starts_with(report_lines[i], "C compiler:") {
+            c_compiler = strings.trim(strings.remove_prefix(report_lines[i], "C compiler:"))
+            if i + 1 < len(report_lines) {
+                c_compiler_version = strings.trim(report_lines[i + 1])
+            }
+            break
+        }
+    }
+    if c_compiler == "" {
+        c_compiler = "unknown"
+    }
+    c_compiler = json_safe(c_compiler)
+    c_compiler_version = json_safe(c_compiler_version)
+    mut timestamp string = time.to_iso(time.now())
+
+    // ---- run ----------------------------------------------------------------
+    print_header("Latest Run (${strings.replace(strings.replace(timestamp, "T", " "), "Z", " UTC")})", 12)
+    mut compiler_line string = "C compiler: ${c_compiler}"
+    if c_compiler_version != "" {
+        compiler_line = "${compiler_line} (${c_compiler_version})"
+    }
+    println(compiler_line)
+
+    mut latest [Latest] = {}
+    for_each name in WORKLOADS {
+        mut row Latest = measure(runner, gray, name, "${work}/${name}.gray", "${bin}/${name}", compile_runs, run_runs, true)
+        print_row(name, row.compile_median, row.run_median, kb(row.bytes), 12)
+        arrays.append(latest, row)
+    }
+
+    // Compile-stress: compile phase only (a big generated .gray file).
+    mut stress Latest = measure(runner, gray, "compile_stress", "${gen}/stress.gray", "${bin}/compile_stress", compile_runs, run_runs, false)
+    print_row("compile_stress", stress.compile_median, "-", kb(stress.bytes), 12)
+    arrays.append(latest, stress)
+
+    // ---- difference ---------------------------------------------------------
+    if len(prior) > 0 {
+        print_header("Difference (Latest subtracted by Prior to Latest)", 18)
+        for_each row in latest {
+            mut before, found = find_prior(prior, row.name)
+            if !found {
+                print_row(row.name, "-", "-", "-", 18)
+                continue
+            }
+            print_row(row.name,
+                cell(row.compile_median, before.compile, 1.0),
+                cell(row.run_median, before.run, 1.0),
+                cell(strconv.from_i64(row.bytes), strconv.from_i64(before.bytes), 1024.0),
+                18)
+        }
+    } otherwise {
+        println("")
+        println("No run prior to Latest")
+    }
+
+    // ---- results.json -------------------------------------------------------
+    mut output Builder = strings.builder()
+    strings.builder_append(output, "{\n")
+    strings.builder_append(output, "  \"timestamp\": \"${timestamp}\",\n")
+    strings.builder_append(output, "  \"commit\": \"${commit}\",\n")
+    strings.builder_append(output, "  \"gray_version\": \"${version_text}\",\n")
+    strings.builder_append(output, "  \"c_compiler\": \"${c_compiler}\",\n")
+    strings.builder_append(output, "  \"c_compiler_version\": \"${c_compiler_version}\",\n")
+    strings.builder_append(output, "  \"machine\": {\n")
+    strings.builder_append(output, "    \"os\": \"${os_name}\",\n")
+    strings.builder_append(output, "    \"arch\": \"${arch}\",\n")
+    strings.builder_append(output, "    \"kernel\": \"${kernel}\",\n")
+    strings.builder_append(output, "    \"cpu\": \"${cpu}\",\n")
+    strings.builder_append(output, "    \"cores\": ${cores}\n")
+    strings.builder_append(output, "  },\n")
+    strings.builder_append(output, "  \"config\": {\"run_runs\": ${run_runs}, \"compile_runs\": ${compile_runs}},\n")
+    strings.builder_append(output, "  \"workloads\": [\n")
+    for i in range(0, len(latest)) {
+        mut row Latest = latest[i]
+        if i > 0 {
+            strings.builder_append(output, ",\n")
+        }
+        strings.builder_append(output, "    {\"name\": \"${row.name}\", \"compile_ms\": {\"min\": ${row.compile_min}, \"median\": ${row.compile_median}, \"mean\": ${row.compile_mean}}")
+        if row.run_median == "" {
+            strings.builder_append(output, ", \"run_ms\": null")
+        } otherwise {
+            strings.builder_append(output, ", \"run_ms\": {\"min\": ${row.run_min}, \"median\": ${row.run_median}, \"mean\": ${row.run_mean}}")
+        }
+        strings.builder_append(output, ", \"binary_bytes\": ${row.bytes}}")
+    }
+    strings.builder_append(output, "\n  ]\n")
+    strings.builder_append(output, "}\n")
+    mut _, write_err = io.write_file(results, strings.build(output))
+    if write_err != nil {
+        fail("cannot write ${results}")
+    }
+
+    println("")
+    println("results written to ${results}")
+}
