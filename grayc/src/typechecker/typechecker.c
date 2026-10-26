@@ -3563,6 +3563,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"os", "current_os",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Platform"},
     {"os", "environ",     0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"[string]"},
     {"os", "exec",        2, 2, true,  FALLIBLE_TYPE_STRUCT_EXEC_RESULT, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_ARRAY}}, "ExecResult"},
+    {"os", "executable_path", 0, 0, true, FALLIBLE_TYPE_STRING, 0, {{0}}, "string"},
     {"os", "find_executable", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "get_env",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "home_dir",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},

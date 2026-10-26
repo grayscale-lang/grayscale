@@ -283,6 +283,22 @@ typedef struct { GrayOsExecResult v0; GrayError *v1; } GrayResult_os_exec;
  */
 GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, GrayArray args);
 
+/*@man executable_path
+ *@module os
+ *@group System
+ *@sig executable_path() -> (string, Error)
+ *@desc Returns the absolute path of the running binary. Returns an Error with code IoFailure if the path cannot be determined and Unsupported on a platform without a way to ask for it.
+ *@example
+ *   import @os
+ *   mut path, err = os.executable_path()
+ *   if err == nil {
+ *       println(path)
+ *   }
+ *@end
+ */
+typedef struct { GrayString v0; GrayError *v1; } GrayOsExecutablePathResult;
+GrayOsExecutablePathResult gray_os_executable_path(GrayArena *arena);
+
 /*@man cpu_usage
  *@module os
  *@group System

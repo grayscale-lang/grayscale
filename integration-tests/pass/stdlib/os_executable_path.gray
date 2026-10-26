@@ -1,0 +1,35 @@
+/*
+ * Test: os.executable_path returns the absolute path of the running binary
+ */
+
+import @os
+import @io
+import @strings
+
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+
+    mut binary_path, err = os.executable_path()
+    passed += check_bool("no error", err == nil, true)
+    passed += check_bool("path is absolute", strings.starts_with(binary_path, "/"), true)
+    passed += check_bool("path names this binary", strings.contains(binary_path, "os_executable_path"), true)
+    passed += check_bool("path is a file", io.is_file(binary_path), true)
+
+    println("")
+    println("Results: ${passed}/4 passed")
+    if passed == 4 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

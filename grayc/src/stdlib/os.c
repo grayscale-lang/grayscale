@@ -28,6 +28,7 @@
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
+#include <mach-o/dyld.h>
 #endif
 #if !GRAY_RUNTIME_WINDOWS
 #include <sys/statvfs.h>
@@ -234,6 +235,33 @@ GrayOsFindExecutableResult gray_os_find_executable(GrayArena *arena, GrayString 
         cursor = end + 1;
     }
     return not_found;
+}
+
+GrayOsExecutablePathResult gray_os_executable_path(GrayArena *arena) {
+    char path[PATH_MAX];
+#if GRAY_RUNTIME_WINDOWS
+    DWORD length = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
+    if (length == 0 || length >= sizeof(path)) goto failure;
+#elif defined(__APPLE__)
+    char raw_path[PATH_MAX];
+    uint32_t raw_size = (uint32_t)sizeof(raw_path);
+    if (_NSGetExecutablePath(raw_path, &raw_size) != 0 || !realpath(raw_path, path)) goto failure;
+#elif defined(__linux__)
+    ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (length <= 0) goto failure;
+    path[length] = '\0';
+#else
+    return (GrayOsExecutablePathResult){gray_string_lit(""),
+        gray_error_new(arena, GRAY_ERR_Unsupported,
+            gray_string_lit("os.executable_path is not supported on this platform"))};
+#endif
+    return (GrayOsExecutablePathResult){gray_string_new(arena, path, (int32_t)strlen(path)), NULL};
+#if GRAY_RUNTIME_WINDOWS || defined(__APPLE__) || defined(__linux__)
+failure:
+    return (GrayOsExecutablePathResult){gray_string_lit(""),
+        gray_error_new(arena, GRAY_ERR_IoFailure,
+            gray_string_lit("cannot determine the path of the running binary"))};
+#endif
 }
 
 GrayArray gray_os_environ(GrayArena *arena) {

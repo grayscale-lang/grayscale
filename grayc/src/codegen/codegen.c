@@ -8830,6 +8830,9 @@ static bool emit_os_call(CodeGen *codegen, AstNode *node, const char *function_n
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(function_name, "executable_path") == 0) {
+        emit(codegen, "gray_os_executable_path(gray_default_arena)"); return true;
+    }
     if (strcmp(function_name, "find_executable") == 0) {
         emit(codegen, "gray_os_find_executable(gray_default_arena, ");
         emit_expression(codegen, node->data.call.arguments[0]);
