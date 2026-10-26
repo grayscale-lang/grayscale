@@ -526,6 +526,12 @@ GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path) {
     return result;
 }
 
+GrayResult_bool gray_io_chmod_result(GrayArena *arena, GrayString path, int64_t mode) {
+    validate_path(path);
+    GRAY_RESULT_WRAP_BOOL(arena, chmod(path.data, (mode_t)(mode & 07777)) == 0, gray_errno_code(errno),
+        gray_string_format(arena, "cannot change permissions of '%s'", path.data));
+}
+
 /* Closes a file that was just written. A buffered write only reaches the disk
  * (and can only fail) at fclose, so a failed close counts as a failed write.
  * errno names the failure when this returns false. */

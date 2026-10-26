@@ -4006,6 +4006,7 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
 | `file_size` | `(path string) -> i64` | Get file size in bytes (fallible; see below) |
+| `chmod` | `(path string, mode i64) -> bool` | Set permission bits; on Windows only the read-only bit (fallible; see below) |
 | `stat` | `(path string) -> FileInfo` | Get file metadata without following a final symlink (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
@@ -4056,6 +4057,7 @@ The functions below are fallible: they return `(T, Error)`, and the tables above
 | `read_bytes` | `([u8], Error)` |
 | `read_lines` | `([string], Error)` |
 | `file_size` | `(i64, Error)` |
+| `chmod` | `(bool, Error)` |
 | `stat` | `(FileInfo, Error)` |
 | `write_file` | `(bool, Error)` |
 | `append_file` | `(bool, Error)` |

@@ -8894,6 +8894,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "read_lines") == 0 ||
         strcmp(function_name, "file_size") == 0 ||
         strcmp(function_name, "stat") == 0 ||
+        strcmp(function_name, "chmod") == 0 ||
         strcmp(function_name, "write_file") == 0 ||
         strcmp(function_name, "delete_file") == 0 ||
         strcmp(function_name, "append_file") == 0 ||

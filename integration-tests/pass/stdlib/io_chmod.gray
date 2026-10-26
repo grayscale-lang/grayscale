@@ -1,0 +1,23 @@
+import @io
+
+do main() {
+    mut dir, _ = io.temp_dir()
+    mut path = io.path_join({dir, "run.sh"})
+    mut _ok, _ = io.write_file(path, "echo hi")
+
+    mut changed, err = io.chmod(path, 0o755)
+    println(changed)
+    println(err == nil)
+    mut info, _ = io.stat(path)
+    println(info.mode == 0o755)
+
+    mut _again, _ = io.chmod(path, 0o600)
+    mut restricted, _ = io.stat(path)
+    println(restricted.mode == 0o600)
+
+    mut missing, missing_err = io.chmod(io.path_join({dir, "missing"}), 0o644)
+    println(missing)
+    println(missing_err != nil)
+
+    mut _removed, _ = io.remove_dir_all(dir)
+}

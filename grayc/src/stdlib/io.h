@@ -206,6 +206,17 @@ typedef struct { GrayIoFileInfo v0; GrayError *v1; } GrayResult_io_stat;
  */
 GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path);
 
+/*@man chmod
+ *@module io
+ *@group File Operations
+ *@sig chmod(path string, mode i64) -> (bool, Error)
+ *@desc Sets the permission bits of the file or directory at path to mode, for example 0o755. On Windows only the read-only bit is applied: the entry is read-only unless mode includes owner write (0o200). Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@example
+ *   import @io
+ *   mut ok, _ = io.chmod("run.sh", 0o755)
+ *@end
+ */
+
 /* File writing */
 
 /*@man write_file
@@ -496,6 +507,7 @@ GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_bytes_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit);
 GrayResult_i64    gray_io_file_size_result(GrayArena *arena, GrayString path);
+GrayResult_bool gray_io_chmod_result(GrayArena *arena, GrayString path, int64_t mode);
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content);

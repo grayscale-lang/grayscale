@@ -3424,6 +3424,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"io", "extension",      1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "file_exists",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "stat",           1, 1, true,  FALLIBLE_TYPE_STRUCT_FILE_INFO, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "FileInfo"},
+    {"io", "chmod",          2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"io", "file_size",      1, 1, true,  FALLIBLE_TYPE_I64,          1, {{0, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"io", "glob",           1, 1, true,  FALLIBLE_TYPE_ARRAY_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[string]"},
     {"io", "is_absolute",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
