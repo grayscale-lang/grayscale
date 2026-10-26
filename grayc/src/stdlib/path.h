@@ -74,7 +74,7 @@ GrayString gray_path_file_extension(GrayString path);
  *@module path
  *@group Queries
  *@sig is_absolute(p string) -> bool
- *@desc True when p starts with a separator, a UNC prefix, or a drive letter followed by a separator (C:\ or C:/). A drive letter alone (C: or C:file) is not absolute.
+ *@desc True when p starts with a separator, a UNC prefix, or a drive letter followed by a separator (such as C: then a slash). A drive letter alone (C: or C:file) is not absolute.
  *@example
  *   import @path
  *   println(path.is_absolute("/usr/bin"))     // true
