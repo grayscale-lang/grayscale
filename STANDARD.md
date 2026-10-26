@@ -134,7 +134,7 @@ bool         char        Error       func        map
 nil          SourceLocation          string
 ```
 
-`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse`, `ExecResult` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
+`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse`, `ExecResult`, `FileInfo` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
 
 **Sized types (reserved names):**
 ```
@@ -4006,6 +4006,7 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
 | `file_size` | `(path string) -> i64` | Get file size in bytes (fallible; see below) |
+| `stat` | `(path string) -> FileInfo` | Get file metadata without following a final symlink (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
 | `move_file` | `(src string, dst string) -> bool` | Move file |
@@ -4055,6 +4056,7 @@ The functions below are fallible: they return `(T, Error)`, and the tables above
 | `read_bytes` | `([u8], Error)` |
 | `read_lines` | `([string], Error)` |
 | `file_size` | `(i64, Error)` |
+| `stat` | `(FileInfo, Error)` |
 | `write_file` | `(bool, Error)` |
 | `append_file` | `(bool, Error)` |
 | `delete_file` | `(bool, Error)` |
@@ -4088,6 +4090,19 @@ for_each line in lines {
 }
 
 mut sz, err = io.file_size("data.txt")
+```
+
+#### `FileInfo` Struct
+
+`stat` returns a `FileInfo`: `size i64` (bytes), `mode i64` (permission bits, also on Windows), `mod_time i64` (seconds since the Unix epoch), and `is_dir`, `is_file`, `is_symlink` (all `bool`). `stat` does not follow a final symlink, so `is_symlink` is accurate. A missing path returns an `Error`. `FileInfo` is reserved as a type name only while `@io` is imported.
+
+```gray
+import @io
+
+mut info, err = io.stat("data.txt")
+if err == nil {
+    println("${info.size} bytes, symlink: ${info.is_symlink}")
+}
 ```
 
 #### `OpenFlag` Enum

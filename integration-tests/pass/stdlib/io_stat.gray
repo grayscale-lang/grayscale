@@ -1,0 +1,26 @@
+import @io
+
+do main() {
+    mut dir, _ = io.temp_dir()
+    mut path = io.path_join({dir, "data.txt"})
+    mut _ok, _ = io.write_file(path, "hello")
+
+    mut info, err = io.stat(path)
+    println(err == nil)
+    println(info.size)
+    println(info.is_file)
+    println(info.is_dir)
+    println(info.is_symlink)
+    println(info.mod_time > 0)
+    println(info.mode > 0)
+
+    mut dir_info, _ = io.stat(dir)
+    println(dir_info.is_dir)
+    println(dir_info.is_file)
+
+    mut missing, missing_err = io.stat(io.path_join({dir, "missing"}))
+    println(missing_err != nil)
+    println(missing.size)
+
+    mut _removed, _ = io.remove_dir_all(dir)
+}

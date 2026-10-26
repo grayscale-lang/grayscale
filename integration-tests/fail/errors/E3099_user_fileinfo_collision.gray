@@ -1,0 +1,10 @@
+// expect-error: E3099
+// A user struct named FileInfo collides with io's FileInfo while @io is imported.
+
+import @io
+
+const FileInfo struct {
+    size i64
+}
+
+do main() {}

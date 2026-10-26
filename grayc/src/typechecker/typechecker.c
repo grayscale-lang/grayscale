@@ -3185,7 +3185,7 @@ typedef enum {
     FALLIBLE_TYPE_BOOL, FALLIBLE_TYPE_I64, FALLIBLE_TYPE_U64, FALLIBLE_TYPE_F64, FALLIBLE_TYPE_STRING,
     FALLIBLE_TYPE_ARRAY_STRING, FALLIBLE_TYPE_NESTED_ARRAY_STRING, FALLIBLE_TYPE_ARRAY_U8, FALLIBLE_TYPE_ARRAY_MAP,
     FALLIBLE_TYPE_STRUCT_DATABASE, FALLIBLE_TYPE_STRUCT_SOCKET, FALLIBLE_TYPE_STRUCT_LISTENER,
-    FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, FALLIBLE_TYPE_STRUCT_EXEC_RESULT, FALLIBLE_TYPE_STRUCT_MAP,
+    FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, FALLIBLE_TYPE_STRUCT_EXEC_RESULT, FALLIBLE_TYPE_STRUCT_FILE_INFO, FALLIBLE_TYPE_STRUCT_MAP,
     FALLIBLE_TYPE_ARRAY_F64, FALLIBLE_TYPE_I64_PAIR,
 } FallibleType;
 
@@ -3423,6 +3423,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"io", "dirname",        1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "extension",      1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "file_exists",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"io", "stat",           1, 1, true,  FALLIBLE_TYPE_STRUCT_FILE_INFO, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "FileInfo"},
     {"io", "file_size",      1, 1, true,  FALLIBLE_TYPE_I64,          1, {{0, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"io", "glob",           1, 1, true,  FALLIBLE_TYPE_ARRAY_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[string]"},
     {"io", "is_absolute",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
@@ -3902,6 +3903,7 @@ static GrayType *typechecker_get_fallible_stdlib_type(const char *module_name, c
     case FALLIBLE_TYPE_STRUCT_LISTENER:     return type_struct("Listener");
     case FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE:return type_struct("HttpResponse");
     case FALLIBLE_TYPE_STRUCT_EXEC_RESULT:  return type_struct("ExecResult");
+    case FALLIBLE_TYPE_STRUCT_FILE_INFO:    return type_struct("FileInfo");
     case FALLIBLE_TYPE_STRUCT_MAP:          return type_from_name("map[string:string]");
     }
     return NULL;
@@ -4295,6 +4297,7 @@ static const struct { const char *type; const char *module_name; } stdlib_opaque
         {"HttpResponse", "http"},
         {"HttpResponse", "server"},
         {"ExecResult",   "os"},
+        {"FileInfo",     "io"},
         {"UUID",         "uuid"},
         {NULL, NULL}
 };
@@ -20216,6 +20219,16 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         field_names[0] = "status"; field_names[1] = "body"; field_names[2] = "headers";
         field_types[0] = &TYPE_I64; field_types[1] = &TYPE_STRING; field_types[2] = type_from_name("map[string:string]");
         register_struct(checker, "HttpResponse", "HttpResponse", field_names, field_types, 3);
+    }
+
+    if (program_imports_module(checker, "io")) {
+        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 6);
+        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 6);
+        field_names[0] = "size"; field_names[1] = "mode"; field_names[2] = "mod_time";
+        field_names[3] = "is_dir"; field_names[4] = "is_file"; field_names[5] = "is_symlink";
+        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_I64; field_types[2] = &TYPE_I64;
+        field_types[3] = &TYPE_BOOL; field_types[4] = &TYPE_BOOL; field_types[5] = &TYPE_BOOL;
+        register_struct(checker, "FileInfo", "FileInfo", field_names, field_types, 6);
     }
 
     if (program_imports_module(checker, "os")) {

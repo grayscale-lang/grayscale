@@ -169,6 +169,43 @@ bool gray_io_is_directory(GrayString path);
  *@end
  */
 
+/*@man FileInfo
+ *@module io
+ *@group Types
+ *@kind type
+ *@field size i64
+ *@field mode i64
+ *@field mod_time i64
+ *@field is_dir bool
+ *@field is_file bool
+ *@field is_symlink bool
+ *@desc The metadata returned by stat: size in bytes, permission bits, modification time in seconds since the Unix epoch, and the entry type. FileInfo is reserved as a type name while io is imported.
+ *@example
+ *   import @io
+ *   mut info, err = io.stat("data.txt")
+ *   println(info.size)
+ *   println(info.is_file)
+ *@end
+ */
+/* io.stat result. */
+typedef struct { int64_t size; int64_t mode; int64_t mod_time; bool is_dir; bool is_file; bool is_symlink; } GrayIoFileInfo;
+typedef struct { GrayIoFileInfo v0; GrayError *v1; } GrayResult_io_stat;
+
+/*@man stat
+ *@module io
+ *@group File Operations
+ *@sig stat(path string) -> (FileInfo, Error)
+ *@desc Returns the metadata of the entry at path without following a final symlink, so is_symlink is accurate. mode holds the permission bits. A missing path returns a non-nil Error. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@example
+ *   import @io
+ *   mut info, err = io.stat("data.txt")
+ *   if err == nil {
+ *       println("${info.size} bytes, modified at ${info.mod_time}")
+ *   }
+ *@end
+ */
+GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path);
+
 /* File writing */
 
 /*@man write_file

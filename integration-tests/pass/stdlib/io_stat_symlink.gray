@@ -1,0 +1,18 @@
+import @io
+import @os
+
+do main() {
+    mut dir, _ = io.temp_dir()
+    mut target = io.path_join({dir, "target.txt"})
+    mut link = io.path_join({dir, "link.txt"})
+    mut _ok, _ = io.write_file(target, "hello")
+    mut _result, _ = os.exec("ln", {"-s", target, link})
+
+    mut info, err = io.stat(link)
+    println(err == nil)
+    println(info.is_symlink)
+    println(info.is_file)
+    println(info.is_dir)
+
+    mut _removed, _ = io.remove_dir_all(dir)
+}

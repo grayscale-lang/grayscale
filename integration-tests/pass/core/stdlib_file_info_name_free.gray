@@ -1,0 +1,11 @@
+// FileInfo is reserved only while @io is imported, so without the import it
+// is free for a user struct.
+
+const FileInfo struct {
+    size i64
+}
+
+do main() {
+    mut info FileInfo = FileInfo{size: 3}
+    println("size=${info.size}")
+}

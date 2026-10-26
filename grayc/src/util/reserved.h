@@ -166,6 +166,7 @@ static const char *const gray_reserved_stdlib_struct_names[] = {
     "Channel",
     "Database",
     "ExecResult",
+    "FileInfo",
     "HttpRequest",
     "HttpResponse",
     "Listener",

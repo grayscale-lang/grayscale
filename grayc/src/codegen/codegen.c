@@ -888,6 +888,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "HttpRequest") == 0) return "GrayRequest";
     if (strcmp(type_name, "HttpResponse") == 0) return "GrayHttpResponse";
     if (strcmp(type_name, "ExecResult") == 0) return "GrayOsExecResult";
+    if (strcmp(type_name, "FileInfo") == 0) return "GrayIoFileInfo";
     /* Stdlib opaque types: scalar path uses __auto_type and never reaches
      * this resolver, but [T] / map[_:T] / struct fields write the type
      * name explicitly and need it mapped here. Without this, the fallback
@@ -8892,6 +8893,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "read_bytes") == 0 ||
         strcmp(function_name, "read_lines") == 0 ||
         strcmp(function_name, "file_size") == 0 ||
+        strcmp(function_name, "stat") == 0 ||
         strcmp(function_name, "write_file") == 0 ||
         strcmp(function_name, "delete_file") == 0 ||
         strcmp(function_name, "append_file") == 0 ||

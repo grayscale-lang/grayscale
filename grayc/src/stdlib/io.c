@@ -497,6 +497,35 @@ GrayResult_i64 gray_io_file_size_result(GrayArena *arena, GrayString path) {
     return (GrayResult_i64){(int64_t)file_info.st_size, NULL};
 }
 
+GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path) {
+    validate_path(path);
+    GrayResult_io_stat result = {{0, 0, 0, false, false, false}, NULL};
+    struct stat file_info;
+#if GRAY_RUNTIME_WINDOWS
+    int stat_status = stat(path.data, &file_info);
+#else
+    int stat_status = lstat(path.data, &file_info);
+#endif
+    if (stat_status != 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno),
+            gray_string_format(arena, "cannot stat '%s'", path.data));
+        return result;
+    }
+    result.v0.size = (int64_t)file_info.st_size;
+    result.v0.mode = (int64_t)(file_info.st_mode & 0777);
+    result.v0.mod_time = (int64_t)file_info.st_mtime;
+#if GRAY_RUNTIME_WINDOWS
+    result.v0.is_symlink = is_link(path.data);
+    result.v0.is_dir = !result.v0.is_symlink && S_ISDIR(file_info.st_mode);
+    result.v0.is_file = !result.v0.is_symlink && S_ISREG(file_info.st_mode);
+#else
+    result.v0.is_symlink = S_ISLNK(file_info.st_mode);
+    result.v0.is_dir = S_ISDIR(file_info.st_mode);
+    result.v0.is_file = S_ISREG(file_info.st_mode);
+#endif
+    return result;
+}
+
 /* Closes a file that was just written. A buffered write only reaches the disk
  * (and can only fail) at fclose, so a failed close counts as a failed write.
  * errno names the failure when this returns false. */
