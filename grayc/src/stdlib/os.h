@@ -231,18 +231,20 @@ void gray_os_init(int argc, char **argv);
  *@field exit_code i64
  *@field stdout string
  *@field stderr string
- *@desc The result returned by exec: the process's exit code and the standard output and standard error it produced. ExecResult is reserved as a type name while os is imported.
+ *@field signal i64
+ *@desc The result returned by exec: the process's exit code, the standard output and standard error it produced, and the signal that terminated it (0 when it exited normally, and always 0 on Windows). ExecResult is reserved as a type name while os is imported.
  *@example
  *   import @os
  *   mut result, err = os.exec("ls", {"-l"})
  *   println(result.exit_code)
  *   println(result.stdout)
+ *   println(result.signal)
  *@end
  */
 /* os.exec result: exit code, captured stdout, captured stderr. The C member
  * names for stdout/stderr carry the codegen sanitize_name prefix, because
  * those identifiers are libc macros. */
-typedef struct { int64_t exit_code; GrayString _gray_stdout; GrayString _gray_stderr; } GrayOsExecResult;
+typedef struct { int64_t exit_code; GrayString _gray_stdout; GrayString _gray_stderr; int64_t signal; } GrayOsExecResult;
 typedef struct { GrayOsExecResult v0; GrayError *v1; } GrayResult_os_exec;
 
 /*@man exec

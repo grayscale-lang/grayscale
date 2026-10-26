@@ -106,7 +106,7 @@ static void os_validate_exec_strings(GrayString command, GrayArray args) {
 
 /* A failed launch: a zeroed result and a fixed-message error. */
 static GrayResult_os_exec os_exec_failure(GrayArena *arena, int64_t code, const char *message) {
-    GrayResult_os_exec result = {{0, gray_string_lit(""), gray_string_lit("")}, NULL};
+    GrayResult_os_exec result = {{0, gray_string_lit(""), gray_string_lit(""), 0}, NULL};
     result.v1 = gray_error_new(arena, code, gray_string_lit(message));
     return result;
 }
@@ -550,7 +550,7 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
 
     GrayString stdout_text = gray_string_new(arena, stdout_reader.buffer, (int32_t)stdout_reader.total);
     GrayString stderr_text = gray_string_new(arena, stderr_reader.buffer, (int32_t)stderr_reader.total);
-    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text}, NULL};
+    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text, 0}, NULL};
     return result;
 }
 
@@ -694,10 +694,12 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
     }
 
     int exit_code = 0;
+    int terminating_signal = 0;
     if (WIFEXITED(status)) {
         exit_code = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
-        exit_code = 128 + WTERMSIG(status);
+        terminating_signal = WTERMSIG(status);
+        exit_code = 128 + terminating_signal;
     }
 
     if (truncated) {
@@ -706,7 +708,7 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
 
     GrayString stdout_text = gray_string_new(arena, stdout_buffer, (int32_t)stdout_total);
     GrayString stderr_text = gray_string_new(arena, stderr_buffer, (int32_t)stderr_total);
-    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text}, NULL};
+    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text, (int64_t)terminating_signal}, NULL};
     return result;
 }
 

@@ -20233,11 +20233,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     }
 
     if (program_imports_module(checker, "os")) {
-        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 3);
-        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 3);
-        field_names[0] = "exit_code"; field_names[1] = "stdout"; field_names[2] = "stderr";
-        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_STRING; field_types[2] = &TYPE_STRING;
-        register_struct(checker, "ExecResult", "ExecResult", field_names, field_types, 3);
+        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 4);
+        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 4);
+        field_names[0] = "exit_code"; field_names[1] = "stdout"; field_names[2] = "stderr"; field_names[3] = "signal";
+        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_STRING; field_types[2] = &TYPE_STRING; field_types[3] = &TYPE_I64;
+        register_struct(checker, "ExecResult", "ExecResult", field_names, field_types, 4);
     }
 
     if (program_imports_module(checker, "server")) {

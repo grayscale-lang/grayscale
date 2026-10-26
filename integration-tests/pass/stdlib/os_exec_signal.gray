@@ -1,0 +1,10 @@
+import @os
+
+do main() {
+    mut killed, _ = os.exec("sh", {"-c", "kill -SEGV $$"})
+    println(killed.signal)
+
+    mut normal, _ = os.exec("sh", {"-c", "exit 3"})
+    println(normal.signal)
+    println(normal.exit_code)
+}

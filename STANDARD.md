@@ -4182,7 +4182,7 @@ The four live metrics are fallible. macOS and Linux are supported; on any other 
 |----------|-----------|-------------|
 | `exec` | `(cmd string, args [string]) -> (ExecResult, Error)` | Run a subprocess and capture its output. `err` is non-nil only when the process could not be launched; a non-zero exit code is not an error. |
 
-`ExecResult` has the fields `exit_code` (`i64`), `stdout` (`string`) and `stderr` (`string`). It is reserved as a type name only while `@os` is imported.
+`ExecResult` has the fields `exit_code` (`i64`), `stdout` (`string`), `stderr` (`string`) and `signal` (`i64`). `signal` is the number of the signal that terminated the process, or `0` when it exited normally; it is always `0` on Windows. It is reserved as a type name only while `@os` is imported.
 
 ```gray
 mut result, err = os.exec("ls", {"-l", "/tmp"})
