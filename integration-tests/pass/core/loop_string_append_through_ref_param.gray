@@ -1,0 +1,39 @@
+/*
+ * loop_string_append_through_ref_param.gray - Strings built in a loop body
+ * && appended to an array through a & parameter survive the iteration.
+ */
+
+import @arrays
+
+do add(&files [string], name string) {
+    arrays.append(files, name)
+}
+
+do main() {
+    println("=== loop string append through & parameter ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut files [string] = {}
+    for_each name in {"alpha", "beta", "gamma"} {
+        joined string = "dir/" + name
+        add(files, joined)
+    }
+
+    if files[0] == "dir/alpha" && files[1] == "dir/beta" && files[2] == "dir/gamma" {
+        println("  [PASS] appended strings keep their contents")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] appended strings keep their contents")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

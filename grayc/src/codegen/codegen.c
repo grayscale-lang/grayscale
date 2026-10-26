@@ -10549,6 +10549,41 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
     int unique_id = codegen_next_id(codegen);
     emit_formatted(codegen, "({ GrayArena *_gray_csave%d = gray_default_arena; "
                             "gray_default_arena = _gray_outer_arena; ", unique_id);
+    /* The callee can store a by-value argument through a & or ^T parameter,
+     * so an argument with embedded storage is copied into the outer arena
+     * rather than left in the per-iteration arena that is reset next pass. */
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    int argument_count = node->data.call.argument_count < parameter_count
+        ? node->data.call.argument_count : parameter_count;
+    AstNode **originals = xcalloc(argument_count > 0 ? argument_count : 1, sizeof(AstNode *));
+    for (int slot = 0; slot < argument_count; slot++) {
+        if (callee->data.function_declaration.parameters[slot].is_mutable) continue;
+        AstNode *argument = node->data.call.arguments[slot];
+        GrayType *argument_type = codegen_type_of(codegen, argument);
+        if (!argument_type || argument_type->kind == TYPE_KIND_UNKNOWN) continue;
+        char spelling[MESSAGE_BUFFER_SIZE];
+        if (argument_type->kind == TYPE_KIND_ARRAY)
+            snprintf(spelling, sizeof(spelling), "[%s]", argument_type->element_type ? argument_type->element_type : "");
+        else
+            snprintf(spelling, sizeof(spelling), "%s", type_name(argument_type));
+        if (!type_needs_deep_copy(codegen, spelling)) continue;
+        const char *c_type = spelling[0] == '[' ? "GrayArray"
+                           : strncmp(spelling, "map[", 4) == 0 ? "GrayMap"
+                           : strcmp(spelling, "string") == 0 ? "GrayString"
+                           : gray_type_to_c_codegen(codegen, spelling);
+        char source_variable[SHORT_VARIABLE_BUFFER_SIZE];
+        char copy_variable[SHORT_VARIABLE_BUFFER_SIZE];
+        int argument_id = codegen_next_id(codegen);
+        snprintf(source_variable, sizeof(source_variable), "_gray_as%d", argument_id);
+        snprintf(copy_variable, sizeof(copy_variable), "_gray_ac%d", argument_id);
+        emit_formatted(codegen, "%s %s = ", c_type, source_variable);
+        emit_expression(codegen, argument);
+        emit_formatted(codegen, "; %s %s = ", c_type, copy_variable);
+        emit_value_deep_copy(codegen, spelling, source_variable);
+        emit(codegen, "; ");
+        originals[slot] = argument;
+        node->data.call.arguments[slot] = make_temporary_label(codegen, argument, strdup(copy_variable));
+    }
     if (callee->data.function_declaration.return_type_count == 0) {
         emit_call_expression_body(codegen, node);
         emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; })", unique_id);
@@ -10557,6 +10592,9 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
         emit_call_expression_body(codegen, node);
         emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; _gray_cval%d; })", unique_id, unique_id);
     }
+    for (int slot = 0; slot < argument_count; slot++)
+        if (originals[slot]) node->data.call.arguments[slot] = originals[slot];
+    free(originals);
 }
 
 /* --- Statement Emission --- */
