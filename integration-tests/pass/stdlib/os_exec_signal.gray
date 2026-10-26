@@ -1,10 +1,44 @@
+/*
+ * Test: os.exec reports the terminating signal, 0 for a normal exit
+ */
+
 import @os
 
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do check_int(label string, got i64, want i64) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
 do main() {
+    mut passed i64 = 0
+
     mut killed, _ = os.exec("sh", {"-c", "kill -SEGV $$"})
-    println(killed.signal)
+    passed += check_int("SIGSEGV child signal", killed.signal, 11)
+    passed += check_int("SIGSEGV child exit_code", killed.exit_code, 139)
 
     mut normal, _ = os.exec("sh", {"-c", "exit 3"})
-    println(normal.signal)
-    println(normal.exit_code)
+    passed += check_int("normal exit signal", normal.signal, 0)
+    passed += check_int("normal exit exit_code", normal.exit_code, 3)
+
+    println("")
+    println("Results: ${passed}/4 passed")
+    if passed == 4 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
 }

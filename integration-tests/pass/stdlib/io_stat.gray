@@ -1,26 +1,58 @@
+/*
+ * Test: io.stat - size, permission bits, modification time and entry type
+ */
+
 import @io
 
-do main() {
-    mut dir, _ = io.temp_dir()
-    mut path = io.path_join({dir, "data.txt"})
-    mut _ok, _ = io.write_file(path, "hello")
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
 
-    mut info, err = io.stat(path)
-    println(err == nil)
-    println(info.size)
-    println(info.is_file)
-    println(info.is_dir)
-    println(info.is_symlink)
-    println(info.mod_time > 0)
-    println(info.mode > 0)
+do check_int(label string, got i64, want i64) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+    mut dir, _ = io.temp_dir()
+    mut file_path = io.path_join({dir, "data.txt"})
+    mut _ok, _ = io.write_file(file_path, "hello")
+
+    mut info, err = io.stat(file_path)
+    passed += check_bool("stat of a file has no error", err == nil, true)
+    passed += check_int("size", info.size, 5)
+    passed += check_bool("is_file", info.is_file, true)
+    passed += check_bool("is_dir is false for a file", info.is_dir, false)
+    passed += check_bool("is_symlink is false for a file", info.is_symlink, false)
+    passed += check_bool("mod_time is set", info.mod_time > 0, true)
+    passed += check_bool("mode is set", info.mode > 0, true)
 
     mut dir_info, _ = io.stat(dir)
-    println(dir_info.is_dir)
-    println(dir_info.is_file)
+    passed += check_bool("is_dir for a directory", dir_info.is_dir, true)
+    passed += check_bool("is_file is false for a directory", dir_info.is_file, false)
 
     mut missing, missing_err = io.stat(io.path_join({dir, "missing"}))
-    println(missing_err != nil)
-    println(missing.size)
+    passed += check_bool("stat of a missing path fails", missing_err != nil, true)
+    passed += check_int("missing path result is zeroed", missing.size, 0)
 
     mut _removed, _ = io.remove_dir_all(dir)
+
+    println("")
+    println("Results: ${passed}/11 passed")
+    if passed == 11 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
 }

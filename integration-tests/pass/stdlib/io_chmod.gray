@@ -1,23 +1,55 @@
+/*
+ * Test: io.chmod - applies permission bits and reports failures
+ */
+
 import @io
 
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do check_int(label string, got i64, want i64) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
 do main() {
+    mut passed i64 = 0
     mut dir, _ = io.temp_dir()
-    mut path = io.path_join({dir, "run.sh"})
-    mut _ok, _ = io.write_file(path, "echo hi")
+    mut file_path = io.path_join({dir, "run.sh"})
+    mut _ok, _ = io.write_file(file_path, "echo hi")
 
-    mut changed, err = io.chmod(path, 0o755)
-    println(changed)
-    println(err == nil)
-    mut info, _ = io.stat(path)
-    println(info.mode == 0o755)
+    mut changed, err = io.chmod(file_path, 0o755)
+    passed += check_bool("chmod succeeds", changed, true)
+    passed += check_bool("chmod has no error", err == nil, true)
+    mut info, _ = io.stat(file_path)
+    passed += check_int("mode is 0o755", info.mode, 0o755)
 
-    mut _again, _ = io.chmod(path, 0o600)
-    mut restricted, _ = io.stat(path)
-    println(restricted.mode == 0o600)
+    mut _again, _ = io.chmod(file_path, 0o600)
+    mut restricted, _ = io.stat(file_path)
+    passed += check_int("mode is 0o600", restricted.mode, 0o600)
 
     mut missing, missing_err = io.chmod(io.path_join({dir, "missing"}), 0o644)
-    println(missing)
-    println(missing_err != nil)
+    passed += check_bool("chmod of a missing path is false", missing, false)
+    passed += check_bool("chmod of a missing path fails", missing_err != nil, true)
 
     mut _removed, _ = io.remove_dir_all(dir)
+
+    println("")
+    println("Results: ${passed}/6 passed")
+    if passed == 6 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
 }
