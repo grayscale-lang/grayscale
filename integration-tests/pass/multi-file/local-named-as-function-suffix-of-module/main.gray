@@ -1,0 +1,7 @@
+import "./literal"
+import "./other"
+
+do main() {
+    other.show()
+    println(literal.literal_text(1))
+}

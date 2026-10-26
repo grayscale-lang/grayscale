@@ -19700,29 +19700,6 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
         /* Store line for unused function warning */
         checker->functions[checker->function_count - 1].definition_line = statement->token.line;
         finalize_generic_signature(&checker->functions[checker->function_count - 1], statement);
-        /* Also register unprefixed name for internal cross-references. */
-        const char *function_name = statement->data.function_declaration.name;
-        const char *underscore = strchr(function_name, '_');
-        if (underscore && underscore != function_name) {
-            const char *unprefixed = underscore + 1;
-            if (strcmp(unprefixed, "main") != 0) {
-                /* Only register if the prefix matches a known import */
-                for (int import_index = 0; import_index < checker->import_count; import_index++) {
-                    size_t module_length = strlen(checker->imported_modules[import_index]);
-                    if (strncmp(function_name, checker->imported_modules[import_index], module_length) == 0 &&
-                        function_name[module_length] == '_') {
-                        register_function(checker, unprefixed, parameter_types, parameter_count, return_types, return_count);
-                        checker->functions[checker->function_count - 1].is_private = statement->data.function_declaration.is_private;
-                        checker->functions[checker->function_count - 1].is_discard = statement->data.function_declaration.is_discard;
-                        checker->functions[checker->function_count - 1].is_deprecated = statement->data.function_declaration.is_deprecated;
-                        checker->functions[checker->function_count - 1].deprecated_message = statement->data.function_declaration.deprecated_message;
-                        checker->functions[checker->function_count - 1].definition_line = 0; /* suppress unused warning */
-                        finalize_generic_signature(&checker->functions[checker->function_count - 1], statement);
-                        break;
-                    }
-                }
-            }
-        }
     }
 }
 
