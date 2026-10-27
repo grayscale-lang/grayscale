@@ -1,0 +1,17 @@
+// version.gray — The gray CLI version. Releases set it at build time with
+// -define:VERSION=...; a build without the flag reports the default.
+
+import @os
+
+#define
+const VERSION string = "dev"
+
+do main() {
+    argv [string] = os.args()
+    for i in range(1, len(argv)) {
+        if argv[i] == "--version" {
+            println(VERSION)
+            exit(0)
+        }
+    }
+}
