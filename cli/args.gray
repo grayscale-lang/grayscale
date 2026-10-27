@@ -13,12 +13,8 @@ import @maps
 import @os
 import @strings
 import "./args_text"
+import "./completion_scripts"
 import "./sources"
-
-const EMBEDDED_COMPLETION_BASH string = embed("completions/gray.bash")
-const EMBEDDED_COMPLETION_ZSH string = embed("completions/gray.zsh")
-const EMBEDDED_COMPLETION_FISH string = embed("completions/gray.fish")
-const EMBEDDED_COMPLETION_POWERSHELL string = embed("completions/gray.ps1")
 
 const DIRECTIVE_ERROR i64 = 1
 const DIRECTIVE_NO_SPACE i64 = 2
@@ -725,17 +721,17 @@ do root_help_text(commands [CommandSpec], spec CommandSpec) -> string {
 do completion_script(shell string, descriptions bool) -> string {
     mut script string = ""
     when shell {
-        is "bash" { script = EMBEDDED_COMPLETION_BASH }
-        is "zsh" { script = EMBEDDED_COMPLETION_ZSH }
-        is "fish" { script = EMBEDDED_COMPLETION_FISH }
-        is "powershell" { script = EMBEDDED_COMPLETION_POWERSHELL }
+        is "bash" { script = completion_scripts.COMPLETION_BASH }
+        is "zsh" { script = completion_scripts.COMPLETION_ZSH }
+        is "fish" { script = completion_scripts.COMPLETION_FISH }
+        is "powershell" { script = completion_scripts.COMPLETION_POWERSHELL }
         default { return "" }
     }
     request string = "__complete"
     if !descriptions {
         request = "__completeNoDesc"
     }
-    return strings.replace(script, "@@REQUEST@@", request)
+    return strings.replace(strings.replace(script, "@@REQUEST@@", request), "@@TICK@@", "`")
 }
 
 // ---------------------------------------------------------------- completion
