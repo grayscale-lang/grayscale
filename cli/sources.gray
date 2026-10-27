@@ -1,5 +1,6 @@
-// sources.gray — Expands the path arguments of gray fmt and gray doc into the
-// source files they name, so both commands read the same argument the same way.
+// sources.gray — Expands the path arguments of gray fmt, gray doc and gray
+// test into the source files they name, so all commands read the same
+// argument the same way.
 
 import @io
 import @arrays
@@ -12,25 +13,73 @@ do has_source_extension(file_path string) -> bool {
     return strings.ends_with(file_path, ".gray") || strings.ends_with(file_path, ".grayscale")
 }
 
+// failure_reason is the operating system's wording for why a stat failed, as
+// far as the error code tells it apart.
+do failure_reason(err Error) -> string {
+    when err.code {
+        is .NotFound { return "no such file or directory" }
+        is .PermissionDenied { return "permission denied" }
+        default { return "input/output error" }
+    }
+}
+
+// report_stat_failure prints "gray <command>: stat <path>: <reason>".
+do report_stat_failure(command string, file_path string) {
+    _, stat_err = io.stat(file_path)
+    reason string = "no such file or directory"
+    if stat_err != nil {
+        reason = failure_reason(stat_err)
+    }
+    eprintln("gray ${command}: stat ${file_path}: ${reason}")
+}
+
+// walk_sources returns every source file under directory, visiting each
+// directory's entries in sorted order and descending in place, so `a/b`
+// comes before `a.txt`. An unreadable directory is skipped.
+do walk_sources(directory string) -> [string] {
+    mut found [string] = {}
+    mut entries, list_err = io.list_dir(directory)
+    if list_err != nil {
+        return found
+    }
+    arrays.sort_asc(entries)
+    for_each entry in entries {
+        entry_path string = path.join_parts({directory, entry})
+        info, stat_err = io.stat(entry_path)
+        if stat_err == nil && info.is_dir {
+            for_each nested in walk_sources(entry_path) {
+                arrays.append(found, nested)
+            }
+        } or has_source_extension(entry_path) {
+            arrays.append(found, entry_path)
+        }
+    }
+    return found
+}
+
 // expand_source_args turns path arguments into a de-duplicated list of source
 // files: a file, the source files directly inside a directory, or every source
-// file under `dir/...`. ok is false when an argument was reported and skipped.
+// file under `dir/...`. A path that is missing, or is neither a source file
+// nor a directory, is reported on stderr as `gray <command>: ...` and skipped;
+// ok is false when that happened.
 do expand_source_args(command string, args [string]) -> ([string], bool) {
     mut files [string] = {}
     mut seen map[string:bool] = {:}
     mut ok bool = true
     for_each arg in args {
-        slashed string = strings.replace(arg, "\\", "/")
+        // Accept both src/... and src\... — Windows tab completion produces
+        // backslashes, and the recursive suffix should work either way.
+        slashed string = path.to_forward_slashes(arg)
         if strings.ends_with(slashed, "/...") || arg == "..." {
-            mut base_dir string = "."
-            if arg != "..." {
-                base_dir = strings.slice(slashed, 0, len(slashed) - 4)
+            mut base_dir string = strings.slice(slashed, 0, len(slashed) - 4)
+            if arg == "..." {
+                base_dir = "."
             }
-            if base_dir == "" {
+            if base_dir == "" || base_dir == "..." {
                 base_dir = "."
             }
             if !io.file_exists(base_dir) {
-                eprintln("gray ${command}: stat ${base_dir}: no such file or directory")
+                report_stat_failure(command, base_dir)
                 ok = false
                 continue
             }
@@ -39,36 +88,33 @@ do expand_source_args(command string, args [string]) -> ([string], bool) {
                 ok = false
                 continue
             }
-            mut walked, walk_err = io.walk(base_dir)
-            if walk_err != nil {
-                eprintln("gray ${command}: ${walk_err.message}")
-                ok = false
-                continue
-            }
-            arrays.sort_asc(walked)
-            for_each walked_name in walked {
-                walked_path string = path.join_parts({base_dir, walked_name})
-                if has_source_extension(walked_path) && !io.is_directory(walked_path) {
-                    add_source_file(files, seen, walked_path)
+            root_info, root_err = io.stat(base_dir)
+            if root_err == nil && root_info.is_dir {
+                for_each found in walk_sources(base_dir) {
+                    add_source_file(files, seen, found)
                 }
+            } or has_source_extension(base_dir) {
+                add_source_file(files, seen, base_dir)
             }
             continue
         }
 
         if !io.file_exists(arg) {
-            eprintln("gray ${command}: stat ${arg}: no such file or directory")
+            report_stat_failure(command, arg)
             ok = false
         } or io.is_directory(arg) {
             mut entries, list_err = io.list_dir(arg)
             if list_err != nil {
-                eprintln("gray ${command}: ${list_err.message}")
+                eprintln("gray ${command}: open ${arg}: ${failure_reason(list_err)}")
                 ok = false
                 continue
             }
             arrays.sort_asc(entries)
             for_each entry in entries {
                 entry_path string = path.join_parts({arg, entry})
-                if has_source_extension(entry) && !io.is_directory(entry_path) {
+                info, stat_err = io.stat(entry_path)
+                is_directory bool = stat_err == nil && info.is_dir
+                if has_source_extension(entry) && !is_directory {
                     add_source_file(files, seen, entry_path)
                 }
             }
