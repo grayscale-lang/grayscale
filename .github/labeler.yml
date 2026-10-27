@@ -29,12 +29,11 @@ error-messages:
           - "grayc/src/util/error_codes.h"
           - "ERRORS.md"
 
-# Go CLI
+# CLI
 cli:
   - changed-files:
       - any-glob-to-any-file:
           - "cli/**"
-          - "pkg/**"
 
 # Tests
 tests:
@@ -42,7 +41,6 @@ tests:
       - any-glob-to-any-file:
           - "grayc/tests/**"
           - "integration-tests/**"
-          - "**/*_test.go"
 
 # Documentation
 documentation:
@@ -64,10 +62,3 @@ module-system:
   - changed-files:
       - any-glob-to-any-file:
           - "grayc/src/main.c"
-
-# Dependencies
-dependencies:
-  - changed-files:
-      - any-glob-to-any-file:
-          - "go.mod"
-          - "go.sum"

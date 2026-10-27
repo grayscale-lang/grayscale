@@ -9,7 +9,6 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 ## Table of Contents
 
 - [Getting Started](#getting-started)
-- [Installing Go](#installing-go)
 - [Building from Source](#building-from-source)
   - [Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux)
   - [Windows](#windows)
@@ -31,7 +30,6 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 
 ### Prerequisites
 
-- **Go 1.23 or higher** (for the `gray` CLI tooling)
 - **C compiler** (gcc or clang)
 - Git
 
@@ -49,49 +47,6 @@ cd grayscale
 
 ```bash
 git remote add upstream https://github.com/grayscale-lang/grayscale.git
-```
-
----
-
-## Installing Go
-
-> ⚠️ **Important:** Download the **pre-built binary**, not the source code!
-
-Go to the official download page and select the installer for your platform:
-
-👉 **https://go.dev/dl/**
-
-| Platform | Download |
-|----------|----------|
-| macOS (Apple Silicon) | `go1.23.x.darwin-arm64.pkg` |
-| macOS (Intel) | `go1.23.x.darwin-amd64.pkg` |
-| Linux | `go1.23.x.linux-amd64.tar.gz` |
-
-### macOS
-
-1. Download the `.pkg` installer
-2. Double-click to run it
-3. Follow the installation prompts
-4. **Restart your terminal**
-
-### Linux
-
-```bash
-# Download (replace version as needed)
-curl -LO https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
-
-# Extract to /usr/local
-sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
-
-# Add to PATH (add this to ~/.bashrc or ~/.zshrc)
-export PATH=$PATH:/usr/local/go/bin
-```
-
-### Verify Installation
-
-```bash
-go version
-# Should output: go version go1.23.x ...
 ```
 
 ---
@@ -125,17 +80,16 @@ echo 'do main() { println("hello") }' > main.gray
 | Command | Description |
 |---------|-------------|
 | `make build` | Build the `gray` binary (compiler embedded) |
-| `make stubs` | Create empty embed stubs (for dev `go build`) |
+| `make stubs` | Create empty embed stubs |
 | `make install` | Install `gray` to `/usr/local/bin` |
 | `make uninstall` | Remove `gray` from `/usr/local/bin` |
 | `make clean` | Remove built binaries |
 | `make leaks` | Check compiler for memory leaks (macOS: `leaks`, Linux: `valgrind`) |
 | `make benchmark` | Run the real-workload benchmark suite (POSIX only); see `benchmarks/README.md` |
-| `make test` | Run the full test suite (unit + e2e + integration + Go) |
+| `make test` | Run the full test suite (unit + e2e + integration) |
 | `make test-unit` | C unit tests (lexer, parser, typechecker) |
 | `make test-e2e` | End-to-end codegen tests |
 | `make test-integration` | Integration tests (pass + fail) |
-| `make test-go` | Go unit tests |
 | `make test-ubsan` | UBSan sanitizer tests |
 | `make test-asan` | ASan+UBSan sanitizer tests (Linux recommended) |
 
@@ -148,7 +102,6 @@ All test targets can be run from the repo root — no need to `cd` into subdirec
 - **MinGW-w64 GCC or Clang.** MSVC is not supported and is not planned: the
   compiler emits GNU C (statement expressions, `__auto_type`, `__typeof__`,
   `__builtin_*_overflow`) into every generated program.
-- **Go 1.23 or higher**
 
 ```powershell
 winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
@@ -169,7 +122,6 @@ make build       # grayc.exe + gray.exe
 make install     # install to %USERPROFILE%\.gray\bin (prints PATH instructions)
 make test-unit   # C unit suites
 make test-e2e    # end-to-end codegen tests
-make test-go     # Go unit tests
 make clean
 ```
 
@@ -245,9 +197,9 @@ All compiler stages live in `grayc/src/`:
 5. **Runtime** (`grayc/src/runtime/`) — Core types (strings, arrays, maps, arenas) linked into every binary.
 6. **Stdlib** (`grayc/src/stdlib/`) — Standard library modules compiled into `libgrayrt.a`.
 
-The `gray` CLI (`cli/`) is a Go tooling wrapper that invokes the compiler. It provides watch mode, doc generation, and self-update.
+The `gray` CLI (`cli/`) is written in Grayscale and compiled by `grayc`. It invokes the compiler and provides watch mode, doc generation, and self-update.
 
-**What this means in practice:** If you're adding a new language feature, you'll touch the C compiler stages (lexer → parser → typechecker → codegen). If you're adding a stdlib function, you add it to `grayc/src/stdlib/` and wire it into the codegen. If you're improving developer tooling (watch, etc.), you work in the Go code under `cli/`.
+**What this means in practice:** If you're adding a new language feature, you'll touch the C compiler stages (lexer → parser → typechecker → codegen). If you're adding a stdlib function, you add it to `grayc/src/stdlib/` and wire it into the codegen. If you're improving developer tooling (watch, etc.), you work in the Grayscale code under `cli/`.
 
 ---
 
@@ -283,7 +235,7 @@ type, all of the following are **required** before your PR is ready:
       signature: return type, argument count and types, and fallibility
 - [ ] **Codegen** — `grayc/src/codegen/codegen.c` emits the C call
 - [ ] **`STANDARD.md`** — add it to the module's table in the language spec
-- [ ] Run `./grayc/grayc scripts/generate_stdlib_man.gray && ./generate_stdlib_man` and commit the regenerated file
+- [ ] Run `./grayc/grayc scripts/generate_man_data.gray && ./generate_man_data` and commit the regenerated `cli/man_data.gray`
 - [ ] `make build` compiles clean with zero warnings
 
 The typechecker and codegen internals move around; don't work from a list of
@@ -355,18 +307,19 @@ is not listed.
 
 ```
 grayscale/
-├── cli/                      # Go CLI tooling wrapper (the `gray` command)
-│   ├── main.go               # Entry point, version
-│   ├── commands.go           # Subcommand definitions (build, run, check, cross, report, ...)
-│   ├── new.go                # `gray new` project scaffolding
-│   ├── watch.go              # File watcher (`gray watch`)
-│   ├── fmt.go                # `gray fmt` driver
-│   ├── doc.go                # Documentation generator (`gray doc`)
-│   ├── verify.go             # Install / toolchain verification
-│   ├── update.go             # Self-update
-│   ├── *_man_data.go         # Generated man data (stdlib, builtins, lang) — do not hand-edit
-│   └── templates/            # Embedded project templates used by `gray new`
-├── internal/driver/          # Embeds the grayc binary and invokes it from the CLI
+├── cli/                      # The `gray` command, written in Grayscale
+│   ├── main.gray             # Entry point: parses the arguments, runs the command
+│   ├── args.gray             # Command table, flag parsing, help and shell completion
+│   ├── commands.gray         # gray <file>, build, check and cross
+│   ├── driver.gray           # Runs the grayc compiler
+│   ├── compiler.gray         # Locates grayc; embedded.gray extracts the embedded copy
+│   ├── new.gray              # `gray new` project scaffolding (templates.gray, templates/)
+│   ├── watch.gray            # `gray watch`
+│   ├── fmt.gray, doc.gray    # `gray fmt` and `gray doc`
+│   ├── test.gray, verify.gray  # `gray test` and `gray verify`
+│   ├── update.gray           # `gray update` and `gray install`
+│   ├── man.gray              # `gray man`; man_data.gray is generated, lang_man.gray is hand-written
+│   └── info.gray             # `gray version` and `gray report`
 ├── grayc/                    # Grayscale compiler (C)
 │   ├── Makefile              # Compiler build (the root Makefile delegates here)
 │   ├── src/main.c            # Compiler entry point — drives the pipeline
@@ -402,12 +355,12 @@ grayscale/
 | Modify type checking | `grayc/src/typechecker/typechecker.c` |
 | Change code generation | `grayc/src/codegen/codegen.c` |
 | Add/modify error codes | `grayc/src/util/error_codes.h` + run `scripts/generate_errors.gray` |
-| Add/modify stdlib docs | `@man` block in header + run `scripts/generate_stdlib_man.gray` |
-| Add/modify builtin docs | `@man` block in header + run `scripts/generate_builtins_man.gray` |
-| Change source formatting | `grayc/src/fmt/` + `cli/fmt.go` |
+| Add/modify stdlib docs | `@man` block in header + run `scripts/generate_man_data.gray` |
+| Add/modify builtin docs | `@man` block in header + run `scripts/generate_man_data.gray` |
+| Change source formatting | `grayc/src/fmt/` + `cli/fmt.gray` |
 | Fix module/import resolution | `grayc/src/parser/imports.c` + `grayc/src/parser/module_table.c` |
-| Scaffold a new project type | `cli/new.go` + `cli/templates/` |
-| Improve CLI tooling | `cli/*.go` |
+| Scaffold a new project type | `cli/new.gray` + `cli/templates.gray` + `cli/templates/` |
+| Improve CLI tooling | `cli/*.gray` |
 | Change CI / release workflows | `.github/workflows/` |
 | Add a new language feature | Parser → Typechecker → Codegen (all in `grayc/src/`) |
 
@@ -421,7 +374,7 @@ The simplest way to run everything:
 make test
 ```
 
-This builds the compiler, then runs unit tests, e2e tests, integration tests, and Go tests in sequence.
+This builds the compiler, then runs unit tests, e2e tests, and integration tests in sequence.
 
 ### Individual Suites
 
@@ -429,7 +382,6 @@ This builds the compiler, then runs unit tests, e2e tests, integration tests, an
 make test-unit        # C unit tests (lexer, parser, typechecker)
 make test-e2e         # End-to-end codegen tests
 make test-integration # Integration tests (pass + fail .gray programs)
-make test-go          # Go unit tests
 make test-ubsan       # UBSan sanitizer tests
 make test-asan        # ASan+UBSan tests (Linux recommended)
 ```
@@ -507,10 +459,9 @@ For more details, see `TESTING.md`.
 
 ## Code Style
 
-### Go code (`cli/`, `internal/`)
+### Grayscale code (`cli/`)
 
-- Run `gofmt` before committing
-- Follow standard Go conventions
+- Run `gray fmt` before committing
 - Keep functions focused and readable
 
 ### C code (`grayc/src/`)
@@ -523,7 +474,7 @@ For more details, see `TESTING.md`.
 - Add comments only for non-obvious logic — don't explain what the code already says
 - Add yourself to the `Contributors:` section of the header of any source file you change; add the section if it isn't there. GitHub handle at minimum, first and last name if you choose — one line.
 - When adding error codes, register them in `grayc/src/util/error_codes.h` (the canonical source). After adding or changing codes, run `scripts/generate_errors.gray` to regenerate `ERRORS.md` for the docs site.
-- When adding any user-facing stdlib function, builtin, constant, or type: add `@man` blocks to the header, update `STANDARD.md`, and run the appropriate generation script (`scripts/generate_stdlib_man.gray` or `scripts/generate_builtins_man.gray`). See [Adding a Stdlib Function, Builtin, Constant, or Type](#adding-a-stdlib-function-builtin-constant-or-type) for the full checklist.
+- When adding any user-facing stdlib function, builtin, constant, or type: add `@man` blocks to the header, update `STANDARD.md`, and run the generation script (`scripts/generate_man_data.gray`). See [Adding a Stdlib Function, Builtin, Constant, or Type](#adding-a-stdlib-function-builtin-constant-or-type) for the full checklist.
 
 ---
 
@@ -556,7 +507,7 @@ type(scope): short description
 | `codegen` | C code generation (`grayc/src/codegen/`) |
 | `runtime` | Runtime library (`grayc/src/runtime/`) |
 | `stdlib` | Standard library (`grayc/src/stdlib/`) — optionally nested, e.g. `stdlib/strings` |
-| `cli` | Go CLI wrapper (`cli/`) |
+| `cli` | The `gray` CLI (`cli/`) |
 | `tests` | Test additions or test infrastructure |
 | `docs` | Documentation only |
 | `ci` | GitHub Actions, release workflows |

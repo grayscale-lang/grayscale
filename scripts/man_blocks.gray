@@ -1,7 +1,7 @@
 //
 // man_blocks.gray - Parse @man doc blocks out of C header comments
 //
-// Shared by generate_builtins_man.gray and generate_stdlib_man.gray.
+// Used by generate_man_data.gray.
 //
 // Copyright (c) 2025-Present Marshall A Burns
 // Licensed under the MIT License. See LICENSE for details.
@@ -25,8 +25,8 @@ do after(line string, tag string) -> string {
     return strings.trim(strings.slice(line, start, len(line)))
 }
 
-// go_quote escapes the double quotes in s for a Go string literal.
-do go_quote(s string) -> string {
+// escape_quotes escapes the double quotes in s for a double-quoted string literal.
+do escape_quotes(s string) -> string {
     return strings.replace(s, "\"", "\\\"")
 }
 
@@ -56,16 +56,16 @@ do parse_man_blocks(lines [string]) -> [ManBlock] {
         } or strings.contains(line, "*@kind ") {
             current.kind = after(line, "@kind ")
         } or strings.contains(line, "*@sig ") {
-            current.sig = go_quote(after(line, "@sig "))
+            current.sig = escape_quotes(after(line, "@sig "))
         } or strings.contains(line, "*@field ") {
-            mut field string = go_quote(after(line, "@field "))
+            mut field string = escape_quotes(after(line, "@field "))
             if current.field_text == "" {
                 current.field_text = field
             } otherwise {
                 current.field_text = "${current.field_text}\\n${field}"
             }
         } or strings.contains(line, "*@desc ") {
-            current.desc = go_quote(after(line, "@desc "))
+            current.desc = escape_quotes(after(line, "@desc "))
         } or strings.contains(line, "*@example") {
             in_example = true
         } or strings.contains(line, "*@end") {
@@ -77,7 +77,7 @@ do parse_man_blocks(lines [string]) -> [ManBlock] {
             } or text == " *" {
                 text = ""
             }
-            text = go_quote(strings.replace(text, "\\", "\\\\"))
+            text = escape_quotes(strings.replace(text, "\\", "\\\\"))
             if current.example == "" {
                 current.example = text
             } otherwise {

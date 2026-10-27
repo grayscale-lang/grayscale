@@ -3,7 +3,6 @@ grayc/src/vendor/** linguist-vendored
 
 # Auto-generated — exclude from stats + collapse in PR diffs
 ERRORS.md linguist-generated
-go.sum linguist-generated
 
 # Binary files — don't diff
 *.o binary
@@ -19,7 +18,6 @@ integration-tests/**/embed_fixture.txt text eol=lf
 *.s text eol=lf
 *.c text eol=lf
 *.h text eol=lf
-*.go text eol=lf
 *.gray text eol=lf
 *.sh text eol=lf
 Makefile text eol=lf
