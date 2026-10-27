@@ -1,0 +1,525 @@
+// fmt.gray — Self-hosted `gray fmt`. Runs `grayc --fmt` on each file, then
+// normalizes the text: leading tabs become four spaces, trailing whitespace is
+// stripped, runs of blank lines collapse to two, and the file ends in exactly
+// one newline. CRLF line endings are kept. `--check` formats a temporary copy
+// and reports `would format: <path>` for each file that differs.
+
+import @io
+import @os
+import @strings
+import @arrays
+import @maps
+import @encoding
+import @path
+
+const EMBEDDED_GRAYC string = embed("runtime/grayc")
+const EMBEDDED_LIBGRAYRT string = embed("runtime/libgrayrt.a")
+
+// EMBED_TAG names the extraction directory. `make build` sets it with
+// -define:EMBED_TAG=<output of make embed-tag>; empty means a dev build.
+#define
+const EMBED_TAG string = ""
+
+const TAB_WIDTH i64 = 4
+const MAX_CONSECUTIVE_BLANK_LINES i64 = 2
+
+const ScanState enum {
+    IN_CODE,
+    IN_LINE_COMMENT,
+    IN_BLOCK_COMMENT,
+    IN_STRING,
+    IN_CHAR,
+    IN_RAW
+}
+
+// has_source_extension reports whether path ends in an accepted source extension.
+do has_source_extension(file_path string) -> bool {
+    return strings.ends_with(file_path, ".gray") || strings.ends_with(file_path, ".grayscale")
+}
+
+// line_starts_in_raw_string reports, for each line of src, whether the line
+// begins inside a multi-line raw string literal. Backticks inside comments,
+// strings, and char literals do not open a raw string.
+do line_starts_in_raw_string(src string, line_count i64) -> [bool] {
+    mut starts [bool] = {false}
+    mut state ScanState = ScanState.IN_CODE
+    mut interpolation_depth i64 = 0
+    mut nested_quote char = '\0'
+    src_len i64 = len(src)
+    mut i i64 = 0
+    as_long_as i < src_len {
+        c char = src[i]
+        next_is_available bool = i + 1 < src_len
+        if c == '\n' {
+            if state == ScanState.IN_LINE_COMMENT {
+                state = ScanState.IN_CODE
+            }
+            arrays.append(starts, state == ScanState.IN_RAW)
+            i = i + 1
+            continue
+        }
+        #strict
+        when state {
+            is ScanState.IN_LINE_COMMENT { }
+            is ScanState.IN_CODE {
+                if c == '/' && next_is_available && src[i + 1] == '/' {
+                    state = ScanState.IN_LINE_COMMENT
+                    i = i + 1
+                } or c == '/' && next_is_available && src[i + 1] == '*' {
+                    state = ScanState.IN_BLOCK_COMMENT
+                    i = i + 1
+                } or c == '"' {
+                    state = ScanState.IN_STRING
+                    interpolation_depth = 0
+                    nested_quote = '\0'
+                } or c == '\'' {
+                    state = ScanState.IN_CHAR
+                } or c == '`' {
+                    state = ScanState.IN_RAW
+                }
+            }
+            is ScanState.IN_BLOCK_COMMENT {
+                if c == '*' && next_is_available && src[i + 1] == '/' {
+                    state = ScanState.IN_CODE
+                    i = i + 1
+                }
+            }
+            is ScanState.IN_CHAR {
+                if c == '\\' && next_is_available && src[i + 1] != '\n' {
+                    i = i + 1
+                } or c == '\'' {
+                    state = ScanState.IN_CODE
+                }
+            }
+            is ScanState.IN_RAW {
+                if c == '`' {
+                    state = ScanState.IN_CODE
+                }
+            }
+            is ScanState.IN_STRING {
+                if c == '\\' && next_is_available && src[i + 1] != '\n' {
+                    i = i + 1
+                } or nested_quote != '\0' {
+                    if c == nested_quote {
+                        nested_quote = '\0'
+                    }
+                } or c == '$' && next_is_available && src[i + 1] == '{' {
+                    interpolation_depth = interpolation_depth + 1
+                    i = i + 1
+                } or interpolation_depth > 0 && (c == '"' || c == '\'') {
+                    nested_quote = c
+                } or interpolation_depth > 0 && c == '{' {
+                    interpolation_depth = interpolation_depth + 1
+                } or interpolation_depth > 0 && c == '}' {
+                    interpolation_depth = interpolation_depth - 1
+                } or interpolation_depth == 0 && c == '"' {
+                    state = ScanState.IN_CODE
+                }
+            }
+        }
+        i = i + 1
+    }
+    as_long_as len(starts) < line_count {
+        arrays.append(starts, false)
+    }
+    return starts
+}
+
+// format_gray_source applies the text-level normalizations to Grayscale source.
+do format_gray_source(src string) -> string {
+    mut lines [string] = strings.split(src, "\n")
+    line_count i64 = len(lines)
+    starts_in_raw [bool] = line_starts_in_raw_string(src, line_count)
+
+    // A CRLF line ending is kept as it was; the "\r" is set aside so it is
+    // neither mistaken for line content nor lost.
+    mut ends_in_carriage_return [bool] = {}
+    for i in range(0, line_count) {
+        line string = lines[i]
+        if strings.ends_with(line, "\r") {
+            arrays.append(ends_in_carriage_return, true)
+            lines[i] = strings.slice(line, 0, len(line) - 1)
+        } otherwise {
+            arrays.append(ends_in_carriage_return, false)
+        }
+    }
+
+    // Expand leading tabs and strip trailing whitespace on each line. A line
+    // that starts inside a raw string keeps its leading whitespace, and one
+    // that ends inside a raw string keeps its trailing whitespace, since both
+    // belong to the literal's value.
+    for i in range(0, line_count) {
+        line string = lines[i]
+        ends_in_raw bool = i + 1 < len(starts_in_raw) && starts_in_raw[i + 1]
+        if !starts_in_raw[i] && !ends_in_raw && strings.trim(line) == "" {
+            lines[i] = ""
+            continue
+        }
+        mut j i64 = 0
+        mut prefix string = ""
+        if !starts_in_raw[i] {
+            as_long_as j < len(line) && (line[j] == '\t' || line[j] == ' ') {
+                if line[j] == '\t' {
+                    prefix = prefix + strings.repeat(" ", TAB_WIDTH)
+                } otherwise {
+                    prefix = prefix + " "
+                }
+                j = j + 1
+            }
+        }
+        mut rest string = strings.slice(line, j, len(line))
+        if !ends_in_raw {
+            rest = trim_trailing_blanks(rest)
+        }
+        lines[i] = prefix + rest
+    }
+
+    // Collapse runs of more than two consecutive blank lines.
+    mut out [string] = {}
+    mut out_carriage_return [bool] = {}
+    mut blank i64 = 0
+    for i in range(0, line_count) {
+        line string = lines[i]
+        if line == "" && !starts_in_raw[i] {
+            blank = blank + 1
+            if blank > MAX_CONSECUTIVE_BLANK_LINES {
+                continue
+            }
+        } otherwise {
+            blank = 0
+        }
+        arrays.append(out, line)
+        arrays.append(out_carriage_return, ends_in_carriage_return[i])
+    }
+
+    // Strip trailing blank lines, then add exactly one trailing newline.
+    mut kept i64 = len(out)
+    as_long_as kept > 0 && out[kept - 1] == "" {
+        kept = kept - 1
+    }
+    mut result [string] = {}
+    for i in range(0, kept) {
+        if out_carriage_return[i] {
+            arrays.append(result, out[i] + "\r\n")
+        } otherwise {
+            arrays.append(result, out[i] + "\n")
+        }
+    }
+    if kept == 0 {
+        return "\n"
+    }
+    return strings.join(result, "")
+}
+
+// trim_trailing_blanks removes trailing spaces and tabs only.
+do trim_trailing_blanks(text string) -> string {
+    mut end i64 = len(text)
+    as_long_as end > 0 && (text[end - 1] == ' ' || text[end - 1] == '\t') {
+        end = end - 1
+    }
+    return strings.slice(text, 0, end)
+}
+
+// expand_source_args turns path arguments into a de-duplicated list of source
+// files: a file, the source files directly inside a directory, or every source
+// file under `dir/...`. ok is false when an argument was reported and skipped.
+do expand_source_args(command string, args [string]) -> ([string], bool) {
+    mut files [string] = {}
+    mut seen map[string:bool] = {:}
+    mut ok bool = true
+    for_each arg in args {
+        slashed string = strings.replace(arg, "\\", "/")
+        if strings.ends_with(slashed, "/...") || arg == "..." {
+            mut base_dir string = "."
+            if arg != "..." {
+                base_dir = strings.slice(slashed, 0, len(slashed) - 4)
+            }
+            if base_dir == "" {
+                base_dir = "."
+            }
+            if !io.file_exists(base_dir) {
+                eprintln("gray ${command}: stat ${base_dir}: no such file or directory")
+                ok = false
+                continue
+            }
+            if !io.is_directory(base_dir) {
+                eprintln("gray ${command}: '${base_dir}' is not a directory")
+                ok = false
+                continue
+            }
+            mut walked, walk_err = io.walk(base_dir)
+            if walk_err != nil {
+                eprintln("gray ${command}: ${walk_err.message}")
+                ok = false
+                continue
+            }
+            arrays.sort_asc(walked)
+            for_each walked_name in walked {
+                walked_path string = path.join_parts({base_dir, walked_name})
+                if has_source_extension(walked_path) && !io.is_directory(walked_path) {
+                    add_source_file(files, seen, walked_path)
+                }
+            }
+            continue
+        }
+
+        if !io.file_exists(arg) {
+            eprintln("gray ${command}: stat ${arg}: no such file or directory")
+            ok = false
+        } or io.is_directory(arg) {
+            mut entries, list_err = io.list_dir(arg)
+            if list_err != nil {
+                eprintln("gray ${command}: ${list_err.message}")
+                ok = false
+                continue
+            }
+            arrays.sort_asc(entries)
+            for_each entry in entries {
+                entry_path string = path.join_parts({arg, entry})
+                if has_source_extension(entry) && !io.is_directory(entry_path) {
+                    add_source_file(files, seen, entry_path)
+                }
+            }
+        } or has_source_extension(arg) {
+            add_source_file(files, seen, arg)
+        } otherwise {
+            eprintln("gray ${command}: '${arg}' is not a .gray or .grayscale file or directory")
+            ok = false
+        }
+    }
+    return files, ok
+}
+
+do add_source_file(&files [string], &seen map[string:bool], file_path string) {
+    mut key string = file_path
+    absolute, absolute_err = path.absolute_path(file_path)
+    if absolute_err == nil {
+        key = absolute
+    }
+    if maps.contains_key(seen, key) {
+        return
+    }
+    seen[key] = true
+    arrays.append(files, file_path)
+}
+
+// write_if_missing writes data to file_path with the given mode unless a file
+// of the same size is already there.
+do write_if_missing(file_path string, data string, mode i64) -> bool {
+    info, stat_err = io.stat(file_path)
+    if stat_err == nil && info.size == len(data) {
+        return true
+    }
+    _, write_err = io.write_bytes(file_path, encoding.from_string(data))
+    if write_err != nil {
+        return false
+    }
+    _, chmod_err = io.chmod(file_path, mode)
+    return chmod_err == nil
+}
+
+// extract_embedded_grayc writes the embedded compiler and runtime library to
+// ~/.gray/runtime/<tag>/ and returns the compiler's path, or "" in a dev build
+// (empty embed) or when extraction fails.
+do extract_embedded_grayc() -> string {
+    if len(EMBEDDED_GRAYC) == 0 || EMBED_TAG == "" {
+        return ""
+    }
+    runtime_dir string = path.join_parts({os.home_dir(), ".gray", "runtime", EMBED_TAG})
+    _, dir_err = io.make_dir_all(runtime_dir)
+    if dir_err != nil {
+        return ""
+    }
+    grayc_dest string = path.join_parts({runtime_dir, grayc_binary_name()})
+    if !write_if_missing(grayc_dest, EMBEDDED_GRAYC, 493) {
+        return ""
+    }
+    if len(EMBEDDED_LIBGRAYRT) > 0 {
+        if !write_if_missing(path.join_parts({runtime_dir, "libgrayrt.a"}), EMBEDDED_LIBGRAYRT, 420) {
+            return ""
+        }
+    }
+    return grayc_dest
+}
+
+// grayc_binary_name is the compiler's file name on this platform.
+do grayc_binary_name() -> string {
+    if os.current_os() == Platform.WINDOWS {
+        return "grayc.exe"
+    }
+    return "grayc"
+}
+
+// grayc_path locates the compiler: GRAY_COMPILER_PATH, the grayc/ directory
+// next to the running binary, the embedded compiler extracted to
+// ~/.gray/runtime/<tag>/, the running binary's own directory, PATH, then the
+// known install locations. It returns "" when none is found.
+do grayc_path() -> string {
+    override string = os.get_env("GRAY_COMPILER_PATH")
+    if override != "" && io.is_file(override) {
+        eprintln("note: using compiler from GRAY_COMPILER_PATH=${override}")
+        return override
+    }
+
+    exe, exe_err = os.executable_path()
+    if exe_err == nil {
+        exe_dir, _ = path.split_dir_file(exe)
+        checkout string = path.join_parts({exe_dir, "grayc", grayc_binary_name()})
+        if io.is_file(checkout) {
+            return checkout
+        }
+    }
+
+    embedded string = extract_embedded_grayc()
+    if embedded != "" {
+        return embedded
+    }
+
+    if exe_err == nil {
+        exe_dir, _ = path.split_dir_file(exe)
+        beside string = path.join_parts({exe_dir, grayc_binary_name()})
+        if io.is_file(beside) {
+            return beside
+        }
+    }
+
+    found, was_found = os.find_executable("grayc")
+    if was_found {
+        return found
+    }
+
+    if os.current_os() != Platform.WINDOWS {
+        for_each known in {"/usr/local/bin/grayc", "/usr/bin/grayc"} {
+            if io.is_file(known) {
+                return known
+            }
+        }
+    }
+    return ""
+}
+
+// run_grayc_fmt formats one file in place with `grayc --fmt`.
+do run_grayc_fmt(file_path string) -> bool {
+    compiler string = grayc_path()
+    if compiler == "" {
+        return false
+    }
+    result, exec_err = os.exec(compiler, {"--fmt", file_path})
+    if exec_err != nil {
+        return false
+    }
+    if result.stderr != "" {
+        eprint(result.stderr)
+    }
+    return result.exit_code == 0
+}
+
+// run_fmt is the entry point for `gray fmt`; it returns the exit code.
+do run_fmt(args [string], check_mode bool) -> i64 {
+    files, expanded_ok = expand_source_args("fmt", args)
+    mut exit_code i64 = 0
+    if !expanded_ok {
+        exit_code = 1
+    }
+    if len(files) == 0 {
+        println("gray fmt: no source files found")
+        return exit_code
+    }
+
+    mut changed i64 = 0
+
+    for_each file_path in files {
+        original, read_err = io.read_file(file_path)
+        if read_err != nil {
+            eprintln("gray fmt: ${read_err.message}")
+            exit_code = 1
+            continue
+        }
+
+        if check_mode {
+            // Copy to a temp file, format it, compare. io.temp_file() returns
+            // a path with no extension, so the copy moves to .gray first.
+            temp_path, temp_err = io.temp_file()
+            if temp_err != nil {
+                eprintln("gray fmt: ${temp_err.message}")
+                exit_code = 1
+                continue
+            }
+            formatted_copy string = temp_path + ".gray"
+            _, move_err = io.move_file(temp_path, formatted_copy)
+            if move_err != nil {
+                eprintln("gray fmt: ${move_err.message}")
+                exit_code = 1
+                continue
+            }
+            _, write_err = io.write_file(formatted_copy, original)
+            if write_err != nil {
+                mut _, _ = io.delete_file(formatted_copy)
+                eprintln("gray fmt: ${write_err.message}")
+                exit_code = 1
+                continue
+            }
+            if !run_grayc_fmt(formatted_copy) {
+                mut _, _ = io.delete_file(formatted_copy)
+                eprintln("gray fmt: failed to format '${file_path}'")
+                exit_code = 1
+                continue
+            }
+            formatted, formatted_err = io.read_file(formatted_copy)
+            mut _, _ = io.delete_file(formatted_copy)
+            if formatted_err != nil {
+                eprintln("gray fmt: ${formatted_err.message}")
+                exit_code = 1
+                continue
+            }
+            if original != format_gray_source(formatted) {
+                println("would format: ${file_path}")
+                exit_code = 1
+            }
+            continue
+        }
+
+        // Normal mode: format in place.
+        if !run_grayc_fmt(file_path) {
+            eprintln("gray fmt: failed to format '${file_path}'")
+            exit_code = 1
+            continue
+        }
+        after, after_err = io.read_file(file_path)
+        if after_err != nil {
+            eprintln("gray fmt: ${after_err.message}")
+            exit_code = 1
+            continue
+        }
+        normalized string = format_gray_source(after)
+        _, wrote_err = io.write_file(file_path, normalized)
+        if wrote_err != nil {
+            eprintln("gray fmt: ${wrote_err.message}")
+            exit_code = 1
+            continue
+        }
+        if original != normalized {
+            println("formatted: ${file_path}")
+            changed = changed + 1
+        }
+    }
+
+    if !check_mode && changed == 0 && exit_code == 0 {
+        println("gray fmt: ${len(files)} file(s) checked, already formatted")
+    }
+    return exit_code
+}
+
+do main() {
+    argv [string] = os.args()
+    mut check_mode bool = false
+    mut paths [string] = {}
+    for i in range(1, len(argv)) {
+        if argv[i] == "--check" {
+            check_mode = true
+        } otherwise {
+            arrays.append(paths, argv[i])
+        }
+    }
+    exit(run_fmt(paths, check_mode))
+}
