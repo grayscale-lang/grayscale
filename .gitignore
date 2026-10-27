@@ -111,6 +111,7 @@ context/
 /internal/driver/runtime/grayc
 /internal/driver/runtime/libgrayrt.a
 /internal/driver/runtime/src/
+/cli/runtime/
 *.stub
 *.md
 .claude/

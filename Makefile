@@ -41,6 +41,7 @@ MODULE=github.com/grayscale-lang/grayscale
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
 EMBED_DIR=internal/driver/runtime
+CLI_EMBED_DIR=cli/runtime
 
 # ===== Per-target help (make help TARGET=<name>) =====
 # One HELP_<target> block per name in KNOWN_TARGETS. TARGET only selects a
@@ -354,12 +355,12 @@ endif
 # themselves are gitignored — `make build` overwrites the stubs with
 # real content before invoking `go build`.
 stubs:
-	@mkdir -p $(EMBED_DIR)/src/runtime $(EMBED_DIR)/src/stdlib $(EMBED_DIR)/src/util
-	@test -f $(EMBED_DIR)/grayc || : > $(EMBED_DIR)/grayc
-	@test -f $(EMBED_DIR)/libgrayrt.a || : > $(EMBED_DIR)/libgrayrt.a
-	@test -f $(EMBED_DIR)/src/runtime/.stub || : > $(EMBED_DIR)/src/runtime/.stub
-	@test -f $(EMBED_DIR)/src/stdlib/.stub || : > $(EMBED_DIR)/src/stdlib/.stub
-	@test -f $(EMBED_DIR)/src/util/.stub || : > $(EMBED_DIR)/src/util/.stub
+	@for dir in $(EMBED_DIR) $(CLI_EMBED_DIR); do \
+	  mkdir -p $$dir/src/runtime $$dir/src/stdlib $$dir/src/util; \
+	  for stub in grayc libgrayrt.a src/runtime/.stub src/stdlib/.stub src/util/.stub; do \
+	    test -f $$dir/$$stub || : > $$dir/$$stub; \
+	  done; \
+	done
 
 # Single-binary build: compile the C compiler first, stage the
 # artifacts into internal/driver/runtime/ so go:embed picks them up, then
@@ -378,6 +379,9 @@ build: stubs
 	@# runtime.c and builtins.c include util/colors.h and util/constants.h;
 	@# without these headers the compile-from-source fallback cannot build.
 	@cp grayc/src/util/*.h $(EMBED_DIR)/src/util/
+	@# Grayscale source in cli/ can only embed() paths under cli/, so it gets
+	@# the same assets; embed-tag keeps hashing $(EMBED_DIR).
+	@cp -R $(EMBED_DIR)/. $(CLI_EMBED_DIR)/
 	@echo "Building gray CLI (with embedded runtime)..."
 	@# Content-hash the staged assets once here so the installed wrapper does
 	@# not hash them on every invocation just to name its extract dir.
