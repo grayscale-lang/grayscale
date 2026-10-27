@@ -1,0 +1,440 @@
+// commands.gray — The commands that compile or check a program: gray <file>,
+// build, check and cross, with the flag handling they share. Each returns the
+// exit status; error text goes to stderr in the form the Go CLI printed it.
+
+import @io
+import @maps
+import @os
+import @path
+import @strings
+import @arrays
+import @strconv
+import "./args"
+import "./driver"
+import "./sources"
+import "./version"
+
+// ASCII_BANNER is shown by gray with no arguments.
+const ASCII_BANNER string = "   ____                               _\n  / ___|_ __ __ _ _   _ ___  ___ __ _| | ___\n | |  _| '__/ _` | | | / __|/ __/ _` | |/ _ \\\n | |_| | | | (_| | |_| \\__ \\ (_| (_| | |  __/\n  \\____|_|  \\__,_|\\__, |___/\\___\\__,_|_|\\___|\n                  |___/\nSimple to write. Safe to run.\n"
+
+const KILOBYTE u64 = 1024
+const MEGABYTE u64 = 1048576
+const GIGABYTE u64 = 1073741824
+const MAX_ARENA_LIMIT u64 = 9223372036854775807
+
+// CrossTarget is a user-facing cross-compilation target and the zig triple it
+// maps to.
+const CrossTarget struct {
+    name string
+    zig_triple string
+}
+
+// cross_targets lists the targets in name order.
+do cross_targets() -> [CrossTarget] {
+    return {
+        CrossTarget{name: "linux-amd64", zig_triple: "x86_64-linux-gnu"},
+        CrossTarget{name: "linux-arm64", zig_triple: "aarch64-linux-gnu"},
+        CrossTarget{name: "mac-amd64", zig_triple: "x86_64-macos"},
+        CrossTarget{name: "mac-arm64", zig_triple: "aarch64-macos"},
+        CrossTarget{name: "windows-amd64", zig_triple: "x86_64-windows-gnu"}
+    }
+}
+
+// flag_text is the value a flag was given, or fallback when it was not.
+do flag_text(invocation args.Invocation, name string, fallback string) -> string {
+    if maps.contains_key(invocation.changed, name) && invocation.changed[name] {
+        return invocation.flag_values[name]
+    }
+    return fallback
+}
+
+// flag_is_set reports whether a bool flag was given as true.
+do flag_is_set(invocation args.Invocation, name string) -> bool {
+    return flag_text(invocation, name, "false") == "true"
+}
+
+// parse_arena_limit parses a size such as "512KB", "2MB" or "1GB" into bytes.
+// An empty string means no limit (0).
+do parse_arena_limit(text string) -> (i64, Error) {
+    if text == "" {
+        return 0, nil
+    }
+    trimmed string = strings.trim(text)
+    upper string = strings.to_upper(trimmed)
+
+    mut multiplier u64 = 0
+    if strings.ends_with(upper, "GB") {
+        multiplier = GIGABYTE
+    } or strings.ends_with(upper, "MB") {
+        multiplier = MEGABYTE
+    } or strings.ends_with(upper, "KB") {
+        multiplier = KILOBYTE
+    } otherwise {
+        return 0, error(.InvalidInput, "invalid arena limit '${trimmed}': must end with KB, MB, or GB (e.g. 512MB, 1GB)")
+    }
+
+    number_text string = strings.trim(strings.slice(trimmed, 0, len(trimmed) - 2))
+    if number_text == "" || strings.starts_with(number_text, "+") || strings.starts_with(number_text, "-") {
+        return 0, error(.InvalidInput, "invalid arena limit '${trimmed}': numeric part must be a positive integer")
+    }
+    amount, parse_err = strconv.to_u64(number_text)
+    if parse_err != nil {
+        return 0, error(.InvalidInput, "invalid arena limit '${trimmed}': numeric part must be a positive integer")
+    }
+    if amount == 0 {
+        return 0, error(.InvalidInput, "invalid arena limit '${trimmed}': value must be greater than zero")
+    }
+    if amount > MAX_ARENA_LIMIT / multiplier {
+        return 0, error(.InvalidInput, "invalid arena limit '${trimmed}': value is too large")
+    }
+    return cast(amount * multiplier, i64), nil
+}
+
+// validate_quiet rejects a --quiet value that is neither "all" nor a
+// comma-separated list of W-prefixed warning codes.
+do validate_quiet(invocation args.Invocation) -> Error {
+    quiet string = flag_text(invocation, "quiet", "")
+    if quiet == "" || quiet == "all" {
+        return nil
+    }
+    for_each code in strings.split(quiet, ",") {
+        if strings.starts_with(code, "E") {
+            return error(.InvalidInput, "'-q' only accepts warning codes (W-prefixed), not error code '${code}'")
+        }
+        if !strings.starts_with(code, "W") {
+            return error(.InvalidInput, "unknown warning code '${code}'")
+        }
+    }
+    return nil
+}
+
+// apply_compiler_flag makes --cc the C compiler for this invocation by setting
+// GRAY_CC, which grayc reads ahead of CC. grayc's own --cc flag is not used: it
+// selects a cross-compile target and always builds the runtime from source,
+// where GRAY_CC keeps the host's prebuilt libgrayrt.a.
+do apply_compiler_flag(invocation args.Invocation) -> Error {
+    c_compiler string = flag_text(invocation, "cc", "")
+    if c_compiler == "" {
+        return nil
+    }
+    _, found = os.find_executable(c_compiler)
+    if !found {
+        return error(.NotFound, "error: C compiler '${c_compiler}' not found")
+    }
+    os.set_env("GRAY_CC", c_compiler)
+    return nil
+}
+
+// compiler_flag_args turns the --quiet, --no-color and --arena-limit flags
+// and the -define overrides into compiler arguments and applies --cc. The
+// commands that run or check a source file share it.
+do compiler_flag_args(invocation args.Invocation, defines [string]) -> ([string], Error) {
+    quiet_err Error = validate_quiet(invocation)
+    if quiet_err != nil {
+        return {}, quiet_err
+    }
+    mut compiler_args [string] = {}
+    quiet string = flag_text(invocation, "quiet", "")
+    if quiet == "all" {
+        arrays.append(compiler_args, "--quiet")
+    } or quiet != "" {
+        arrays.append(compiler_args, "--quiet")
+        arrays.append(compiler_args, quiet)
+    }
+    if flag_is_set(invocation, "no-color") {
+        arrays.append(compiler_args, "--no-color")
+    }
+    arena_text string = flag_text(invocation, "arena-limit", "")
+    if arena_text != "" {
+        arena_limit, arena_err = parse_arena_limit(arena_text)
+        if arena_err != nil {
+            return {}, arena_err
+        }
+        arrays.append(compiler_args, "--arena-limit=${arena_limit}")
+    }
+    for_each override in defines {
+        arrays.append(compiler_args, "--define=${override}")
+    }
+    cc_err Error = apply_compiler_flag(invocation)
+    if cc_err != nil {
+        return {}, cc_err
+    }
+    return compiler_args, nil
+}
+
+// build_options reads the flags shared by build and cross build.
+do build_options(invocation args.Invocation, defines [string]) -> (driver.BuildOptions, Error) {
+    mut options driver.BuildOptions = driver.BuildOptions{output: flag_text(invocation, "output", ""), optimization_level: "", debug: false, verbose: false, emit_c: flag_is_set(invocation, "emit-c"), no_color: flag_is_set(invocation, "no-color"), show_time: flag_is_set(invocation, "time"), quiet: false, quiet_codes: "", c_compiler: "", arena_limit: 0, test: false, defines: defines}
+
+    quiet_err Error = validate_quiet(invocation)
+    if quiet_err != nil {
+        return options, quiet_err
+    }
+    arena_limit, arena_err = parse_arena_limit(flag_text(invocation, "arena-limit", ""))
+    if arena_err != nil {
+        return options, arena_err
+    }
+    cc_err Error = apply_compiler_flag(invocation)
+    if cc_err != nil {
+        return options, cc_err
+    }
+
+    options.arena_limit = arena_limit
+    quiet string = flag_text(invocation, "quiet", "")
+    if quiet == "all" {
+        options.quiet = true
+    } or quiet != "" {
+        options.quiet_codes = quiet
+    }
+    return options, nil
+}
+
+// not_a_source_file is the error for a file argument with the wrong extension.
+do not_a_source_file(file string) -> string {
+    return "error: '${file}' is not a valid Grayscale source file — expected a .gray or .grayscale file"
+}
+
+// run_file is gray <file.gray>: compile and run a program. Arguments after the
+// file, or after "--", go to the program.
+do run_file(invocation args.Invocation, defines [string]) -> i64 {
+    if len(invocation.positional) == 0 {
+        print("${ASCII_BANNER}Version: ${version.VERSION}\n\nRun 'gray help' for usage.\n")
+        return 0
+    }
+    file string = invocation.positional[0]
+    if !sources.has_source_extension(file) {
+        eprintln("error: unknown command or invalid file '${file}' — expected a .gray or .grayscale file\n  usage: gray <file.gray>\n  help:  gray --help")
+        return 1
+    }
+
+    mut program_args [string] = {}
+    if invocation.dash_index > 0 {
+        program_args = arrays.slice(invocation.positional, invocation.dash_index, len(invocation.positional))
+    } or len(invocation.positional) > 1 {
+        program_args = arrays.slice(invocation.positional, 1, len(invocation.positional))
+    }
+
+    mut compiler_args, flag_err = compiler_flag_args(invocation, defines)
+    if flag_err != nil {
+        eprintln(flag_err.message)
+        return 1
+    }
+    if len(program_args) > 0 {
+        // "--" ends the compiler's own options; the rest is the program's.
+        arrays.append(compiler_args, "--")
+        for_each program_arg in program_args {
+            arrays.append(compiler_args, program_arg)
+        }
+    }
+
+    code, run_err = driver.run(file, compiler_args)
+    if run_err != nil {
+        eprintln("error: ${run_err.message}")
+        return 1
+    }
+    return code
+}
+
+// run_build is gray build.
+do run_build(invocation args.Invocation, defines [string]) -> i64 {
+    file string = invocation.positional[0]
+    if !sources.has_source_extension(file) {
+        eprintln(not_a_source_file(file))
+        return 1
+    }
+    mut options, options_err = build_options(invocation, defines)
+    if options_err != nil {
+        eprintln(options_err.message)
+        return 1
+    }
+    options.verbose = flag_is_set(invocation, "verbose")
+    code, build_err = driver.build(file, options)
+    if build_err != nil {
+        eprintln("error: ${build_err.message}")
+        return 1
+    }
+    return code
+}
+
+// run_check is gray check.
+do run_check(invocation args.Invocation, defines [string]) -> i64 {
+    targets, targets_err = check_targets(invocation.positional[0])
+    if targets_err != nil {
+        eprintln(targets_err.message)
+        return 1
+    }
+    compiler_args, flag_err = compiler_flag_args(invocation, defines)
+    if flag_err != nil {
+        eprintln(flag_err.message)
+        return 1
+    }
+    mut exit_code i64 = 0
+    for_each target in targets {
+        code, check_err = driver.check(target, compiler_args)
+        if check_err != nil {
+            eprintln("error: ${check_err.message}")
+            return 1
+        }
+        if code != 0 && exit_code == 0 {
+            exit_code = code
+        }
+    }
+    return exit_code
+}
+
+// check_targets turns the argument of gray check into the paths handed to the
+// compiler, one invocation each. "dir/..." names every directory under dir that
+// directly holds source files, each checked as its own module; any other
+// argument is a source file or one directory, checked as given.
+do check_targets(argument string) -> ([string], Error) {
+    slashed string = path.to_forward_slashes(argument)
+    if !strings.ends_with(slashed, "/...") && argument != "..." {
+        if !io.is_directory(argument) && !sources.has_source_extension(argument) {
+            return {}, error(.InvalidInput, not_a_source_file(argument))
+        }
+        return {argument}, nil
+    }
+
+    mut base_directory string = "."
+    if argument != "..." {
+        base_directory = strings.slice(slashed, 0, len(slashed) - 4)
+    }
+    if base_directory == "" || base_directory == "..." {
+        base_directory = "."
+    }
+    if !io.file_exists(base_directory) {
+        _, stat_err = io.stat(base_directory)
+        mut reason string = "no such file or directory"
+        if stat_err != nil {
+            reason = sources.failure_reason(stat_err)
+        }
+        return {}, error(.NotFound, "error: stat ${base_directory}: ${reason}")
+    }
+    if !io.is_directory(base_directory) {
+        return {}, error(.InvalidInput, "error: '${base_directory}' is not a directory")
+    }
+
+    directories [string] = module_directories(base_directory)
+    if len(directories) == 0 {
+        return {}, error(.NotFound, "error: no source files under '${base_directory}'")
+    }
+    return directories, nil
+}
+
+// module_directories lists directory and every directory below it that
+// directly holds a source file, parents before children and each directory's
+// entries in sorted order.
+do module_directories(directory string) -> [string] {
+    mut found [string] = {}
+    mut entries, list_err = io.list_dir(directory)
+    if list_err != nil {
+        return found
+    }
+    arrays.sort_asc(entries)
+    mut holds_source bool = false
+    mut subdirectories [string] = {}
+    for_each entry in entries {
+        entry_path string = path.join_parts({directory, entry})
+        if io.is_directory(entry_path) {
+            arrays.append(subdirectories, entry_path)
+        } or sources.has_source_extension(entry) {
+            holds_source = true
+        }
+    }
+    if holds_source {
+        arrays.append(found, directory)
+    }
+    for_each subdirectory in subdirectories {
+        for_each nested in module_directories(subdirectory) {
+            arrays.append(found, nested)
+        }
+    }
+    return found
+}
+
+// target_names is the cross targets' names, comma-separated.
+do target_names() -> string {
+    mut names [string] = {}
+    for_each target in cross_targets() {
+        arrays.append(names, target.name)
+    }
+    return strings.join(names, ", ")
+}
+
+// pad_right pads text with spaces to width characters.
+do pad_right(text string, width i64) -> string {
+    mut padded string = text
+    as_long_as char_count(padded) < width {
+        padded = padded + " "
+    }
+    return padded
+}
+
+// run_cross_targets is gray cross targets.
+do run_cross_targets() -> i64 {
+    println("Supported cross-compilation targets:")
+    println("")
+    println("  ${pad_right("TARGET", 20)} ZIG TRIPLE")
+    println("  ${pad_right("──────", 20)} ──────────")
+    for_each target in cross_targets() {
+        println("  ${pad_right(target.name, 20)} ${target.zig_triple}")
+    }
+    println("")
+    println("Usage: gray cross build <file.gray> --target <target>")
+    return 0
+}
+
+// run_cross_build is gray cross build.
+do run_cross_build(invocation args.Invocation, defines [string]) -> i64 {
+    file string = invocation.positional[0]
+    if !sources.has_source_extension(file) {
+        eprintln(not_a_source_file(file))
+        return 1
+    }
+
+    target_name string = flag_text(invocation, "target", "")
+    if target_name == "" {
+        eprintln("error: --target is required")
+        eprintln("  Run 'gray cross targets' to see available targets")
+        return 1
+    }
+
+    mut zig_triple string = ""
+    for_each target in cross_targets() {
+        if target.name == target_name {
+            zig_triple = target.zig_triple
+        }
+    }
+    if zig_triple == "" {
+        eprintln("error: unknown target '${target_name}'")
+        eprintln("  Valid targets: ${target_names()}")
+        eprintln("  Run 'gray cross targets' for details")
+        return 1
+    }
+
+    zig_path, zig_found = os.find_executable("zig")
+    if !zig_found {
+        eprintln("zig not found in PATH\n  Zig is required for cross-compilation.\n  Install: https://ziglang.org/download/")
+        return 1
+    }
+
+    mut options, options_err = build_options(invocation, defines)
+    if options_err != nil {
+        eprintln(options_err.message)
+        return 1
+    }
+    options.c_compiler = "${zig_path} cc -target ${zig_triple}"
+    if options.output == "" && !options.emit_c {
+        options.output = strings.remove_suffix(file, path.file_extension(file)) + "-" + target_name
+        if strings.starts_with(target_name, "windows-") {
+            options.output = options.output + ".exe"
+        }
+    }
+
+    code, build_err = driver.build(file, options)
+    if build_err != nil {
+        eprintln("error: ${build_err.message}")
+        return 1
+    }
+    return code
+}
