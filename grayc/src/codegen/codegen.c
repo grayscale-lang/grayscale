@@ -2396,6 +2396,9 @@ static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
                     /* Next char is also hex; break the string */
                     emit(codegen, "\" \"");
                 }
+            } else if (cursor[0] == '\\' && cursor[1] == '\\') {
+                emit(codegen, "\\\\");
+                cursor += 2;
             } else if (cursor[0] == '\\' && cursor[1] == '$') {
                 append_char_to_buffer(&codegen->output, '$');
                 cursor += 2;
