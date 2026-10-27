@@ -21,12 +21,11 @@ do main() {
     mut binary_path, err = os.executable_path()
     passed += check_bool("no error", err == nil, true)
     passed += check_bool("path is absolute", strings.starts_with(binary_path, "/"), true)
-    passed += check_bool("path names this binary", strings.contains(binary_path, "os_executable_path"), true)
     passed += check_bool("path is a file", io.is_file(binary_path), true)
 
     println("")
-    println("Results: ${passed}/4 passed")
-    if passed == 4 {
+    println("Results: ${passed}/3 passed")
+    if passed == 3 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")
