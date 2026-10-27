@@ -175,16 +175,10 @@ static AstNode *build_initializer(Arena *arena, const char *input_file, const ch
     return node;
 }
 
-static AstNode *find_constant(AstNode *program, const char *name) {
-    for (int i = 0; i < program->data.program.statement_count; i++) {
-        AstNode *statement = program->data.program.statements[i];
-        if (statement && statement->kind == NODE_VARIABLE_DECLARATION &&
-            !statement->data.variable_declaration.is_mutable &&
-            strcmp(statement->data.variable_declaration.name, name) == 0) {
-            return statement;
-        }
-    }
-    return NULL;
+static bool is_named_constant(AstNode *statement, const char *name) {
+    return statement && statement->kind == NODE_VARIABLE_DECLARATION &&
+           !statement->data.variable_declaration.is_mutable &&
+           strcmp(statement->data.variable_declaration.name, name) == 0;
 }
 
 void defines_apply(Arena *arena, DiagnosticList *diagnostics, AstNode *program,
@@ -198,25 +192,34 @@ void defines_apply(Arena *arena, DiagnosticList *diagnostics, AstNode *program,
         name[name_length] = '\0';
         const char *text = arena_copy_string(arena, separator + 1);
 
-        AstNode *declaration = find_constant(program, name);
-        if (!declaration) {
+        AstNode *first_declaration = NULL;
+        bool has_define = false;
+        for (int j = 0; j < program->data.program.statement_count; j++) {
+            AstNode *declaration = program->data.program.statements[j];
+            if (!is_named_constant(declaration, name)) continue;
+            if (!first_declaration) first_declaration = declaration;
+            if (!declaration->data.variable_declaration.is_define) continue;
+            has_define = true;
+
+            Token site = declaration->token;
+            const char *site_file = site.file ? site.file : input_file;
+            const char *type_name = declaration->data.variable_declaration.type_name;
+            AstNode *value = declaration->data.variable_declaration.value;
+            AstNode *replacement = build_initializer(arena, input_file, type_name, text,
+                                                     value ? value : declaration);
+            if (!replacement) {
+                diagnostic_error_code_formatted(diagnostics, "E3214", site_file, site.line, site.column, 0,
+                                                name, text, type_name);
+                continue;
+            }
+            declaration->data.variable_declaration.value = replacement;
+        }
+        if (!first_declaration) {
             diagnostic_error_code_formatted(diagnostics, "E4040", input_file, 0, 0, 0, name);
-            continue;
+        } else if (!has_define) {
+            Token site = first_declaration->token;
+            diagnostic_error_code_formatted(diagnostics, "E5066", site.file ? site.file : input_file,
+                                            site.line, site.column, 0, name);
         }
-        Token site = declaration->token;
-        if (!declaration->data.variable_declaration.is_define) {
-            diagnostic_error_code_formatted(diagnostics, "E5066", input_file, site.line, site.column, 0, name);
-            continue;
-        }
-        const char *type_name = declaration->data.variable_declaration.type_name;
-        AstNode *value = declaration->data.variable_declaration.value;
-        AstNode *replacement = build_initializer(arena, input_file, type_name, text,
-                                                 value ? value : declaration);
-        if (!replacement) {
-            diagnostic_error_code_formatted(diagnostics, "E3214", input_file, site.line, site.column, 0,
-                                            name, text, type_name);
-            continue;
-        }
-        declaration->data.variable_declaration.value = replacement;
     }
 }

@@ -2647,7 +2647,8 @@ gray build main.gray -define:ROSTER_PATH=./my/path     # ROSTER_PATH is "./my/pa
 - The declaration still requires a value. It is the default, used when no flag names the constant.
 - The flag value replaces the constant's initializer before anything else is evaluated, so a constant initialized from an overridden constant sees the new value. If `BAR` is initialized from `FOO` and both are `#define`, `-define:FOO=...` changes both, and `-define:BAR=...` replaces `BAR` alone.
 - The flag value is the bare value text, with no quotes of its own (the shell strips them): an integer is base-10 with an optional sign, a float is decimal or exponent notation, a `bool` is `true` or `false`, a `char` is one Unicode codepoint, and a `string` is taken verbatim.
-- `-define:` naming a constant the program does not declare is `E4040`. Naming a constant that has no `#define` is `E5066`. A value that does not parse as the constant's type, or is out of range for it, is `E3214`.
+- `-define:NAME=VALUE` overrides every `#define` constant named `NAME` in the program, whether it is declared in the entry file or in an imported module. When several modules declare a `#define` constant with the same name, all of them take the value. There is no module-qualified form.
+- `-define:` naming a constant that no module of the program declares is `E4040`. Naming a constant that has no `#define` is `E5066`. A value that does not parse as the constant's type, or is out of range for it, is `E3214`.
 - A `-define:` argument without `=`, or the same name given twice, is a usage error from the `gray` command.
 - Accepted by `gray <file>`, `build`, `check`, `watch`, and `cross build`. Arguments after a bare `--` belong to the program and are not read as flags.
 

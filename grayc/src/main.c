@@ -2285,9 +2285,17 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Apply -define: overrides to the entry file's #define constants before
-     * anything reads their values. */
-    defines_apply(arena, diagnostics, program, options.input_file, options.defines, options.define_count);
+    /* Parse every imported .gray file and merge its declarations into the
+     * program. The file -> module attribution collected along the way is the
+     * only record of which module a source file belongs to, so it is handed
+     * to the type checker below. */
+    ImportResolution imports;
+    imports_resolve(arena, diagnostics, program, options.input_file, &imports);
+
+    /* An import that failed to resolve merged no declarations, so every
+     * reference to the module it named is about to be reported undefined.
+     * Those follow-on errors bury the one that matters and all disappear
+     * when it is fixed, so stop here and report the import failure alone. */
     if (diagnostic_has_errors(diagnostics)) {
         diagnostic_print_all(diagnostics);
         diagnostic_print_summary(diagnostics);
@@ -2297,18 +2305,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Parse every imported .gray file and merge its declarations into the
-     * program. The file -> module attribution collected along the way is the
-     * only record of which module a source file belongs to, so it is handed
-     * to the type checker below. */
-    ImportResolution imports;
-    imports_resolve(arena, diagnostics, program, options.input_file, &imports);
-
-
-    /* An import that failed to resolve merged no declarations, so every
-     * reference to the module it named is about to be reported undefined.
-     * Those follow-on errors bury the one that matters and all disappear
-     * when it is fixed, so stop here and report the import failure alone. */
+    /* Apply -define: overrides to the #define constants of the entry file and every
+     * imported module before anything reads their values. */
+    defines_apply(arena, diagnostics, program, options.input_file, options.defines, options.define_count);
     if (diagnostic_has_errors(diagnostics)) {
         diagnostic_print_all(diagnostics);
         diagnostic_print_summary(diagnostics);
