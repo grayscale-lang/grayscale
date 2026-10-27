@@ -108,8 +108,9 @@ bool gray_write_file_mode(const char *path, const void *data, size_t length);
 /* Read a whole file into a malloc'd NUL-terminated buffer, or NULL on failure.
  * Handles non-seekable inputs (pipes, FIFOs, /dev/stdin) that a stat-then-read
  * cannot. `report` prints why the file could not be opened; a caller that says
- * so itself passes false. The caller frees the result. */
-char *gray_read_file(const char *path, bool report);
+ * so itself passes false. `length` receives the byte count, which a NUL byte in
+ * the file makes larger than strlen. The caller frees the result. */
+char *gray_read_file(const char *path, bool report, size_t *length);
 
 /* --- Directory scanning --- */
 

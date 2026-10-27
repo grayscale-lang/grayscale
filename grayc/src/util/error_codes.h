@@ -40,7 +40,8 @@
     GRAY_ERROR("E1022", "syntax", "unexpected character") \
     GRAY_ERROR("E1023", "syntax", "string literals cannot span multiple lines; use a raw string with backticks for multi-line text") \
     GRAY_ERROR("E1024", "syntax", "identifier exceeds the maximum length of 255 characters") \
-    GRAY_ERROR("E1025", "syntax", "this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind')")
+    GRAY_ERROR("E1025", "syntax", "this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind')") \
+    GRAY_ERROR("E1026", "syntax", "NUL byte in source file; remove the NUL byte")
 
 /* --- E2xxx: Understanding Your Code (Parser) --- */
 #define GRAY_PARSER_ERRORS \

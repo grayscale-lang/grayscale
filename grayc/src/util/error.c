@@ -361,7 +361,7 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic
         }
         if (!slot) {
             /* Cache miss: read from disk and store in the LRU secondary slot */
-            const char *content = read_file_to_string(diagnostic_entry->file);
+            const char *content = read_file_to_string(diagnostic_entry->file, NULL);
             if (content) {
                 int evicted_index = 1;
                 for (int cache_index = 2; cache_index < DIAGNOSTIC_FILE_CACHE_SIZE; cache_index++) {

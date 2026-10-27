@@ -456,10 +456,9 @@ static const struct { const char *spelling; TokenType type; } attribute_keywords
     {"#define",     TOKEN_DEFINE},
 };
 
-Lexer *lexer_create(Arena *arena, const char *input, const char *file) {
+Lexer *lexer_create_sized(Arena *arena, const char *input, size_t raw_length, const char *file) {
     Lexer *lexer = arena_allocate(arena, sizeof(Lexer));
     lexer->input = input;
-    size_t raw_length = strlen(input);
     if (raw_length > (size_t)INT32_MAX) raw_length = (size_t)INT32_MAX;
     lexer->input_length = (int)raw_length;
     lexer->position = 0;
@@ -471,6 +470,10 @@ Lexer *lexer_create(Arena *arena, const char *input, const char *file) {
     lexer->arena = arena;
     read_character(lexer);
     return lexer;
+}
+
+Lexer *lexer_create(Arena *arena, const char *input, const char *file) {
+    return lexer_create_sized(arena, input, strlen(input), file);
 }
 
 /* A one-character operator that becomes a two-character operator when
@@ -502,6 +505,12 @@ Token lexer_next_token(Lexer *lexer) {
 
     switch (lexer->current_character) {
     case 0:
+        if (lexer->position < lexer->input_length) {
+            lexer->error_code = "E1026";
+            lexer->error_message = "NUL byte in source file";
+            token = make_token(TOKEN_ILLEGAL, lexer->error_message, token.line, token.column);
+            break;
+        }
         token = make_token(TOKEN_END_OF_FILE, "", lexer->line, lexer->column);
         goto done;
 

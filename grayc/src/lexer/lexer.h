@@ -30,6 +30,7 @@ typedef struct {
 } Lexer;
 
 Lexer *lexer_create(Arena *arena, const char *input, const char *file);
+Lexer *lexer_create_sized(Arena *arena, const char *input, size_t length, const char *file);
 Token lexer_next_token(Lexer *lexer);
 
 #endif
