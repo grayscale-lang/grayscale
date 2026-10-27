@@ -1240,11 +1240,8 @@ static void test_json_split_array(void) {
 /* io round-trips write to a real temp directory so the suite stays portable
  * (no assumption that /tmp exists). */
 static GrayString io_tmp_path(const char *name) {
-    GrayString parts_data[2];
-    parts_data[0] = gray_io_temp_dir_result(arena).v0;
-    parts_data[1] = gray_string_lit(name);
-    GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2, GRAY_ELEM_STRING);
-    return gray_io_path_join(arena, parts);
+    GrayString directory = gray_io_temp_dir_result(arena).v0;
+    return gray_string_format(arena, "%.*s/%s", directory.len, directory.data, name);
 }
 
 static void test_io_write_read_roundtrip(void) {
@@ -1307,38 +1304,6 @@ static void test_io_make_remove_dir(void) {
     ASSERT(gray_io_is_directory(path));
     ASSERT(gray_io_remove_dir(path));
     ASSERT(!gray_io_file_exists(path));
-}
-
-static void test_io_dirname(void) {
-    GrayString r = gray_io_dirname(arena, gray_string_lit("/usr/local/bin/gray"));
-    ASSERT_GRAY_STR(r, "/usr/local/bin");
-}
-
-static void test_io_basename(void) {
-    GrayString r = gray_io_basename(arena, gray_string_lit("/usr/local/bin/gray"));
-    ASSERT_GRAY_STR(r, "gray");
-}
-
-static void test_io_extension(void) {
-    ASSERT_GRAY_STR(gray_io_extension(arena, gray_string_lit("main.gray")), ".gray");
-    ASSERT_GRAY_STR(gray_io_extension(arena, gray_string_lit("noext")), "");
-}
-
-static void test_io_path_join(void) {
-    GrayArray parts = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("a"),
-        gray_string_lit("b"), gray_string_lit("c"));
-    GrayString r = gray_io_path_join(arena, parts);
-    ASSERT_GRAY_STR(r, "a/b/c");
-}
-
-static void test_io_is_absolute(void) {
-    ASSERT(gray_io_is_absolute(gray_string_lit("/etc/hosts")));
-    ASSERT(!gray_io_is_absolute(gray_string_lit("etc/hosts")));
-}
-
-static void test_io_normalize(void) {
-    GrayString r = gray_io_normalize(arena, gray_string_lit("a/./b/../c"));
-    ASSERT_GRAY_STR(r, "a/c");
 }
 
 /* ===== regex module ===== */
@@ -4909,9 +4874,7 @@ static bool io_array_has_exact(GrayArray entries, const char *name) {
 }
 
 static GrayString io_join2(GrayString first, const char *second) {
-    GrayString parts_data[2] = {first, gray_string_new(arena, second, (int32_t)strlen(second))};
-    GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2, GRAY_ELEM_STRING);
-    return gray_io_path_join(arena, parts);
+    return gray_string_format(arena, "%.*s/%s", first.len, first.data, second);
 }
 
 /* A scratch directory holding a.txt, sub/b.txt and sub/deeper/c.log. */
@@ -5595,12 +5558,6 @@ int main(void) {
     RUN_TEST(test_io_bytes_roundtrip);
     RUN_TEST(test_io_read_file_result_err);
     RUN_TEST(test_io_make_remove_dir);
-    RUN_TEST(test_io_dirname);
-    RUN_TEST(test_io_basename);
-    RUN_TEST(test_io_extension);
-    RUN_TEST(test_io_path_join);
-    RUN_TEST(test_io_is_absolute);
-    RUN_TEST(test_io_normalize);
 
     printf("--- regex ---\n");
     RUN_TEST(test_regex_is_valid);

@@ -3,6 +3,7 @@
  */
 
 import @io
+import @path
 import @os
 
 do check_bool(label string, got bool, want bool) -> i64 {
@@ -26,8 +27,8 @@ do check_int(label string, got i64, want i64) -> i64 {
 do main() {
     mut passed i64 = 0
     mut dir, _ = io.temp_dir()
-    mut target = io.path_join({dir, "target.txt"})
-    mut link = io.path_join({dir, "link.txt"})
+    mut target = path.join_parts({dir, "target.txt"})
+    mut link = path.join_parts({dir, "link.txt"})
     mut _ok, _ = io.write_file(target, "hello")
     mut _result, _ = os.exec("ln", {"-s", target, link})
 

@@ -8929,12 +8929,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "walk") == 0 ||
         strcmp(function_name, "glob") == 0 ||
         strcmp(function_name, "temp_file") == 0 ||
-        strcmp(function_name, "temp_dir") == 0 ||
-        strcmp(function_name, "path_join") == 0 ||
-        strcmp(function_name, "dirname") == 0 ||
-        strcmp(function_name, "basename") == 0 ||
-        strcmp(function_name, "extension") == 0 ||
-        strcmp(function_name, "normalize") == 0);
+        strcmp(function_name, "temp_dir") == 0);
     if (is_fallible) {
         emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", function_name);
         if (node->data.call.argument_count > 0) emit(codegen, ", ");

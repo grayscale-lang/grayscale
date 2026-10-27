@@ -4031,22 +4031,6 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `temp_file` | `() -> string` | Create a temporary file; returns its path. Automatically deleted on exit |
 | `temp_dir` | `() -> string` | Create a temporary directory; returns its path. Automatically deleted on exit |
 
-#### Path Manipulation
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `path_join` | `(parts [string]) -> string` | Join path segments; an absolute segment replaces the accumulated path |
-| `dirname` | `(path string) -> string` | Parent directory of path |
-| `basename` | `(path string) -> string` | Filename component of path |
-| `extension` | `(path string) -> string` | File extension including dot (e.g. `".txt"`); empty string if none |
-| `is_absolute` | `(path string) -> bool` | Check if path is absolute |
-| `normalize` | `(path string) -> string` | Clean and normalize path |
-
-```gray
-mut p string = io.path_join({"/home", "user", "docs"})  // "/home/user/docs"
-mut q string = io.path_join({"a/b", "/abs"})            // "/abs", absolute replaces
-```
-
 #### Fallible Functions
 
 The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) See [Section 4.5](#45-return-value-handling).

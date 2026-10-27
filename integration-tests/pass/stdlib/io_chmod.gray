@@ -3,6 +3,7 @@
  */
 
 import @io
+import @path
 
 do check_bool(label string, got bool, want bool) -> i64 {
     if got == want {
@@ -25,7 +26,7 @@ do check_int(label string, got i64, want i64) -> i64 {
 do main() {
     mut passed i64 = 0
     mut dir, _ = io.temp_dir()
-    mut file_path = io.path_join({dir, "run.sh"})
+    mut file_path = path.join_parts({dir, "run.sh"})
     mut _ok, _ = io.write_file(file_path, "echo hi")
 
     mut changed, err = io.chmod(file_path, 0o755)
@@ -38,7 +39,7 @@ do main() {
     mut restricted, _ = io.stat(file_path)
     passed += check_int("mode is 0o600", restricted.mode, 0o600)
 
-    mut missing, missing_err = io.chmod(io.path_join({dir, "missing"}), 0o644)
+    mut missing, missing_err = io.chmod(path.join_parts({dir, "missing"}), 0o644)
     passed += check_bool("chmod of a missing path is false", missing, false)
     passed += check_bool("chmod of a missing path fails", missing_err != nil, true)
 

@@ -415,85 +415,11 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *@desc Creates a temporary directory and returns its path. The directory and all its contents are automatically deleted when the program exits. Always use destructuring — single-variable assignment is a compile error.
  *@example
  *   import @io
- *   mut path, _ = io.temp_dir()
- *   mut _, _ = io.write_file(io.path_join({path, "data.txt"}), "hello")
+ *   import @path
+ *   mut dir, _ = io.temp_dir()
+ *   mut _, _ = io.write_file(path.join_parts({dir, "data.txt"}), "hello")
  *@end
  */
-
-/* Path manipulation */
-
-/*@man path_join
- *@module io
- *@group Path
- *@sig path_join(parts [string]) -> string
- *@desc Joins path segments into a single path. An absolute segment replaces everything accumulated so far.
- *@example
- *   import @io
- *   println(io.path_join({"/home", "user", "docs"}))
- *@end
- */
-GrayString gray_io_path_join(GrayArena *arena, GrayArray parts);
-
-/*@man dirname
- *@module io
- *@group Path
- *@sig dirname(path string) -> string
- *@desc Returns the parent directory component of path.
- *@example
- *   import @io
- *   println(io.dirname("/home/user/file.txt"))
- *@end
- */
-GrayString gray_io_dirname(GrayArena *arena, GrayString path);
-
-/*@man basename
- *@module io
- *@group Path
- *@sig basename(path string) -> string
- *@desc Returns the filename component of path, without any leading directory.
- *@example
- *   import @io
- *   println(io.basename("/home/user/file.txt"))
- *@end
- */
-GrayString gray_io_basename(GrayArena *arena, GrayString path);
-
-/*@man extension
- *@module io
- *@group Path
- *@sig extension(path string) -> string
- *@desc Returns the file extension of path including the leading dot (e.g. ".txt"). Returns an empty string if there is no extension.
- *@example
- *   import @io
- *   println(io.extension("report.pdf"))
- *@end
- */
-GrayString gray_io_extension(GrayArena *arena, GrayString path);
-
-/*@man is_absolute
- *@module io
- *@group Path
- *@sig is_absolute(path string) -> bool
- *@desc Returns true if path is an absolute path.
- *@example
- *   import @io
- *   println(io.is_absolute("/etc/hosts"))
- *   println(io.is_absolute("relative/path"))
- *@end
- */
-bool gray_io_is_absolute(GrayString path);
-
-/*@man normalize
- *@module io
- *@group Path
- *@sig normalize(path string) -> string
- *@desc Cleans and normalizes path by resolving ".", "..", and redundant separators.
- *@example
- *   import @io
- *   println(io.normalize("a/b/../c"))
- *@end
- */
-GrayString gray_io_normalize(GrayArena *arena, GrayString path);
 
 /* Tuple-returning versions for (value, Error) pattern */
 typedef struct { GrayString v0; GrayError *v1; } GrayResult_string;

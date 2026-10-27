@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4005 - io.path_join removed
+ * Expected: undefined function error; the path module replaces it
+ */
+
+import @io
+
+do main() {
+    mut result = io.path_join({"a", "b"})
+}
