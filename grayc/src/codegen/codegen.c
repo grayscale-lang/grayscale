@@ -1352,8 +1352,8 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
         if (!field->type_name || !field->name) continue;
         if (!type_needs_deep_copy(codegen, field->type_name)) continue;
         char source_field[MESSAGE_BUFFER_SIZE];
-        snprintf(source_field, sizeof(source_field), "_ss%d.%s", unique_id, field->name);
-        emit_formatted(codegen, "_sd%d.%s = ", unique_id, field->name);
+        snprintf(source_field, sizeof(source_field), "_ss%d.%s", unique_id, sanitize_name(field->name));
+        emit_formatted(codegen, "_sd%d.%s = ", unique_id, sanitize_name(field->name));
         emit_value_deep_copy(codegen, field->type_name, source_field);
         emit(codegen, "; ");
     }
@@ -6149,7 +6149,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
                 emit_formatted(codegen, "gray_out_printf(%s, \"%s: \");\n", stream, field->name);
 
                 char field_expression[MESSAGE_BUFFER_SIZE];
-                snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, field->name);
+                snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, sanitize_name(field->name));
                 GrayType *field_graytype = type_from_name(field->type_name);
                 emit_value_print(codegen, field_expression, field_graytype, stream, true);
             }

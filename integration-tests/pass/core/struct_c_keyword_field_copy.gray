@@ -1,0 +1,43 @@
+/*
+ * struct_c_keyword_field_copy.gray - A struct field named after a C keyword
+ * survives being copied out of a function inside an array and being printed.
+ */
+
+import @arrays
+
+const Flag struct {
+    long string
+    short string
+}
+
+do make() -> [Flag] {
+    mut flags [Flag] = {}
+    arrays.append(flags, Flag{long: "help", short: "h"})
+    return flags
+}
+
+do main() {
+    println("=== C keyword struct field copy ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut seen string = ""
+    for_each flag in make() {
+        seen = "${flag.long}/${flag.short}"
+    }
+    if seen == "help/h" {
+        println("  [PASS] copied array keeps keyword-named fields")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] copied array keeps keyword-named fields")
+        failed += 1
+    }
+
+    const flag Flag = Flag{long: "help", short: "h"}
+    println(flag)
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        exit(1)
+    }
+}
