@@ -81,6 +81,7 @@ typedef struct {
      * in, so the global does not keep pointing into the assigning scope's
      * arena. Consumed by the first emit_expression that reaches it. */
     AstNode *module_store_value;
+    bool is_module_store; /* The statement being emitted runs in the heap arena. */
 
     /* True while emitting the store that puts a `&`-parameter element
      * temporary back; that store skips the for_each mutation check. */

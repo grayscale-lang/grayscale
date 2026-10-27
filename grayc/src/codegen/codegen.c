@@ -11623,8 +11623,9 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
     bool map_in_heap = map_pointer_object && map_pointer_object->kind == NODE_LABEL &&
         is_heap_variable(codegen, map_pointer_object->data.label.value);
     const char *ms_arena = map_in_heap ? "gray_heap_arena"
+                         : codegen->is_module_store ? "gray_default_arena"
                          : codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-    bool ms_escapes = map_in_heap || codegen->loop_scope_depth > 0;
+    bool ms_escapes = map_in_heap || (!codegen->is_module_store && codegen->loop_scope_depth > 0);
 
     /* A number entry's compound assignment is emitted by
      * emit_compound_arithmetic; a string entry's += reaches here. */
@@ -14039,8 +14040,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             if (value_type && value_type->kind == TYPE_KIND_STRING)
                 codegen->module_store_value = node->data.assign.value;
         }
+        codegen->is_module_store = to_module;
         if (node->kind == NODE_ASSIGN_STATEMENT) emit_assign_statement(codegen, node);
         else emit_expression_statement(codegen, node);
+        codegen->is_module_store = false;
         codegen->module_store_value = NULL;
         if (to_module) {
             codegen->indent--;
