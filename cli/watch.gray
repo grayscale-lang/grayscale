@@ -1,0 +1,347 @@
+// watch.gray — "gray watch": run a program, then run it again whenever it or a
+// file it imports changes. There is no file-notification API, so the watched
+// files are polled: a change in the set of files, or in any file's
+// modification time or size, triggers the next run.
+
+import @io
+import @os
+import @path
+import @maps
+import @time
+import @strings
+import @arrays
+import "./args"
+import "./commands"
+import "./driver"
+import "./sources"
+
+const POLL_INTERVAL_MS i64 = 100
+const DEBOUNCE_MS i64 = 100
+const SEPARATOR string = "────────────────────────────"
+
+// run_watch is gray watch. It returns only when the target cannot be watched;
+// a watch that is running stops with Ctrl+C.
+do run_watch(invocation args.Invocation, defines [string]) -> i64 {
+    target string = invocation.positional[0]
+
+    compiler_args, flag_err = commands.compiler_flag_args(invocation, defines)
+    if flag_err != nil {
+        eprintln(flag_err.message)
+        return 1
+    }
+
+    absolute_target, absolute_err = path.absolute_path(target)
+    if absolute_err != nil {
+        eprintln("Error resolving path: ${absolute_err.message}")
+        return 1
+    }
+    if !io.file_exists(absolute_target) {
+        _, stat_err = io.stat(absolute_target)
+        mut reason string = "no such file or directory"
+        if stat_err != nil {
+            reason = sources.failure_reason(stat_err)
+        }
+        eprintln("Error: stat ${absolute_target}: ${reason}")
+        return 1
+    }
+
+    if io.is_directory(absolute_target) {
+        return watch_directory(absolute_target, compiler_args)
+    }
+    if !sources.has_source_extension(absolute_target) {
+        eprintln("Error: file must have a .gray or .grayscale extension")
+        return 1
+    }
+    return watch_file(absolute_target, compiler_args)
+}
+
+// watch_file watches a file and the files it imports.
+do watch_file(file string, compiler_args [string]) -> i64 {
+    files_to_watch [string] = collect_files_to_watch(file)
+    import_count i64 = len(files_to_watch) - 1
+    if import_count > 0 {
+        println("Watching ${short_path(file)} (+${import_count} imports)")
+    } otherwise {
+        println("Watching ${short_path(file)}")
+    }
+    println("Press Ctrl+C to stop")
+    println("")
+    flush()
+    watch_loop(file, "", compiler_args)
+    return 0
+}
+
+// watch_directory watches every source file under a directory; the one file
+// with a main() is run.
+do watch_directory(directory string, compiler_args [string]) -> i64 {
+    main_file, main_err = find_main_file(directory)
+    if main_err != nil {
+        eprintln(main_err.message)
+        return 1
+    }
+    files_to_watch [string] = collect_source_files_in_directory(directory)
+    println("Watching ${short_path(directory)} (${len(files_to_watch)} files, entry: ${short_path(main_file)})")
+    println("Press Ctrl+C to stop")
+    println("")
+    flush()
+    watch_loop(main_file, directory, compiler_args)
+    return 0
+}
+
+// current_files is what to watch right now: the main file and its imports, or,
+// when directory is set, every source file under it.
+do current_files(main_file string, directory string) -> [string] {
+    if directory != "" {
+        return collect_source_files_in_directory(directory)
+    }
+    return collect_files_to_watch(main_file)
+}
+
+// take_snapshot records each watched file's modification time and size.
+do take_snapshot(files [string]) -> map[string:string] {
+    mut snapshot map[string:string] = {:}
+    for_each file in files {
+        info, stat_err = io.stat(file)
+        if stat_err == nil {
+            snapshot[file] = "${info.mod_time}:${info.size}"
+        }
+    }
+    return snapshot
+}
+
+// snapshots_differ reports whether the set of files or any file's stamp changed.
+do snapshots_differ(before map[string:string], after map[string:string]) -> bool {
+    if len(before) != len(after) {
+        return true
+    }
+    for_each file, stamp in after {
+        if !maps.contains_key(before, file) || before[file] != stamp {
+            return true
+        }
+    }
+    return false
+}
+
+// watch_loop runs the program, then polls for changes and runs it again. A
+// change is acted on once the files have stopped changing for DEBOUNCE_MS.
+do watch_loop(main_file string, directory string, compiler_args [string]) {
+    execute_file(main_file, compiler_args)
+    mut known map[string:string] = take_snapshot(current_files(main_file, directory))
+    as_long_as true {
+        sleep_ms(POLL_INTERVAL_MS)
+        mut latest map[string:string] = take_snapshot(current_files(main_file, directory))
+        if !snapshots_differ(known, latest) {
+            continue
+        }
+        // Wait out a burst of writes so one save runs the program once.
+        mut settled bool = false
+        as_long_as !settled {
+            sleep_ms(DEBOUNCE_MS)
+            after_wait map[string:string] = take_snapshot(current_files(main_file, directory))
+            settled = !snapshots_differ(latest, after_wait)
+            latest = after_wait
+        }
+        known = latest
+        execute_file(main_file, compiler_args)
+    }
+}
+
+// collect_files_to_watch returns the main file plus every source file it
+// imports, directly or transitively, found by a text scan of the import lines.
+// Each import is resolved against the directory of the file that wrote it.
+do collect_files_to_watch(main_file string) -> [string] {
+    mut files [string] = {main_file}
+    mut seen map[string:bool] = {main_file: true}
+    mut next i64 = 0
+    as_long_as next < len(files) {
+        importer string = files[next]
+        next = next + 1
+        importer_directory, _ = path.split_dir_file(importer)
+        for_each import_path in scan_imports(importer) {
+            // Stdlib imports (@math, ...) name no file.
+            if strings.starts_with(import_path, "@") {
+                continue
+            }
+            for_each resolved in resolve_local_import(path.normalize_path(importer_directory), import_path) {
+                if !maps.contains_key(seen, resolved) {
+                    seen[resolved] = true
+                    arrays.append(files, resolved)
+                }
+            }
+        }
+    }
+    return files
+}
+
+// resolve_local_import maps a local import path to the source files it names,
+// in the compiler's order: an explicit source file, then the path with a source
+// extension appended, then a directory module's top-level files.
+do resolve_local_import(importer_directory string, import_path string) -> [string] {
+    resolved string = path.normalize_path(path.join_parts({importer_directory, import_path}))
+    if sources.has_source_extension(resolved) {
+        if io.is_file(resolved) {
+            return {resolved}
+        }
+        return {}
+    }
+    for_each extension in {".gray", ".grayscale"} {
+        if io.is_file(resolved + extension) {
+            return {resolved + extension}
+        }
+    }
+    mut found [string] = {}
+    entries, list_err = io.list_dir(resolved)
+    if list_err != nil {
+        return found
+    }
+    for_each entry in entries {
+        entry_path string = path.join_parts({resolved, entry})
+        if !io.is_directory(entry_path) && !strings.starts_with(entry, ".") && sources.has_source_extension(entry) {
+            arrays.append(found, entry_path)
+        }
+    }
+    return found
+}
+
+// words splits text on runs of whitespace.
+do words(text string) -> [string] {
+    mut result [string] = {}
+    for_each piece in strings.split(strings.replace(strings.replace(text, "\t", " "), "\r", " "), " ") {
+        if piece != "" {
+            arrays.append(result, piece)
+        }
+    }
+    return result
+}
+
+// strip_quotes removes the double quotes around an import path.
+do strip_quotes(text string) -> string {
+    mut start i64 = 0
+    mut end i64 = len(text)
+    as_long_as start < end && text[start] == '"' {
+        start = start + 1
+    }
+    as_long_as end > start && text[end - 1] == '"' {
+        end = end - 1
+    }
+    return strings.slice(text, start, end)
+}
+
+// scan_imports does a text scan for the import statements of a file and
+// returns the import paths with quotes and aliases removed (e.g. "@math",
+// "./mymodule").
+do scan_imports(file_path string) -> [string] {
+    mut imports [string] = {}
+    data, read_err = io.read_file(file_path)
+    if read_err != nil {
+        return imports
+    }
+    for_each raw_line in strings.split(data, "\n") {
+        line string = strings.trim(raw_line)
+        if !strings.starts_with(line, "import ") {
+            continue
+        }
+        mut rest string = strings.remove_prefix(line, "import ")
+        using_index i64 = strings.index_of(rest, " using ")
+        if using_index >= 0 {
+            rest = strings.slice(rest, 0, using_index)
+        }
+        for_each part in strings.split(rest, ",") {
+            part_words [string] = words(part)
+            if len(part_words) == 0 {
+                continue
+            }
+            // The path is the last field; an alias, if any, comes before it.
+            arrays.append(imports, strip_quotes(part_words[len(part_words) - 1]))
+        }
+    }
+    return imports
+}
+
+// collect_source_files_in_directory lists every source file under a directory,
+// each directory's entries in sorted order.
+do collect_source_files_in_directory(directory string) -> [string] {
+    mut found [string] = {}
+    mut entries, list_err = io.list_dir(directory)
+    if list_err != nil {
+        return found
+    }
+    arrays.sort_asc(entries)
+    for_each entry in entries {
+        entry_path string = path.join_parts({directory, entry})
+        if io.is_directory(entry_path) {
+            for_each nested in collect_source_files_in_directory(entry_path) {
+                arrays.append(found, nested)
+            }
+        } or sources.has_source_extension(entry_path) {
+            arrays.append(found, entry_path)
+        }
+    }
+    return found
+}
+
+// find_main_file finds the one source file in a directory that has a main().
+do find_main_file(directory string) -> (string, Error) {
+    source_files [string] = collect_source_files_in_directory(directory)
+    if len(source_files) == 0 {
+        return "", error(.NotFound, "no source files found in ${directory}")
+    }
+    mut main_files [string] = {}
+    for_each file in source_files {
+        if has_main_function(file) {
+            arrays.append(main_files, file)
+        }
+    }
+    if len(main_files) == 0 {
+        return "", error(.NotFound, "no main() function found in ${directory}\n  = help: create a file with a main() function")
+    }
+    if len(main_files) > 1 {
+        mut file_list string = ""
+        for_each file in main_files {
+            file_list = file_list + "\n    - ${short_path(file)}"
+        }
+        return "", error(.InvalidInput, "multiple main() functions found in ${directory}:${file_list}\n  = help: only one file should contain main()")
+    }
+    return main_files[0], nil
+}
+
+// has_main_function checks whether a file has a line starting "do main(".
+do has_main_function(file_path string) -> bool {
+    data, read_err = io.read_file(file_path)
+    if read_err != nil {
+        return false
+    }
+    for_each line in strings.split(data, "\n") {
+        if strings.starts_with(strings.trim(line), "do main(") {
+            return true
+        }
+    }
+    return false
+}
+
+// execute_file runs the file with grayc and prints a header and a separator
+// around its output.
+do execute_file(file string, compiler_args [string]) {
+    println("[${time.format("%H:%M:%S", time.now())}] Running ${short_path(file)}...")
+    flush()
+    _, run_err = driver.run(file, compiler_args)
+    if run_err != nil {
+        println("Error: ${run_err.message}")
+    }
+    println(SEPARATOR)
+    flush()
+}
+
+// short_path is a path relative to the working directory when that is shorter,
+// else its last element.
+do short_path(file_path string) -> string {
+    relative, relative_err = path.relative_path(os.current_dir(), file_path)
+    _, base_name = path.split_dir_file(file_path)
+    if relative_err != nil {
+        return base_name
+    }
+    if len(relative) < len(file_path) {
+        return relative
+    }
+    return base_name
+}
