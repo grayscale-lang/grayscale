@@ -382,6 +382,7 @@ build: stubs
 	@# Grayscale source in cli/ can only embed() paths under cli/, so it gets
 	@# the same assets; embed-tag keeps hashing $(EMBED_DIR).
 	@cp -R $(EMBED_DIR)/. $(CLI_EMBED_DIR)/
+	@./grayc/grayc scripts/generate_embedded_assets.gray -o generate_embedded_assets && ./generate_embedded_assets && rm -f generate_embedded_assets
 	@echo "Building gray CLI (with embedded runtime)..."
 	@# Content-hash the staged assets once here so the installed wrapper does
 	@# not hash them on every invocation just to name its extract dir.

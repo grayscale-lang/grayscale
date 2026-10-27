@@ -1,0 +1,138 @@
+// embedded.gray — Extracts the grayc binary, libgrayrt.a and the runtime and
+// stdlib sources embedded in the gray CLI to ~/.gray/runtime/<tag>/ on first
+// use. The tag names the directory by content, so a new gray binary never
+// reuses a stale extraction.
+
+import @io
+import @os
+import @path
+import @strings
+import @arrays
+import @crypto
+import "./embedded_assets"
+
+// Releases set the tag at build time with -define:EMBED_TAG=... (make
+// embed-tag computes it); without it the tag is hashed from the embedded
+// assets on every run, to the same value.
+#define
+const EMBED_TAG string = ""
+
+const EXECUTABLE_MODE i64 = 493
+const FILE_MODE i64 = 420
+
+// compute_embed_tag mirrors the Makefile's embed-tag target: sha256 of grayc,
+// libgrayrt.a, the byte-sorted "./"-prefixed source list (one per line), then
+// each file's contents in that order, cut to 16 hex characters.
+do compute_embed_tag(sources map[string:string]) -> string {
+    mut names [string] = {}
+    for_each relative, _ in sources {
+        arrays.append(names, "./${strings.remove_prefix(relative, "src/")}")
+    }
+    arrays.sort_asc(names)
+
+    mut parts [string] = {embedded_assets.EMBEDDED_GRAYC, embedded_assets.EMBEDDED_LIBGRAYRT}
+    for_each name in names {
+        arrays.append(parts, "${name}\n")
+    }
+    for_each name in names {
+        arrays.append(parts, sources["src/${strings.remove_prefix(name, "./")}"])
+    }
+    return strings.slice(crypto.sha256(strings.join(parts, "")), 0, 16)
+}
+
+// extract_embedded materialises the embedded compiler and runtime into a
+// per-content-hash directory under ~/.gray/runtime and returns the path of the
+// compiler binary. An empty embedded compiler (a dev build that never staged
+// the assets) is an error, so the caller falls back to a path search.
+do extract_embedded(binary_name string) -> (string, Error) {
+    // libgrayrt.a may legitimately be empty: the Windows bootstrap ships a
+    // compiler without the runtime archive, which is enough for check, fmt,
+    // doc and --emit-c. Only a missing compiler means a dev build.
+    if embedded_assets.EMBEDDED_GRAYC == "" {
+        return "", error(.NotFound, "embedded grayc runtime is empty (dev build)")
+    }
+
+    sources map[string:string] = embedded_assets.embedded_sources()
+    mut tag string = EMBED_TAG
+    if tag == "" {
+        tag = compute_embed_tag(sources)
+    }
+
+    home string = os.home_dir()
+    if home == "" {
+        return "", error(.NotFound, "cannot resolve home dir")
+    }
+    directory string = path.join_parts({home, ".gray", "runtime", tag})
+    grayc_destination string = path.join_parts({directory, binary_name})
+
+    // Fast path: a prior run extracted everything and left the marker.
+    marker string = path.join_parts({directory, ".extracted"})
+    if io.file_exists(marker) {
+        return grayc_destination, nil
+    }
+
+    made, make_err = io.make_dir_all(directory)
+    if make_err != nil {
+        return "", error(.IoFailure, "cannot create runtime dir ${directory}: ${make_err.message}")
+    }
+
+    write_err Error = write_if_missing(grayc_destination, embedded_assets.EMBEDDED_GRAYC, EXECUTABLE_MODE)
+    if write_err != nil {
+        return "", write_err
+    }
+    if embedded_assets.EMBEDDED_LIBGRAYRT != "" {
+        library_destination string = path.join_parts({directory, "libgrayrt.a"})
+        library_err Error = write_if_missing(library_destination, embedded_assets.EMBEDDED_LIBGRAYRT, FILE_MODE)
+        if library_err != nil {
+            return "", library_err
+        }
+    }
+
+    // Source files go under src/ so grayc finds its headers through the
+    // development-layout search.
+    for_each relative, contents in sources {
+        source_destination string = path.join_parts({directory, relative})
+        source_directory string = path.join_parts({directory, strings.slice(relative, 0, strings.last_index_of(relative, "/"))})
+        dir_made, dir_err = io.make_dir_all(source_directory)
+        if dir_err != nil {
+            return "", error(.IoFailure, "cannot create runtime dir ${source_directory}: ${dir_err.message}")
+        }
+        source_err Error = write_if_missing(source_destination, contents, FILE_MODE)
+        if source_err != nil {
+            return "", source_err
+        }
+    }
+
+    // Drop the marker last so a crash mid-extraction is retried rather than
+    // trusted by the fast path above.
+    marked, marker_err = io.write_file(marker, "")
+    if marker_err != nil {
+        return "", error(.IoFailure, "cannot finalize runtime dir ${directory}: ${marker_err.message}")
+    }
+    return grayc_destination, nil
+}
+
+// write_if_missing writes contents to destination with the given mode unless a
+// file of the same size is already there. The content-hash directory already
+// guarantees uniqueness per build, so a size check is enough to detect a
+// successful prior extraction.
+do write_if_missing(destination string, contents string, mode i64) -> Error {
+    info, stat_err = io.stat(destination)
+    if stat_err == nil && info.size == len(contents) {
+        return nil
+    }
+    temporary string = "${destination}.tmp"
+    written, write_err = io.write_file(temporary, contents)
+    if write_err != nil {
+        return error(.IoFailure, "write ${destination}: ${write_err.message}")
+    }
+    chmoded, chmod_err = io.chmod(temporary, mode)
+    if chmod_err != nil {
+        return error(.IoFailure, "write ${destination}: ${chmod_err.message}")
+    }
+    moved, move_err = io.move_file(temporary, destination)
+    if move_err != nil {
+        return error(.IoFailure, "install ${destination}: ${move_err.message}")
+    }
+    return nil
+}

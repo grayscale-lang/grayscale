@@ -113,6 +113,7 @@ context/
 /internal/driver/runtime/libgrayrt.a
 /internal/driver/runtime/src/
 /cli/runtime/
+/cli/embedded_assets.gray
 *.stub
 *.md
 .claude/
