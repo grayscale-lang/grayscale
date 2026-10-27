@@ -1,4 +1,4 @@
-// args_text.gray — The help text of every gray command, as the Go CLI prints it.
+// args_text.gray — The help text of every gray command, as the gray CLI prints it.
 
 const LONG_BUILD string = `Compile a Grayscale source file to a native binary. The binary is named after the source file and written to the current directory unless -o is given.
 

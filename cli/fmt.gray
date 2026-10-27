@@ -5,21 +5,11 @@
 // and reports `would format: <path>` for each file that differs.
 
 import @io
-import @os
 import @strings
 import @arrays
-import @encoding
-import @path
+import "./driver"
 import "./scanner"
 import "./sources"
-
-const EMBEDDED_GRAYC string = embed("runtime/grayc")
-const EMBEDDED_LIBGRAYRT string = embed("runtime/libgrayrt.a")
-
-// EMBED_TAG names the extraction directory. `make build` sets it with
-// -define:EMBED_TAG=<output of make embed-tag>; empty means a dev build.
-#define
-const EMBED_TAG string = ""
 
 const TAB_WIDTH i64 = 4
 const MAX_CONSECUTIVE_BLANK_LINES i64 = 2
@@ -119,115 +109,10 @@ do trim_trailing_blanks(text string) -> string {
     return strings.slice(text, 0, end)
 }
 
-// write_if_missing writes data to file_path with the given mode unless a file
-// of the same size is already there.
-do write_if_missing(file_path string, data string, mode i64) -> bool {
-    info, stat_err = io.stat(file_path)
-    if stat_err == nil && info.size == len(data) {
-        return true
-    }
-    _, write_err = io.write_bytes(file_path, encoding.from_string(data))
-    if write_err != nil {
-        return false
-    }
-    _, chmod_err = io.chmod(file_path, mode)
-    return chmod_err == nil
-}
-
-// extract_embedded_grayc writes the embedded compiler and runtime library to
-// ~/.gray/runtime/<tag>/ and returns the compiler's path, or "" in a dev build
-// (empty embed) or when extraction fails.
-do extract_embedded_grayc() -> string {
-    if len(EMBEDDED_GRAYC) == 0 || EMBED_TAG == "" {
-        return ""
-    }
-    runtime_dir string = path.join_parts({os.home_dir(), ".gray", "runtime", EMBED_TAG})
-    _, dir_err = io.make_dir_all(runtime_dir)
-    if dir_err != nil {
-        return ""
-    }
-    grayc_dest string = path.join_parts({runtime_dir, grayc_binary_name()})
-    if !write_if_missing(grayc_dest, EMBEDDED_GRAYC, 493) {
-        return ""
-    }
-    if len(EMBEDDED_LIBGRAYRT) > 0 {
-        if !write_if_missing(path.join_parts({runtime_dir, "libgrayrt.a"}), EMBEDDED_LIBGRAYRT, 420) {
-            return ""
-        }
-    }
-    return grayc_dest
-}
-
-// grayc_binary_name is the compiler's file name on this platform.
-do grayc_binary_name() -> string {
-    if os.current_os() == Platform.WINDOWS {
-        return "grayc.exe"
-    }
-    return "grayc"
-}
-
-// grayc_path locates the compiler: GRAY_COMPILER_PATH, the grayc/ directory
-// next to the running binary, the embedded compiler extracted to
-// ~/.gray/runtime/<tag>/, the running binary's own directory, PATH, then the
-// known install locations. It returns "" when none is found.
-do grayc_path() -> string {
-    override string = os.get_env("GRAY_COMPILER_PATH")
-    if override != "" && io.is_file(override) {
-        eprintln("note: using compiler from GRAY_COMPILER_PATH=${override}")
-        return override
-    }
-
-    exe, exe_err = os.executable_path()
-    if exe_err == nil {
-        exe_dir, _ = path.split_dir_file(exe)
-        checkout string = path.join_parts({exe_dir, "grayc", grayc_binary_name()})
-        if io.is_file(checkout) {
-            return checkout
-        }
-    }
-
-    embedded string = extract_embedded_grayc()
-    if embedded != "" {
-        return embedded
-    }
-
-    if exe_err == nil {
-        exe_dir, _ = path.split_dir_file(exe)
-        beside string = path.join_parts({exe_dir, grayc_binary_name()})
-        if io.is_file(beside) {
-            return beside
-        }
-    }
-
-    found, was_found = os.find_executable("grayc")
-    if was_found {
-        return found
-    }
-
-    if os.current_os() != Platform.WINDOWS {
-        for_each known in {"/usr/local/bin/grayc", "/usr/bin/grayc"} {
-            if io.is_file(known) {
-                return known
-            }
-        }
-    }
-    return ""
-}
-
 // run_grayc_fmt formats one file in place with `grayc --fmt`.
 do run_grayc_fmt(file_path string) -> bool {
-    compiler string = grayc_path()
-    if compiler == "" {
-        return false
-    }
-    result, exec_err = os.exec(compiler, {"--fmt", file_path})
-    if exec_err != nil {
-        return false
-    }
-    if result.stderr != "" {
-        eprint(result.stderr)
-    }
-    return result.exit_code == 0
+    code, format_err = driver.format_file(file_path)
+    return format_err == nil && code == 0
 }
 
 // run_fmt is the entry point for `gray fmt`; it returns the exit code.
@@ -324,18 +209,4 @@ do run_fmt(args [string], check_mode bool) -> i64 {
         println("gray fmt: ${len(files)} file(s) checked, already formatted")
     }
     return exit_code
-}
-
-do main() {
-    argv [string] = os.args()
-    mut check_mode bool = false
-    mut paths [string] = {}
-    for i in range(1, len(argv)) {
-        if argv[i] == "--check" {
-            check_mode = true
-        } otherwise {
-            arrays.append(paths, argv[i])
-        }
-    }
-    exit(run_fmt(paths, check_mode))
 }

@@ -49,7 +49,7 @@ _gray()
     requestComp="${words[1]} @@REQUEST@@ ${words[2,-1]}"
     if [ "${lastChar}" = "" ]; then
         # If the last parameter is complete (there is a space following it)
-        # We add an extra empty parameter so we can indicate this to the go completion code.
+        # We add an extra empty parameter so we can indicate this to the completion code.
         __gray_debug "Adding extra empty parameter"
         requestComp="${requestComp} \"\""
     fi

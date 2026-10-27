@@ -683,7 +683,7 @@ do help_text(commands [CommandSpec], spec CommandSpec) -> string {
         if spec.synopsis != "" {
             use_line = use_line + " " + spec.synopsis
         }
-        // Cobra's own bash completion command leaves " [flags]" off its usage line.
+        // The bash completion command leaves " [flags]" off its usage line.
         if spec.command_path != "completion bash" {
             use_line = use_line + " [flags]"
         }

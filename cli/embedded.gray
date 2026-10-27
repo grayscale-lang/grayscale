@@ -71,7 +71,7 @@ do extract_embedded(binary_name string) -> (string, Error) {
         return grayc_destination, nil
     }
 
-    made, make_err = io.make_dir_all(directory)
+    _, make_err = io.make_dir_all(directory)
     if make_err != nil {
         return "", error(.IoFailure, "cannot create runtime dir ${directory}: ${make_err.message}")
     }
@@ -93,7 +93,7 @@ do extract_embedded(binary_name string) -> (string, Error) {
     for_each relative, contents in sources {
         source_destination string = path.join_parts({directory, relative})
         source_directory string = path.join_parts({directory, strings.slice(relative, 0, strings.last_index_of(relative, "/"))})
-        dir_made, dir_err = io.make_dir_all(source_directory)
+        _, dir_err = io.make_dir_all(source_directory)
         if dir_err != nil {
             return "", error(.IoFailure, "cannot create runtime dir ${source_directory}: ${dir_err.message}")
         }
@@ -105,7 +105,7 @@ do extract_embedded(binary_name string) -> (string, Error) {
 
     // Drop the marker last so a crash mid-extraction is retried rather than
     // trusted by the fast path above.
-    marked, marker_err = io.write_file(marker, "")
+    _, marker_err = io.write_file(marker, "")
     if marker_err != nil {
         return "", error(.IoFailure, "cannot finalize runtime dir ${directory}: ${marker_err.message}")
     }
@@ -122,15 +122,15 @@ do write_if_missing(destination string, contents string, mode i64) -> Error {
         return nil
     }
     temporary string = "${destination}.tmp"
-    written, write_err = io.write_file(temporary, contents)
+    _, write_err = io.write_file(temporary, contents)
     if write_err != nil {
         return error(.IoFailure, "write ${destination}: ${write_err.message}")
     }
-    chmoded, chmod_err = io.chmod(temporary, mode)
+    _, chmod_err = io.chmod(temporary, mode)
     if chmod_err != nil {
         return error(.IoFailure, "write ${destination}: ${chmod_err.message}")
     }
-    moved, move_err = io.move_file(temporary, destination)
+    _, move_err = io.move_file(temporary, destination)
     if move_err != nil {
         return error(.IoFailure, "install ${destination}: ${move_err.message}")
     }
