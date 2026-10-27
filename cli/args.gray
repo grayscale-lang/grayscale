@@ -1,0 +1,1054 @@
+// args.gray — Argument parsing for the gray CLI: subcommand lookup, flag
+// parsing in the pflag style (--flag=value, --flag value, -f value, -fvalue,
+// grouped shorthands, "--" ends the flags), per-command help, and shell
+// completion (the completion scripts and the hidden __complete command the
+// scripts call on every Tab press).
+//
+// Commands are plain data in build_commands(); the parser, the help output
+// and the completion code all read that one table.
+
+import @arrays
+import @io
+import @maps
+import @os
+import @strings
+import "./args_text"
+import "./sources"
+
+const EMBEDDED_COMPLETION_BASH string = embed("completions/gray.bash")
+const EMBEDDED_COMPLETION_ZSH string = embed("completions/gray.zsh")
+const EMBEDDED_COMPLETION_FISH string = embed("completions/gray.fish")
+const EMBEDDED_COMPLETION_POWERSHELL string = embed("completions/gray.ps1")
+
+const DIRECTIVE_ERROR i64 = 1
+const DIRECTIVE_NO_SPACE i64 = 2
+const DIRECTIVE_NO_FILE_COMP i64 = 4
+const DIRECTIVE_FILTER_FILE_EXT i64 = 8
+
+const MIN_NAME_PADDING i64 = 11
+
+const ArgsRule enum { NO_ARGS; ARBITRARY; MAX_ONE; ONE_EXACT; ONE_OR_MORE; NO_ARGS_UNLESS_CONFIRM }
+
+// Completer names the function that completes a command's positional arguments.
+const Completer enum { NONE; ROOT; SOURCE; MAN; HELP }
+
+const FlagSpec struct {
+    name string
+    shorthand string
+    is_bool bool
+    usage string          // may hold a `label` that the help shows as the value name
+    default_value string
+    hidden bool
+    values [string]       // the closed set of values completion offers
+}
+
+const CommandSpec struct {
+    command_path string            // "" for the root, "cross build" for a subcommand
+    name string
+    synopsis string        // what follows the name in the usage line
+    short string
+    long string
+    runnable bool
+    hidden bool
+    args_rule ArgsRule
+    requires string        // ONE_EXACT: "a <file.gray>"
+    usage string
+    example string
+    completer Completer
+    flags [FlagSpec]
+}
+
+// Invocation is what a command receives: its path, its positional arguments,
+// and the value of each flag that was given.
+const Invocation struct {
+    command string
+    positional [string]
+    flag_values map[string:string]
+    changed map[string:bool]
+    dash_index i64         // index in positional where "--" stood, or -1
+}
+
+// Flags are parsed into this, apart from the command lookup.
+const ParsedFlags struct {
+    positional [string]
+    flag_values map[string:string]
+    changed map[string:bool]
+    dash_index i64
+}
+
+const QUIET_USAGE string = "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)"
+const ARENA_LIMIT_USAGE string = "Maximum `size` of arena memory per program (e.g. 512KB, 256MB, 1GB; default: 1GB)"
+const CC_USAGE string = "C `compiler` to use (a name on PATH or a path); overrides GRAY_CC and CC"
+const NO_COLOR_USAGE string = "Disable colored output"
+const OUTPUT_USAGE string = "Output binary name"
+
+const STANDARD_LINK string = "See the full language standard: https://github.com/grayscale-lang/grayscale/blob/main/STANDARD.md"
+
+do string_flag(name string, shorthand string, usage string, default_value string) -> FlagSpec {
+    return FlagSpec{name: name, shorthand: shorthand, is_bool: false, usage: usage, default_value: default_value, hidden: false, values: {}}
+}
+
+do bool_flag(name string, shorthand string, usage string) -> FlagSpec {
+    return FlagSpec{name: name, shorthand: shorthand, is_bool: true, usage: usage, default_value: "", hidden: false, values: {}}
+}
+
+do last_word(text string) -> string {
+    parts [string] = strings.split(text, " ")
+    return parts[len(parts) - 1]
+}
+
+do new_command(command_path string, synopsis string, short string, long string, args_rule ArgsRule) -> CommandSpec {
+    return CommandSpec{command_path: command_path, name: last_word(command_path), synopsis: synopsis, short: short, long: long, runnable: true, hidden: false, args_rule: args_rule, requires: "", usage: "", example: "", completer: .NONE, flags: {}}
+}
+
+// compiler_flags are the flags the commands that compile a program share.
+do compiler_flags(with_cc bool) -> [FlagSpec] {
+    mut flags [FlagSpec] = {
+        string_flag("quiet", "q", QUIET_USAGE, ""),
+        bool_flag("no-color", "", NO_COLOR_USAGE),
+        string_flag("arena-limit", "", ARENA_LIMIT_USAGE, "")
+    }
+    if with_cc {
+        arrays.append(flags, string_flag("cc", "", CC_USAGE, ""))
+    }
+    return flags
+}
+
+do shell_command(shell string, long string) -> CommandSpec {
+    mut spec CommandSpec = new_command("completion ${shell}", "", "Generate the autocompletion script for ${shell}", long, .NO_ARGS)
+    spec.flags = {bool_flag("no-descriptions", "", "disable completion descriptions")}
+    return spec
+}
+
+// build_commands is the command table. Subcommands follow their parent.
+do build_commands() -> [CommandSpec] {
+    mut commands [CommandSpec] = {}
+
+    mut root CommandSpec = new_command("", "[file.gray]", "Simple to write. Safe to run.", args_text.LONG_ROOT, .ARBITRARY)
+    root.completer = .ROOT
+    root.flags = arrays.concat({string_flag("cc", "", CC_USAGE, "")}, compiler_flags(false))
+    arrays.append(commands, root)
+
+    mut build CommandSpec = new_command("build", "[file.gray]", "Compile a Grayscale source file to a native binary", args_text.LONG_BUILD, .ONE_EXACT)
+    build.requires = "a <file.gray>"
+    build.usage = "<file.gray>"
+    build.example = "main.gray"
+    build.completer = .SOURCE
+    mut verbose_flag FlagSpec = bool_flag("verbose", "v", "Show compilation commands")
+    verbose_flag.hidden = true
+    build.flags = arrays.concat({string_flag("output", "o", OUTPUT_USAGE, ""), verbose_flag, bool_flag("emit-c", "", "Emit generated C source to a file (no binary). Uses -o for output path, or defaults to <input>.c"), bool_flag("time", "", "Show compilation timing")}, compiler_flags(true))
+    arrays.append(commands, build)
+
+    mut check CommandSpec = new_command("check", "[file.gray | file.grayscale | directory | directory/...]", "Type-check a file or project without compiling", args_text.LONG_CHECK, .ONE_EXACT)
+    check.requires = "a <file.gray | directory>"
+    check.usage = "<file.gray | directory>"
+    check.example = "main.gray"
+    check.completer = .SOURCE
+    check.flags = compiler_flags(true)
+    arrays.append(commands, check)
+
+    mut completion CommandSpec = new_command("completion", "", "Generate the autocompletion script for the specified shell", args_text.LONG_COMPLETION, .ARBITRARY)
+    completion.runnable = false
+    arrays.append(commands, completion)
+    arrays.append(commands, shell_command("bash", args_text.LONG_COMPLETION_BASH))
+    arrays.append(commands, shell_command("fish", args_text.LONG_COMPLETION_FISH))
+    mut completion_install CommandSpec = new_command("completion install", "", "Install the completion script for your shell", args_text.LONG_COMPLETION_INSTALL, .NO_ARGS)
+    arrays.append(commands, completion_install)
+    arrays.append(commands, shell_command("powershell", args_text.LONG_COMPLETION_POWERSHELL))
+    arrays.append(commands, shell_command("zsh", args_text.LONG_COMPLETION_ZSH))
+
+    mut cross CommandSpec = new_command("cross", "", "Cross-compile Grayscale programs via Zig", args_text.LONG_CROSS, .ARBITRARY)
+    cross.runnable = false
+    arrays.append(commands, cross)
+    mut cross_build CommandSpec = new_command("cross build", "[file.gray]", "Cross-compile a Grayscale source file for another platform", args_text.LONG_CROSS_BUILD, .ONE_EXACT)
+    cross_build.requires = "a <file.gray>"
+    cross_build.usage = "<file.gray> --target <target>"
+    cross_build.example = "main.gray --target linux-amd64"
+    cross_build.completer = .SOURCE
+    mut target_flag FlagSpec = string_flag("target", "", "Target platform (run 'gray cross targets' to list)", "")
+    target_flag.values = {"linux-amd64", "linux-arm64", "mac-amd64", "mac-arm64", "windows-amd64"}
+    cross_build.flags = {string_flag("output", "o", OUTPUT_USAGE, ""), bool_flag("emit-c", "", "Emit generated C source to a file (no binary)"), bool_flag("time", "", "Show compilation timing"), string_flag("quiet", "q", QUIET_USAGE, ""), bool_flag("no-color", "", NO_COLOR_USAGE), string_flag("arena-limit", "", ARENA_LIMIT_USAGE, ""), target_flag}
+    arrays.append(commands, cross_build)
+    arrays.append(commands, new_command("cross targets", "", "List supported cross-compilation targets", args_text.LONG_CROSS_TARGETS, .NO_ARGS))
+
+    mut doc CommandSpec = new_command("doc", "<path>", "Generate documentation from #doc attributes", args_text.LONG_DOC, .ONE_OR_MORE)
+    doc.requires = "a <path>"
+    doc.usage = "<path>"
+    doc.example = "./..."
+    doc.completer = .SOURCE
+    doc.flags = {string_flag("output", "o", "Path to write generated markdown", "DOCS.md")}
+    arrays.append(commands, doc)
+
+    mut fmt_spec CommandSpec = new_command("fmt", "<path>", "Format Grayscale source files", args_text.LONG_FMT, .ONE_OR_MORE)
+    fmt_spec.requires = "a <path>"
+    fmt_spec.usage = "<path>"
+    fmt_spec.example = "./..."
+    fmt_spec.completer = .SOURCE
+    fmt_spec.flags = {bool_flag("check", "", "Exit non-zero if any file would change; don't modify files")}
+    arrays.append(commands, fmt_spec)
+
+    mut help CommandSpec = new_command("help", "[command]", "Help about any command", args_text.LONG_HELP, .ARBITRARY)
+    help.completer = .HELP
+    arrays.append(commands, help)
+
+    arrays.append(commands, new_command("install", "<version>", "Install a specific Grayscale version, replacing the current install", args_text.LONG_INSTALL, .ONE_EXACT))
+    mut install_spec CommandSpec = commands[len(commands) - 1]
+    install_spec.requires = "a <version>"
+    install_spec.usage = "<version>"
+    install_spec.example = "\"grayscale: v0.11.5\""
+    commands[len(commands) - 1] = install_spec
+
+    mut man CommandSpec = new_command("man", "[name]", "Show documentation for a builtin or stdlib function", args_text.LONG_MAN, .MAX_ONE)
+    man.completer = .MAN
+    arrays.append(commands, man)
+
+    mut new_spec CommandSpec = new_command("new", "[project-name]", "Scaffold a new Grayscale project", args_text.LONG_NEW, .MAX_ONE)
+    mut template_flag FlagSpec = string_flag("template", "t", "Template: basic, cli, lib, multi, server, client", "basic")
+    template_flag.values = {"basic", "cli", "lib", "multi", "server", "client"}
+    mut server_type_flag FlagSpec = string_flag("server-type", "s", "Server template type: minimal, normal", "normal")
+    server_type_flag.values = {"minimal", "normal"}
+    new_spec.flags = {template_flag, bool_flag("comments", "c", "Include helpful syntax comments"), bool_flag("force", "f", "Overwrite existing directory"), server_type_flag}
+    arrays.append(commands, new_spec)
+
+    arrays.append(commands, new_command("report", "", "Print system info for bug reports", args_text.LONG_REPORT, .NO_ARGS))
+
+    mut test CommandSpec = new_command("test", "[path...]", "Compile and run #test functions", args_text.LONG_TEST, .ARBITRARY)
+    test.completer = .SOURCE
+    test.flags = {bool_flag("no-color", "", NO_COLOR_USAGE)}
+    arrays.append(commands, test)
+
+    mut update CommandSpec = new_command("update", "", "Check for updates and upgrade Grayscale", args_text.LONG_UPDATE, .NO_ARGS_UNLESS_CONFIRM)
+    mut confirm_flag FlagSpec = bool_flag("confirm", "", "")
+    confirm_flag.hidden = true
+    update.flags = {confirm_flag, bool_flag("pre", "", "Install the latest pre-release (alpha/beta/rc) instead of the latest stable")}
+    arrays.append(commands, update)
+
+    arrays.append(commands, new_command("verify", "", "Run the built-in language verification test suite", args_text.LONG_VERIFY, .NO_ARGS))
+    arrays.append(commands, new_command("version", "", "Show version information", args_text.LONG_VERSION, .NO_ARGS))
+
+    mut watch CommandSpec = new_command("watch", "[file.gray | file.grayscale | directory]", "Watch files and re-run on changes", args_text.LONG_WATCH, .ONE_EXACT)
+    watch.requires = "a <file.gray | directory>"
+    watch.usage = "<file.gray | directory>"
+    watch.example = "main.gray"
+    watch.completer = .SOURCE
+    watch.flags = compiler_flags(true)
+    arrays.append(commands, watch)
+
+    mut complete_spec CommandSpec = new_command("__complete", "", "Request shell completion choices for the specified command-line", "", .ARBITRARY)
+    complete_spec.hidden = true
+    arrays.append(commands, complete_spec)
+    mut complete_no_desc CommandSpec = new_command("__completeNoDesc", "", "Request shell completion choices for the specified command-line", "", .ARBITRARY)
+    complete_no_desc.hidden = true
+    arrays.append(commands, complete_no_desc)
+
+    // Every command also takes -h/--help.
+    for i in range(0, len(commands)) {
+        mut spec CommandSpec = commands[i]
+        mut flags [FlagSpec] = spec.flags
+        program string = "gray"
+        if spec.command_path != "" {
+            program = spec.name
+        }
+        arrays.append(flags, bool_flag("help", "h", "help for ${program}"))
+        spec.flags = flags
+        commands[i] = spec
+    }
+    return commands
+}
+
+do find_command(commands [CommandSpec], command_path string) -> CommandSpec {
+    for_each spec in commands {
+        if spec.command_path == command_path {
+            return spec
+        }
+    }
+    return commands[0]
+}
+
+// parent_path is the path of the command that holds the command at command_path.
+do parent_path(command_path string) -> string {
+    index i64 = strings.last_index_of(command_path, " ")
+    if index < 0 {
+        return ""
+    }
+    return strings.slice(command_path, 0, index)
+}
+
+// subcommands lists the commands directly under command_path, by name.
+do subcommands(commands [CommandSpec], command_path string) -> [CommandSpec] {
+    mut found [CommandSpec] = {}
+    for_each spec in commands {
+        if spec.command_path != "" && parent_path(spec.command_path) == command_path {
+            arrays.append(found, spec)
+        }
+    }
+    arrays.sort_by(found, ()command_name_less)
+    return found
+}
+
+do command_name_less(left CommandSpec, right CommandSpec) -> bool {
+    return strings.compare(left.name, right.name) < 0
+}
+
+do flag_name_less(left FlagSpec, right FlagSpec) -> bool {
+    return strings.compare(left.name, right.name) < 0
+}
+
+// is_available reports whether the help lists spec.
+do is_available(commands [CommandSpec], spec CommandSpec) -> bool {
+    if spec.hidden {
+        return false
+    }
+    if spec.runnable {
+        return true
+    }
+    return len(subcommands(commands, spec.command_path)) > 0
+}
+
+do find_long_flag(spec CommandSpec, name string) -> (FlagSpec, bool) {
+    for_each flag in spec.flags {
+        if flag.name == name {
+            return flag, true
+        }
+    }
+    return string_flag("", "", "", ""), false
+}
+
+do find_short_flag(spec CommandSpec, shorthand string) -> (FlagSpec, bool) {
+    for_each flag in spec.flags {
+        if flag.shorthand != "" && flag.shorthand == shorthand {
+            return flag, true
+        }
+    }
+    return string_flag("", "", "", ""), false
+}
+
+// find_flag looks a flag up by long name, or by shorthand when name is one character.
+do find_flag(spec CommandSpec, name string) -> (FlagSpec, bool) {
+    if len(name) == 1 {
+        flag, found = find_short_flag(spec, name)
+        if found {
+            return flag, true
+        }
+    }
+    long_flag, long_found = find_long_flag(spec, name)
+    return long_flag, long_found
+}
+
+// takes_no_value reports whether the flag after "--" or "-" in word is a bool.
+do takes_no_value(spec CommandSpec, name string, is_short bool) -> bool {
+    if is_short {
+        short_flag, short_found = find_short_flag(spec, name)
+        return short_found && short_flag.is_bool
+    }
+    long_flag, long_found = find_long_flag(spec, name)
+    return long_found && long_flag.is_bool
+}
+
+// word_takes_next_value reports whether the flag word consumes the argument after it.
+do word_takes_next_value(spec CommandSpec, word string) -> bool {
+    if strings.contains(word, "=") {
+        return false
+    }
+    if strings.starts_with(word, "--") {
+        return !takes_no_value(spec, strings.slice(word, 2, len(word)), false)
+    }
+    if strings.starts_with(word, "-") && len(word) == 2 {
+        return !takes_no_value(spec, strings.slice(word, 1, 2), true)
+    }
+    return false
+}
+
+// strip_flags returns the words of args that are not flags or flag values.
+do strip_flags(spec CommandSpec, args [string]) -> [string] {
+    mut words [string] = {}
+    mut index i64 = 0
+    as_long_as index < len(args) {
+        word string = args[index]
+        index = index + 1
+        if word == "--" {
+            break
+        }
+        if word_takes_next_value(spec, word) {
+            if len(args) - index <= 1 {
+                break
+            }
+            index = index + 1
+            continue
+        }
+        if word != "" && !strings.starts_with(word, "-") {
+            arrays.append(words, word)
+        }
+    }
+    return words
+}
+
+// args_minus_first removes the first occurrence of word that is not a flag or a flag value.
+do args_minus_first(spec CommandSpec, args [string], word string) -> [string] {
+    mut index i64 = 0
+    as_long_as index < len(args) {
+        current string = args[index]
+        if current == "--" {
+            break
+        }
+        if word_takes_next_value(spec, current) {
+            index = index + 2
+            continue
+        }
+        if !strings.starts_with(current, "-") && current == word {
+            return arrays.concat(arrays.slice(args, 0, index), arrays.slice(args, index + 1, len(args)))
+        }
+        index = index + 1
+    }
+    return args
+}
+
+// find_target walks down from the root through the subcommand names in args.
+// It returns the command's path and the arguments left over.
+do find_target(commands [CommandSpec], args [string]) -> (string, [string]) {
+    mut command_path string = ""
+    mut remaining [string] = args
+    as_long_as true {
+        spec CommandSpec = find_command(commands, command_path)
+        words [string] = strip_flags(spec, remaining)
+        if len(words) == 0 {
+            return command_path, remaining
+        }
+        mut next_path string = ""
+        for_each child in subcommands(commands, command_path) {
+            if child.name == words[0] {
+                next_path = child.command_path
+            }
+        }
+        if next_path == "" {
+            return command_path, remaining
+        }
+        remaining = args_minus_first(spec, remaining, words[0])
+        command_path = next_path
+    }
+    return command_path, remaining
+}
+
+do parse_bool(text string) -> (bool, bool) {
+    if text == "1" || text == "t" || text == "T" || text == "TRUE" || text == "true" || text == "True" {
+        return true, true
+    }
+    if text == "0" || text == "f" || text == "F" || text == "FALSE" || text == "false" || text == "False" {
+        return false, true
+    }
+    return false, false
+}
+
+// flag_display is how an error names a flag.
+do flag_display(flag FlagSpec) -> string {
+    if flag.shorthand != "" {
+        return "-${flag.shorthand}, --${flag.name}"
+    }
+    return "--${flag.name}"
+}
+
+// set_flag records the value of flag, checking bool values.
+do set_flag(flag FlagSpec, value string, &parsed ParsedFlags) -> Error {
+    mut stored string = value
+    if flag.is_bool {
+        truth, valid = parse_bool(value)
+        if !valid {
+            return error(.InvalidInput, "invalid argument \"${value}\" for \"${flag_display(flag)}\" flag: strconv.ParseBool: parsing \"${value}\": invalid syntax")
+        }
+        stored = "false"
+        if truth {
+            stored = "true"
+        }
+    }
+    parsed.flag_values[flag.name] = stored
+    parsed.changed[flag.name] = true
+    return nil
+}
+
+// parse_flags separates the flags of args from its positional arguments.
+// Flags and positional arguments may be mixed; "--" ends the flags.
+do parse_flags(spec CommandSpec, args [string]) -> (ParsedFlags, Error) {
+    mut parsed ParsedFlags = ParsedFlags{positional: {}, flag_values: {:}, changed: {:}, dash_index: -1}
+    mut index i64 = 0
+    as_long_as index < len(args) {
+        word string = args[index]
+        index = index + 1
+        if len(word) < 2 || !strings.starts_with(word, "-") {
+            arrays.append(parsed.positional, word)
+            continue
+        }
+        if strings.starts_with(word, "--") {
+            if word == "--" {
+                parsed.dash_index = len(parsed.positional)
+                for_each rest in arrays.slice(args, index, len(args)) {
+                    arrays.append(parsed.positional, rest)
+                }
+                break
+            }
+            body string = strings.slice(word, 2, len(word))
+            if strings.starts_with(body, "-") || strings.starts_with(body, "=") {
+                return parsed, error(.InvalidInput, "bad flag syntax: ${word}")
+            }
+            equals_index i64 = strings.index_of(body, "=")
+            mut name string = body
+            mut value string = ""
+            has_value bool = equals_index >= 0
+            if has_value {
+                name = strings.slice(body, 0, equals_index)
+                value = strings.slice(body, equals_index + 1, len(body))
+            }
+            flag, found = find_long_flag(spec, name)
+            if !found {
+                return parsed, error(.InvalidInput, "unknown flag: --${name}")
+            }
+            if !has_value {
+                if flag.is_bool {
+                    value = "true"
+                } or index < len(args) {
+                    value = args[index]
+                    index = index + 1
+                } otherwise {
+                    return parsed, error(.InvalidInput, "flag needs an argument: --${name}")
+                }
+            }
+            set_err = set_flag(flag, value, parsed)
+            if set_err != nil {
+                return parsed, set_err
+            }
+            continue
+        }
+        mut shorthands string = strings.slice(word, 1, len(word))
+        as_long_as len(shorthands) > 0 {
+            letter string = strings.slice(shorthands, 0, 1)
+            flag, found = find_short_flag(spec, letter)
+            if !found {
+                return parsed, error(.InvalidInput, "unknown shorthand flag: '${letter}' in -${shorthands}")
+            }
+            mut value string = ""
+            if len(shorthands) > 2 && strings.slice(shorthands, 1, 2) == "=" {
+                value = strings.slice(shorthands, 2, len(shorthands))
+                shorthands = ""
+            } or flag.is_bool {
+                value = "true"
+                shorthands = strings.slice(shorthands, 1, len(shorthands))
+            } or len(shorthands) > 1 {
+                value = strings.slice(shorthands, 1, len(shorthands))
+                shorthands = ""
+            } or index < len(args) {
+                value = args[index]
+                index = index + 1
+                shorthands = ""
+            } otherwise {
+                return parsed, error(.InvalidInput, "flag needs an argument: '${letter}' in -${letter}")
+            }
+            set_err = set_flag(flag, value, parsed)
+            if set_err != nil {
+                return parsed, set_err
+            }
+        }
+    }
+    return parsed, nil
+}
+
+// validate_args applies the command's positional-argument rule.
+do validate_args(spec CommandSpec, parsed ParsedFlags) -> Error {
+    count i64 = len(parsed.positional)
+    program_path string = "gray"
+    if spec.command_path != "" {
+        program_path = "gray ${spec.command_path}"
+    }
+    #strict
+    when spec.args_rule {
+        is .ARBITRARY {
+        }
+        is .NO_ARGS {
+            if count > 0 {
+                return error(.InvalidInput, "unknown command \"${parsed.positional[0]}\" for \"${program_path}\"")
+            }
+        }
+        is .MAX_ONE {
+            if count > 1 {
+                return error(.InvalidInput, "accepts at most 1 arg(s), received ${count}")
+            }
+        }
+        is .NO_ARGS_UNLESS_CONFIRM {
+            if maps.contains_key(parsed.flag_values, "confirm") && parsed.flag_values["confirm"] == "true" {
+                if count > 1 {
+                    return error(.InvalidInput, "accepts at most 1 arg(s), received ${count}")
+                }
+            } or count > 0 {
+                return error(.InvalidInput, "unknown command \"${parsed.positional[0]}\" for \"${program_path}\"")
+            }
+        }
+        is .ONE_EXACT {
+            if count == 0 {
+                return error(.InvalidInput, "error: ${program_path} requires ${spec.requires}\n  usage:   ${program_path} ${spec.usage}\n  example: ${program_path} ${spec.example}")
+            }
+            if count > 1 {
+                return error(.InvalidInput, "error: ${program_path} takes one argument, received ${count}\n  usage:   ${program_path} ${spec.usage}\n  example: ${program_path} ${spec.example}")
+            }
+        }
+        is .ONE_OR_MORE {
+            if count == 0 {
+                return error(.InvalidInput, "error: ${program_path} requires ${spec.requires}\n  usage:   ${program_path} ${spec.usage}\n  example: ${program_path} ${spec.example}")
+            }
+        }
+    }
+    return nil
+}
+
+// ---------------------------------------------------------------- help
+
+// flag_usage_lines renders the flag section: one aligned line per visible flag.
+do flag_usages(flags [FlagSpec]) -> string {
+    mut visible [FlagSpec] = {}
+    for_each flag in flags {
+        if !flag.hidden {
+            arrays.append(visible, flag)
+        }
+    }
+    arrays.sort_by(visible, ()flag_name_less)
+
+    mut heads [string] = {}
+    mut texts [string] = {}
+    mut widest i64 = 0
+    for_each flag in visible {
+        mut head string = "      --${flag.name}"
+        if flag.shorthand != "" {
+            head = "  -${flag.shorthand}, --${flag.name}"
+        }
+        mut usage string = flag.usage
+        if !flag.is_bool {
+            mut label string = "string"
+            open_index i64 = strings.index_of(usage, "`")
+            if open_index >= 0 {
+                close_index i64 = strings.index_of(strings.slice(usage, open_index + 1, len(usage)), "`")
+                if close_index >= 0 {
+                    label = strings.slice(usage, open_index + 1, open_index + 1 + close_index)
+                    usage = strings.slice(usage, 0, open_index) + label + strings.slice(usage, open_index + close_index + 2, len(usage))
+                }
+            }
+            head = head + " " + label
+        }
+        if !flag.is_bool && flag.default_value != "" {
+            usage = usage + " (default \"${flag.default_value}\")"
+        }
+        if len(head) > widest {
+            widest = len(head)
+        }
+        arrays.append(heads, head)
+        arrays.append(texts, usage)
+    }
+    mut lines [string] = {}
+    for i in range(0, len(heads)) {
+        arrays.append(lines, heads[i] + strings.repeat(" ", widest - len(heads[i])) + "   " + texts[i])
+    }
+    return strings.join(lines, "\n")
+}
+
+// command_lines lists the available subcommands of command_path, padded to one column.
+do command_lines(commands [CommandSpec], command_path string) -> [string] {
+    mut shown [CommandSpec] = {}
+    mut width i64 = MIN_NAME_PADDING
+    for_each child in subcommands(commands, command_path) {
+        if is_available(commands, child) {
+            arrays.append(shown, child)
+            if len(child.name) > width {
+                width = len(child.name)
+            }
+        }
+    }
+    mut lines [string] = {}
+    for_each child in shown {
+        arrays.append(lines, "  " + child.name + strings.repeat(" ", width - len(child.name)) + " " + child.short)
+    }
+    return lines
+}
+
+// help_text is what `gray <command> --help` prints.
+do help_text(commands [CommandSpec], spec CommandSpec) -> string {
+    if spec.command_path == "" {
+        return root_help_text(commands, spec)
+    }
+    program_path string = "gray ${spec.command_path}"
+    mut text string = ""
+    mut text_body string = spec.long
+    if text_body == "" {
+        text_body = spec.short
+    }
+    text = strings.trim_right(text_body) + "\n\n"
+    text = text + "Usage:"
+    if spec.runnable {
+        use_line string = program_path
+        if spec.synopsis != "" {
+            use_line = use_line + " " + spec.synopsis
+        }
+        // Cobra's own bash completion command leaves " [flags]" off its usage line.
+        if spec.command_path != "completion bash" {
+            use_line = use_line + " [flags]"
+        }
+        text = text + "\n  " + use_line
+    }
+    lines [string] = command_lines(commands, spec.command_path)
+    if len(lines) > 0 {
+        text = text + "\n  ${program_path} [command]"
+        text = text + "\n\nAvailable Commands:\n" + strings.join(lines, "\n")
+    }
+    text = text + "\n\nFlags:\n" + flag_usages(spec.flags)
+    if len(lines) > 0 {
+        text = text + "\n\nUse \"${program_path} [command] --help\" for more information about a command."
+    }
+    return text + "\n"
+}
+
+do root_help_text(commands [CommandSpec], spec CommandSpec) -> string {
+    mut text string = spec.long + "\n\nUsage:\n  gray [file.gray | file.grayscale] [flags]\n  gray [command]\n\nAvailable Commands:\n"
+    text = text + strings.join(command_lines(commands, ""), "\n") + "\n"
+    text = text + "\nFlags:\n"
+    text = text + "  -q, --quiet string       Suppress warnings ('all' or comma-separated codes like W1001,W1002)\n"
+    text = text + "      --no-color           Disable colored output\n"
+    text = text + "      --arena-limit size   Max arena memory per program (e.g. 512MB, 1GB; default: 1GB)\n"
+    text = text + "      -define:NAME=VALUE   Override the value of a #define constant at build time\n"
+    text = text + "      --cc compiler        C compiler to use (a name on PATH or a path)\n"
+    text = text + "                           Accepted by: gray <file.gray>, gray build, gray check, gray watch\n"
+    text = text + "                           Order: --cc, then GRAY_CC, then CC, then the first of cc, gcc, clang on PATH\n"
+    text = text + "                           gray main.gray --cc clang\n"
+    text = text + "                           gray build main.gray --cc /opt/homebrew/bin/gcc-14\n"
+    text = text + "\nUse \"gray [command] --help\" for more information about a command.\n"
+    return text + STANDARD_LINK + "\n"
+}
+
+// ---------------------------------------------------------------- completion scripts
+
+// completion_script is the script that makes shell load completions from
+// `gray __complete`. It returns "" for a shell gray has no script for.
+do completion_script(shell string, descriptions bool) -> string {
+    mut script string = ""
+    when shell {
+        is "bash" { script = EMBEDDED_COMPLETION_BASH }
+        is "zsh" { script = EMBEDDED_COMPLETION_ZSH }
+        is "fish" { script = EMBEDDED_COMPLETION_FISH }
+        is "powershell" { script = EMBEDDED_COMPLETION_POWERSHELL }
+        default { return "" }
+    }
+    request string = "__complete"
+    if !descriptions {
+        request = "__completeNoDesc"
+    }
+    return strings.replace(script, "@@REQUEST@@", request)
+}
+
+// ---------------------------------------------------------------- completion
+
+const Completion struct {
+    candidates [string]
+    directive i64
+}
+
+do has_directive(directive i64, bit i64) -> bool {
+    return (directive / bit) % 2 == 1
+}
+
+do directive_names(directive i64) -> string {
+    if directive == 0 {
+        return "ShellCompDirectiveDefault"
+    }
+    mut names [string] = {}
+    if has_directive(directive, DIRECTIVE_ERROR) {
+        arrays.append(names, "ShellCompDirectiveError")
+    }
+    if has_directive(directive, DIRECTIVE_NO_SPACE) {
+        arrays.append(names, "ShellCompDirectiveNoSpace")
+    }
+    if has_directive(directive, DIRECTIVE_NO_FILE_COMP) {
+        arrays.append(names, "ShellCompDirectiveNoFileComp")
+    }
+    if has_directive(directive, DIRECTIVE_FILTER_FILE_EXT) {
+        arrays.append(names, "ShellCompDirectiveFilterFileExt")
+    }
+    return strings.join(names, ", ")
+}
+
+// complete_root completes the root's argument: the source files and
+// directories matching to_complete.
+do complete_root(args [string], to_complete string) -> Completion {
+    if len(args) > 0 {
+        return Completion{candidates: {}, directive: DIRECTIVE_NO_FILE_COMP}
+    }
+    mut directory string = ""
+    mut prefix string = to_complete
+    slash_index i64 = strings.last_index_of(to_complete, "/")
+    if slash_index >= 0 {
+        directory = strings.slice(to_complete, 0, slash_index + 1)
+        prefix = strings.slice(to_complete, slash_index + 1, len(to_complete))
+    }
+    mut listed string = directory
+    if listed == "" {
+        listed = "."
+    }
+    if strings.starts_with(listed, "~/") {
+        listed = os.home_dir() + "/" + strings.slice(listed, 2, len(listed))
+    }
+    mut entries, list_err = io.list_dir(listed)
+    mut found [string] = {}
+    if list_err != nil {
+        return Completion{candidates: found, directive: DIRECTIVE_NO_FILE_COMP}
+    }
+    arrays.sort_asc(entries)
+    for_each entry in entries {
+        if !strings.starts_with(entry, prefix) || (strings.starts_with(entry, ".") && !strings.starts_with(prefix, ".")) {
+            continue
+        }
+        info, stat_err = io.stat(listed + "/" + entry)
+        if stat_err == nil && info.is_dir {
+            arrays.append(found, directory + entry + "/")
+        } or sources.has_source_extension(entry) {
+            arrays.append(found, directory + entry)
+        }
+    }
+    return Completion{candidates: found, directive: DIRECTIVE_NO_FILE_COMP + DIRECTIVE_NO_SPACE}
+}
+
+// complete_man_names completes the first argument of gray man from names, the
+// index words, modules, builtins and language entries the man command knows.
+do complete_man_names(args [string], to_complete string, names [string]) -> Completion {
+    mut found [string] = {}
+    if len(args) > 0 {
+        return Completion{candidates: found, directive: DIRECTIVE_NO_FILE_COMP}
+    }
+    for_each name in names {
+        if strings.starts_with(name, to_complete) && !strings.starts_with(name, "-") {
+            arrays.append(found, name)
+        }
+    }
+    arrays.sort_asc(found)
+    return Completion{candidates: arrays.deduplicate(found), directive: DIRECTIVE_NO_FILE_COMP}
+}
+
+do flag_name_candidates(flag FlagSpec, to_complete string) -> [string] {
+    mut found [string] = {}
+    if flag.hidden {
+        return found
+    }
+    long_name string = "--${flag.name}"
+    if strings.starts_with(long_name, to_complete) {
+        arrays.append(found, "${long_name}\t${flag.usage}")
+    }
+    if flag.shorthand != "" && strings.starts_with("-${flag.shorthand}", to_complete) {
+        arrays.append(found, "-${flag.shorthand}\t${flag.usage}")
+    }
+    return found
+}
+
+do is_flag_word(word string) -> bool {
+    return (len(word) >= 3 && strings.starts_with(word, "--")) || (len(word) >= 2 && strings.starts_with(word, "-") && !strings.starts_with(word, "--"))
+}
+
+// get_completions answers one Tab press. args is the command line after
+// `gray`, the word under the cursor last. man_names feeds gray man.
+do get_completions(commands [CommandSpec], args [string], man_names [string]) -> (Completion, Error) {
+    to_complete_last string = args[len(args) - 1]
+    command_path, found_args = find_target(commands, arrays.slice(args, 0, len(args) - 1))
+    spec CommandSpec = find_command(commands, command_path)
+    mut final_args [string] = found_args
+    mut to_complete string = to_complete_last
+    nothing Completion = Completion{candidates: {}, directive: 0}
+
+    // Is the cursor on a flag's value?
+    mut flag_name string = ""
+    mut flag_with_equal bool = false
+    original_args [string] = final_args
+    original_to_complete string = to_complete
+    mut flag_value_context bool = false
+    if len(to_complete) > 0 && strings.starts_with(to_complete, "-") {
+        equals_index i64 = strings.index_of(to_complete, "=")
+        if equals_index >= 0 {
+            if strings.starts_with(strings.slice(to_complete, 0, equals_index), "--") {
+                flag_name = strings.slice(to_complete, 2, equals_index)
+            } otherwise {
+                flag_name = strings.slice(to_complete, equals_index - 1, equals_index)
+            }
+            to_complete = strings.slice(to_complete, equals_index + 1, len(to_complete))
+            flag_with_equal = true
+            flag_value_context = true
+        }
+    } or len(final_args) > 0 {
+        previous string = final_args[len(final_args) - 1]
+        if is_flag_word(previous) && !strings.contains(previous, "=") {
+            if strings.starts_with(previous, "--") {
+                flag_name = strings.slice(previous, 2, len(previous))
+            } otherwise {
+                flag_name = strings.slice(previous, len(previous) - 1, len(previous))
+            }
+            final_args = arrays.slice(final_args, 0, len(final_args) - 1)
+            flag_value_context = true
+        }
+    }
+
+    mut value_flag FlagSpec = string_flag("", "", "", "")
+    mut doing_value bool = false
+    if flag_value_context && flag_name != "" {
+        flag, found = find_flag(spec, flag_name)
+        if !found {
+            return nothing, error(.InvalidInput, "subcommand '${spec.name}' does not support flag '${flag_name}'")
+        }
+        if !flag_with_equal && flag.is_bool {
+            final_args = original_args
+            to_complete = original_to_complete
+        } otherwise {
+            value_flag = flag
+            doing_value = true
+        }
+    }
+
+    parsed, parse_err = parse_flags(spec, final_args)
+    if parse_err != nil {
+        return nothing, error(.InvalidInput, "Error while parsing flags from args ${final_args}: ${parse_err.message}")
+    }
+
+    if doing_value {
+        if len(value_flag.values) > 0 {
+            return Completion{candidates: value_flag.values, directive: DIRECTIVE_NO_FILE_COMP}, nil
+        }
+        return nothing, nil
+    }
+
+    mut candidates [string] = {}
+    mut directive i64 = 0
+    any_changed bool = len(maps.get_keys(parsed.changed)) > 0
+    children [CommandSpec] = subcommands(commands, command_path)
+    if len(final_args) == 0 && !any_changed {
+        for_each child in children {
+            if is_available(commands, child) || child.name == "help" {
+                if strings.starts_with(child.name, to_complete) {
+                    arrays.append(candidates, "${child.name}\t${child.short}")
+                }
+                directive = DIRECTIVE_NO_FILE_COMP
+            }
+        }
+    }
+
+    if len(to_complete) > 0 && strings.starts_with(to_complete, "-") && !strings.contains(to_complete, "=") {
+        mut sorted_flags [FlagSpec] = spec.flags
+        arrays.sort_by(sorted_flags, ()flag_name_less)
+        for_each flag in sorted_flags {
+            if !maps.contains_key(parsed.changed, flag.name) {
+                for_each candidate in flag_name_candidates(flag, to_complete) {
+                    arrays.append(candidates, candidate)
+                }
+            }
+        }
+        return Completion{candidates: candidates, directive: DIRECTIVE_NO_FILE_COMP}, nil
+    }
+
+    #strict
+    when spec.completer {
+        is .NONE {
+        }
+        is .ROOT {
+            more Completion = complete_root(final_args, to_complete)
+            return Completion{candidates: arrays.concat(candidates, more.candidates), directive: more.directive}, nil
+        }
+        is .SOURCE {
+            return Completion{candidates: arrays.concat(candidates, {"gray", "grayscale"}), directive: DIRECTIVE_FILTER_FILE_EXT}, nil
+        }
+        is .MAN {
+            more Completion = complete_man_names(final_args, to_complete, man_names)
+            return Completion{candidates: arrays.concat(candidates, more.candidates), directive: more.directive}, nil
+        }
+        is .HELP {
+            help_path, _ = find_target(commands, final_args)
+            for_each child in subcommands(commands, help_path) {
+                if (is_available(commands, child) || child.name == "help") && strings.starts_with(child.name, to_complete) {
+                    arrays.append(candidates, "${child.name}\t${child.short}")
+                }
+            }
+            return Completion{candidates: candidates, directive: DIRECTIVE_NO_FILE_COMP}, nil
+        }
+    }
+    return Completion{candidates: candidates, directive: directive}, nil
+}
+
+// run_completion prints the answer to `gray __complete ...` in the form the
+// completion scripts read: one candidate per line, then ":<directive>".
+do run_completion(commands [CommandSpec], args [string], with_descriptions bool, man_names [string]) {
+    completion, complete_err = get_completions(commands, args, man_names)
+    if complete_err != nil {
+        eprintln(complete_err.message)
+    }
+    for_each candidate in completion.candidates {
+        mut text string = candidate
+        if !with_descriptions {
+            text = strings.split(text, "\t")[0]
+        }
+        text = strings.trim(strings.split(text, "\n")[0])
+        println(text)
+    }
+    println(":${completion.directive}")
+    eprintln("Completion ended with directive: ${directive_names(completion.directive)}")
+}
+
+// ---------------------------------------------------------------- entry point
+
+// ParseResult tells the caller whether args already did everything the
+// command line asked for. When handled is false, invocation names the command
+// to run.
+const ParseResult struct {
+    handled bool
+    exit_code i64
+    invocation Invocation
+}
+
+// parse_args reads argv (the program's arguments after `gray`, with the
+// -define flags already removed). Help, completion output and every argument
+// error are printed here; a command that still needs running comes back in
+// the result. man_names are the names gray man completes.
+do parse_args(argv [string], man_names [string]) -> ParseResult {
+    commands [CommandSpec] = build_commands()
+    command_path, rest = find_target(commands, argv)
+    spec CommandSpec = find_command(commands, command_path)
+    empty Invocation = Invocation{command: command_path, positional: {}, flag_values: {:}, changed: {:}, dash_index: -1}
+
+    if command_path == "__complete" || command_path == "__completeNoDesc" {
+        if len(rest) == 0 {
+            eprintln("requires at least 1 arg(s), only received 0")
+            return ParseResult{handled: true, exit_code: 1, invocation: empty}
+        }
+        run_completion(commands, rest, command_path == "__complete", man_names)
+        return ParseResult{handled: true, exit_code: 0, invocation: empty}
+    }
+
+    parsed, parse_err = parse_flags(spec, rest)
+    if parse_err != nil {
+        eprintln(parse_err.message)
+        return ParseResult{handled: true, exit_code: 1, invocation: empty}
+    }
+    invocation Invocation = Invocation{command: command_path, positional: parsed.positional, flag_values: parsed.flag_values, changed: parsed.changed, dash_index: parsed.dash_index}
+
+    if maps.contains_key(parsed.flag_values, "help") && parsed.flag_values["help"] == "true" {
+        print(help_text(commands, spec))
+        return ParseResult{handled: true, exit_code: 0, invocation: invocation}
+    }
+    if !spec.runnable {
+        print(help_text(commands, spec))
+        return ParseResult{handled: true, exit_code: 0, invocation: invocation}
+    }
+    validate_err = validate_args(spec, parsed)
+    if validate_err != nil {
+        eprintln(validate_err.message)
+        return ParseResult{handled: true, exit_code: 1, invocation: invocation}
+    }
+
+    if command_path == "help" {
+        help_path, _ = find_target(commands, parsed.positional)
+        print(help_text(commands, find_command(commands, help_path)))
+        return ParseResult{handled: true, exit_code: 0, invocation: invocation}
+    }
+    if strings.starts_with(command_path, "completion ") && command_path != "completion install" {
+        shell string = last_word(command_path)
+        no_descriptions bool = maps.contains_key(parsed.flag_values, "no-descriptions") && parsed.flag_values["no-descriptions"] == "true"
+        print(completion_script(shell, !no_descriptions))
+        return ParseResult{handled: true, exit_code: 0, invocation: invocation}
+    }
+    return ParseResult{handled: false, exit_code: 0, invocation: invocation}
+}
