@@ -1,0 +1,666 @@
+// update.gray — "gray update" and "gray install": download a release archive
+// from GitHub with curl, check it against the published SHA-256, unpack the
+// gray binary with tar and put it in place of the running one.
+
+import @io
+import @os
+import @path
+import @crypto
+import @encoding
+import @strings
+import @arrays
+import "./args"
+import "./changelog"
+import "./completion_install"
+import "./info"
+import "./releases"
+import "./verify"
+import "./version"
+import "./versions"
+
+const TRUSTED_UPDATE_HOST string = "github.com"
+const TRUSTED_UPDATE_PATH_PREFIX string = "/grayscale-lang/grayscale/releases/download/"
+const MAX_DOWNLOAD_BYTES i64 = 268435456
+const MAX_CHECKSUM_BYTES i64 = 1024
+const DOWNLOAD_TIMEOUT_SECONDS i64 = 300
+const LIST_TIMEOUT_SECONDS i64 = 10
+const EXECUTABLE_MODE i64 = 493
+const YELLOW string = "\x1b[33m"
+const BOLD string = "\x1b[1m"
+const RESET string = "\x1b[0m"
+
+// is_trusted_update_url is true only for an https URL on github.com whose path
+// is under the official release download prefix and has no "." or ".."
+// segment, so --confirm cannot be used to fetch and install an arbitrary
+// binary. A percent-encoded path is refused outright: release URLs have none.
+do is_trusted_update_url(url string) -> bool {
+    if !strings.starts_with(url, "https://") {
+        return false
+    }
+    rest string = strings.remove_prefix(url, "https://")
+    mut authority_end i64 = len(rest)
+    for index in range(0, len(rest)) {
+        c char = rest[index]
+        if authority_end == len(rest) && (c == '/' || c == '?' || c == '#') {
+            authority_end = index
+        }
+    }
+    if strings.slice(rest, 0, authority_end) != TRUSTED_UPDATE_HOST {
+        return false
+    }
+    mut url_path string = strings.slice(rest, authority_end, len(rest))
+    for_each terminator in {"?", "#"} {
+        cut i64 = strings.index_of(url_path, terminator)
+        if cut >= 0 {
+            url_path = strings.slice(url_path, 0, cut)
+        }
+    }
+    if strings.contains(url_path, "%") || strings.contains(url_path, "\\") {
+        return false
+    }
+    for_each segment in strings.split(url_path, "/") {
+        if segment == ".." || segment == "." {
+            return false
+        }
+    }
+    return strings.starts_with(url_path, TRUSTED_UPDATE_PATH_PREFIX)
+}
+
+// curl_download fetches url with curl, following redirects. With output set the
+// body goes to that file; the body is returned otherwise. A transfer that fails
+// or ends in a status other than 200 is an error naming the status.
+do curl_download(url string, output string, max_bytes i64) -> (string, Error) {
+    _, curl_found = os.find_executable("curl")
+    if !curl_found {
+        return "", error(.NotFound, "curl not found in PATH; it is required to download releases")
+    }
+    mut curl_args [string] = {"-sS", "-L", "-m", "${DOWNLOAD_TIMEOUT_SECONDS}", "--max-filesize", "${max_bytes}", "-w", "\n%{http_code}"}
+    if output != "" {
+        arrays.append(curl_args, "-o")
+        arrays.append(curl_args, output)
+    }
+    arrays.append(curl_args, url)
+    response, launch_err = os.exec("curl", curl_args)
+    if launch_err != nil {
+        return "", launch_err
+    }
+    if response.exit_code != 0 {
+        return "", error(.IoFailure, strings.trim(response.stderr))
+    }
+    last_newline i64 = strings.last_index_of(response.stdout, "\n")
+    status string = strings.slice(response.stdout, last_newline + 1, len(response.stdout))
+    if status != "200" {
+        return "", error(.IoFailure, "status ${status}")
+    }
+    return strings.slice(response.stdout, 0, last_newline), nil
+}
+
+// fetch_expected_checksum downloads a release's "<asset>.sha256" file and
+// returns the lowercase hex SHA-256 it names. The file holds "<hash>  <name>".
+do fetch_expected_checksum(checksum_url string) -> (string, Error) {
+    body, download_err = curl_download(checksum_url, "", MAX_CHECKSUM_BYTES)
+    if download_err != nil {
+        if strings.starts_with(download_err.message, "status ") {
+            return "", error(.NotFound, "release has no published checksum (${download_err.message}); refusing to install")
+        }
+        return "", error(.IoFailure, "failed to download checksum: ${download_err.message}")
+    }
+    mut hash string = ""
+    for_each word in strings.split(strings.replace(strings.replace(strings.replace(body, "\t", " "), "\r", " "), "\n", " "), " ") {
+        if hash == "" && word != "" {
+            hash = word
+        }
+    }
+    if len(hash) != 64 {
+        return "", error(.InvalidInput, "checksum file is not a SHA-256 hash")
+    }
+    for index in range(0, len(hash)) {
+        c char = hash[index]
+        if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F') {
+            return "", error(.InvalidInput, "checksum file is not a SHA-256 hash")
+        }
+    }
+    return strings.to_lower(hash), nil
+}
+
+// extract_gray_binary unpacks the gray binary of a release archive into
+// work_directory and returns its path. Only the file's own name is used, so a
+// member's directories never reach the file system.
+do extract_gray_binary(archive_path string, work_directory string) -> (string, Error) {
+    _, tar_found = os.find_executable("tar")
+    if !tar_found {
+        return "", error(.NotFound, "tar not found in PATH; it is required to unpack releases")
+    }
+    listing, list_err = os.exec("tar", {"-tf", archive_path})
+    if list_err != nil {
+        return "", list_err
+    }
+    if listing.exit_code != 0 {
+        return "", error(.IoFailure, strings.trim(listing.stderr))
+    }
+
+    mut member string = ""
+    mut member_name string = ""
+    for_each line in strings.split(listing.stdout, "\n") {
+        entry string = strings.trim(strings.replace(line, "\\", "/"))
+        _, base_name = path.split_dir_file(entry)
+        if base_name == "gray" || base_name == "gray.exe" {
+            member = strings.trim(line)
+            member_name = base_name
+        }
+    }
+    if member == "" {
+        return "", error(.NotFound, "gray binary not found in archive")
+    }
+
+    unpacked, unpack_err = os.exec("tar", {"-xOf", archive_path, member})
+    if unpack_err != nil {
+        return "", unpack_err
+    }
+    if unpacked.exit_code != 0 {
+        return "", error(.IoFailure, strings.trim(unpacked.stderr))
+    }
+    binary_path string = path.join_parts({work_directory, member_name})
+    _, write_err = io.write_file(binary_path, unpacked.stdout)
+    if write_err != nil {
+        return "", write_err
+    }
+    return binary_path, nil
+}
+
+// fetch_release_binary downloads and verifies a release archive and unpacks the
+// gray binary from it into work_directory, returning the binary's path.
+do fetch_release_binary(download_url string, work_directory string) -> (string, Error) {
+    if !is_trusted_update_url(download_url) {
+        return "", error(.InvalidInput, "download URL is not from a trusted origin: only https://github.com/grayscale-lang/grayscale/releases/download/ is accepted")
+    }
+
+    archive_path string = path.join_parts({work_directory, "archive"})
+    _, download_err = curl_download(download_url, archive_path, MAX_DOWNLOAD_BYTES)
+    if download_err != nil {
+        if strings.starts_with(download_err.message, "status ") {
+            return "", error(.IoFailure, "download failed with ${download_err.message}")
+        }
+        return "", error(.IoFailure, "failed to download: ${download_err.message}")
+    }
+    archive_size, size_err = io.file_size(archive_path)
+    if size_err != nil {
+        return "", size_err
+    }
+    if archive_size > MAX_DOWNLOAD_BYTES {
+        return "", error(.InvalidInput, "download aborted: response body exceeded the ${MAX_DOWNLOAD_BYTES}-byte limit")
+    }
+
+    // Refuse an archive that does not match the checksum published with it.
+    expected, checksum_err = fetch_expected_checksum("${download_url}.sha256")
+    if checksum_err != nil {
+        return "", checksum_err
+    }
+    archive_contents, read_err = io.read_file(archive_path)
+    if read_err != nil {
+        return "", read_err
+    }
+    actual string = crypto.sha256(archive_contents)
+    if actual != expected {
+        return "", error(.InvalidInput, "checksum mismatch: expected ${expected}, downloaded archive is ${actual}")
+    }
+
+    binary_path, extract_err = extract_gray_binary(archive_path, work_directory)
+    if extract_err != nil {
+        return "", error(extract_err.code, "failed to extract archive: ${extract_err.message}")
+    }
+    return binary_path, nil
+}
+
+// replace_executable puts the new binary in place of the running one, keeping a
+// backup that is restored if the copy fails.
+do replace_executable(binary_path string, executable_path string) -> Error {
+    _, mode_err = io.chmod(binary_path, EXECUTABLE_MODE)
+    if mode_err != nil {
+        return error(mode_err.code, "failed to set permissions: ${mode_err.message}")
+    }
+
+    backup_path string = "${executable_path}.backup"
+    _, backup_err = io.move_file(executable_path, backup_path)
+    if backup_err != nil {
+        return error(backup_err.code, "failed to backup current binary: ${backup_err.message}")
+    }
+    _, copy_err = io.copy_file(binary_path, executable_path)
+    if copy_err != nil {
+        _, _ = io.move_file(backup_path, executable_path)
+        return error(copy_err.code, "failed to install update: ${copy_err.message}")
+    }
+    _, executable_err = io.chmod(executable_path, EXECUTABLE_MODE)
+    if executable_err != nil {
+        _, _ = io.delete_file(executable_path)
+        _, _ = io.move_file(backup_path, executable_path)
+        return error(executable_err.code, "failed to set permissions: ${executable_err.message}")
+    }
+    _, _ = io.delete_file(backup_path)
+    return nil
+}
+
+// download_and_install downloads the archive and installs the binary. It tries
+// the install directly and escalates to sudo only when the file operation
+// itself fails with a permission error.
+do download_and_install(download_url string) -> Error {
+    executable_path, executable_err = os.executable_path()
+    if executable_err != nil {
+        return error(executable_err.code, "failed to get executable path: ${executable_err.message}")
+    }
+
+    work_directory, temp_err = io.temp_dir()
+    if temp_err != nil {
+        return error(temp_err.code, "failed to create temp directory: ${temp_err.message}")
+    }
+    mut install_err Error = nil
+    binary_path, fetch_err = fetch_release_binary(download_url, work_directory)
+    if fetch_err != nil {
+        install_err = fetch_err
+    } otherwise {
+        install_err = replace_executable(binary_path, executable_path)
+    }
+    if install_err == nil {
+        completion_install.install_completion_script(executable_path)
+        return nil
+    }
+
+    if install_err.code != .PermissionDenied {
+        return install_err
+    }
+    if os.current_os() == os.WINDOWS {
+        return error(.PermissionDenied, "permission denied. Please run as Administrator")
+    }
+    println("Root permissions required. Running with sudo...")
+    flush()
+    sudo_code i64 = system("sudo ${encoding.shell_escape(executable_path)} update --confirm ${encoding.shell_escape(download_url)}")
+    if sudo_code != 0 {
+        return error(.IoFailure, "failed to run with sudo: exit status ${sudo_code}")
+    }
+    completion_install.install_completion_script(executable_path)
+    exit(0)
+    return nil
+}
+
+// asset_name is the archive name expected for this OS and CPU.
+do asset_name() -> string {
+    name string = "gray-${info.platform_name()}-${info.architecture_name()}"
+    if os.current_os() == os.WINDOWS {
+        return name + ".zip"
+    }
+    return name + ".tar.gz"
+}
+
+// platform_asset_url returns this platform's archive name and its download URL
+// in release, or an empty URL when the release has no build for it.
+do platform_asset_url(release releases.Release) -> (string, string) {
+    name string = asset_name()
+    for_each asset in release.assets {
+        if asset.name == name {
+            return name, asset.browser_download_url
+        }
+    }
+    return name, ""
+}
+
+// print_update_status prints the Installed, Latest stable and Latest
+// pre-release block in the column layout of gray version, with a yellow arrow
+// on whichever channel line is newer than the installed build.
+do print_update_status(version_info versions.VersionInfo, latest_stable string, latest_pre string) {
+    mut channel_note string = ""
+    if version_info.channel == "pre-release" {
+        channel_note = "  (pre-release)"
+    } or version_info.channel == "dev" {
+        channel_note = "  (dev build)"
+    } or version_info.channel == "stable" {
+        channel_note = "  (stable)"
+    }
+    println("${BOLD}Installed:${RESET}           ${version_info.display}${channel_note}")
+
+    if latest_stable != "" {
+        comparison i64 = versions.compare_semver(latest_stable, version.VERSION)
+        mut note string = ""
+        if comparison > 0 {
+            note = "  ${YELLOW}← update available${RESET}"
+        } or comparison == 0 {
+            note = "  ${YELLOW}← up to date${RESET}"
+        }
+        println("Latest stable:       ${latest_stable}${note}")
+    }
+    if latest_pre != "" {
+        comparison i64 = versions.compare_semver(latest_pre, version.VERSION)
+        mut note string = ""
+        if comparison > 0 {
+            note = "  ${YELLOW}← run 'gray update --pre'${RESET}"
+        } or comparison == 0 {
+            note = "  ${YELLOW}← up to date${RESET}"
+        }
+        println("Latest pre-release:  ${latest_pre}${note}")
+    }
+}
+
+// confirmed asks a yes/no question and reads the answer from stdin.
+do confirmed(prompt string) -> bool {
+    print(prompt)
+    flush()
+    response string = strings.to_lower(strings.trim(input()))
+    return response == "y" || response == "yes"
+}
+
+// prompt_and_verify asks, only when run from a terminal, whether to run the
+// verification suite. It is CI-safe: with no terminal it returns silently.
+do prompt_and_verify() {
+    if !os.is_tty() {
+        return
+    }
+    if confirmed("\nRun verification test? [y/N]: ") {
+        code i64 = verify.run_verify()
+        if code != 0 {
+            exit(code)
+        }
+    }
+}
+
+// run_update is gray update. pre opts into the latest pre-release (alpha, beta
+// or rc) rather than the latest stable. confirm with a URL is the sudo re-exec
+// path and skips all discovery.
+do run_update(confirm bool, url string, pre bool) -> i64 {
+    if confirm {
+        println("Installing update...")
+        install_err Error = download_and_install(url)
+        if install_err != nil {
+            eprintln("Error during update: ${install_err.message}")
+            return 1
+        }
+        println("Successfully updated!")
+        println("Restart your terminal or run `gray version` to verify.")
+        return 0
+    }
+
+    println("Checking for updates...")
+    println("")
+
+    all_releases, list_err = releases.fetch_all_releases(LIST_TIMEOUT_SECONDS)
+    if list_err != nil {
+        eprintln("Error fetching release list: ${list_err.message}")
+        return 1
+    }
+
+    latest_stable, has_stable = releases.pick_latest_stable(all_releases)
+    latest_pre, has_pre = releases.pick_latest_prerelease(all_releases)
+    mut latest_stable_tag string = ""
+    mut latest_pre_tag string = ""
+    if has_stable {
+        latest_stable_tag = latest_stable.tag_name
+    }
+    if has_pre {
+        latest_pre_tag = latest_pre.tag_name
+    }
+
+    version_info versions.VersionInfo = versions.version_info(version.VERSION)
+    print_update_status(version_info, latest_stable_tag, latest_pre_tag)
+
+    // Cache the latest stable so the startup check can skip a network hop.
+    if latest_stable_tag != "" {
+        releases.remember_latest_stable(latest_stable_tag)
+    }
+
+    // Pre-release installs require --pre to advance. A bare update refuses
+    // rather than silently downgrading to stable or auto-tracking the
+    // pre-release channel: either would surprise the user.
+    if version_info.channel == "pre-release" && !pre {
+        println("\nYou're on a pre-release. 'gray update' only advances stable installs.")
+        println("  • Newer pre-release:   gray update --pre")
+        if latest_stable_tag != "" {
+            println("  • Switch to stable:    gray install ${strings.remove_prefix(latest_stable_tag, "v")}")
+        }
+        return 0
+    }
+
+    // Resolve the target for the channel being advanced.
+    mut target releases.Release = latest_stable
+    if pre {
+        target = latest_pre
+        if !has_pre {
+            println("\nNo pre-releases are currently published.")
+            return 0
+        }
+    } otherwise {
+        if !has_stable {
+            println("\nNo stable releases are currently published.")
+            return 0
+        }
+    }
+
+    comparison i64 = versions.compare_semver(target.tag_name, version.VERSION)
+    if comparison == 0 {
+        if pre {
+            println("\nYou're on the latest pre-release.")
+        } otherwise {
+            println("\nYou're on the latest stable release.")
+        }
+        return 0
+    }
+    if comparison < 0 {
+        mut label string = "stable"
+        if pre {
+            label = "pre-release"
+        }
+        println("\nYour version (${version.VERSION}) is already newer than the latest ${label}.")
+        return 0
+    }
+
+    if pre {
+        println("\n${YELLOW}Installing pre-release ${target.tag_name} — may contain breaking changes, not recommended for production.${RESET}")
+    } otherwise {
+        in_range [releases.Release] = releases.releases_in_range(all_releases, version.VERSION, target.tag_name)
+        print(releases.format_changelog(in_range, version.VERSION, target.tag_name))
+    }
+
+    if version_info.channel == "dev" && version_info.commits_ahead > 0 {
+        mut noun string = "commits"
+        if version_info.commits_ahead == 1 {
+            noun = "commit"
+        }
+        println("\n${YELLOW}Warning: your dev build is ${version_info.commits_ahead} ${noun} past ${version_info.display} (commit ${version_info.commit}).")
+        println("Those ${noun} may not be present in ${target.tag_name}.${RESET}")
+    }
+
+    if !confirmed("\nUpgrade to ${target.tag_name}? (y/N): ") {
+        println("Update cancelled.")
+        return 0
+    }
+
+    name, download_url = platform_asset_url(target)
+    if download_url == "" {
+        eprintln("error: no binary available for ${info.platform_name()}/${info.architecture_name()}\nYou may need to build from source: https://github.com/grayscale-lang/grayscale")
+        return 1
+    }
+    println("Downloading ${name}...")
+    install_err Error = download_and_install(download_url)
+    if install_err != nil {
+        eprintln("Error during update: ${install_err.message}")
+        return 1
+    }
+
+    println("\n${BOLD}${target.tag_name}${RESET}")
+    if pre {
+        println("\nSuccessfully installed pre-release!")
+    } otherwise {
+        println("\nSuccessfully updated!")
+    }
+    println("Restart your terminal or run `gray version` to verify.")
+    prompt_and_verify()
+    return 0
+}
+
+// normalize_tag strips the release prefix and a leading 'v', so user input and
+// GitHub tag names compare cleanly.
+do normalize_tag(tag string) -> string {
+    return strings.remove_prefix(strings.remove_prefix(tag, versions.RELEASE_TAG_PREFIX), "v")
+}
+
+do is_alphanumeric_char(c char) -> bool {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+// skip_label returns the index after a '-' or '+' suffix that starts at from:
+// an alphanumeric, then alphanumerics, dots and hyphens. It returns -1 when the
+// suffix is malformed.
+do skip_label(text string, from i64) -> i64 {
+    if from >= len(text) || !is_alphanumeric_char(text[from]) {
+        return -1
+    }
+    mut index i64 = from
+    as_long_as index < len(text) && (is_alphanumeric_char(text[index]) || text[index] == '.' || text[index] == '-') {
+        index = index + 1
+    }
+    return index
+}
+
+// is_exact_semver reports whether text is a fully qualified semver such as
+// "v0.11.5" or "0.12.0-beta.1+build": three numbers, an optional pre-release
+// and optional build metadata. Partial versions like "2.5" are not.
+do is_exact_semver(text string) -> bool {
+    mut index i64 = 0
+    if strings.starts_with(text, "v") {
+        index = 1
+    }
+    for part in range(0, 3) {
+        digits_end i64 = changelog.skip_digits(text, index)
+        if digits_end == index {
+            return false
+        }
+        index = digits_end
+        if part < 2 {
+            if index >= len(text) || text[index] != '.' {
+                return false
+            }
+            index = index + 1
+        }
+    }
+    if index < len(text) && text[index] == '-' {
+        index = skip_label(text, index + 1)
+        if index < 0 {
+            return false
+        }
+    }
+    if index < len(text) && text[index] == '+' {
+        index = skip_label(text, index + 1)
+        if index < 0 {
+            return false
+        }
+    }
+    return index == len(text)
+}
+
+// NearbyVersion is a release tag for the "not found" suggestions.
+const NearbyVersion struct {
+    tag string
+    pre bool
+}
+
+// run_install is gray install: it installs an exact version, replacing the
+// current install. A version older than the running one is installed with a
+// one-line downgrade warning.
+do run_install(requested string) -> i64 {
+    version_text string = strings.trim(strings.remove_prefix(requested, "grayscale:"))
+    if version_text == "" {
+        eprintln("error: gray install requires a <version>\n  usage:   gray install <version>\n  example: gray install \"grayscale: v0.11.5\"")
+        return 1
+    }
+    if !is_exact_semver(version_text) {
+        eprintln("error: '${version_text}' is not a fully-qualified semver\ngray install requires an exact version like \"grayscale: v0.11.5\" or \"grayscale: v0.12.0-beta.1\"\npartial versions, ranges, and shorthand are not accepted")
+        return 1
+    }
+
+    println("Current version: ${version.VERSION}")
+    println("Requested:       ${version_text}")
+
+    all_releases, list_err = releases.fetch_all_releases(LIST_TIMEOUT_SECONDS)
+    if list_err != nil {
+        eprintln("Error fetching release list: ${list_err.message}")
+        return 1
+    }
+
+    wanted string = normalize_tag(version_text)
+    mut target releases.Release = releases.Release{tag_name: "", body: "", prerelease: false, assets: {}}
+    mut found bool = false
+    for_each release in all_releases {
+        if !found && normalize_tag(release.tag_name) == wanted {
+            target = release
+            found = true
+        }
+    }
+    if !found {
+        eprintln(not_found_message(version_text, all_releases))
+        return 1
+    }
+
+    // Downgrade warning, after the target is known to exist.
+    comparison i64 = versions.compare_semver(target.tag_name, version.VERSION)
+    if comparison < 0 {
+        println("\n${YELLOW}warning: downgrading from ${version.VERSION} to ${target.tag_name}${RESET}")
+    } or comparison == 0 {
+        println("\nYou're already on ${target.tag_name}.")
+        return 0
+    }
+
+    if target.prerelease {
+        println("\n${YELLOW}Installing pre-release ${target.tag_name} — may contain breaking changes, not recommended for production.${RESET}")
+    }
+
+    name, download_url = platform_asset_url(target)
+    if download_url == "" {
+        eprintln("error: no binary available for ${info.platform_name()}/${info.architecture_name()} at ${target.tag_name}\nYou may need to build from source: https://github.com/grayscale-lang/grayscale")
+        return 1
+    }
+
+    println("Downloading ${name}...")
+    install_err Error = download_and_install(download_url)
+    if install_err != nil {
+        eprintln("Error during install: ${install_err.message}")
+        return 1
+    }
+
+    println("\n${BOLD}${target.tag_name}${RESET}")
+    println("\nSuccessfully installed!")
+    println("Restart your terminal or run `gray version` to verify.")
+    prompt_and_verify()
+    return 0
+}
+
+// not_found_message names the version that was not found and up to five of the
+// highest releases to retry with.
+do not_found_message(requested string, all_releases [releases.Release]) -> string {
+    mut message string = "error: version '${requested}' was not found in the release list"
+    mut all [NearbyVersion] = {}
+    for_each release in all_releases {
+        arrays.append(all, NearbyVersion{tag: release.tag_name, pre: release.prerelease})
+    }
+    // Sort descending by semver.
+    for first in range(0, len(all)) {
+        for second in range(first + 1, len(all)) {
+            if versions.compare_semver(all[second].tag, all[first].tag) > 0 {
+                swapped NearbyVersion = all[first]
+                all[first] = all[second]
+                all[second] = swapped
+            }
+        }
+    }
+    mut shown i64 = 5
+    if len(all) < shown {
+        shown = len(all)
+    }
+    if shown > 0 {
+        message = message + "\n\nNearby available versions:"
+        for index in range(0, shown) {
+            mut label string = ""
+            if all[index].pre {
+                label = " (pre-release)"
+            }
+            message = message + "\n  ${all[index].tag}${label}"
+        }
+    }
+    return message
+}
