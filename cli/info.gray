@@ -1,0 +1,318 @@
+// info.gray — "gray version" and "gray report": what is installed, what is
+// newest, and the system details to paste into a bug report.
+
+import @io
+import @os
+import @path
+import @strings
+import @arrays
+import @strconv
+import "./releases"
+import "./versions"
+import "./version"
+
+// platform_name is the operating system's name as Go spells it.
+do platform_name() -> string {
+    when os.current_os() {
+        is .MAC_OS { return "darwin" }
+        is .LINUX { return "linux" }
+        is .WINDOWS { return "windows" }
+        default { return "unknown" }
+    }
+}
+
+// architecture_name is the CPU architecture as Go spells it.
+do architecture_name() -> string {
+    architecture string = os.arch()
+    if architecture == "x86_64" {
+        return "amd64"
+    }
+    if architecture == "aarch64" {
+        return "arm64"
+    }
+    return architecture
+}
+
+// channel_tag is the note after the installed version.
+do channel_tag(channel string) -> string {
+    if channel == "pre-release" {
+        return "  (pre-release)"
+    }
+    if channel == "dev" {
+        return "  (dev build)"
+    }
+    return ""
+}
+
+// version_text is the output of gray version: the installed version, then the
+// newest stable and pre-release when GitHub can be reached or a cached stable
+// is known.
+do version_text() -> string {
+    info versions.VersionInfo = versions.version_info(version.VERSION)
+    mut text string = "\x1b[1mInstalled:\x1b[0m           ${info.display}${channel_tag(info.channel)}\n"
+    if info.commit != "" {
+        text = text + "Commit:              ${info.commit}\n"
+    }
+    text = text + "Built:               ${strings.replace(version.BUILD_TIME, "_", " ")}\n"
+
+    mut latest_stable string = ""
+    mut latest_pre string = ""
+    all, fetch_err = releases.fetch_all_releases(releases.CHECK_TIMEOUT_SECONDS)
+    if fetch_err == nil {
+        stable, has_stable = releases.pick_latest_stable(all)
+        if has_stable {
+            latest_stable = stable.tag_name
+        }
+        for_each release in all {
+            // Unlike pick_latest_prerelease, legacy (pre-Grayscale) tags are skipped.
+            if !release.prerelease || !strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+                continue
+            }
+            if latest_pre == "" || versions.compare_semver(release.tag_name, latest_pre) > 0 {
+                latest_pre = release.tag_name
+            }
+        }
+        if latest_stable != "" {
+            releases.remember_latest_stable(latest_stable)
+        }
+    } otherwise {
+        // Offline: the cached stable stands in.
+        latest_stable = releases.read_update_state().latest_version
+    }
+
+    text = text + "\n"
+    if latest_stable != "" {
+        text = text + "Latest stable:       ${latest_stable}"
+        if versions.compare_semver(latest_stable, version.VERSION) > 0 {
+            text = text + "  \x1b[33m← run 'gray update'\x1b[0m"
+        }
+        text = text + "\n"
+    }
+    if latest_pre != "" {
+        text = text + "Latest pre-release:  ${latest_pre}"
+        if versions.compare_semver(latest_pre, version.VERSION) > 0 {
+            text = text + "  \x1b[33m← run 'gray update --pre'\x1b[0m"
+        }
+        text = text + "\n"
+    }
+    return text + "\nCopyright (c) 2025-Present Marshall A Burns\n"
+}
+
+// run_version is gray version.
+do run_version() -> i64 {
+    println(version_text())
+    return 0
+}
+
+// command_output is the trimmed standard output of a command that succeeded,
+// and whether it did.
+do command_output(command string, command_args [string]) -> (string, bool) {
+    result, launch_err = os.exec(command, command_args)
+    if launch_err != nil || result.exit_code != 0 {
+        return "", false
+    }
+    return strings.trim(result.stdout), true
+}
+
+// redact_home replaces a leading home directory in a path with "~", so the
+// output is safe to paste into a public bug report. A path that only shares
+// the home directory's leading characters is left as it is.
+do redact_home(file_path string, home string) -> string {
+    if file_path == home {
+        return "~"
+    }
+    separator string = "/"
+    if os.current_os() == os.WINDOWS {
+        separator = "\\"
+    }
+    if strings.starts_with(file_path, home + separator) {
+        return "~" + strings.slice(file_path, len(home), len(file_path))
+    }
+    return file_path
+}
+
+do report_install_path() -> string {
+    executable, executable_err = os.executable_path()
+    if executable_err != nil {
+        return "unknown"
+    }
+    home string = os.home_dir()
+    if home == "" {
+        return executable
+    }
+    return redact_home(executable, home)
+}
+
+// report_kernel is `uname -sr`, falling back to `cmd /c ver` on Windows.
+do report_kernel() -> string {
+    kernel, found = command_output("uname", {"-sr"})
+    if found {
+        return kernel
+    }
+    if os.current_os() == os.WINDOWS {
+        windows_kernel, windows_found = command_output("cmd", {"/c", "ver"})
+        if windows_found {
+            return windows_kernel
+        }
+    }
+    return ""
+}
+
+// report_cpu_model is the CPU's brand string, or "unknown".
+do report_cpu_model() -> string {
+    when os.current_os() {
+        is .MAC_OS {
+            brand, found = command_output("sysctl", {"-n", "machdep.cpu.brand_string"})
+            if found {
+                return brand
+            }
+        }
+        is .LINUX {
+            model, found = command_output("sh", {"-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-"})
+            if found {
+                return model
+            }
+        }
+        is .WINDOWS {
+            // The registry holds the brand string and reg.exe is always present.
+            query, found = command_output("reg", {"query", "HKLM\\HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", "/v", "ProcessorNameString"})
+            if found {
+                marker_index i64 = strings.index_of(query, "REG_SZ")
+                if marker_index >= 0 {
+                    return strings.trim(strings.slice(query, marker_index + 6, len(query)))
+                }
+            }
+        }
+        default { return "unknown" }
+    }
+    return "unknown"
+}
+
+// memory_command is the command that prints the installed memory in bytes.
+do memory_command() -> (string, [string]) {
+    when os.current_os() {
+        is .LINUX {
+            return "sh", {"-c", "grep MemTotal /proc/meminfo | awk '{print $2 * 1024}'"}
+        }
+        is .WINDOWS {
+            return "powershell", {"-NoProfile", "-Command", "[string](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory"}
+        }
+        default {
+            return "sysctl", {"-n", "hw.memsize"}
+        }
+    }
+}
+
+// report_memory is the installed memory in whole gigabytes, or "unknown".
+do report_memory() -> string {
+    command, command_args = memory_command()
+    memory, found = command_output(command, command_args)
+    if !found {
+        return "unknown"
+    }
+    bytes, bytes_err = strconv.to_f64(memory)
+    if bytes_err != nil {
+        return "0 GB"
+    }
+    gigabytes i64 = cast(bytes / 1073741824.0 + 0.5, i64)
+    return "${gigabytes} GB"
+}
+
+// report_c_compiler resolves the C compiler grayc will invoke (GRAY_CC, then
+// CC, else the first of cc, gcc and clang on PATH; gcc, clang and cc on
+// Windows) and returns its path, the first line of its --version and its
+// target triple.
+do report_c_compiler() -> (string, string, string) {
+    mut compiler string = os.get_env("GRAY_CC")
+    if compiler == "" {
+        compiler = os.get_env("CC")
+    }
+    if compiler == "" {
+        mut candidates [string] = {"cc", "gcc", "clang"}
+        if os.current_os() == os.WINDOWS {
+            candidates = {"gcc", "clang", "cc"}
+        }
+        for_each candidate in candidates {
+            if compiler == "" {
+                found_path, found = os.find_executable(candidate)
+                if found {
+                    compiler = found_path
+                }
+            }
+        }
+    }
+    if compiler == "" && os.current_os() == os.WINDOWS {
+        // grayc falls back to a toolchain in a well-known install location, so
+        // the report describes what it will use.
+        mut well_known [string] = {"C:\\msys64\\ucrt64\\bin\\gcc.exe", "C:\\msys64\\mingw64\\bin\\gcc.exe", "C:\\msys64\\clang64\\bin\\clang.exe", "C:\\mingw64\\bin\\gcc.exe", "C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe"}
+        program_files string = os.get_env("ProgramFiles")
+        if program_files != "" {
+            arrays.append(well_known, path.join_parts({program_files, "LLVM", "bin", "clang.exe"}))
+        }
+        for_each candidate in well_known {
+            if compiler == "" && io.is_file(candidate) {
+                compiler = candidate
+            }
+        }
+    }
+    if compiler == "" {
+        return "not found", "", ""
+    }
+
+    mut compiler_path string = compiler
+    resolved, resolved_found = os.find_executable(compiler)
+    if resolved_found {
+        compiler_path = resolved
+    }
+    mut compiler_version string = ""
+    version_output, version_found = command_output(compiler, {"--version"})
+    if version_found {
+        compiler_version = strings.split(version_output, "\n")[0]
+    }
+    mut triple string = ""
+    triple_output, triple_found = command_output(compiler, {"-dumpmachine"})
+    if triple_found {
+        triple = triple_output
+    }
+    home string = os.home_dir()
+    if home != "" && strings.starts_with(compiler_path, home) {
+        compiler_path = "~" + strings.remove_prefix(compiler_path, home)
+    }
+    return compiler_path, compiler_version, triple
+}
+
+// run_report is gray report.
+do run_report() -> i64 {
+    println("Grayscale Bug Report Info")
+    println("======================")
+
+    info versions.VersionInfo = versions.version_info(version.VERSION)
+    mut channel string = "stable"
+    if info.channel == "pre-release" {
+        channel = "pre-release"
+    } or info.channel == "dev" {
+        channel = "dev"
+    }
+    println("Grayscale Version:  ${info.display}  (${channel})")
+
+    if info.commit == "" {
+        println("Commit:      (released build)")
+    } otherwise {
+        println("Commit:      ${info.commit}")
+    }
+
+    println("Install:     ${report_install_path()}")
+    println("OS:          ${platform_name()}/${architecture_name()}  ${report_kernel()}")
+    println("CPU:         ${report_cpu_model()}")
+    println("RAM:         ${report_memory()}")
+
+    compiler_path, compiler_version, triple = report_c_compiler()
+    println("C compiler:  ${compiler_path}")
+    if compiler_version != "" {
+        println("             ${compiler_version}")
+    }
+    if triple != "" {
+        println("             target: ${triple}")
+    }
+    return 0
+}

@@ -1,0 +1,324 @@
+// releases.gray — Release information for gray version, update and install:
+// the GitHub release list fetched with curl, the once-a-day update check and
+// its cache file, and the changelog shown before an upgrade.
+
+import @io
+import @os
+import @path
+import @json
+import @time
+import @strings
+import @arrays
+import @strconv
+import "./changelog"
+import "./versions"
+
+const RELEASES_URL string = "https://api.github.com/repos/grayscale-lang/grayscale/releases"
+const LATEST_RELEASE_URL string = "https://api.github.com/repos/grayscale-lang/grayscale/releases/latest"
+const UPDATE_CHECK_DIRECTORY string = ".gray"
+const UPDATE_CHECK_FILE string = "update_check"
+const CHECK_TIMEOUT_SECONDS i64 = 2
+const MAX_CHANGELOG_VERSIONS i64 = 10
+const DIRECTORY_MODE i64 = 448
+const PRIVATE_FILE_MODE i64 = 384
+
+#json
+const ReleaseAsset struct {
+    name string
+    browser_download_url string
+}
+
+#json
+const Release struct {
+    tag_name string
+    body string
+    prerelease bool
+    assets [ReleaseAsset]
+}
+
+// UpdateState is the cache of the last update check.
+#json
+const UpdateState struct {
+    last_check string
+    latest_version string
+}
+
+// update_state_path is the cache file under the home directory.
+do update_state_path() -> (string, bool) {
+    home string = os.home_dir()
+    if home == "" {
+        return "", false
+    }
+    return path.join_parts({home, UPDATE_CHECK_DIRECTORY, UPDATE_CHECK_FILE}), true
+}
+
+// read_update_state reads the cache; a missing or unreadable file is an empty state.
+do read_update_state() -> UpdateState {
+    empty UpdateState = UpdateState{last_check: "", latest_version: ""}
+    state_path, found = update_state_path()
+    if !found {
+        return empty
+    }
+    data, read_err = io.read_file(state_path)
+    if read_err != nil || !json.is_valid(data) {
+        return empty
+    }
+    state UpdateState = json.parse(data)
+    return state
+}
+
+// write_update_state writes the cache, creating its directory private to the user.
+do write_update_state(state UpdateState) {
+    state_path, found = update_state_path()
+    if !found {
+        return
+    }
+    directory, _ = path.split_dir_file(state_path)
+    cache_directory string = path.normalize_path(directory)
+    if !io.is_directory(cache_directory) {
+        _, make_err = io.make_dir_all(cache_directory)
+        if make_err != nil {
+            return
+        }
+        _, mode_err = io.chmod(cache_directory, DIRECTORY_MODE)
+        if mode_err != nil {
+            return
+        }
+    }
+    _, write_err = io.write_file(state_path, json.encode(state))
+    if write_err != nil {
+        return
+    }
+    _, file_mode_err = io.chmod(state_path, PRIVATE_FILE_MODE)
+    if file_mode_err != nil {
+        return
+    }
+}
+
+// remember_latest_stable records tag as the latest stable release, checked today.
+do remember_latest_stable(tag string) {
+    write_update_state(UpdateState{last_check: time.date(time.now()), latest_version: tag})
+}
+
+// should_check_for_update is true when the last check was not today.
+do should_check_for_update() -> bool {
+    state UpdateState = read_update_state()
+    return state.last_check == "" || state.last_check != time.date(time.now())
+}
+
+// http_get fetches a GitHub API url with curl and returns the body. A missing
+// curl, a failed transfer and a status other than 200 are errors.
+do http_get(url string, timeout_seconds i64) -> (string, Error) {
+    _, curl_found = os.find_executable("curl")
+    if !curl_found {
+        return "", error(.NotFound, "curl not found in PATH; it is required to reach GitHub")
+    }
+    response, launch_err = os.exec("curl", {"-sS", "-m", "${timeout_seconds}", "-H", "Accept: application/vnd.github.v3+json", "-H", "User-Agent: Grayscale-Language-Updater", "-w", "\n%{http_code}", url})
+    if launch_err != nil {
+        return "", launch_err
+    }
+    if response.exit_code != 0 {
+        return "", error(.IoFailure, strings.trim(response.stderr))
+    }
+    last_newline i64 = strings.last_index_of(response.stdout, "\n")
+    if last_newline < 0 {
+        return "", error(.IoFailure, "unexpected response from GitHub")
+    }
+    status string = strings.slice(response.stdout, last_newline + 1, len(response.stdout))
+    if status != "200" {
+        return "", error(.IoFailure, "GitHub API returned status ${status}")
+    }
+    return strings.slice(response.stdout, 0, last_newline), nil
+}
+
+// fetch_latest_release fetches the latest release and rejects legacy
+// (pre-Grayscale) releases that lack the expected tag prefix.
+do fetch_latest_release(timeout_seconds i64) -> (Release, Error) {
+    none Release = Release{tag_name: "", body: "", prerelease: false, assets: {}}
+    body, get_err = http_get(LATEST_RELEASE_URL, timeout_seconds)
+    if get_err != nil {
+        return none, get_err
+    }
+    if !json.is_valid(body) {
+        return none, error(.InvalidInput, "invalid JSON from GitHub")
+    }
+    release Release = json.parse(body)
+    if !strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+        return none, error(.InvalidInput, "latest release ${strconv.quote(release.tag_name)} is not a Grayscale release")
+    }
+    return release, nil
+}
+
+// fetch_all_releases fetches the release list, keeping only Grayscale-era
+// releases (grayscale-v* tags) so legacy releases are left out of version
+// discovery.
+do fetch_all_releases(timeout_seconds i64) -> ([Release], Error) {
+    body, get_err = http_get(RELEASES_URL, timeout_seconds)
+    if get_err != nil {
+        return {}, get_err
+    }
+    if !json.is_valid(body) {
+        return {}, error(.InvalidInput, "invalid JSON from GitHub")
+    }
+    all [Release] = json.parse(body)
+    mut filtered [Release] = {}
+    for_each release in all {
+        if strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+            arrays.append(filtered, release)
+        }
+    }
+    return filtered, nil
+}
+
+// pick_latest_stable is the highest-versioned release that is not a pre-release.
+do pick_latest_stable(releases [Release]) -> (Release, bool) {
+    mut best Release = Release{tag_name: "", body: "", prerelease: false, assets: {}}
+    mut found bool = false
+    for_each release in releases {
+        if release.prerelease || !strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+            continue
+        }
+        if !found || versions.compare_semver(release.tag_name, best.tag_name) > 0 {
+            best = release
+            found = true
+        }
+    }
+    return best, found
+}
+
+// pick_latest_prerelease is the highest-versioned pre-release.
+do pick_latest_prerelease(releases [Release]) -> (Release, bool) {
+    mut best Release = Release{tag_name: "", body: "", prerelease: false, assets: {}}
+    mut found bool = false
+    for_each release in releases {
+        if !release.prerelease {
+            continue
+        }
+        if !found || versions.compare_semver(release.tag_name, best.tag_name) > 0 {
+            best = release
+            found = true
+        }
+    }
+    return best, found
+}
+
+// releases_in_range keeps the releases after current_version and up to
+// latest_version, in list order.
+do releases_in_range(releases [Release], current_version string, latest_version string) -> [Release] {
+    mut result [Release] = {}
+    for_each release in releases {
+        if versions.is_version_in_range(release.tag_name, current_version, latest_version) {
+            arrays.append(result, release)
+        }
+    }
+    return result
+}
+
+do repeat_text(text string, count i64) -> string {
+    mut pieces [string] = {}
+    for _ in range(0, count) {
+        arrays.append(pieces, text)
+    }
+    return strings.join(pieces, "")
+}
+
+// format_changelog renders the changes between two versions.
+do format_changelog(releases [Release], current_version string, latest_version string) -> string {
+    mut lines [string] = {}
+    arrays.append(lines, "\nUpdating from ${current_version} -> ${latest_version}\n")
+    arrays.append(lines, "\nWhat's new since your version:\n")
+    arrays.append(lines, repeat_text("-", 40) + "\n")
+
+    mut shown [Release] = releases
+    mut truncated bool = false
+    if len(releases) > MAX_CHANGELOG_VERSIONS {
+        shown = arrays.slice(releases, 0, MAX_CHANGELOG_VERSIONS)
+        truncated = true
+    }
+
+    for_each release in shown {
+        parsed changelog.ParsedChangelog = changelog.parse_release_body(release.body)
+        if len(parsed.features) == 0 && len(parsed.bug_fixes) == 0 {
+            continue
+        }
+        arrays.append(lines, "\n\x1b[1m${release.tag_name}\x1b[0m\n")
+        if len(parsed.features) > 0 {
+            arrays.append(lines, "  Features:\n")
+            for_each feature in parsed.features {
+                arrays.append(lines, "    - ${feature}\n")
+            }
+        }
+        if len(parsed.bug_fixes) > 0 {
+            arrays.append(lines, "  Bug Fixes:\n")
+            for_each fix in parsed.bug_fixes {
+                arrays.append(lines, "    - ${fix}\n")
+            }
+        }
+    }
+
+    if truncated {
+        arrays.append(lines, "\n... and ${len(releases) - MAX_CHANGELOG_VERSIONS} more version(s)\n")
+    }
+    arrays.append(lines, "\n" + repeat_text("-", 40))
+    return strings.join(lines, "")
+}
+
+// is_dev_build reports whether the running binary was built from an
+// uncommitted or untagged tree and so should not be compared against published
+// releases: version "dev", a "dirty" build, or a git-describe trailer
+// "-N-g<hash>" anywhere in the version.
+do is_dev_build(version string) -> bool {
+    if version == "dev" || version == "" || strings.contains(version, "dirty") {
+        return true
+    }
+    for index in range(0, len(version)) {
+        if version[index] != '-' {
+            continue
+        }
+        digits_end i64 = changelog.skip_digits(version, index + 1)
+        if digits_end == index + 1 {
+            continue
+        }
+        g_end i64 = changelog.match_literal(version, digits_end, "-g")
+        if g_end < 0 {
+            continue
+        }
+        if changelog.skip_hex(version, g_end) > g_end {
+            return true
+        }
+    }
+    return false
+}
+
+// check_for_update prints a notice when a newer release is out. It runs at
+// startup: a cache checked today is used as it is, otherwise GitHub is asked
+// with a short timeout and the cache is refreshed. A dev build never checks.
+do check_for_update(version string) {
+    if is_dev_build(version) {
+        return
+    }
+
+    state UpdateState = read_update_state()
+    cached_is_usable bool = state.latest_version != "" && strings.starts_with(state.latest_version, versions.RELEASE_TAG_PREFIX)
+    if cached_is_usable && !should_check_for_update() {
+        announce_update(version, state.latest_version)
+        return
+    }
+
+    release, fetch_err = fetch_latest_release(CHECK_TIMEOUT_SECONDS)
+    if fetch_err != nil {
+        // Offline: fall back to the cached version.
+        if cached_is_usable {
+            announce_update(version, state.latest_version)
+        }
+        return
+    }
+    remember_latest_stable(release.tag_name)
+    announce_update(version, release.tag_name)
+}
+
+do announce_update(version string, latest string) {
+    if versions.is_newer_version(version, latest) {
+        println("Note: Grayscale ${latest} available (you have ${version}). Run `gray update` to upgrade.\n")
+    }
+}
