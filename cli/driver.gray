@@ -1,0 +1,187 @@
+// driver.gray — Runs the grayc compiler for the gray commands: build, run,
+// check, fmt and version. Commands that stream (build, run, check) hand the
+// terminal to grayc through system(); the others capture its output.
+
+import @io
+import @os
+import @path
+import @strings
+import @arrays
+import @encoding
+import "./compiler"
+
+// BuildOptions configures a build. An empty string, 0 or false leaves the
+// matching grayc flag off.
+const BuildOptions struct {
+    output string
+    optimization_level string     // "O0", "O1", "O2" or "O3"
+    debug bool
+    verbose bool
+    emit_c bool
+    no_color bool
+    show_time bool
+    quiet bool                    // suppress all warnings
+    quiet_codes string            // suppress specific warning codes, comma-separated
+    c_compiler string             // C compiler command, e.g. "zig cc -target x86_64-linux-gnu"
+    arena_limit i64               // arena growth limit in bytes, 0 for the default
+    test bool                     // build a test runner from #test functions
+    defines [string]              // NAME=VALUE overrides of #define constants
+}
+
+// find_grayc locates the compiler binary.
+do find_grayc() -> (string, Error) {
+    grayc_path, found = compiler.find_compiler()
+    if !found {
+        return "", error(.NotFound, "Grayscale compiler not found. Install it or set GRAY_COMPILER_PATH")
+    }
+    return grayc_path, nil
+}
+
+// run compiles and executes a source file with grayc run, streaming the
+// program's input and output. It returns the program's exit code.
+do run(file string, extra_args [string]) -> (i64, Error) {
+    grayc_path, find_err = find_grayc()
+    if find_err != nil {
+        return 1, find_err
+    }
+    return execute(grayc_path, arrays.concat({"run", file}, extra_args)), nil
+}
+
+// build_args constructs the grayc argument list for a build.
+do build_args(file string, options BuildOptions) -> [string] {
+    mut grayc_args [string] = {"build", file}
+    if options.output != "" {
+        arrays.append(grayc_args, "-o")
+        arrays.append(grayc_args, options.output)
+    }
+    if options.optimization_level != "" {
+        arrays.append(grayc_args, "-${options.optimization_level}")
+    }
+    if options.debug {
+        arrays.append(grayc_args, "-g")
+    }
+    if options.verbose {
+        arrays.append(grayc_args, "-v")
+    }
+    if options.emit_c {
+        arrays.append(grayc_args, "-c")
+    }
+    if options.no_color {
+        arrays.append(grayc_args, "--no-color")
+    }
+    if options.show_time {
+        arrays.append(grayc_args, "--time")
+    }
+    if options.quiet {
+        arrays.append(grayc_args, "--quiet")
+    } or options.quiet_codes != "" {
+        arrays.append(grayc_args, "--quiet")
+        arrays.append(grayc_args, options.quiet_codes)
+    }
+    if options.c_compiler != "" {
+        arrays.append(grayc_args, "--cc")
+        arrays.append(grayc_args, options.c_compiler)
+    }
+    if options.arena_limit > 0 {
+        arrays.append(grayc_args, "--arena-limit=${options.arena_limit}")
+    }
+    for_each override in options.defines {
+        arrays.append(grayc_args, "--define=${override}")
+    }
+    if options.test {
+        arrays.append(grayc_args, "--test")
+    }
+    return grayc_args
+}
+
+// build compiles a source file to a native binary with grayc build, after
+// checking that the output path can be written.
+do build(file string, options BuildOptions) -> (i64, Error) {
+    if options.output != "" {
+        if same_existing_file(file, options.output) {
+            return 1, error(.InvalidInput, "output path '${options.output}' is the input file; choose a different -o path")
+        }
+        if io.is_directory(options.output) {
+            return 1, error(.InvalidInput, "output path '${options.output}' is a directory; name a file with -o")
+        }
+        parent_with_separator, _ = path.split_dir_file(options.output)
+        parent string = path.normalize_path(parent_with_separator)
+        if parent != "." && !io.is_directory(parent) {
+            return 1, error(.InvalidInput, "output path '${options.output}' cannot be written: directory '${parent}' does not exist")
+        }
+    }
+    grayc_path, find_err = find_grayc()
+    if find_err != nil {
+        return 1, find_err
+    }
+
+    if options.verbose {
+        runtime_directory, _ = path.split_dir_file(grayc_path)
+        eprintln("runtime directory: ${path.normalize_path(runtime_directory)}")
+    }
+    return execute(grayc_path, build_args(file, options)), nil
+}
+
+// check type-checks a source file without compiling.
+do check(file string, extra_args [string]) -> (i64, Error) {
+    grayc_path, find_err = find_grayc()
+    if find_err != nil {
+        return 1, find_err
+    }
+    return execute(grayc_path, arrays.concat({"check", file}, extra_args)), nil
+}
+
+// compiler_version returns the grayc version string.
+do compiler_version() -> (string, Error) {
+    grayc_path, find_err = find_grayc()
+    if find_err != nil {
+        return "", find_err
+    }
+    version_result, launch_err = os.exec(grayc_path, {"version"})
+    if launch_err != nil {
+        return "", error(.IoFailure, "failed to get grayc version: ${launch_err.message}")
+    }
+    if version_result.exit_code != 0 {
+        return "", error(.IoFailure, "failed to get grayc version: exit status ${version_result.exit_code}")
+    }
+    return strings.trim(version_result.stdout), nil
+}
+
+// format_file formats one source file in place with grayc --fmt and returns
+// grayc's exit code. Its diagnostics go to stderr.
+do format_file(file string) -> (i64, Error) {
+    grayc_path, find_err = find_grayc()
+    if find_err != nil {
+        return 1, find_err
+    }
+    format_result, launch_err = os.exec(grayc_path, {"--fmt", file})
+    if launch_err != nil {
+        return 1, launch_err
+    }
+    if format_result.stderr != "" {
+        eprint(format_result.stderr)
+    }
+    return format_result.exit_code, nil
+}
+
+// execute runs grayc with the terminal's input and output and returns its exit
+// code (-1 when a signal ended it).
+do execute(grayc_path string, grayc_args [string]) -> i64 {
+    mut words [string] = {encoding.shell_escape(grayc_path)}
+    for_each grayc_arg in grayc_args {
+        arrays.append(words, encoding.shell_escape(grayc_arg))
+    }
+    flush()
+    return system(strings.join(words, " "))
+}
+
+// same_existing_file reports whether both paths name one existing file, by
+// their absolute spellings. A symbolic link to the file is not followed.
+do same_existing_file(first string, second string) -> bool {
+    if !io.file_exists(first) || !io.file_exists(second) {
+        return false
+    }
+    first_absolute, first_err = path.absolute_path(first)
+    second_absolute, second_err = path.absolute_path(second)
+    return first_err == nil && second_err == nil && first_absolute == second_absolute
+}
