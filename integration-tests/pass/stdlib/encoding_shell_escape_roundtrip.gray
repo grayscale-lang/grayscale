@@ -1,0 +1,30 @@
+/*
+ * Test: encoding.shell_escape round trip
+ * Each argument is quoted, passed through the platform shell, and read back
+ * from the child process unchanged.
+ */
+
+import @encoding
+import @os
+
+do main() {
+    if os.current_os() == Platform.WINDOWS {
+        println("ALL TESTS PASSED")
+        exit(0)
+    }
+    values [string] = {"a b", "it's", "say \"hi\"", "\$HOME", "`id`", "a;b", "a&b", "a|b", "a\\b", ""}
+    mut passed i64 = 0
+    for_each value in values {
+        result, err = os.exec("sh", {"-c", "printf %s " + encoding.shell_escape(value)})
+        if err == nil && result.stdout == value {
+            passed += 1
+        } otherwise {
+            println("  [FAIL] round trip of '${value}'")
+        }
+    }
+    if passed == len(values) {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        exit(1)
+    }
+}

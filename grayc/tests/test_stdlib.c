@@ -3333,19 +3333,49 @@ static void test_encoding_shell_escape_safe_text_is_unchanged(void) {
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("file-1.txt")), "file-1.txt");
 }
 
+#ifdef _WIN32
+static void test_encoding_shell_escape_quotes_unsafe_text(void) {
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("hello world")), "^\"hello world^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("a;b")), "^\"a;b^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("a&b")), "^\"a^&b^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("$HOME")), "^\"$HOME^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("`x`")), "^\"`x`^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("50%")), "^\"50^%^\"");
+}
+
+static void test_encoding_shell_escape_embedded_single_quote(void) {
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("it's here")), "^\"it's here^\"");
+}
+
+static void test_encoding_shell_escape_embedded_double_quote(void) {
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("say \"hi\"")), "^\"say \\^\"hi\\^\"^\"");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("a\\\"b")), "^\"a\\\\\\^\"b^\"");
+}
+
+static void test_encoding_shell_escape_empty_string_is_quoted(void) {
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("")), "^\"^\"");
+}
+#else
 static void test_encoding_shell_escape_quotes_unsafe_text(void) {
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("hello world")), "'hello world'");
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("a;b")), "'a;b'");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("a&b")), "'a&b'");
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("$HOME")), "'$HOME'");
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("`x`")), "'`x`'");
 }
 
 static void test_encoding_shell_escape_embedded_single_quote(void) {
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("it's here")), "'it'\\''s here'");
 }
 
+static void test_encoding_shell_escape_embedded_double_quote(void) {
+    ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("say \"hi\"")), "'say \"hi\"'");
+}
+
 static void test_encoding_shell_escape_empty_string_is_quoted(void) {
     ASSERT_GRAY_STR(gray_encoding_shell_escape(arena, gray_string_lit("")), "''");
 }
+#endif
 
 static void test_encoding_from_string_and_to_string_round_trip(void) {
     GrayArray bytes = gray_encoding_from_string(arena, gray_string_lit("héllo"));
@@ -5840,6 +5870,7 @@ int main(void) {
     RUN_TEST(test_encoding_shell_escape_safe_text_is_unchanged);
     RUN_TEST(test_encoding_shell_escape_quotes_unsafe_text);
     RUN_TEST(test_encoding_shell_escape_embedded_single_quote);
+    RUN_TEST(test_encoding_shell_escape_embedded_double_quote);
     RUN_TEST(test_encoding_shell_escape_empty_string_is_quoted);
     RUN_TEST(test_encoding_from_string_and_to_string_round_trip);
     RUN_TEST(test_encoding_from_string_empty);

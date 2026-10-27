@@ -4264,7 +4264,7 @@ A failed request returns an Error with a fixed message and a specific code: `Uns
 | `url_decode` | `(s string) -> (string, Error)` | URL percent-decode; returns an error on a malformed escape |
 | `html_escape` | `(s string) -> string` | Escape `& < > " '` as HTML entities |
 | `html_unescape` | `(s string) -> string` | Resolve named and numeric HTML entities |
-| `shell_escape` | `(s string) -> string` | Quote a string as one POSIX shell argument |
+| `shell_escape` | `(s string) -> string` | Quote a string as one argument for the platform shell (POSIX or cmd.exe) |
 
 #### Byte Conversion
 
