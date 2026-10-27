@@ -1,0 +1,309 @@
+// test.gray — "gray test": discover #test functions, compile each source file
+// with `grayc build --test`, run the resulting binary, and render the results.
+//
+// The test binary speaks a small line protocol on stdout, each line prefixed
+// with a per-run nonce passed in through GRAY_TEST_PROTOCOL_NONCE:
+//
+//     <nonce>GRAYTEST PASS <name>
+//     <nonce>GRAYTEST FAIL <name>\t<file>:<line>\t<message>
+//     <nonce>GRAYTEST DONE <passed> <failed>
+//
+// Everything else the binary prints is passed through. The nonce keeps test
+// output that happens to contain "GRAYTEST ..." from forging protocol lines.
+
+import @io
+import @os
+import @path
+import @strings
+import @arrays
+import @strconv
+import @crypto
+import "./sources"
+import "./test_markers"
+import "./compiler"
+
+const PASS_PREFIX string = "GRAYTEST PASS "
+const FAIL_PREFIX string = "GRAYTEST FAIL "
+const DONE_PREFIX string = "GRAYTEST DONE "
+
+const TestResult struct {
+    name string
+    passed bool
+    message string
+    file string
+    line i64
+}
+
+// run_tests is the gray test command: it returns the exit status. args are the
+// path arguments, as for gray fmt and gray doc.
+do run_tests(args [string], no_color bool) -> i64 {
+    colored bool = !no_color
+
+    files, args_ok = collect_test_files(args)
+    if len(files) == 0 {
+        println("No #test functions found.")
+        if !args_ok {
+            return 1
+        }
+        return 0
+    }
+
+    grayc_path, found = compiler.find_compiler()
+    if !found {
+        eprintln("error: Grayscale compiler not found. Install it or set GRAY_COMPILER_PATH")
+        return 1
+    }
+
+    temp_directory, temp_err = io.temp_dir()
+    if temp_err != nil {
+        eprintln("error: ${temp_err.message}")
+        return 1
+    }
+
+    nonce string = new_protocol_nonce()
+    mut total_pass i64 = 0
+    mut total_fail i64 = 0
+    mut build_failed bool = false
+    mut no_test_files [string] = {}
+
+    for index in range(0, len(files)) {
+        file string = files[index]
+        binary_path string = path.join_parts({temp_directory, "t${index}${executable_suffix()}"})
+        build_output, build_ok = build_test_binary(grayc_path, file, binary_path)
+        if !build_ok {
+            println("\n  ${paint(colored, "1", file)}")
+            build_failed = true
+            println("    ${paint(colored, "31", "✗")} could not compile")
+            for_each output_line in strings.split(strings.trim_right(build_output), "\n") {
+                if output_line != "" {
+                    println("      ${output_line}")
+                }
+            }
+            continue
+        }
+
+        results, passthrough = run_test_binary(binary_path, nonce)
+
+        // A file whose markers sit on non-functions compiles to a runner with
+        // no tests. It isn't a test file, so don't report it as an empty entry.
+        if len(results) == 0 {
+            arrays.append(no_test_files, file)
+            continue
+        }
+
+        println("\n  ${paint(colored, "1", file)}")
+        for_each passthrough_line in passthrough {
+            println("      ${paint(colored, "2", passthrough_line)}")
+        }
+        for_each result in results {
+            if result.passed {
+                println("    ${paint(colored, "32", "✓")} ${result.name}")
+                total_pass = total_pass + 1
+            } otherwise {
+                println("    ${paint(colored, "31", "✗")} ${result.name}")
+                total_fail = total_fail + 1
+            }
+        }
+        for_each result in results {
+            if result.passed {
+                continue
+            }
+            println("\n  ${paint(colored, "31", "FAIL")}  ${file}:${result.name}")
+            println("    ${result.message}")
+            source_text string = source_line(result.file, result.line)
+            if source_text != "" {
+                println("      ${paint(colored, "2", source_text)}")
+            }
+        }
+    }
+
+    // Files that passed the prescan but hold no real #test functions.
+    if len(no_test_files) > 0 && total_pass + total_fail == 0 && !build_failed {
+        println("No #test functions found.")
+        if !args_ok {
+            return 1
+        }
+        return 0
+    }
+    for_each no_test_file in no_test_files {
+        println("\n  ${paint(colored, "1", no_test_file)}\n    no #test functions")
+    }
+
+    passed_text string = paint(colored, "32", "${total_pass} passed")
+    mut failed_text string = "${total_fail} failed"
+    if total_fail > 0 {
+        failed_text = paint(colored, "31", failed_text)
+    }
+    println("\n  Results: ${passed_text}, ${failed_text}, ${total_pass + total_fail} total")
+
+    if total_fail > 0 || build_failed || !args_ok {
+        return 1
+    }
+    return 0
+}
+
+// collect_test_files resolves the path arguments to the .gray files that hold
+// a #test marker. No arguments means "recursively from the current directory".
+// ok is false when an argument could not be used.
+do collect_test_files(args [string]) -> ([string], bool) {
+    mut source_args [string] = args
+    if len(args) == 0 {
+        source_args = {"./..."}
+    }
+    mut files [string] = {}
+    sources_found, ok = sources.expand_source_args("test", source_args)
+    for_each source in sources_found {
+        data, read_err = io.read_file(source)
+        if read_err == nil && len(test_markers.find_test_markers(data)) > 0 {
+            arrays.append(files, source)
+        }
+    }
+    return files, ok
+}
+
+// build_test_binary compiles file to binary_path with `grayc build --test`. On
+// failure it returns the compiler's output so the caller can show the
+// diagnostics.
+do build_test_binary(grayc_path string, file string, binary_path string) -> (string, bool) {
+    build_result, launch_err = os.exec(grayc_path, {"build", "--test", "--no-color", "-o", binary_path, file})
+    if launch_err != nil {
+        return launch_err.message, false
+    }
+    if build_result.exit_code != 0 {
+        return build_result.stdout + build_result.stderr, false
+    }
+    return "", true
+}
+
+// new_protocol_nonce returns an unguessable token the test binary must prefix
+// every protocol line with. A test's own stdout can't forge it.
+do new_protocol_nonce() -> string {
+    return "GT${crypto.random_hex(32)}:"
+}
+
+// run_test_binary executes the compiled test binary and parses its GRAYTEST
+// protocol lines (each prefixed with nonce). Any other stdout line is returned
+// as passthrough.
+do run_test_binary(binary_path string, nonce string) -> ([TestResult], [string]) {
+    mut results [TestResult] = {}
+    mut passthrough [string] = {}
+    no_arguments [string] = {}
+
+    os.set_env("GRAY_TEST_PROTOCOL_NONCE", nonce)
+    run, launch_err = os.exec(binary_path, no_arguments)
+    if launch_err != nil {
+        arrays.append(passthrough, "error: ${launch_err.message}")
+        return results, passthrough
+    }
+    if run.stderr != "" {
+        eprint(run.stderr)
+    }
+
+    mut output_lines [string] = strings.split(run.stdout, "\n")
+    if len(output_lines) > 0 && output_lines[len(output_lines) - 1] == "" {
+        mut _ = arrays.remove_last(output_lines)
+    }
+
+    mut saw_done bool = false
+    for_each raw_line in output_lines {
+        line string = strings.trim_right(raw_line)
+        // A test that writes with print() (no trailing newline) leaves the
+        // runner's protocol line glued to the end of that output, so the nonce
+        // is mid-line, not at the start. The text before it is passthrough, the
+        // text from the nonce on is the protocol line.
+        nonce_index i64 = strings.index_of(line, nonce)
+        if nonce_index < 0 {
+            arrays.append(passthrough, line)
+            continue
+        }
+        if nonce_index > 0 {
+            arrays.append(passthrough, strings.slice(line, 0, nonce_index))
+        }
+        message string = strings.slice(line, nonce_index + len(nonce), len(line))
+        if strings.starts_with(message, PASS_PREFIX) {
+            arrays.append(results, TestResult{name: strings.remove_prefix(message, PASS_PREFIX), passed: true, message: "", file: "", line: 0})
+        } or strings.starts_with(message, FAIL_PREFIX) {
+            arrays.append(results, parse_fail_line(strings.remove_prefix(message, FAIL_PREFIX)))
+        } or strings.starts_with(message, DONE_PREFIX) {
+            saw_done = true
+        } otherwise {
+            arrays.append(passthrough, line)
+        }
+    }
+
+    // The runner exited without printing its trailer: it crashed hard (a signal
+    // the setjmp recovery can't catch, e.g. a stack overflow) part way through.
+    // Surface that instead of silently dropping tests.
+    if !saw_done {
+        mut reason string = "no result trailer"
+        if run.signal != 0 {
+            reason = "signal: ${run.signal}"
+        } or run.exit_code != 0 {
+            reason = "exit status ${run.exit_code}"
+        }
+        arrays.append(results, TestResult{name: "(test runner)", passed: false, message: "test binary exited abnormally: ${reason}", file: "", line: 0})
+    }
+    return results, passthrough
+}
+
+// parse_fail_line parses "<name>\t<file>:<line>\t<message>".
+do parse_fail_line(text string) -> TestResult {
+    mut result TestResult = TestResult{name: text, passed: false, message: "test failed", file: "", line: 0}
+    first_tab i64 = strings.index_of(text, "\t")
+    if first_tab < 0 {
+        return result
+    }
+    result.name = strings.slice(text, 0, first_tab)
+    rest string = strings.slice(text, first_tab + 1, len(text))
+    second_tab i64 = strings.index_of(rest, "\t")
+    mut location string = rest
+    if second_tab >= 0 {
+        location = strings.slice(rest, 0, second_tab)
+        failure_message string = strings.slice(rest, second_tab + 1, len(rest))
+        if failure_message != "" {
+            result.message = failure_message
+        }
+    }
+    colon i64 = strings.last_index_of(location, ":")
+    if colon >= 0 {
+        result.file = strings.slice(location, 0, colon)
+        line_number, parse_err = strconv.to_i64(strings.slice(location, colon + 1, len(location)))
+        if parse_err == nil {
+            result.line = line_number
+        }
+    } otherwise {
+        result.file = location
+    }
+    return result
+}
+
+// source_line returns the trimmed contents of file:line, or "" if unavailable.
+do source_line(file string, line i64) -> string {
+    if file == "" || line <= 0 {
+        return ""
+    }
+    data, read_err = io.read_file(file)
+    if read_err != nil {
+        return ""
+    }
+    source_lines [string] = strings.split(data, "\n")
+    if line > len(source_lines) {
+        return ""
+    }
+    return strings.trim(source_lines[line - 1])
+}
+
+do executable_suffix() -> string {
+    when os.current_os() {
+        is .WINDOWS { return ".exe" }
+        default { return "" }
+    }
+}
+
+// paint wraps text in an ANSI escape when color is enabled.
+do paint(enabled bool, code string, text string) -> string {
+    if !enabled {
+        return text
+    }
+    return "\x1b[${code}m${text}\x1b[0m"
+}
