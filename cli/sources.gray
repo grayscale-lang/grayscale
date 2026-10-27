@@ -1,0 +1,96 @@
+// sources.gray — Expands the path arguments of gray fmt and gray doc into the
+// source files they name, so both commands read the same argument the same way.
+
+import @io
+import @arrays
+import @maps
+import @path
+import @strings
+
+// has_source_extension reports whether path ends in an accepted source extension.
+do has_source_extension(file_path string) -> bool {
+    return strings.ends_with(file_path, ".gray") || strings.ends_with(file_path, ".grayscale")
+}
+
+// expand_source_args turns path arguments into a de-duplicated list of source
+// files: a file, the source files directly inside a directory, or every source
+// file under `dir/...`. ok is false when an argument was reported and skipped.
+do expand_source_args(command string, args [string]) -> ([string], bool) {
+    mut files [string] = {}
+    mut seen map[string:bool] = {:}
+    mut ok bool = true
+    for_each arg in args {
+        slashed string = strings.replace(arg, "\\", "/")
+        if strings.ends_with(slashed, "/...") || arg == "..." {
+            mut base_dir string = "."
+            if arg != "..." {
+                base_dir = strings.slice(slashed, 0, len(slashed) - 4)
+            }
+            if base_dir == "" {
+                base_dir = "."
+            }
+            if !io.file_exists(base_dir) {
+                eprintln("gray ${command}: stat ${base_dir}: no such file or directory")
+                ok = false
+                continue
+            }
+            if !io.is_directory(base_dir) {
+                eprintln("gray ${command}: '${base_dir}' is not a directory")
+                ok = false
+                continue
+            }
+            mut walked, walk_err = io.walk(base_dir)
+            if walk_err != nil {
+                eprintln("gray ${command}: ${walk_err.message}")
+                ok = false
+                continue
+            }
+            arrays.sort_asc(walked)
+            for_each walked_name in walked {
+                walked_path string = path.join_parts({base_dir, walked_name})
+                if has_source_extension(walked_path) && !io.is_directory(walked_path) {
+                    add_source_file(files, seen, walked_path)
+                }
+            }
+            continue
+        }
+
+        if !io.file_exists(arg) {
+            eprintln("gray ${command}: stat ${arg}: no such file or directory")
+            ok = false
+        } or io.is_directory(arg) {
+            mut entries, list_err = io.list_dir(arg)
+            if list_err != nil {
+                eprintln("gray ${command}: ${list_err.message}")
+                ok = false
+                continue
+            }
+            arrays.sort_asc(entries)
+            for_each entry in entries {
+                entry_path string = path.join_parts({arg, entry})
+                if has_source_extension(entry) && !io.is_directory(entry_path) {
+                    add_source_file(files, seen, entry_path)
+                }
+            }
+        } or has_source_extension(arg) {
+            add_source_file(files, seen, arg)
+        } otherwise {
+            eprintln("gray ${command}: '${arg}' is not a .gray or .grayscale file or directory")
+            ok = false
+        }
+    }
+    return files, ok
+}
+
+do add_source_file(&files [string], &seen map[string:bool], file_path string) {
+    mut key string = file_path
+    absolute, absolute_err = path.absolute_path(file_path)
+    if absolute_err == nil {
+        key = absolute
+    }
+    if maps.contains_key(seen, key) {
+        return
+    }
+    seen[key] = true
+    arrays.append(files, file_path)
+}
