@@ -77,8 +77,8 @@ do test_server_types() -> TestResult {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    mut req server.Request = server.Request{method: "GET", path: "/test", body: ""}
-    println("  Created request: ${req.method} ${req.path}")
+    mut req server.Request = server.Request{method: "GET", route: "/test", body: ""}
+    println("  Created request: ${req.method} ${req.route}")
     passed += 1
 
     println("  PASSED: ${passed}, FAILED: ${failed}")

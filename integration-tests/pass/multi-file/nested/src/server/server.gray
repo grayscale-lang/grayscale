@@ -10,10 +10,10 @@ do start_server(port i64) {
     println("Ready to handle requests!")
 }
 
-do process_request(method string, path string) -> Response {
-    mut req Request = Request{method: method, path: path, body: ""}
+do process_request(method string, route string) -> Response {
+    mut req Request = Request{method: method, route: route, body: ""}
 
-    if path == "/" {
+    if route == "/" {
         return handle_home(req)
     }
 
