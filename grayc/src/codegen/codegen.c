@@ -9142,8 +9142,7 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *funct
 /* --- path module --- */
 
 static bool emit_path_call(CodeGen *codegen, AstNode *node, const char *function_name) {
-    bool needs_arena = (strcmp(function_name, "split_dir_file") != 0 &&
-        strcmp(function_name, "file_extension") != 0 &&
+    bool needs_arena = (strcmp(function_name, "file_extension") != 0 &&
         strcmp(function_name, "is_absolute") != 0);
     emit_formatted(codegen, "gray_path_%s(", function_name);
     if (needs_arena) emit(codegen, "gray_default_arena");

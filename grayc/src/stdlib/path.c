@@ -131,12 +131,12 @@ GrayString gray_path_normalize_path(GrayArena *arena, GrayString path) {
     return clean_path(arena, path.data, path.len);
 }
 
-GrayPathSplitResult gray_path_split_dir_file(GrayString path) {
+GrayPathSplitResult gray_path_split_dir_file(GrayArena *arena, GrayString path) {
     int32_t volume = volume_length(path.data, path.len);
     int32_t split = path.len;
     while (split > volume && !is_separator(path.data[split - 1])) split--;
     GrayPathSplitResult result;
-    result.v0 = (GrayString){path.data, split};
+    result.v0 = gray_string_new(arena, path.data, split);
     result.v1 = (GrayString){path.data + split, path.len - split};
     return result;
 }

@@ -56,7 +56,7 @@ GrayString gray_path_normalize_path(GrayArena *arena, GrayString path);
  *   println(file)   // main.gray
  *@end
  */
-GrayPathSplitResult gray_path_split_dir_file(GrayString path);
+GrayPathSplitResult gray_path_split_dir_file(GrayArena *arena, GrayString path);
 
 /*@man file_extension
  *@module path
