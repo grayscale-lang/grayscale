@@ -1,0 +1,9 @@
+import @io
+import @strings
+import @arrays
+import @maps
+import @path
+
+do f05() {
+    println("")
+}

@@ -14716,7 +14716,7 @@ static void codegen_collect_top_level(CodeGen *codegen, AstNode *program, TopLev
                 if (item->is_stdlib && item->module) {
                     if (strcmp(item->module, "mem") == 0) codegen->has_mem = true;
                     if (strcmp(item->module, "fmt") == 0) codegen->has_fmt = true;
-                    if (top_level->stdlib_import_count < MAX_STDLIB_IMPORTS)
+                    if (!has_stdlib_module(top_level->stdlib_imports, top_level->stdlib_import_count, item->module))
                         top_level->stdlib_imports[top_level->stdlib_import_count++] = item->module;
                 }
                 /* Collect C interop headers */
