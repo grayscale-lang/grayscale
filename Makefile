@@ -1,11 +1,11 @@
 # Grayscale Language Build System
 .PHONY: build embed-tag stubs install uninstall clean help leaks benchmark \
-       test test-unit test-e2e test-integration test-go \
+       test test-unit test-e2e test-integration \
        test-ubsan test-asan
 
 # Reject unknown targets before running anything.
 KNOWN_TARGETS := build embed-tag stubs install uninstall clean help leaks benchmark \
-                 test test-unit test-e2e test-integration test-go \
+                 test test-unit test-e2e test-integration \
                  test-ubsan test-asan
 UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
 ifneq ($(UNKNOWN_TARGETS),)
@@ -32,16 +32,12 @@ ifdef WINDOWS
 else
   INSTALL_PATH=/usr/local/bin
 endif
-GO=go
 
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-MODULE=github.com/grayscale-lang/grayscale
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
-EMBED_DIR=internal/driver/runtime
-CLI_EMBED_DIR=cli/runtime
+EMBED_DIR=cli/runtime
 
 # ===== Per-target help (make help TARGET=<name>) =====
 # One HELP_<target> block per name in KNOWN_TARGETS. TARGET only selects a
@@ -63,7 +59,7 @@ define HELP_embed-tag
 make embed-tag - Print the content hash that names the extracted runtime directory
 
   Hashes the staged grayc, libgrayrt.a and runtime sources under
-  internal/driver/runtime. Run make build first so the staged assets exist.
+  cli/runtime. Run make build first so the staged assets exist.
 
   Variables: none
 
@@ -71,10 +67,10 @@ make embed-tag - Print the content hash that names the extracted runtime directo
 endef
 
 define HELP_stubs
-make stubs - Create empty embed stubs (for dev go build)
+make stubs - Create empty embed stubs
 
-  Creates the zero-length files go:embed needs under internal/driver/runtime
-  so go build works without a full make build.
+  Creates the zero-length runtime files under cli/runtime, so the embedded
+  assets exist before a full make build has staged the real ones.
 
   Variables: none
 
@@ -156,9 +152,9 @@ make benchmark - Run the real-workload benchmark suite (POSIX only)
 endef
 
 define HELP_test
-make test - Run the full test suite (unit + e2e + integration + Go)
+make test - Run the full test suite (unit + e2e + integration)
 
-  Runs make build, then the Go, C unit, end-to-end, integration and UBSan
+  Runs make build, then the C unit, end-to-end, integration and UBSan
   suites, plus ASan on Linux.
 
   Variables:
@@ -206,16 +202,6 @@ make test-integration - Run integration tests (pass + fail)
   Example: GRAY_CC=gcc make test-integration
 endef
 
-define HELP_test-go
-make test-go - Run Go unit tests
-
-  Creates the embed stubs, then runs go test over cli/ and internal/driver/.
-
-  Variables: none
-
-  Example: make test-go
-endef
-
 define HELP_test-ubsan
 make test-ubsan - Run UBSan sanitizer tests
 
@@ -260,7 +246,7 @@ else
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make build     - Build the gray binary (compiler embedded)"
-	@echo "  make stubs     - Create empty embed stubs (for dev go build)"
+	@echo "  make stubs     - Create empty embed stubs"
 	@echo "  make install   - Install gray to $(INSTALL_PATH)"
 	@echo "  make uninstall - Remove gray from $(INSTALL_PATH)"
 	@echo "  make clean     - Remove built binaries"
@@ -268,11 +254,10 @@ else
 	@echo "  make benchmark - Run the real-workload benchmark suite (POSIX only)"
 	@echo ""
 	@echo "Test targets:"
-	@echo "  make test             - Run the full test suite (unit + e2e + integration + Go)"
+	@echo "  make test             - Run the full test suite (unit + e2e + integration)"
 	@echo "  make test-unit        - Run C unit tests (lexer, parser, typechecker)"
 	@echo "  make test-e2e         - Run end-to-end codegen tests"
 	@echo "  make test-integration - Run integration tests (pass + fail)"
-	@echo "  make test-go          - Run Go unit tests"
 	@echo "  make test-ubsan       - Run UBSan sanitizer tests"
 	@echo "  make test-asan        - Run ASan+UBSan sanitizer tests (Linux recommended)"
 	@echo ""
@@ -289,12 +274,9 @@ else
 endif
 
 # ===== Test targets =====
-# Delegate compiler tests to grayc/Makefile; Go tests run from the root.
+# Delegate compiler tests to grayc/Makefile.
 
 test: build
-	@echo ""
-	@echo "=== Go Unit Tests ==="
-	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
 	@echo ""
 	@"$(MAKE)" -C grayc test-unit
 	@"$(MAKE)" -C grayc test-e2e
@@ -324,11 +306,6 @@ test-integration: build
 	@./grayc/grayc scripts/run_tests.gray -o run_tests && { ./run_tests; status=$$?; rm -f run_tests; exit $$status; }
 endif
 
-test-go: stubs
-	@echo ""
-	@echo "=== Go Unit Tests ==="
-	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
-
 test-ubsan:
 	@"$(MAKE)" -C grayc test-ubsan
 
@@ -348,30 +325,26 @@ else
 	@./grayc/grayc benchmarks/run.gray -o run_benchmarks && { ./run_benchmarks; status=$$?; rm -f run_benchmarks; exit $$status; }
 endif
 
-# Create zero-length embed stubs. go:embed directives in
-# internal/driver/embedded.go require these files to exist at `go build`
-# time; the extractor detects empty stubs and falls back to the
-# path search so dev builds still work. Both the runtime binaries
-# themselves are gitignored — `make build` overwrites the stubs with
-# real content before invoking `go build`.
+# Create zero-length embed stubs, so the runtime directory the CLI embeds from
+# exists before `make build` stages the real files. The extractor detects empty
+# stubs and falls back to the path search, so dev builds still work. The
+# staged runtime binaries are gitignored.
 stubs:
-	@for dir in $(EMBED_DIR) $(CLI_EMBED_DIR); do \
+	@for dir in $(EMBED_DIR); do \
 	  mkdir -p $$dir/src/runtime $$dir/src/stdlib $$dir/src/util; \
 	  for stub in grayc libgrayrt.a src/runtime/.stub src/stdlib/.stub src/util/.stub; do \
 	    test -f $$dir/$$stub || : > $$dir/$$stub; \
 	  done; \
 	done
 
-# Single-binary build: compile the C compiler first, stage the
-# artifacts into internal/driver/runtime/ so go:embed picks them up, then
-# build the Go CLI. The final `gray` binary contains `grayc` + `libgrayrt.a`
-# as embedded assets and extracts them on first use to ~/.gray/runtime/.
+# Single-binary build: compile the C compiler first, stage the artifacts into
+# cli/runtime/, then compile the gray CLI (cli/main.gray) with grayc. The
+# final `gray` binary contains `grayc` + `libgrayrt.a` as embedded assets and
+# extracts them on first use to ~/.gray/runtime/.
 build: stubs
 	@echo "Building compiler..."
 	@"$(MAKE)" -C grayc build
 	@echo "Staging embedded runtime assets..."
-	@# go:embed reads the literal path runtime/grayc on every platform; the
-	@# .exe rename happens on extraction (internal/driver/embedded.go).
 	@cp grayc/grayc$(EXE) $(EMBED_DIR)/grayc
 	@cp grayc/libgrayrt.a $(EMBED_DIR)/libgrayrt.a
 	@cp grayc/src/runtime/*.h grayc/src/runtime/*.c $(EMBED_DIR)/src/runtime/
@@ -379,15 +352,13 @@ build: stubs
 	@# runtime.c and builtins.c include util/colors.h and util/constants.h;
 	@# without these headers the compile-from-source fallback cannot build.
 	@cp grayc/src/util/*.h $(EMBED_DIR)/src/util/
-	@# Grayscale source in cli/ can only embed() paths under cli/, so it gets
-	@# the same assets; embed-tag keeps hashing $(EMBED_DIR).
-	@cp -R $(EMBED_DIR)/. $(CLI_EMBED_DIR)/
+	@# embed() takes one file path, so a generated module lists every staged file.
 	@./grayc/grayc scripts/generate_embedded_assets.gray -o generate_embedded_assets && ./generate_embedded_assets && rm -f generate_embedded_assets
 	@echo "Building gray CLI (with embedded runtime)..."
-	@# Content-hash the staged assets once here so the installed wrapper does
+	@# Content-hash the staged assets once here so the installed binary does
 	@# not hash them on every invocation just to name its extract dir.
 	@TAG=$$("$(MAKE)" -s embed-tag) || exit 1; \
-	$(GO) build -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X $(MODULE)/internal/driver.embedTag=$$TAG" -o $(BINARY_NAME) ./cli
+	./grayc/grayc cli/main.gray -o $(BINARY_NAME) --define=VERSION=$(VERSION) --define=BUILD_TIME=$(BUILD_TIME) --define=EMBED_TAG=$$TAG
 	@echo ""
 	@echo "Build complete: ./$(BINARY_NAME)"
 	@echo "Run with: ./$(BINARY_NAME) <file.gray>"
@@ -441,6 +412,7 @@ clean:
 	@# Embed assets are gitignored — delete entirely, not truncate
 	@rm -f $(EMBED_DIR)/grayc $(EMBED_DIR)/libgrayrt.a
 	@rm -rf $(EMBED_DIR)/src
+	@rm -f cli/embedded_assets.gray
 	@"$(MAKE)" -C grayc clean
 	@echo "Clean complete"
 

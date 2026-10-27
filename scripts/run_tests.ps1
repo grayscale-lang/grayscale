@@ -166,11 +166,19 @@ if (-not $NoBuild) {
     } finally { Pop-Location }
 
     Write-Host 'Building gray CLI...'
-    $go = Resolve-GrayGo
     New-GrayEmbedStubs
     Push-Location $GrayRepoRoot
     try {
-        Invoke-GrayNative { & $go build -o $GrayBin ./cli }
+        # embed() takes one file path, so a generated module lists every staged
+        # file; the stubs stand in for the runtime, which these tests reach
+        # through GRAY_COMPILER_PATH.
+        Invoke-GrayNative { & $GraycBin scripts\generate_embedded_assets.gray -o generate_embedded_assets.exe }
+        if ($LASTEXITCODE -ne 0) { Write-Host 'embedded assets generator build failed' -ForegroundColor Red; exit 1 }
+        Invoke-GrayNative { & .\generate_embedded_assets.exe }
+        $generated = $LASTEXITCODE
+        Remove-Item -Force generate_embedded_assets.exe -ErrorAction SilentlyContinue
+        if ($generated -ne 0) { Write-Host 'embedded assets generation failed' -ForegroundColor Red; exit 1 }
+        Invoke-GrayNative { & $GraycBin cli\main.gray -o $GrayBin }
         if ($LASTEXITCODE -ne 0) { Write-Host 'gray build failed' -ForegroundColor Red; exit 1 }
     } finally { Pop-Location }
 }

@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $GrayRepoRoot = Split-Path -Parent $PSScriptRoot
 $GraycDir     = Join-Path $GrayRepoRoot 'grayc'
 $GraycSrcDir  = Join-Path $GraycDir 'src'
-$GrayEmbedDir = Join-Path $GrayRepoRoot 'internal\driver\runtime'
+$GrayEmbedDir = Join-Path $GrayRepoRoot 'cli\runtime'
 
 function Register-GrayCC {
     <#
@@ -87,40 +87,6 @@ function Resolve-GrayCC {
     Write-Host '    (or install MSYS2 and add C:\msys64\ucrt64\bin to PATH)'
     Write-Host ''
     Write-Host 'Already installed? Pass it explicitly:  make build CC=C:\path\to\gcc.exe'
-    Write-Host ''
-    exit 1
-}
-
-function Resolve-GrayGo {
-    <#
-        .SYNOPSIS
-        Locate the Go toolchain, falling back to its default install locations.
-
-        .DESCRIPTION
-        The Go installer edits the machine PATH, so a shell opened before the
-        install (or a CI step with a trimmed environment) will not see it.
-        Checking the default locations avoids a confusing "Go not found" on a
-        machine that plainly has Go.
-    #>
-    $found = Get-Command go -ErrorAction SilentlyContinue
-    if ($found) { return $found.Source }
-
-    $wellKnown = @(
-        "$env:ProgramFiles\Go\bin\go.exe",
-        "$env:LOCALAPPDATA\Programs\Go\bin\go.exe",
-        'C:\Go\bin\go.exe'
-    )
-    foreach ($path in $wellKnown) {
-        if (Test-Path $path) {
-            $binDir = Split-Path -Parent $path
-            if (($env:PATH -split ';') -notcontains $binDir) { $env:PATH = "$binDir;$env:PATH" }
-            return $path
-        }
-    }
-
-    Write-Host ''
-    Write-Host 'Go not found.' -ForegroundColor Red
-    Write-Host 'The gray CLI needs Go 1.23+. Install it from https://go.dev/dl/'
     Write-Host ''
     exit 1
 }
@@ -242,22 +208,23 @@ function Invoke-GrayCC {
 function New-GrayEmbedStubs {
     <#
         .SYNOPSIS
-        Create the zero-length embed stubs go:embed requires at build time.
+        Create the zero-length stubs the runtime directory needs.
 
         .DESCRIPTION
-        Mirrors the `stubs` target in the root Makefile. The go:embed directives
-        in internal/driver/embedded.go fail the Go build outright if these paths
-        do not exist. The extractor recognises an empty grayc stub and falls
-        back to a path search, so dev builds still work.
+        Mirrors the `stubs` target in the root Makefile. cli\runtime is what the
+        gray CLI embeds from, so its files must exist when the CLI is compiled.
+        The extractor recognises an empty grayc stub and falls back to a path
+        search, so dev builds still work.
     #>
-    foreach ($dir in @("$GrayEmbedDir\src\runtime", "$GrayEmbedDir\src\stdlib")) {
+    foreach ($dir in @("$GrayEmbedDir\src\runtime", "$GrayEmbedDir\src\stdlib", "$GrayEmbedDir\src\util")) {
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     }
     $stubs = @(
         "$GrayEmbedDir\grayc",
         "$GrayEmbedDir\libgrayrt.a",
         "$GrayEmbedDir\src\runtime\.stub",
-        "$GrayEmbedDir\src\stdlib\.stub"
+        "$GrayEmbedDir\src\stdlib\.stub",
+        "$GrayEmbedDir\src\util\.stub"
     )
     foreach ($stub in $stubs) {
         # Never -Force an existing file here; that would truncate a real

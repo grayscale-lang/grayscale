@@ -1,0 +1,121 @@
+// main.gray — Entry point of the gray CLI: lifts the -define flags out of the
+// arguments, parses the rest (help, completion and argument errors are answered
+// by args.parse_args) and runs the command that was asked for.
+
+import @os
+import @arrays
+import @maps
+import "./args"
+import "./commands"
+import "./completion_install"
+import "./define"
+import "./doc"
+import "./info"
+import "./man"
+import "./fmt"
+import "./test"
+import "./verify"
+import "./update"
+import "./watch"
+import scaffold "./new"
+
+do main() {
+    argv [string] = os.args()
+    mut user_args [string] = {}
+    for index in range(1, len(argv)) {
+        arrays.append(user_args, argv[index])
+    }
+
+    rest, defines, define_err = define.extract_define_flags(user_args)
+    if define_err != nil {
+        eprintln(define_err.message)
+        exit(1)
+    }
+
+    result args.ParseResult = args.parse_args(rest, {})
+    if result.handled {
+        exit(result.exit_code)
+    }
+    exit(run_command(result.invocation, defines))
+}
+
+// run_command runs a parsed command and returns the exit status. defines are
+// the -define overrides that a command compiling a program forwards to grayc.
+do run_command(invocation args.Invocation, defines [string]) -> i64 {
+    when invocation.command {
+        is "" {
+            return commands.run_file(invocation, defines)
+        }
+        is "build" {
+            return commands.run_build(invocation, defines)
+        }
+        is "check" {
+            return commands.run_check(invocation, defines)
+        }
+        is "cross build" {
+            return commands.run_cross_build(invocation, defines)
+        }
+        is "cross targets" {
+            return commands.run_cross_targets()
+        }
+        is "man" {
+            return man.run_man(invocation)
+        }
+        is "update" {
+            return update.run_update(commands.flag_is_set(invocation, "confirm"), first_positional(invocation), commands.flag_is_set(invocation, "pre"))
+        }
+        is "install" {
+            return update.run_install(invocation.positional[0])
+        }
+        is "completion install" {
+            return completion_install.run_completion_install()
+        }
+        is "watch" {
+            return watch.run_watch(invocation, defines)
+        }
+        is "version" {
+            return info.run_version()
+        }
+        is "report" {
+            return info.run_report()
+        }
+        is "verify" {
+            return verify.run_verify()
+        }
+        is "new" {
+            return scaffold.run_new(invocation)
+        }
+        is "test" {
+            return test.run_tests(invocation)
+        }
+        is "fmt" {
+            return fmt.run_fmt(invocation.positional, commands.flag_is_set(invocation, "check"))
+        }
+        is "doc" {
+            output string = "DOCS.md"
+            if maps.contains_key(invocation.flag_values, "output") {
+                output = invocation.flag_values["output"]
+            }
+            if doc.generate_docs(invocation.positional, output) {
+                return 0
+            }
+            return 1
+        }
+        default {
+            mut name string = "gray"
+            if invocation.command != "" {
+                name = "gray ${invocation.command}"
+            }
+            eprintln("${name}: not yet available in the Grayscale CLI")
+            return 1
+        }
+    }
+}
+
+// first_positional is the first positional argument, or "" when there is none.
+do first_positional(invocation args.Invocation) -> string {
+    if len(invocation.positional) > 0 {
+        return invocation.positional[0]
+    }
+    return ""
+}

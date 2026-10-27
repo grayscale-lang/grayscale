@@ -497,10 +497,8 @@ do main() {
     mut gray string = "${root}/gray"
 
     // Always rebuild to ensure we test current code
-    println("Building grayc...")
-    build_or_exit("make", {"-C", "grayc", "build"}, "grayc build failed")
-    println("Building gray CLI...")
-    build_or_exit("go", {"build", "-o", "gray", "./cli"}, "gray build failed")
+    println("Building grayc and the gray CLI...")
+    build_or_exit("make", {"build"}, "gray build failed")
 
     // Point gray at the local grayc binary
     os.set_env("GRAY_COMPILER_PATH", "${root}/grayc/grayc")
