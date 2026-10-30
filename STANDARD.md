@@ -1258,7 +1258,7 @@ const origin = Point{x: 0, y: 0}
 const LOW, HIGH i64 = 1, 99     // several constants on one line
 ```
 
-> ⚠️ At file scope, `const` declarations of primitive types (integer and float types, `string`, `bool`, `char`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations.
+> ⚠️ At file scope, `const` declarations of primitive types (integer and float types, `string`, `bool`, `char`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations. A `const` initializer must be a compile-time value and may not contain a function call (E5013 at file scope, E5040 inside a function body); use `mut` to initialize from a function's return value.
 
 ### 4.3 Mutability
 
@@ -1280,8 +1280,8 @@ do get_data() -> [i64] {
 mut arr = get_data()  // arr is mutable
 arrays.append(arr, 4)  // OK - can modify directly
 
-const fixed = get_data()  // fixed is immutable
-arrays.append(fixed, 4)   // ERROR - cannot modify const
+const fixed [i64, 3] = {1, 2, 3}  // fixed is immutable
+arrays.append(fixed, 4)           // ERROR - cannot modify const
 ```
 
 ### 4.4 Scope
