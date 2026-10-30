@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.14.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.13.0...grayscale-v0.14.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** embed the 14 project template files in the CLI ([#3263](https://github.com/grayscale-lang/grayscale/issues/3263)) ([cbe054c](https://github.com/grayscale-lang/grayscale/commit/cbe054c97d2094371aeb8e3c704f8d5c811e13ca))
+* **cli:** extract the embedded compiler and runtime in Grayscale ([#3268](https://github.com/grayscale-lang/grayscale/issues/3268)) ([5699d7a](https://github.com/grayscale-lang/grayscale/commit/5699d7aefe653de1e79e5697b4ad49abb3e37622))
+* **cli:** rerun gray watch when a file is added or removed ([#3266](https://github.com/grayscale-lang/grayscale/issues/3266)) ([7bf1b46](https://github.com/grayscale-lang/grayscale/commit/7bf1b460f74936b6a8e3eed13f0283d15caaebc1))
+* **cli:** scan source lines for test markers in the CLI ([#3264](https://github.com/grayscale-lang/grayscale/issues/3264)) ([29d5de0](https://github.com/grayscale-lang/grayscale/commit/29d5de0b5dd3dc8ef093ccd4427f256989b9b047))
+* **cli:** set the CLI version at build time with -define ([#3269](https://github.com/grayscale-lang/grayscale/issues/3269)) ([52e3702](https://github.com/grayscale-lang/grayscale/commit/52e370236f4a0f3108ce391be57d03742fe41b38))
+* **cli:** write gray test in Grayscale ([#3264](https://github.com/grayscale-lang/grayscale/issues/3264)) ([804e0d7](https://github.com/grayscale-lang/grayscale/commit/804e0d778dabb98d880aea7b1961d18f720f328f))
+* **cli:** write hand-rolled argument parsing for the CLI in Grayscale ([#3261](https://github.com/grayscale-lang/grayscale/issues/3261)) ([0f6ce2f](https://github.com/grayscale-lang/grayscale/commit/0f6ce2f49488e53a41e4a86885afab782a837a5e))
+* **encoding:** quote shell_escape arguments for cmd.exe on Windows ([#3265](https://github.com/grayscale-lang/grayscale/issues/3265)) ([dbc89f7](https://github.com/grayscale-lang/grayscale/commit/dbc89f725bb821e88fc5cd887002660ee3ae233d))
+* **io:** add io.chmod ([#3258](https://github.com/grayscale-lang/grayscale/issues/3258)) ([682c56c](https://github.com/grayscale-lang/grayscale/commit/682c56cf1d14ac3ca9144222d504ba8784fd17d9))
+* **io:** add io.stat returning FileInfo metadata ([#3257](https://github.com/grayscale-lang/grayscale/issues/3257)) ([169e8f1](https://github.com/grayscale-lang/grayscale/commit/169e8f120e2b4c83608f0b9047be91a8e94bc8d4))
+* **os:** add executable_path ([#3255](https://github.com/grayscale-lang/grayscale/issues/3255)) ([3ecff8f](https://github.com/grayscale-lang/grayscale/commit/3ecff8f2b6d5123a743439b3af18c07641759e22))
+* **os:** add find_executable ([#3256](https://github.com/grayscale-lang/grayscale/issues/3256)) ([fcf9b98](https://github.com/grayscale-lang/grayscale/commit/fcf9b98866c132f3150a44f5356e3841c7521d5d))
+* **os:** add signal field to ExecResult ([#3254](https://github.com/grayscale-lang/grayscale/issues/3254)) ([69bd998](https://github.com/grayscale-lang/grayscale/commit/69bd998520a8a49733950132df1bb7a5286920d2))
+* **path:** add path module for separator-aware path manipulation ([#3253](https://github.com/grayscale-lang/grayscale/issues/3253)) ([b616d93](https://github.com/grayscale-lang/grayscale/commit/b616d93d3764b17107e090c869c5904f97ecd94f))
+
+
+### Bug Fixes
+
+* **benchmarks:** rename the built-in-named path parameter in the fixture generator ([b8c1d27](https://github.com/grayscale-lang/grayscale/commit/b8c1d27c27f65655439a49b35625e77e3c4978e1))
+* **codegen:** break the deep-copy cycle for a tagged enum that contains itself through an array or map ([#3301](https://github.com/grayscale-lang/grayscale/issues/3301)) ([45305d3](https://github.com/grayscale-lang/grayscale/commit/45305d3e97b08b233710112e0a48cdff214df729))
+* **codegen:** copy by-value arguments out of the iteration arena for caller-arena calls ([#3278](https://github.com/grayscale-lang/grayscale/issues/3278)) ([1bd65a5](https://github.com/grayscale-lang/grayscale/commit/1bd65a55f0303a8a1144bb012a89e131ce9c07c1))
+* **codegen:** keep the backslash in a string literal escaped backslash before a dollar sign ([#3284](https://github.com/grayscale-lang/grayscale/issues/3284)) ([934b5bd](https://github.com/grayscale-lang/grayscale/commit/934b5bdb5c583c98b464242d1675ea8a42eeaa25))
+* **codegen:** record each stdlib module once so imports past 64 keep their headers ([#3283](https://github.com/grayscale-lang/grayscale/issues/3283)) ([67ca86b](https://github.com/grayscale-lang/grayscale/commit/67ca86b08a3febfd287ed2ff06279e44299dc277))
+* **codegen:** sanitize C keyword struct field names in struct copy and print ([#3280](https://github.com/grayscale-lang/grayscale/issues/3280)) ([fc2c479](https://github.com/grayscale-lang/grayscale/commit/fc2c4793d37b815be3f67d06a307c18f0cd0692a))
+* **codegen:** store into a file-scope map in the heap arena inside nested blocks ([#3297](https://github.com/grayscale-lang/grayscale/issues/3297)) ([882643f](https://github.com/grayscale-lang/grayscale/commit/882643fd2c4f7b284794c0bcb45c7dd2365deb62))
+* **lexer:** reject a NUL byte in source instead of ending the file ([#3296](https://github.com/grayscale-lang/grayscale/issues/3296)) ([7c5eccb](https://github.com/grayscale-lang/grayscale/commit/7c5eccb27c14403b2d8dac1ad134dc46a9ff1bc5))
+* **parser:** let -define override #define constants declared in imported modules ([#3285](https://github.com/grayscale-lang/grayscale/issues/3285)) ([63b8b5c](https://github.com/grayscale-lang/grayscale/commit/63b8b5cd44d398008e26645c68e7f276fe769ed3))
+* **path:** copy the split_dir_file directory part into the arena so it is null-terminated ([#3282](https://github.com/grayscale-lang/grayscale/issues/3282)) ([a844cb6](https://github.com/grayscale-lang/grayscale/commit/a844cb641f1ba67f42b4c733d15d6fc14705524a))
+* **tests:** drop the binary name assertion from os_executable_path ([af6fc9a](https://github.com/grayscale-lang/grayscale/commit/af6fc9a00af2d4320a293eba7919687926efa51e))
+* **tests:** rename the path parameters and loop variables in the integration test runner ([#3286](https://github.com/grayscale-lang/grayscale/issues/3286)) ([b28779e](https://github.com/grayscale-lang/grayscale/commit/b28779e5b8ac4039bfcbe0bd0d3690c858758c66))
+* **tests:** rename the reserved path identifier in tests ([572c7e6](https://github.com/grayscale-lang/grayscale/commit/572c7e663837c6e8476c79be9be8d521c76ada0d))
+* **typechecker:** call a func-typed struct field through an index, member, deref, or map receiver ([#3300](https://github.com/grayscale-lang/grayscale/issues/3300)) ([30c59cc](https://github.com/grayscale-lang/grayscale/commit/30c59ccedbe443a0ef309a8ca61b148c8520b8e9))
+* **typechecker:** check the integer arguments of threads.spawn_arg, channels.open, and the atomic functions ([#3302](https://github.com/grayscale-lang/grayscale/issues/3302)) ([eaa03e3](https://github.com/grayscale-lang/grayscale/commit/eaa03e3b41906ef0a6b8689f435162cf1235d8d4))
+* **typechecker:** stop registering unprefixed aliases for module-prefixed functions ([#3277](https://github.com/grayscale-lang/grayscale/issues/3277)) ([10ba4ab](https://github.com/grayscale-lang/grayscale/commit/10ba4ab9aa20cf0f27366e08d70b008c6c93af76))
+
 ## [0.13.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.12.3...grayscale-v0.13.0) (2026-10-25)
 
 
