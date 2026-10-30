@@ -11,10 +11,10 @@
 
 import @io, @os, @strings
 
-do write_or_exit(path string, content string) {
-    mut _, err = io.write_file(path, content)
+do write_or_exit(file_path string, content string) {
+    mut _, err = io.write_file(file_path, content)
     if err != nil {
-        eprintln("error: cannot write ${path}")
+        eprintln("error: cannot write ${file_path}")
         exit(1)
     }
 }
