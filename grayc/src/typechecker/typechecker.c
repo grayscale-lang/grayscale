@@ -11057,6 +11057,17 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
              * routes the valid ones into instance dispatch before now. */
             const char *struct_name_text = object_type->kind == TYPE_KIND_POINTER
                 ? object_type->element_type : object_type->name;
+            /* A func-typed data field is called through the field, as it is
+             * for a plain-variable receiver. */
+            GrayType *field_type = struct_field_type(checker, struct_name_text, function_node->data.member.member);
+            if (field_type && field_type->kind == TYPE_KIND_FUNCTION) {
+                return (field_type->function_signature &&
+                        field_type->function_signature->return_count > 0 &&
+                        field_type->function_signature->return_types &&
+                        field_type->function_signature->return_types[0])
+                    ? type_from_name(field_type->function_signature->return_types[0])
+                    : &TYPE_UNKNOWN;
+            }
             NODE_ERROR_FORMATTED(checker, function_node, "E4018",
                 struct_display_name(checker, struct_name_text), function_node->data.member.member);
         }

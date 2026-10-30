@@ -1,0 +1,28 @@
+const W struct { f func(i64) -> i64 }
+const Outer struct { w W; ws [W]; p ^W }
+
+do dbl(n i64) -> i64 { return n * 2 }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut w W = W{f: ()dbl}
+    mut ws [W] = {w}
+    mut o Outer = Outer{w: w, ws: {w}, p: addr(w)}
+    mut m map[string:W] = {"a": w}
+
+    if ws[0].f(2) == 4 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if o.w.f(3) == 6 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if o.ws[0].f(4) == 8 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if o.p^.f(5) == 10 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if m["a"].f(6) == 12 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

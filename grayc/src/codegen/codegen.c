@@ -9571,6 +9571,25 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             }
         }
 
+        /* A call through a func-typed field of an index, nested-field, deref,
+         * or map-value receiver: the typechecker resolved the receiver's type. */
+        if (object->kind != NODE_LABEL) {
+            GrayType *receiver_type = codegen_type_of(codegen, object);
+            if (receiver_type && (receiver_type->kind == TYPE_KIND_STRUCT || receiver_type->kind == TYPE_KIND_POINTER)) {
+                bool is_receiver_pointer = receiver_type->kind == TYPE_KIND_POINTER;
+                const char *receiver_struct_name = is_receiver_pointer ? receiver_type->element_type : receiver_type->name;
+                AstNode *receiver_declaration = receiver_struct_name ? find_struct_declaration(codegen, receiver_struct_name) : NULL;
+                for (int field_index = 0; receiver_declaration &&
+                     field_index < receiver_declaration->data.struct_declaration.field_count; field_index++) {
+                    StructField *receiver_field = &receiver_declaration->data.struct_declaration.fields[field_index];
+                    if (strcmp(receiver_field->name, member) == 0 && type_name_is_function(receiver_field->type_name)) {
+                        emit_function_field_call(codegen, node, object, member, is_receiver_pointer);
+                        return true;
+                    }
+                }
+            }
+        }
+
         /* Handle mod.Struct.func() triple chain: geometry.Vec2.create().
          * The struct the qualified name refers to is on the object node; the
          * function is that struct's, namespaced under it. */
