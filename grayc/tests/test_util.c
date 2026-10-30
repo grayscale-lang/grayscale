@@ -906,7 +906,7 @@ static void test_platform_write_then_read_round_trips_binary_bytes(void) {
     make_scratch_path(path, sizeof(path), "grayc_platform_binary");
     const unsigned char bytes[] = {0x00, 0x01, 0xFF, '\r', '\n', 0x7F};
     ASSERT(gray_write_file_mode(path, bytes, sizeof(bytes)));
-    char *contents = gray_read_file(path, false);
+    char *contents = gray_read_file(path, false, NULL);
     ASSERT_NOT_NULL(contents);
     ASSERT_EQ(memcmp(contents, bytes, sizeof(bytes)), 0);
     ASSERT_EQ(contents[sizeof(bytes)], 0);
@@ -919,7 +919,7 @@ static void test_platform_write_file_truncates_existing_contents(void) {
     make_scratch_path(path, sizeof(path), "grayc_platform_truncate");
     gray_write_file_mode(path, "a much longer first version", 27);
     gray_write_file_mode(path, "short", 5);
-    char *contents = gray_read_file(path, false);
+    char *contents = gray_read_file(path, false, NULL);
     ASSERT_NOT_NULL(contents);
     ASSERT_STR_EQ(contents, "short");
     free(contents);
@@ -934,12 +934,12 @@ static void test_platform_read_file_empty_and_missing(void) {
     char path[512];
     make_scratch_path(path, sizeof(path), "grayc_platform_empty");
     gray_write_file_mode(path, "", 0);
-    char *contents = gray_read_file(path, false);
+    char *contents = gray_read_file(path, false, NULL);
     ASSERT_NOT_NULL(contents);
     ASSERT_EQ(strlen(contents), 0);
     free(contents);
     gray_remove_file(path);
-    ASSERT(gray_read_file("/no/such/grayc/file", false) == NULL);
+    ASSERT(gray_read_file("/no/such/grayc/file", false, NULL) == NULL);
 }
 
 static void test_platform_read_file_larger_than_one_chunk(void) {
@@ -949,7 +949,7 @@ static void test_platform_read_file_larger_than_one_chunk(void) {
     char *data = malloc(size);
     memset(data, 'z', size);
     ASSERT(gray_write_file_mode(path, data, size));
-    char *contents = gray_read_file(path, false);
+    char *contents = gray_read_file(path, false, NULL);
     ASSERT_NOT_NULL(contents);
     ASSERT_EQ(strlen(contents), size);
     free(contents);
@@ -965,7 +965,7 @@ static void test_platform_read_file_from_a_pipe(void) {
     close(descriptors[1]);
     char path[64];
     snprintf(path, sizeof(path), "/dev/fd/%d", descriptors[0]);
-    char *contents = gray_read_file(path, false);
+    char *contents = gray_read_file(path, false, NULL);
     close(descriptors[0]);
     if (contents) {
         ASSERT_STR_EQ(contents, "from a pipe");
@@ -1186,7 +1186,7 @@ static void test_read_file_to_string_returns_the_whole_file(void) {
     const char *contents = "line one\nline two\n";
     ASSERT_EQ((long long)write(descriptor, contents, strlen(contents)), (long long)strlen(contents));
     close(descriptor);
-    char *read_back = read_file_to_string(path);
+    char *read_back = read_file_to_string(path, NULL);
     remove(path);
     ASSERT_NOT_NULL(read_back);
     ASSERT_STR_EQ(read_back, contents);
@@ -1198,7 +1198,7 @@ static void test_read_file_to_string_empty_file(void) {
     int descriptor = mkstemp(path);
     ASSERT_NE(descriptor, -1);
     close(descriptor);
-    char *read_back = read_file_to_string(path);
+    char *read_back = read_file_to_string(path, NULL);
     remove(path);
     ASSERT_NOT_NULL(read_back);
     ASSERT_EQ(strlen(read_back), 0);
@@ -1206,7 +1206,7 @@ static void test_read_file_to_string_empty_file(void) {
 }
 
 static void test_read_file_to_string_missing_file_is_null(void) {
-    ASSERT(read_file_to_string("/no/such/grayc/file") == NULL);
+    ASSERT(read_file_to_string("/no/such/grayc/file", NULL) == NULL);
 }
 
 /* ===== xalloc: allocation failure ===== */
