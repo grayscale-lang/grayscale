@@ -1,0 +1,335 @@
+// changelog.gray — Reads the "Features" and "Bug Fixes" lists out of a release
+// body and cleans each item for the terminal: markdown, issue references and
+// trailing link syntax are dropped, and the commit hash is kept.
+
+import @strings
+import @arrays
+
+const ParsedChangelog struct {
+    features [string]
+    bug_fixes [string]
+}
+
+do is_space_char(c char) -> bool {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\x0c' || c == '\x0b'
+}
+
+do is_digit_char(c char) -> bool {
+    return c >= '0' && c <= '9'
+}
+
+do is_hex_char(c char) -> bool {
+    return is_digit_char(c) || (c >= 'a' && c <= 'f')
+}
+
+// skip_spaces returns the index of the first character from i that is not
+// whitespace.
+do skip_spaces(text string, from i64) -> i64 {
+    mut index i64 = from
+    as_long_as index < len(text) && is_space_char(text[index]) {
+        index = index + 1
+    }
+    return index
+}
+
+// skip_digits returns the index after the digits that start at from.
+do skip_digits(text string, from i64) -> i64 {
+    mut index i64 = from
+    as_long_as index < len(text) && is_digit_char(text[index]) {
+        index = index + 1
+    }
+    return index
+}
+
+// skip_hex returns the index after the lowercase hex digits that start at from.
+do skip_hex(text string, from i64) -> i64 {
+    mut index i64 = from
+    as_long_as index < len(text) && is_hex_char(text[index]) {
+        index = index + 1
+    }
+    return index
+}
+
+// match_literal returns the index after literal when text has it at from, else -1.
+do match_literal(text string, from i64, literal string) -> i64 {
+    if from < 0 || from + len(literal) > len(text) {
+        return -1
+    }
+    if strings.slice(text, from, from + len(literal)) != literal {
+        return -1
+    }
+    return from + len(literal)
+}
+
+// match_url returns the index after a "(", one or more characters other than
+// ")", and a ")" that start at from, else -1.
+do match_url(text string, from i64) -> i64 {
+    open_end i64 = match_literal(text, from, "(")
+    if open_end < 0 {
+        return -1
+    }
+    mut index i64 = open_end
+    as_long_as index < len(text) && text[index] != ')' {
+        index = index + 1
+    }
+    if index == open_end || index >= len(text) {
+        return -1
+    }
+    return index + 1
+}
+
+// match_issue_number returns the index after "#", digits and a closing
+// literal that start at from, else -1.
+do match_issue_number(text string, from i64, closing string) -> i64 {
+    hash_end i64 = match_literal(text, from, "#")
+    if hash_end < 0 {
+        return -1
+    }
+    digits_end i64 = skip_digits(text, hash_end)
+    if digits_end == hash_end {
+        return -1
+    }
+    return match_literal(text, digits_end, closing)
+}
+
+// match_closes matches ", closes [#123](url)".
+do match_closes(text string, from i64) -> i64 {
+    opened i64 = match_literal(text, from, ", closes [")
+    if opened < 0 {
+        return -1
+    }
+    number_end i64 = match_issue_number(text, opened, "]")
+    if number_end < 0 {
+        return -1
+    }
+    return match_url(text, number_end)
+}
+
+// match_paren_issue matches " (#123)".
+do match_paren_issue(text string, from i64) -> i64 {
+    opened i64 = match_literal(text, from, " (")
+    if opened < 0 {
+        return -1
+    }
+    return match_issue_number(text, opened, ")")
+}
+
+// match_bare_issue matches " #123".
+do match_bare_issue(text string, from i64) -> i64 {
+    opened i64 = match_literal(text, from, " ")
+    if opened < 0 {
+        return -1
+    }
+    hash_end i64 = match_literal(text, opened, "#")
+    if hash_end < 0 {
+        return -1
+    }
+    digits_end i64 = skip_digits(text, hash_end)
+    if digits_end == hash_end {
+        return -1
+    }
+    return digits_end
+}
+
+// match_issue_link matches optional whitespace and "([#123](url))".
+do match_issue_link(text string, from i64) -> i64 {
+    opened i64 = match_literal(text, skip_spaces(text, from), "(")
+    if opened < 0 {
+        return -1
+    }
+    bracket i64 = match_literal(text, opened, "[")
+    if bracket < 0 {
+        return -1
+    }
+    number_end i64 = match_issue_number(text, bracket, "]")
+    if number_end < 0 {
+        return -1
+    }
+    url_end i64 = match_url(text, number_end)
+    if url_end < 0 {
+        return -1
+    }
+    return match_literal(text, url_end, ")")
+}
+
+// match_markdown_link matches "[label](url)" and returns the index after it.
+// The label is the text between the brackets.
+do match_markdown_link(text string, from i64) -> (i64, string) {
+    opened i64 = match_literal(text, from, "[")
+    if opened < 0 {
+        return -1, ""
+    }
+    mut index i64 = opened
+    as_long_as index < len(text) && text[index] != ']' {
+        index = index + 1
+    }
+    if index == opened || index >= len(text) {
+        return -1, ""
+    }
+    url_end i64 = match_url(text, index + 1)
+    if url_end < 0 {
+        return -1, ""
+    }
+    return url_end, strings.slice(text, opened, index)
+}
+
+// remove_matches deletes every match of one pattern, scanning left to right.
+// kind picks the pattern: 0 closes, 1 parenthesized issue, 2 bare issue,
+// 3 issue link.
+do remove_matches(text string, kind i64) -> string {
+    mut pieces [string] = {}
+    mut index i64 = 0
+    as_long_as index < len(text) {
+        mut match_end i64 = -1
+        when kind {
+            is 0 { match_end = match_closes(text, index) }
+            is 1 { match_end = match_paren_issue(text, index) }
+            is 2 { match_end = match_bare_issue(text, index) }
+            default { match_end = match_issue_link(text, index) }
+        }
+        if match_end > index {
+            index = match_end
+        } otherwise {
+            arrays.append(pieces, strings.slice(text, index, index + 1))
+            index = index + 1
+        }
+    }
+    return strings.join(pieces, "")
+}
+
+// find_trailing_commit finds a commit hash in parentheses at the end of text,
+// as "([hash](url))" when link is true and "(hash)" otherwise, with
+// whitespace around it. It returns where the match starts and the hash.
+do find_trailing_commit(text string, link bool) -> (i64, string) {
+    for start in range(0, len(text) + 1) {
+        opened i64 = match_literal(text, skip_spaces(text, start), "(")
+        if opened < 0 {
+            continue
+        }
+        mut hash_start i64 = opened
+        if link {
+            hash_start = match_literal(text, opened, "[")
+            if hash_start < 0 {
+                continue
+            }
+        }
+        hash_end i64 = skip_hex(text, hash_start)
+        if hash_end == hash_start {
+            continue
+        }
+        mut core_end i64 = -1
+        if link {
+            closed i64 = match_literal(text, hash_end, "]")
+            if closed < 0 {
+                continue
+            }
+            url_end i64 = match_url(text, closed)
+            if url_end < 0 {
+                continue
+            }
+            core_end = match_literal(text, url_end, ")")
+        } otherwise {
+            core_end = match_literal(text, hash_end, ")")
+        }
+        if core_end < 0 {
+            continue
+        }
+        if skip_spaces(text, core_end) == len(text) {
+            return start, strings.slice(text, hash_start, hash_end)
+        }
+    }
+    return -1, ""
+}
+
+// replace_markdown_links replaces each "[label](url)" with its label.
+do replace_markdown_links(text string) -> string {
+    mut pieces [string] = {}
+    mut index i64 = 0
+    as_long_as index < len(text) {
+        match_end, label = match_markdown_link(text, index)
+        if match_end > index {
+            arrays.append(pieces, label)
+            index = match_end
+        } otherwise {
+            arrays.append(pieces, strings.slice(text, index, index + 1))
+            index = index + 1
+        }
+    }
+    return strings.join(pieces, "")
+}
+
+// clean_changelog_item strips markdown formatting, issue references and
+// trailing metadata from a changelog list item, keeping only the scope, the
+// description and the commit hash.
+do clean_changelog_item(text string) -> string {
+    mut item string = strings.replace(text, "**", "")
+    item = strings.replace(item, "&lt;", "<")
+    item = strings.replace(item, "&gt;", ">")
+    item = strings.replace(item, "&amp;", "&")
+
+    item = remove_matches(item, 0)
+    item = remove_matches(item, 1)
+    item = remove_matches(item, 2)
+
+    // The commit hash that ends the item is "([hash](url))" or "(hash)".
+    mut commit_hash string = ""
+    link_start, link_hash = find_trailing_commit(item, true)
+    if link_start >= 0 {
+        commit_hash = link_hash
+        item = strings.slice(item, 0, link_start)
+    } otherwise {
+        bare_start, bare_hash = find_trailing_commit(item, false)
+        if bare_start >= 0 {
+            commit_hash = bare_hash
+            item = strings.slice(item, 0, bare_start)
+        }
+    }
+
+    item = remove_matches(item, 3)
+    item = replace_markdown_links(item)
+
+    if commit_hash != "" {
+        item = strings.trim(item) + " (" + commit_hash + ")"
+    }
+    return strings.trim(item)
+}
+
+// parse_release_body extracts the Features and Bug Fixes lists of a release body.
+do parse_release_body(body string) -> ParsedChangelog {
+    mut result ParsedChangelog = ParsedChangelog{features: {}, bug_fixes: {}}
+    mut current_section string = ""
+    for_each line in strings.split(body, "\n") {
+        trimmed string = strings.trim(line)
+
+        if strings.starts_with(trimmed, "### Features") {
+            current_section = "features"
+            continue
+        }
+        if strings.starts_with(trimmed, "### Bug Fixes") {
+            current_section = "bugfixes"
+            continue
+        }
+        if strings.starts_with(trimmed, "###") {
+            current_section = ""
+            continue
+        }
+
+        if current_section == "" {
+            continue
+        }
+        if len(trimmed) < 2 || (trimmed[0] != '*' && trimmed[0] != '-') || trimmed[1] != ' ' {
+            continue
+        }
+
+        item string = clean_changelog_item(strings.slice(trimmed, 2, len(trimmed)))
+        if item == "" {
+            continue
+        }
+        if current_section == "features" {
+            arrays.append(result.features, item)
+        } otherwise {
+            arrays.append(result.bug_fixes, item)
+        }
+    }
+    return result
+}

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5026 - channels.open rejects f64
+ * Expected: "expected integer"
+ */
+
+import @channels
+
+do main() {
+    mut ch Channel = channels.open(2.9)
+}

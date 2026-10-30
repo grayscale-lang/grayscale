@@ -888,6 +888,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "HttpRequest") == 0) return "GrayRequest";
     if (strcmp(type_name, "HttpResponse") == 0) return "GrayHttpResponse";
     if (strcmp(type_name, "ExecResult") == 0) return "GrayOsExecResult";
+    if (strcmp(type_name, "FileInfo") == 0) return "GrayIoFileInfo";
     /* Stdlib opaque types: scalar path uses __auto_type and never reaches
      * this resolver, but [T] / map[_:T] / struct fields write the type
      * name explicitly and need it mapped here. Without this, the fallback
@@ -1351,8 +1352,8 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
         if (!field->type_name || !field->name) continue;
         if (!type_needs_deep_copy(codegen, field->type_name)) continue;
         char source_field[MESSAGE_BUFFER_SIZE];
-        snprintf(source_field, sizeof(source_field), "_ss%d.%s", unique_id, field->name);
-        emit_formatted(codegen, "_sd%d.%s = ", unique_id, field->name);
+        snprintf(source_field, sizeof(source_field), "_ss%d.%s", unique_id, sanitize_name(field->name));
+        emit_formatted(codegen, "_sd%d.%s = ", unique_id, sanitize_name(field->name));
         emit_value_deep_copy(codegen, field->type_name, source_field);
         emit(codegen, "; ");
     }
@@ -1360,10 +1361,23 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
     emit_struct_deep_copy_depth--;
 }
 
+static const char *emit_enum_deep_copy_visiting[CYCLE_GUARD_DEPTH];
+static int emit_enum_deep_copy_depth = 0;
+
 /* Deep copy of a tagged enum: switch on the tag and copy the payloads of the
  * live variant that hold arena-backed data. */
 static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, const char *enum_type_name,
                                 const char *source_variable) {
+    /* Cycle detection: an enum that reaches itself through an array or map
+     * payload falls back to a bitwise copy at the inner occurrence, as
+     * emit_struct_deep_copy does. */
+    for (int j = 0; j < emit_enum_deep_copy_depth; j++) {
+        if (strcmp(emit_enum_deep_copy_visiting[j], enum_type_name) == 0) {
+            emit_formatted(codegen, "%s", source_variable);
+            return;
+        }
+    }
+    if (emit_enum_deep_copy_depth < CYCLE_GUARD_DEPTH) emit_enum_deep_copy_visiting[emit_enum_deep_copy_depth++] = enum_type_name;
     char c_enum[MESSAGE_BUFFER_SIZE];
     snprintf(c_enum, sizeof(c_enum), "%s", gray_type_to_c_codegen(codegen, enum_type_name));
     int unique_id = codegen_next_id(codegen);
@@ -1387,6 +1401,7 @@ static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, con
         emit(codegen, "break; ");
     }
     emit_formatted(codegen, "default: break; } _ed%d; })", unique_id);
+    emit_enum_deep_copy_depth--;
 }
 
 static void emit_value_deep_copy(CodeGen *codegen, const char *gray_type_name, const char *source_variable) {
@@ -2395,6 +2410,9 @@ static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
                     /* Next char is also hex; break the string */
                     emit(codegen, "\" \"");
                 }
+            } else if (cursor[0] == '\\' && cursor[1] == '\\') {
+                emit(codegen, "\\\\");
+                cursor += 2;
             } else if (cursor[0] == '\\' && cursor[1] == '$') {
                 append_char_to_buffer(&codegen->output, '$');
                 cursor += 2;
@@ -6148,7 +6166,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
                 emit_formatted(codegen, "gray_out_printf(%s, \"%s: \");\n", stream, field->name);
 
                 char field_expression[MESSAGE_BUFFER_SIZE];
-                snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, field->name);
+                snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, sanitize_name(field->name));
                 GrayType *field_graytype = type_from_name(field->type_name);
                 emit_value_print(codegen, field_expression, field_graytype, stream, true);
             }
@@ -8829,6 +8847,15 @@ static bool emit_os_call(CodeGen *codegen, AstNode *node, const char *function_n
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(function_name, "executable_path") == 0) {
+        emit(codegen, "gray_os_executable_path(gray_default_arena)"); return true;
+    }
+    if (strcmp(function_name, "find_executable") == 0) {
+        emit(codegen, "gray_os_find_executable(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.arguments[0]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(function_name, "environ") == 0) {
         emit(codegen, "gray_os_environ(gray_default_arena)"); return true;
     }
@@ -8892,6 +8919,8 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "read_bytes") == 0 ||
         strcmp(function_name, "read_lines") == 0 ||
         strcmp(function_name, "file_size") == 0 ||
+        strcmp(function_name, "stat") == 0 ||
+        strcmp(function_name, "chmod") == 0 ||
         strcmp(function_name, "write_file") == 0 ||
         strcmp(function_name, "delete_file") == 0 ||
         strcmp(function_name, "append_file") == 0 ||
@@ -8917,12 +8946,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *function_n
         strcmp(function_name, "walk") == 0 ||
         strcmp(function_name, "glob") == 0 ||
         strcmp(function_name, "temp_file") == 0 ||
-        strcmp(function_name, "temp_dir") == 0 ||
-        strcmp(function_name, "path_join") == 0 ||
-        strcmp(function_name, "dirname") == 0 ||
-        strcmp(function_name, "basename") == 0 ||
-        strcmp(function_name, "extension") == 0 ||
-        strcmp(function_name, "normalize") == 0);
+        strcmp(function_name, "temp_dir") == 0);
     if (is_fallible) {
         emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", function_name);
         if (node->data.call.argument_count > 0) emit(codegen, ", ");
@@ -9130,6 +9154,21 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *funct
         return true;
     }
     return false;
+}
+
+/* --- path module --- */
+
+static bool emit_path_call(CodeGen *codegen, AstNode *node, const char *function_name) {
+    bool needs_arena = (strcmp(function_name, "file_extension") != 0 &&
+        strcmp(function_name, "is_absolute") != 0);
+    emit_formatted(codegen, "gray_path_%s(", function_name);
+    if (needs_arena) emit(codegen, "gray_default_arena");
+    for (int i = 0; i < node->data.call.argument_count; i++) {
+        if (i > 0 || needs_arena) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.arguments[i]);
+    }
+    emit(codegen, ")");
+    return true;
 }
 
 /* --- chars module --- */
@@ -9546,6 +9585,25 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             }
         }
 
+        /* A call through a func-typed field of an index, nested-field, deref,
+         * or map-value receiver: the typechecker resolved the receiver's type. */
+        if (object->kind != NODE_LABEL) {
+            GrayType *receiver_type = codegen_type_of(codegen, object);
+            if (receiver_type && (receiver_type->kind == TYPE_KIND_STRUCT || receiver_type->kind == TYPE_KIND_POINTER)) {
+                bool is_receiver_pointer = receiver_type->kind == TYPE_KIND_POINTER;
+                const char *receiver_struct_name = is_receiver_pointer ? receiver_type->element_type : receiver_type->name;
+                AstNode *receiver_declaration = receiver_struct_name ? find_struct_declaration(codegen, receiver_struct_name) : NULL;
+                for (int field_index = 0; receiver_declaration &&
+                     field_index < receiver_declaration->data.struct_declaration.field_count; field_index++) {
+                    StructField *receiver_field = &receiver_declaration->data.struct_declaration.fields[field_index];
+                    if (strcmp(receiver_field->name, member) == 0 && type_name_is_function(receiver_field->type_name)) {
+                        emit_function_field_call(codegen, node, object, member, is_receiver_pointer);
+                        return true;
+                    }
+                }
+            }
+        }
+
         /* Handle mod.Struct.func() triple chain: geometry.Vec2.create().
          * The struct the qualified name refers to is on the object node; the
          * function is that struct's, namespaced under it. */
@@ -9843,6 +9901,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             {"mem",      emit_mem_call},
             {"net",      emit_net_call},
             {"os",       emit_os_call},
+            {"path",     emit_path_call},
             {"random",   emit_random_call},
             {"regex",    emit_regex_call},
             {"runtime",  emit_runtime_call},
@@ -10529,6 +10588,41 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
     int unique_id = codegen_next_id(codegen);
     emit_formatted(codegen, "({ GrayArena *_gray_csave%d = gray_default_arena; "
                             "gray_default_arena = _gray_outer_arena; ", unique_id);
+    /* The callee can store a by-value argument through a & or ^T parameter,
+     * so an argument with embedded storage is copied into the outer arena
+     * rather than left in the per-iteration arena that is reset next pass. */
+    int parameter_count = callee->data.function_declaration.parameter_count;
+    int argument_count = node->data.call.argument_count < parameter_count
+        ? node->data.call.argument_count : parameter_count;
+    AstNode **originals = xcalloc(argument_count > 0 ? argument_count : 1, sizeof(AstNode *));
+    for (int slot = 0; slot < argument_count; slot++) {
+        if (callee->data.function_declaration.parameters[slot].is_mutable) continue;
+        AstNode *argument = node->data.call.arguments[slot];
+        GrayType *argument_type = codegen_type_of(codegen, argument);
+        if (!argument_type || argument_type->kind == TYPE_KIND_UNKNOWN) continue;
+        char spelling[MESSAGE_BUFFER_SIZE];
+        if (argument_type->kind == TYPE_KIND_ARRAY)
+            snprintf(spelling, sizeof(spelling), "[%s]", argument_type->element_type ? argument_type->element_type : "");
+        else
+            snprintf(spelling, sizeof(spelling), "%s", type_name(argument_type));
+        if (!type_needs_deep_copy(codegen, spelling)) continue;
+        const char *c_type = spelling[0] == '[' ? "GrayArray"
+                           : strncmp(spelling, "map[", 4) == 0 ? "GrayMap"
+                           : strcmp(spelling, "string") == 0 ? "GrayString"
+                           : gray_type_to_c_codegen(codegen, spelling);
+        char source_variable[SHORT_VARIABLE_BUFFER_SIZE];
+        char copy_variable[SHORT_VARIABLE_BUFFER_SIZE];
+        int argument_id = codegen_next_id(codegen);
+        snprintf(source_variable, sizeof(source_variable), "_gray_as%d", argument_id);
+        snprintf(copy_variable, sizeof(copy_variable), "_gray_ac%d", argument_id);
+        emit_formatted(codegen, "%s %s = ", c_type, source_variable);
+        emit_expression(codegen, argument);
+        emit_formatted(codegen, "; %s %s = ", c_type, copy_variable);
+        emit_value_deep_copy(codegen, spelling, source_variable);
+        emit(codegen, "; ");
+        originals[slot] = argument;
+        node->data.call.arguments[slot] = make_temporary_label(codegen, argument, strdup(copy_variable));
+    }
     if (callee->data.function_declaration.return_type_count == 0) {
         emit_call_expression_body(codegen, node);
         emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; })", unique_id);
@@ -10537,6 +10631,9 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
         emit_call_expression_body(codegen, node);
         emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; _gray_cval%d; })", unique_id, unique_id);
     }
+    for (int slot = 0; slot < argument_count; slot++)
+        if (originals[slot]) node->data.call.arguments[slot] = originals[slot];
+    free(originals);
 }
 
 /* --- Statement Emission --- */
@@ -11559,8 +11656,9 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
     bool map_in_heap = map_pointer_object && map_pointer_object->kind == NODE_LABEL &&
         is_heap_variable(codegen, map_pointer_object->data.label.value);
     const char *ms_arena = map_in_heap ? "gray_heap_arena"
+                         : codegen->is_module_store ? "gray_default_arena"
                          : codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-    bool ms_escapes = map_in_heap || codegen->loop_scope_depth > 0;
+    bool ms_escapes = map_in_heap || (!codegen->is_module_store && codegen->loop_scope_depth > 0);
 
     /* A number entry's compound assignment is emitted by
      * emit_compound_arithmetic; a string entry's += reaches here. */
@@ -13975,8 +14073,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             if (value_type && value_type->kind == TYPE_KIND_STRING)
                 codegen->module_store_value = node->data.assign.value;
         }
+        codegen->is_module_store = to_module;
         if (node->kind == NODE_ASSIGN_STATEMENT) emit_assign_statement(codegen, node);
         else emit_expression_statement(codegen, node);
+        codegen->is_module_store = false;
         codegen->module_store_value = NULL;
         if (to_module) {
             codegen->indent--;
@@ -14655,7 +14755,7 @@ static void codegen_collect_top_level(CodeGen *codegen, AstNode *program, TopLev
                 if (item->is_stdlib && item->module) {
                     if (strcmp(item->module, "mem") == 0) codegen->has_mem = true;
                     if (strcmp(item->module, "fmt") == 0) codegen->has_fmt = true;
-                    if (top_level->stdlib_import_count < MAX_STDLIB_IMPORTS)
+                    if (!has_stdlib_module(top_level->stdlib_imports, top_level->stdlib_import_count, item->module))
                         top_level->stdlib_imports[top_level->stdlib_import_count++] = item->module;
                 }
                 /* Collect C interop headers */
@@ -14813,6 +14913,7 @@ static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *
         {"json",     "json.h"},
         {"strconv",  "strconv.h"},
         {"chars",    "chars.h"},
+        {"path",     "path.h"},
         {"sqlite",   "sqlite.h"},
         {"threads",  "threads.h"},
         {"sync",     "sync.h"},

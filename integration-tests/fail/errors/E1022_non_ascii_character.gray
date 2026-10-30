@@ -1,0 +1,10 @@
+/*
+ * Error Test: E1022 - unexpected character
+ * Expected: "unexpected character"
+ * Tests that a non-ASCII character outside a string is one diagnostic
+ */
+
+do main() {
+    println("ok")
+    é
+}

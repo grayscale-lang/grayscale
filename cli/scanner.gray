@@ -1,0 +1,106 @@
+// scanner.gray — Source scanner shared by `gray fmt` and `gray doc`. Tracks
+// comments, strings, char literals, interpolation depth and raw strings so a
+// caller can tell which lines begin inside a raw string or a block comment.
+
+import @arrays
+
+const ScanState enum {
+    IN_CODE,
+    IN_LINE_COMMENT,
+    IN_BLOCK_COMMENT,
+    IN_STRING,
+    IN_CHAR,
+    IN_RAW
+}
+
+// multi_line_literal_line_starts reports, for each line of src, whether the line
+// begins inside a multi-line raw string literal and whether it begins inside a
+// block comment. Backticks inside comments, strings, and char literals do not
+// open a raw string.
+do multi_line_literal_line_starts(src string, line_count i64) -> ([bool], [bool]) {
+    mut starts [bool] = {false}
+    mut comments [bool] = {false}
+    mut state ScanState = ScanState.IN_CODE
+    mut interpolation_depth i64 = 0
+    mut nested_quote char = '\0'
+    src_len i64 = len(src)
+    mut i i64 = 0
+    as_long_as i < src_len {
+        c char = src[i]
+        next_is_available bool = i + 1 < src_len
+        if c == '\n' {
+            if state == ScanState.IN_LINE_COMMENT {
+                state = ScanState.IN_CODE
+            }
+            arrays.append(starts, state == ScanState.IN_RAW)
+            arrays.append(comments, state == ScanState.IN_BLOCK_COMMENT)
+            i = i + 1
+            continue
+        }
+        #strict
+        when state {
+            is ScanState.IN_LINE_COMMENT { }
+            is ScanState.IN_CODE {
+                if c == '/' && next_is_available && src[i + 1] == '/' {
+                    state = ScanState.IN_LINE_COMMENT
+                    i = i + 1
+                } or c == '/' && next_is_available && src[i + 1] == '*' {
+                    state = ScanState.IN_BLOCK_COMMENT
+                    i = i + 1
+                } or c == '"' {
+                    state = ScanState.IN_STRING
+                    interpolation_depth = 0
+                    nested_quote = '\0'
+                } or c == '\'' {
+                    state = ScanState.IN_CHAR
+                } or c == '`' {
+                    state = ScanState.IN_RAW
+                }
+            }
+            is ScanState.IN_BLOCK_COMMENT {
+                if c == '*' && next_is_available && src[i + 1] == '/' {
+                    state = ScanState.IN_CODE
+                    i = i + 1
+                }
+            }
+            is ScanState.IN_CHAR {
+                if c == '\\' && next_is_available && src[i + 1] != '\n' {
+                    i = i + 1
+                } or c == '\'' {
+                    state = ScanState.IN_CODE
+                }
+            }
+            is ScanState.IN_RAW {
+                if c == '`' {
+                    state = ScanState.IN_CODE
+                }
+            }
+            is ScanState.IN_STRING {
+                if c == '\\' && next_is_available && src[i + 1] != '\n' {
+                    i = i + 1
+                } or nested_quote != '\0' {
+                    if c == nested_quote {
+                        nested_quote = '\0'
+                    }
+                } or c == '$' && next_is_available && src[i + 1] == '{' {
+                    interpolation_depth = interpolation_depth + 1
+                    i = i + 1
+                } or interpolation_depth > 0 && (c == '"' || c == '\'') {
+                    nested_quote = c
+                } or interpolation_depth > 0 && c == '{' {
+                    interpolation_depth = interpolation_depth + 1
+                } or interpolation_depth > 0 && c == '}' {
+                    interpolation_depth = interpolation_depth - 1
+                } or interpolation_depth == 0 && c == '"' {
+                    state = ScanState.IN_CODE
+                }
+            }
+        }
+        i = i + 1
+    }
+    as_long_as len(starts) < line_count {
+        arrays.append(starts, false)
+        arrays.append(comments, false)
+    }
+    return starts, comments
+}

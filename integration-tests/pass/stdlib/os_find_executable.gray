@@ -1,0 +1,61 @@
+/*
+ * Test: os.find_executable searches PATH, checks separator names directly,
+ * and only accepts executable regular files
+ */
+
+import @os
+import @io
+import @strings
+
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+
+    mut sh_path, sh_found = os.find_executable("sh")
+    passed += check_bool("sh found on PATH", sh_found, true)
+    passed += check_bool("sh path ends with /sh", strings.ends_with(sh_path, "/sh"), true)
+
+    mut missing_path, missing_found = os.find_executable("gray_no_such_program_3256")
+    passed += check_bool("missing program not found", missing_found, false)
+    passed += check_bool("missing program path empty", missing_path == "", true)
+
+    mut direct_path, direct_found = os.find_executable(sh_path)
+    passed += check_bool("separator name checked directly", direct_found, true)
+    passed += check_bool("separator name returned unchanged", direct_path == sh_path, true)
+
+    mut _, dir_found = os.find_executable("/")
+    passed += check_bool("directory is not executable", dir_found, false)
+
+    mut dir, _ = io.temp_dir()
+    mut script = "${dir}/gray_find_exec_3256"
+    _, _ = io.write_file(script, "#!/bin/sh\n")
+    _, _ = io.chmod(script, 420)
+    mut _, plain_found = os.find_executable(script)
+    passed += check_bool("non-executable file rejected", plain_found, false)
+
+    _, _ = io.chmod(script, 493)
+    mut _, exec_found = os.find_executable(script)
+    passed += check_bool("executable file accepted", exec_found, true)
+
+    os.set_env("PATH", dir)
+    mut searched_path, searched_found = os.find_executable("gray_find_exec_3256")
+    passed += check_bool("found by searching PATH", searched_found, true)
+    passed += check_bool("searched path is dir/name", searched_path == script, true)
+
+    println("")
+    println("Results: ${passed}/11 passed")
+    if passed == 11 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

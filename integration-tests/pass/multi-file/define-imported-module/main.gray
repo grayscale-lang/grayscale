@@ -1,0 +1,42 @@
+// define: LEVEL=b
+// define: TOP=a
+// define: SHARED=9
+
+import "./lib"
+import "./other"
+
+#define
+const TOP string = "top-default"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if lib.LEVEL == "b" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: lib.LEVEL not overridden")
+    }
+
+    if TOP == "a" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: TOP not overridden")
+    }
+
+    if lib.SHARED == 9 && other.SHARED == 9 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: SHARED not overridden in both modules")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

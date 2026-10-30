@@ -22,12 +22,12 @@ line3`
     }
 
     // Test 2: raw string preserves backslashes
-    mut path string = `C:\Users\test\file.txt`
-    if len(path) == 22 {
+    mut file_name string = `C:\Users\test\file.txt`
+    if len(file_name) == 22 {
         println("  [PASS] raw string preserves backslashes")
         passed += 1
     } otherwise {
-        println("  [FAIL] raw path len: ${len(path)}")
+        println("  [FAIL] raw file_name len: ${len(file_name)}")
         failed += 1
     }
 

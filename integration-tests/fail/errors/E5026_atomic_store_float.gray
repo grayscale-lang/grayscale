@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5026 - atomic.store rejects f64
+ * Expected: "expected integer"
+ */
+
+import @atomic
+
+do main() {
+    mut n i64 = 0
+    atomic.store(addr(n), 2.9)
+}

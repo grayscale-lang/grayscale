@@ -299,6 +299,51 @@ GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString string) {
     return result;
 }
 
+#ifdef _WIN32
+/* cmd.exe quoting: the argument is wrapped in double quotes the way
+ * CommandLineToArgvW expects (backslashes before a quote are doubled, each
+ * quote is backslash-escaped), then every cmd.exe metacharacter, quotes
+ * included, gets a caret so cmd.exe never sees a quoted region. */
+GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string) {
+    int safe = string.len > 0;
+    for (int32_t i = 0; i < string.len && safe; i++) {
+        char character = string.data[i];
+        safe = (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') ||
+               (character >= '0' && character <= '9') ||
+               character == '_' || character == '-' || character == '.' || character == '/' || character == '\\' ||
+               character == ',' || character == ':' || character == '@' || character == '+' || character == '=';
+    }
+    if (safe) return gray_string_new(arena, string.data, string.len);
+
+    /* Worst case per input byte: backslash doubling or \" plus caret. */
+    char *output = gray_arena_alloc_uninitialized(arena, (size_t)string.len * 4 + 5);
+    int32_t j = 0;
+    output[j++] = '^'; output[j++] = '"';
+    int32_t backslashes = 0;
+    for (int32_t i = 0; i < string.len; i++) {
+        char character = string.data[i];
+        if (character == '\\') {
+            backslashes++;
+            output[j++] = character;
+            continue;
+        }
+        if (character == '"') {
+            for (; backslashes > 0; backslashes--) output[j++] = '\\';
+            output[j++] = '\\';
+            output[j++] = '^'; output[j++] = '"';
+        } else {
+            if (strchr("()%!^<>&|", character)) output[j++] = '^';
+            output[j++] = character;
+        }
+        backslashes = 0;
+    }
+    for (; backslashes > 0; backslashes--) output[j++] = '\\';
+    output[j++] = '^'; output[j++] = '"';
+    output[j] = '\0';
+    GrayString result = { output, j };
+    return result;
+}
+#else
 GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string) {
     if (string.len == 0) return gray_string_lit("''");
 
@@ -331,6 +376,7 @@ GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString string) {
     GrayString result = { output, j };
     return result;
 }
+#endif
 
 /* --- Byte conversion functions (formerly @bytes module) --- */
 

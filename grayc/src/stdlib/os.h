@@ -59,6 +59,23 @@ GrayString gray_os_get_env(GrayArena *arena, GrayString name);
 typedef struct { GrayString v0; bool v1; } GrayOsLookupEnvResult;
 GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name);
 
+/*@man find_executable
+ *@module os
+ *@group System
+ *@sig find_executable(name string) -> (string, bool)
+ *@desc Returns the full path of the first executable regular file called name on PATH, and whether one was found. A name containing a path separator is checked directly instead of searched. On Windows the PATHEXT extensions are tried and PATH is split on ";".
+ *@example
+ *   import @os
+ *   mut path, found = os.find_executable("cc")
+ *   if found { println(path) } otherwise { println("cc not found") }
+ *@end
+ */
+/* os.find_executable(name) — search PATH for an executable regular file.
+ * Layout must match the {GrayString v0; bool v1;} tuple codegen emits for
+ * a multi-return stdlib call. */
+typedef struct { GrayString v0; bool v1; } GrayOsFindExecutableResult;
+GrayOsFindExecutableResult gray_os_find_executable(GrayArena *arena, GrayString name);
+
 /*@man environ
  *@module os
  *@group Environment
@@ -231,18 +248,20 @@ void gray_os_init(int argc, char **argv);
  *@field exit_code i64
  *@field stdout string
  *@field stderr string
- *@desc The result returned by exec: the process's exit code and the standard output and standard error it produced. ExecResult is reserved as a type name while os is imported.
+ *@field signal i64
+ *@desc The result returned by exec: the process's exit code, the standard output and standard error it produced, and the signal that terminated it (0 when it exited normally, and always 0 on Windows). ExecResult is reserved as a type name while os is imported.
  *@example
  *   import @os
  *   mut result, err = os.exec("ls", {"-l"})
  *   println(result.exit_code)
  *   println(result.stdout)
+ *   println(result.signal)
  *@end
  */
 /* os.exec result: exit code, captured stdout, captured stderr. The C member
  * names for stdout/stderr carry the codegen sanitize_name prefix, because
  * those identifiers are libc macros. */
-typedef struct { int64_t exit_code; GrayString _gray_stdout; GrayString _gray_stderr; } GrayOsExecResult;
+typedef struct { int64_t exit_code; GrayString _gray_stdout; GrayString _gray_stderr; int64_t signal; } GrayOsExecResult;
 typedef struct { GrayOsExecResult v0; GrayError *v1; } GrayResult_os_exec;
 
 /*@man exec
@@ -263,6 +282,22 @@ typedef struct { GrayOsExecResult v0; GrayError *v1; } GrayResult_os_exec;
  *@end
  */
 GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, GrayArray args);
+
+/*@man executable_path
+ *@module os
+ *@group System
+ *@sig executable_path() -> (string, Error)
+ *@desc Returns the absolute path of the running binary. Returns an Error with code IoFailure if the path cannot be determined and Unsupported on a platform without a way to ask for it.
+ *@example
+ *   import @os
+ *   mut path, err = os.executable_path()
+ *   if err == nil {
+ *       println(path)
+ *   }
+ *@end
+ */
+typedef struct { GrayString v0; GrayError *v1; } GrayOsExecutablePathResult;
+GrayOsExecutablePathResult gray_os_executable_path(GrayArena *arena);
 
 /*@man cpu_usage
  *@module os

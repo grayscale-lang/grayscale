@@ -1,0 +1,5 @@
+#define
+const LEVEL string = "default"
+
+#define
+const SHARED i64 = 1

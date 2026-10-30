@@ -128,7 +128,7 @@
  *@module encoding
  *@group String Encoding
  *@sig shell_escape(s string) -> string
- *@desc Quotes a string for safe use as a single argument in a POSIX shell command. Returns the argument unchanged when it contains only safe characters, otherwise wraps it in single quotes. Not for cmd.exe.
+ *@desc Quotes a string for safe use as a single argument in a shell command run by the platform shell. Returns the argument unchanged when it contains only safe characters. On POSIX otherwise wraps it in single quotes; on Windows wraps it in double quotes for cmd.exe and caret-escapes its metacharacters.
  *@example
  *   import @encoding
  *   println(encoding.shell_escape("it's here"))   // 'it'\''s here'

@@ -6,7 +6,7 @@
 
 const Request struct {
     method string
-    path string
+    route string
     body string
 }
 

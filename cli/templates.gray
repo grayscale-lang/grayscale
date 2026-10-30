@@ -1,0 +1,77 @@
+// templates.gray — The project templates of "gray new", embedded one file at a
+// time because embed() takes a single literal path.
+
+const BASIC_MAIN string = embed("templates/basic/main.gray")
+
+const CLI_COMMANDS string = embed("templates/cli/commands.gray")
+const CLI_MAIN string = embed("templates/cli/main.gray")
+
+const LIB_HELPERS string = embed("templates/lib/internal/helpers.gray")
+const LIB_LIB string = embed("templates/lib/lib.gray")
+const LIB_MAIN string = embed("templates/lib/main.gray")
+
+const MULTI_APP string = embed("templates/multi/app.gray")
+const MULTI_CONFIG string = embed("templates/multi/config.gray")
+const MULTI_MAIN string = embed("templates/multi/main.gray")
+const MULTI_UTILS string = embed("templates/multi/utils.gray")
+
+const SERVER_MINIMAL_MAIN string = embed("templates/server_minimal/main.gray")
+const SERVER_NORMAL_MAIN string = embed("templates/server_normal/main.gray")
+
+const CLIENT_MINIMAL_MAIN string = embed("templates/client_minimal/main.gray")
+const CLIENT_NORMAL_MAIN string = embed("templates/client_normal/main.gray")
+
+// TemplateFile is one file of a template: its path inside the project and its
+// contents.
+const TemplateFile struct {
+    relative_path string
+    contents string
+}
+
+// template_files returns the files of a template in the order they are
+// written: sorted by name within each directory, a directory before the files
+// after it. server_type picks between minimal and normal for the server and
+// client templates. An unknown template has no files.
+do template_files(template string, server_type string) -> [TemplateFile] {
+    when template {
+        is "basic" {
+            return {TemplateFile{relative_path: "main.gray", contents: BASIC_MAIN}}
+        }
+        is "cli" {
+            return {
+                TemplateFile{relative_path: "commands.gray", contents: CLI_COMMANDS},
+                TemplateFile{relative_path: "main.gray", contents: CLI_MAIN}
+            }
+        }
+        is "lib" {
+            return {
+                TemplateFile{relative_path: "internal/helpers.gray", contents: LIB_HELPERS},
+                TemplateFile{relative_path: "lib.gray", contents: LIB_LIB},
+                TemplateFile{relative_path: "main.gray", contents: LIB_MAIN}
+            }
+        }
+        is "multi" {
+            return {
+                TemplateFile{relative_path: "app.gray", contents: MULTI_APP},
+                TemplateFile{relative_path: "config.gray", contents: MULTI_CONFIG},
+                TemplateFile{relative_path: "main.gray", contents: MULTI_MAIN},
+                TemplateFile{relative_path: "utils.gray", contents: MULTI_UTILS}
+            }
+        }
+        is "server" {
+            if server_type == "minimal" {
+                return {TemplateFile{relative_path: "main.gray", contents: SERVER_MINIMAL_MAIN}}
+            }
+            return {TemplateFile{relative_path: "main.gray", contents: SERVER_NORMAL_MAIN}}
+        }
+        is "client" {
+            if server_type == "minimal" {
+                return {TemplateFile{relative_path: "main.gray", contents: CLIENT_MINIMAL_MAIN}}
+            }
+            return {TemplateFile{relative_path: "main.gray", contents: CLIENT_NORMAL_MAIN}}
+        }
+        default {
+            return {}
+        }
+    }
+}

@@ -18,8 +18,7 @@
 [CmdletBinding()]
 param(
     [string]$CC = '',
-    [switch]$KeepBinaries,
-    [switch]$SkipGo
+    [switch]$KeepBinaries
 )
 
 Set-StrictMode -Version Latest
@@ -88,20 +87,6 @@ foreach ($suite in $Skipped.Keys) {
         -ForegroundColor DarkGray
 }
 Write-Host 'SKIPPED integration suite - scripts/run_tests.gray needs a Unix shell' -ForegroundColor DarkGray
-
-if (-not $SkipGo) {
-    Write-Host ''
-    Write-Host '=== Go Unit Tests ==='
-    New-GrayEmbedStubs
-    $go = Resolve-GrayGo
-    Push-Location $GrayRepoRoot
-    try {
-        Invoke-GrayNative { & $go test -count=1 ./cli/... ./internal/driver/... }
-        if ($LASTEXITCODE -ne 0) { $failed += 'go' }
-    } finally {
-        Pop-Location
-    }
-}
 
 if (-not $KeepBinaries) {
     foreach ($exe in $built) { Remove-Item -Force $exe -ErrorAction SilentlyContinue }

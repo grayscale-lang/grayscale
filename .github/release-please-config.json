@@ -15,7 +15,7 @@
   ],
   "packages": {
     ".": {
-      "release-type": "go",
+      "release-type": "simple",
       "package-name": "grayscale",
       "include-component-in-tag": true,
       "bump-minor-pre-major": true,

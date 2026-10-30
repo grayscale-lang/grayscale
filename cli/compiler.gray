@@ -1,0 +1,62 @@
+// compiler.gray — Locates the grayc binary for the gray commands that invoke it.
+
+import @io
+import @os
+import @path
+import "./embedded"
+
+do compiler_binary_name() -> string {
+    when os.current_os() {
+        is .WINDOWS { return "grayc.exe" }
+        default { return "grayc" }
+    }
+}
+
+// find_compiler locates grayc: GRAY_COMPILER_PATH, the grayc/ directory next to
+// the running binary (a source checkout), the copy embedded in release builds,
+// the running binary's own directory, PATH, then the known install locations.
+do find_compiler() -> (string, bool) {
+    override string = os.get_env("GRAY_COMPILER_PATH")
+    if override != "" && io.is_file(override) {
+        eprintln("note: using compiler from GRAY_COMPILER_PATH=${override}")
+        return override, true
+    }
+
+    exe, exe_err = os.executable_path()
+    exe_directory, _ = path.split_dir_file(exe)
+    if exe_err == nil {
+        checkout string = path.join_parts({exe_directory, "grayc", compiler_binary_name()})
+        if io.is_file(checkout) {
+            return checkout, true
+        }
+    }
+
+    extracted, extract_err = embedded.extract_embedded(compiler_binary_name())
+    if extract_err == nil {
+        return extracted, true
+    }
+
+    if exe_err == nil {
+        beside string = path.join_parts({exe_directory, compiler_binary_name()})
+        if io.is_file(beside) {
+            return beside, true
+        }
+    }
+
+    on_path, found = os.find_executable("grayc")
+    if found {
+        return on_path, true
+    }
+
+    when os.current_os() {
+        is .WINDOWS { }
+        default {
+            for_each candidate in {"/usr/local/bin/grayc", "/usr/bin/grayc"} {
+                if io.is_file(candidate) {
+                    return candidate, true
+                }
+            }
+        }
+    }
+    return "", false
+}

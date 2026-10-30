@@ -1,0 +1,120 @@
+// test_markers.gray — Finds the #test markers in a source file for "gray test".
+// A marker is a line whose first non-blank content is the #test attribute,
+// stacked (#test) or inside a single-line list (#[test], #[doc("x"), test]).
+
+import @strings
+import @arrays
+import @chars
+import "./scanner"
+
+// TestMarker is one #test attribute and the function it applies to.
+const TestMarker struct {
+    name string         // the function the marker applies to, "" when none follows
+    marker_line i64     // 1-indexed line of the marker
+}
+
+// find_test_markers returns the markers in src in source order. Text inside a
+// comment, a string literal or a raw string is not a marker. A marker with no
+// function after it is kept with an empty name, so the compiler can reject it.
+do find_test_markers(src string) -> [TestMarker] {
+    mut markers [TestMarker] = {}
+    source_lines [string] = strings.split(src, "\n")
+    line_count i64 = len(source_lines)
+    in_raw_string, in_block_comment = scanner.multi_line_literal_line_starts(src, line_count)
+
+    for index in range(0, line_count) {
+        if in_raw_string[index] || in_block_comment[index] {
+            continue
+        }
+        if !is_test_marker(strings.trim(source_lines[index])) {
+            continue
+        }
+        name string = function_name_after(source_lines, in_raw_string, in_block_comment, index + 1)
+        arrays.append(markers, TestMarker{name: name, marker_line: index + 1})
+    }
+    return markers
+}
+
+// is_test_marker reports whether a trimmed line is a #test attribute or a
+// #[...] list with a test item. Like the prescan it replaces, an item counts
+// when it starts with the word test, so a malformed one such as test(5) or
+// #test reaches the compiler, and a list that does not close on the line
+// counts too.
+do is_test_marker(trimmed string) -> bool {
+    if strings.starts_with(trimmed, "#test") {
+        rest string = strings.slice(trimmed, 5, len(trimmed))
+        return rest == "" || !chars.is_word_char(rest[0])
+    }
+    if !strings.starts_with(trimmed, "#[") {
+        return false
+    }
+
+    trimmed_length i64 = len(trimmed)
+    mut item string = ""
+    mut quote char = '\0'
+    mut i i64 = 2
+    as_long_as i < trimmed_length {
+        c char = trimmed[i]
+        if quote != '\0' {
+            if c == '\\' && i + 1 < trimmed_length {
+                i = i + 1
+            } or c == quote {
+                quote = '\0'
+            }
+        } or c == '"' || c == '\'' {
+            quote = c
+        } or c == ',' || c == ']' {
+            if is_test_item(item) {
+                return true
+            }
+            if c == ']' {
+                return false
+            }
+            item = ""
+            i = i + 1
+            continue
+        }
+        item = item + strings.slice(trimmed, i, i + 1)
+        i = i + 1
+    }
+    return is_test_item(item)
+}
+
+// is_test_item reports whether a list item starts with the word test, with or
+// without a leading #.
+do is_test_item(item string) -> bool {
+    word string = strings.remove_prefix(strings.trim(item), "#")
+    if !strings.starts_with(word, "test") {
+        return false
+    }
+    return len(word) == 4 || !chars.is_word_char(word[4])
+}
+
+// function_name_after returns the name of the first function declared at or
+// after line index start, skipping blank lines and other attributes, or ""
+// when the next declaration is not a function.
+do function_name_after(source_lines [string], in_raw_string [bool], in_block_comment [bool], start i64) -> string {
+    for index in range(start, len(source_lines)) {
+        if in_raw_string[index] || in_block_comment[index] {
+            return ""
+        }
+        trimmed string = strings.trim(source_lines[index])
+        if trimmed == "" || strings.starts_with(trimmed, "#") {
+            continue
+        }
+        mut declaration string = strings.remove_prefix(trimmed, "private ")
+        if strings.starts_with(declaration, "do ") {
+            declaration = strings.remove_prefix(declaration, "do ")
+        } or strings.starts_with(declaration, "fn ") {
+            declaration = strings.remove_prefix(declaration, "fn ")
+        } otherwise {
+            return ""
+        }
+        paren_index i64 = strings.index_of(declaration, "(")
+        if paren_index < 0 {
+            return ""
+        }
+        return strings.trim(strings.slice(declaration, 0, paren_index))
+    }
+    return ""
+}

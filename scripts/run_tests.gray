@@ -141,9 +141,9 @@ do leading_code(text string) -> string {
 // load_markers reads the marker comments of a test file. The first
 // expect-error, expect-error-count, expect-not and expect-contains directive
 // wins; every define directive counts.
-do load_markers(path string) -> Markers {
+do load_markers(file_path string) -> Markers {
     mut markers Markers = Markers{}
-    mut lines, read_err = io.read_lines(path)
+    mut lines, read_err = io.read_lines(file_path)
     if read_err != nil {
         return markers
     }
@@ -399,8 +399,8 @@ do sub_directories(dir string) -> [string] {
 }
 
 // base_name returns the last path component, minus the .gray extension.
-do base_name(path string) -> string {
-    mut parts [string] = strings.split(path, "/")
+do base_name(file_path string) -> string {
+    mut parts [string] = strings.split(file_path, "/")
     return strings.remove_suffix(parts[len(parts) - 1], ".gray")
 }
 
@@ -408,12 +408,12 @@ do base_name(path string) -> string {
 do find_main(dir string) -> string {
     mut found, _ = io.walk(dir)
     arrays.sort_asc(found)
-    for_each path in found {
-        if path == "main.gray" || strings.ends_with(path, "/main.gray") {
-            if strings.starts_with(path, dir) {
-                return path
+    for_each file_path in found {
+        if file_path == "main.gray" || strings.ends_with(file_path, "/main.gray") {
+            if strings.starts_with(file_path, dir) {
+                return file_path
             }
-            return "${dir}/${path}"
+            return "${dir}/${file_path}"
         }
     }
     return ""
@@ -424,10 +424,10 @@ do find_main(dir string) -> string {
 do find_marker_file(dir string) -> string {
     mut found, _ = io.walk(dir)
     arrays.sort_asc(found)
-    for_each path in found {
-        mut full string = path
-        if !strings.starts_with(path, dir) {
-            full = "${dir}/${path}"
+    for_each file_path in found {
+        mut full string = file_path
+        if !strings.starts_with(file_path, dir) {
+            full = "${dir}/${file_path}"
         }
         if !io.is_file(full) {
             continue
@@ -497,10 +497,8 @@ do main() {
     mut gray string = "${root}/gray"
 
     // Always rebuild to ensure we test current code
-    println("Building grayc...")
-    build_or_exit("make", {"-C", "grayc", "build"}, "grayc build failed")
-    println("Building gray CLI...")
-    build_or_exit("go", {"build", "-o", "gray", "./cli"}, "gray build failed")
+    println("Building grayc and the gray CLI...")
+    build_or_exit("make", {"build"}, "gray build failed")
 
     // Point gray at the local grayc binary
     os.set_env("GRAY_COMPILER_PATH", "${root}/grayc/grayc")

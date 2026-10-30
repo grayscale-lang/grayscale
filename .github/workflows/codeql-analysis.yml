@@ -17,21 +17,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: go, c-cpp
+          languages: c-cpp
           queries: security-and-quality
-
-      - name: Build Go CLI
-        run: |
-          go env
-          go test ./... || true
 
       - name: Build Grayscale compiler
         run: |

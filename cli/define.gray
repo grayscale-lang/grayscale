@@ -1,0 +1,50 @@
+// define.gray — The -define:NAME=VALUE flag. The CLI lifts these arguments out
+// of its argument list before parsing the rest, and the commands that compile a
+// program forward them to grayc as --define=NAME=VALUE.
+
+import @arrays
+import @maps
+import @strings
+
+const DEFINE_FLAG_PREFIX string = "-define:"
+
+// extract_define_flags splits the -define:NAME=VALUE arguments out of args.
+// Arguments after a bare "--" belong to the compiled program and are left
+// alone. A flag without '=' or with an empty name, or a name given twice, is
+// a usage error.
+do extract_define_flags(args [string]) -> ([string], [string], Error) {
+    mut rest [string] = {}
+    mut defines [string] = {}
+    mut seen map[string:bool] = {:}
+    mut after_dash bool = false
+    for_each arg in args {
+        if arg == "--" {
+            after_dash = true
+        }
+        if after_dash || !strings.starts_with(arg, DEFINE_FLAG_PREFIX) {
+            arrays.append(rest, arg)
+            continue
+        }
+        override string = strings.remove_prefix(arg, DEFINE_FLAG_PREFIX)
+        equals_index i64 = strings.index_of(override, "=")
+        if equals_index <= 0 {
+            return {}, {}, error(.InvalidInput, "error: malformed flag '${arg}' — expected -define:NAME=VALUE")
+        }
+        name string = strings.slice(override, 0, equals_index)
+        if maps.contains_key(seen, name) {
+            return {}, {}, error(.InvalidInput, "error: '${name}' is defined more than once with -define:")
+        }
+        seen[name] = true
+        arrays.append(defines, override)
+    }
+    return rest, defines, nil
+}
+
+// define_args turns the collected overrides into grayc arguments.
+do define_args(defines [string]) -> [string] {
+    mut args [string] = {}
+    for_each override in defines {
+        arrays.append(args, "--define=${override}")
+    }
+    return args
+}

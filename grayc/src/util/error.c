@@ -242,17 +242,27 @@ static int utf8_continuation_count(unsigned char byte) {
     return 0;
 }
 
-/* A byte 0x80-0x9F outside a UTF-8 sequence: a C1 control in 8-bit form
- * (0x9B is CSI to a terminal in 8-bit mode). Inside a sequence the same
- * values are ordinary continuation bytes. `pending` is how many continuation
- * bytes the sequence in progress still owes; this advances it. */
-static bool is_lone_c1_byte(unsigned char byte, int *pending) {
+/* A byte that is not part of a complete UTF-8 sequence: a continuation byte
+ * with no lead, a lead whose continuation bytes are missing, or a byte that
+ * never occurs in UTF-8. Printed raw it makes the output invalid UTF-8, and
+ * a lone 0x80-0x9F byte is also a C1 control in 8-bit form (0x9B is CSI to a
+ * terminal). Inside a complete sequence the same values are ordinary
+ * continuation bytes. `pending` is how many continuation bytes the sequence
+ * in progress still owes; this advances it. */
+static bool is_stray_byte(const char *text, int length, int index, int *pending) {
+    unsigned char byte = (unsigned char)text[index];
     if (*pending > 0 && (byte & 0xC0) == 0x80) {
         (*pending)--;
         return false;
     }
-    *pending = utf8_continuation_count(byte);
-    return byte >= 0x80 && byte <= 0x9F;
+    *pending = 0;
+    if (byte < 0x80) return false;
+    int continuation_count = utf8_continuation_count(byte);
+    if (continuation_count == 0 || index + continuation_count >= length) return true;
+    for (int offset = 1; offset <= continuation_count; offset++)
+        if (((unsigned char)text[index + offset] & 0xC0) != 0x80) return true;
+    *pending = continuation_count;
+    return false;
 }
 
 /* Source text reaches the terminal in diagnostics: the quoted line, and names
@@ -278,7 +288,7 @@ static int write_visible(const char *text, int length, bool allow_newline) {
         } else if (byte < 0x20 || byte == 0x7F) {
             columns += fprintf(stderr, "\\x%02x", byte);
             pending = 0;
-        } else if (is_lone_c1_byte(byte, &pending)) {
+        } else if (is_stray_byte(text, length, index, &pending)) {
             columns += fprintf(stderr, "\\x%02x", byte);
         } else {
             fputc(byte, stderr);
@@ -299,7 +309,7 @@ static int visible_width(const char *text, int length) {
         bool is_c1 = byte == 0xC2 && index + 1 < length && ((unsigned char)text[index + 1] & 0xE0) == 0x80;
         if (is_c1) { columns += 6; index++; pending = 0; }
         else if (byte != '\t' && (byte < 0x20 || byte == 0x7F)) { columns += 4; pending = 0; }
-        else if (is_lone_c1_byte(byte, &pending)) columns += 4;
+        else if (is_stray_byte(text, length, index, &pending)) columns += 4;
         else columns++;
     }
     return columns;
@@ -351,7 +361,7 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic
         }
         if (!slot) {
             /* Cache miss: read from disk and store in the LRU secondary slot */
-            const char *content = read_file_to_string(diagnostic_entry->file);
+            const char *content = read_file_to_string(diagnostic_entry->file, NULL);
             if (content) {
                 int evicted_index = 1;
                 for (int cache_index = 2; cache_index < DIAGNOSTIC_FILE_CACHE_SIZE; cache_index++) {

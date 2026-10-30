@@ -1,0 +1,48 @@
+const E enum {
+    L([E])
+    M(map[string:E])
+    N
+}
+const A enum {
+    X(B)
+    N
+}
+const B enum {
+    Y([A])
+}
+const S struct { e E }
+
+do f(a E) -> E { return a }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut c E = E.N
+    const e E = E.N
+    mut b E = f(c)
+    c = b
+    mut s S = S{e: c}
+    mut xs [E] = {c}
+    xs[0] = b
+    mut p ^E = new(E)
+    p^ = e
+    mut q A = A.N
+
+    when s.e {
+        is E.N { passed = passed + 1 }
+        default { failed = failed + 1 }
+    }
+    when q {
+        is A.N { passed = passed + 1 }
+        default { failed = failed + 1 }
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

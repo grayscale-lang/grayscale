@@ -43,9 +43,9 @@ POSIX only; the `make` target prints a notice and exits 0 on Windows.
 ```
 benchmarks/
   README.md      this file
-  run.sh         orchestrator: builds, times, writes results.json, prints the tables
-  gen.sh         writes deterministic fixtures into .gen/
-  runner.c       ~90-line CLOCK_MONOTONIC stopwatch, compiled once by run.sh
+  run.gray       orchestrator: builds, times, writes results.json, prints the tables
+  gen.gray       writes deterministic fixtures into .gen/
+  runner.c       ~90-line CLOCK_MONOTONIC stopwatch, compiled once by run.gray
   workloads/     the workload .gray sources (git-tracked)
   .gen/          generated fixtures + built binaries (gitignored)
   results.json   latest run, read as Prior to Latest by the next run (gitignored)
@@ -55,7 +55,7 @@ benchmarks/
 min / median / mean wall time. `cc` is the only tool assumed present —
 `date +%N`, `python3`, and `hyperfine` are not.
 
-`run.sh` wipes `.gen/` at the start of every run and regenerates it; the
+`run.gray` wipes `.gen/` at the start of every run and regenerates it; the
 fixtures are deterministic and rebuild in under a second, so there is nothing
 to cache or clean up by hand.
 
@@ -69,7 +69,7 @@ gray build benchmarks/workloads/lexer.gray -o /tmp/lexer && /tmp/lexer
 
 If `BENCH_GEN` is not set, a workload looks for fixtures in `benchmarks/.gen/`
 relative to its own location, so generate them once first with
-`bash benchmarks/gen.sh` (or any prior `make benchmark`).
+`gray build benchmarks/gen.gray -o /tmp/gen && /tmp/gen` from the repo root (or any prior `make benchmark`).
 
 ## Knobs
 

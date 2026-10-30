@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
 
-**Total: 576 codes** (403 errors, 17 warnings, 156 panics)
+**Total: 577 codes** (404 errors, 17 warnings, 156 panics)
 
 ---
 
@@ -31,6 +31,7 @@
 | `E1023` | syntax | string literals cannot span multiple lines; use a raw string with backticks for multi-line text |
 | `E1024` | syntax | identifier exceeds the maximum length of 255 characters |
 | `E1025` | syntax | this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind') |
+| `E1026` | syntax | NUL byte in source file; remove the NUL byte |
 | `E2001` | syntax | unexpected symbol |
 | `E2002` | syntax | missing symbol; expected a bracket, parenthesis, or keyword |
 | `E2010` | syntax | cannot use module '%s' before importing it; add 'import @%s' before the using statement |
@@ -627,4 +628,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-24 17:31:11 UTC*
+*Generated on 2026-10-27 21:56:04 UTC*

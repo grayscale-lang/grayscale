@@ -1,0 +1,42 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    backslash_dollar string = "\\$"
+    if len(backslash_dollar) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \"\\\\$\" length")
+    }
+
+    backslash_escaped_dollar string = "\\\$"
+    if len(backslash_escaped_dollar) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \"\\\\\\$\" length")
+    }
+
+    escaped_dollar string = "\$"
+    if len(escaped_dollar) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \"\\$\" length")
+    }
+
+    if backslash_dollar == backslash_escaped_dollar {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \"\\\\$\" differs from \"\\\\\\$\"")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

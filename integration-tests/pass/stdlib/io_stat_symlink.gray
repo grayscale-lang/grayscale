@@ -1,0 +1,51 @@
+/*
+ * Test: io.stat does not follow a final symlink
+ */
+
+import @io
+import @path
+import @os
+
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do check_int(label string, got i64, want i64) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+    mut dir, _ = io.temp_dir()
+    mut target = path.join_parts({dir, "target.txt"})
+    mut link = path.join_parts({dir, "link.txt"})
+    mut _ok, _ = io.write_file(target, "hello")
+    mut _result, _ = os.exec("ln", {"-s", target, link})
+
+    mut info, err = io.stat(link)
+    passed += check_bool("stat of a symlink has no error", err == nil, true)
+    passed += check_bool("is_symlink", info.is_symlink, true)
+    passed += check_bool("is_file is false for a symlink", info.is_file, false)
+    passed += check_bool("is_dir is false for a symlink", info.is_dir, false)
+
+    mut _removed, _ = io.remove_dir_all(dir)
+
+    println("")
+    println("Results: ${passed}/4 passed")
+    if passed == 4 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

@@ -169,6 +169,54 @@ bool gray_io_is_directory(GrayString path);
  *@end
  */
 
+/*@man FileInfo
+ *@module io
+ *@group Types
+ *@kind type
+ *@field size i64
+ *@field mode i64
+ *@field mod_time i64
+ *@field is_dir bool
+ *@field is_file bool
+ *@field is_symlink bool
+ *@desc The metadata returned by stat: size in bytes, permission bits, modification time in seconds since the Unix epoch, and the entry type. FileInfo is reserved as a type name while io is imported.
+ *@example
+ *   import @io
+ *   mut info, err = io.stat("data.txt")
+ *   println(info.size)
+ *   println(info.is_file)
+ *@end
+ */
+/* io.stat result. */
+typedef struct { int64_t size; int64_t mode; int64_t mod_time; bool is_dir; bool is_file; bool is_symlink; } GrayIoFileInfo;
+typedef struct { GrayIoFileInfo v0; GrayError *v1; } GrayResult_io_stat;
+
+/*@man stat
+ *@module io
+ *@group File Operations
+ *@sig stat(path string) -> (FileInfo, Error)
+ *@desc Returns the metadata of the entry at path without following a final symlink, so is_symlink is accurate. mode holds the permission bits. A missing path returns a non-nil Error. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@example
+ *   import @io
+ *   mut info, err = io.stat("data.txt")
+ *   if err == nil {
+ *       println("${info.size} bytes, modified at ${info.mod_time}")
+ *   }
+ *@end
+ */
+GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path);
+
+/*@man chmod
+ *@module io
+ *@group File Operations
+ *@sig chmod(path string, mode i64) -> (bool, Error)
+ *@desc Sets the permission bits of the file or directory at path to mode, for example 0o755. On Windows only the read-only bit is applied: the entry is read-only unless mode includes owner write (0o200). Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@example
+ *   import @io
+ *   mut ok, _ = io.chmod("run.sh", 0o755)
+ *@end
+ */
+
 /* File writing */
 
 /*@man write_file
@@ -367,85 +415,11 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *@desc Creates a temporary directory and returns its path. The directory and all its contents are automatically deleted when the program exits. Always use destructuring — single-variable assignment is a compile error.
  *@example
  *   import @io
- *   mut path, _ = io.temp_dir()
- *   mut _, _ = io.write_file(io.path_join({path, "data.txt"}), "hello")
+ *   import @path
+ *   mut dir, _ = io.temp_dir()
+ *   mut _, _ = io.write_file(path.join_parts({dir, "data.txt"}), "hello")
  *@end
  */
-
-/* Path manipulation */
-
-/*@man path_join
- *@module io
- *@group Path
- *@sig path_join(parts [string]) -> string
- *@desc Joins path segments into a single path. An absolute segment replaces everything accumulated so far.
- *@example
- *   import @io
- *   println(io.path_join({"/home", "user", "docs"}))
- *@end
- */
-GrayString gray_io_path_join(GrayArena *arena, GrayArray parts);
-
-/*@man dirname
- *@module io
- *@group Path
- *@sig dirname(path string) -> string
- *@desc Returns the parent directory component of path.
- *@example
- *   import @io
- *   println(io.dirname("/home/user/file.txt"))
- *@end
- */
-GrayString gray_io_dirname(GrayArena *arena, GrayString path);
-
-/*@man basename
- *@module io
- *@group Path
- *@sig basename(path string) -> string
- *@desc Returns the filename component of path, without any leading directory.
- *@example
- *   import @io
- *   println(io.basename("/home/user/file.txt"))
- *@end
- */
-GrayString gray_io_basename(GrayArena *arena, GrayString path);
-
-/*@man extension
- *@module io
- *@group Path
- *@sig extension(path string) -> string
- *@desc Returns the file extension of path including the leading dot (e.g. ".txt"). Returns an empty string if there is no extension.
- *@example
- *   import @io
- *   println(io.extension("report.pdf"))
- *@end
- */
-GrayString gray_io_extension(GrayArena *arena, GrayString path);
-
-/*@man is_absolute
- *@module io
- *@group Path
- *@sig is_absolute(path string) -> bool
- *@desc Returns true if path is an absolute path.
- *@example
- *   import @io
- *   println(io.is_absolute("/etc/hosts"))
- *   println(io.is_absolute("relative/path"))
- *@end
- */
-bool gray_io_is_absolute(GrayString path);
-
-/*@man normalize
- *@module io
- *@group Path
- *@sig normalize(path string) -> string
- *@desc Cleans and normalizes path by resolving ".", "..", and redundant separators.
- *@example
- *   import @io
- *   println(io.normalize("a/b/../c"))
- *@end
- */
-GrayString gray_io_normalize(GrayArena *arena, GrayString path);
 
 /* Tuple-returning versions for (value, Error) pattern */
 typedef struct { GrayString v0; GrayError *v1; } GrayResult_string;
@@ -459,6 +433,7 @@ GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_bytes_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit);
 GrayResult_i64    gray_io_file_size_result(GrayArena *arena, GrayString path);
+GrayResult_bool gray_io_chmod_result(GrayArena *arena, GrayString path, int64_t mode);
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content);

@@ -53,8 +53,9 @@ static inline void *xrealloc(void *pointer, size_t size) {
 }
 
 /* Read an entire seekable file into a malloc'd NUL-terminated string.
- * Returns NULL on open failure or OOM. */
-static inline char *read_file_to_string(const char *path) {
+ * Returns NULL on open failure or OOM. `length`, when not NULL, receives the
+ * byte count read, which a NUL byte in the content makes larger than strlen. */
+static inline char *read_file_to_string(const char *path, size_t *length) {
     FILE *file = fopen(path, "rb");
     if (!file)
         return NULL;
@@ -76,6 +77,7 @@ static inline char *read_file_to_string(const char *path) {
 
     size_t bytes_read = fread(buffer, 1, (size_t)size, file);
     buffer[bytes_read] = '\0';
+    if (length) *length = bytes_read;
 
     fclose(file);
     return buffer;

@@ -124,7 +124,7 @@ do main() {
 <p align="center">
 
 `@arrays` · `@atomic` · `@binary` · `@channels` · `@chars` · `@crypto` · `@csv` · `@encoding` · `@fmt` · `@http`
-`@io` · `@json` · `@maps` · `@math` · `@mem` · `@net` · `@os` · `@random` · `@regex`
+`@io` · `@json` · `@maps` · `@math` · `@mem` · `@net` · `@os` · `@path` · `@random` · `@regex`
 `@runtime` · `@server` · `@sqlite` · `@strconv` · `@strings` · `@sync` · `@threads` · `@time` · `@uuid`
 
 </p>
@@ -139,7 +139,7 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ### Build from source
 
-Requires Go 1.23+ and a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both. `GRAY_CC` is the compiler `gray` uses for `.gray` programs; `CC` is the compiler `make` uses to build `grayc` and the runtime, and `gray` falls back to it only when `GRAY_CC` is unset (`CC=clang GRAY_CC=gcc make build`).
+Requires a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both. `GRAY_CC` is the compiler `gray` uses for `.gray` programs; `CC` is the compiler `make` uses to build `grayc` and the runtime, and `gray` falls back to it only when `GRAY_CC` is unset (`CC=clang GRAY_CC=gcc make build`).
 
 Run `make help` to list the make targets, or `make help TARGET=build` to see what one target does and which variables it reads.
 

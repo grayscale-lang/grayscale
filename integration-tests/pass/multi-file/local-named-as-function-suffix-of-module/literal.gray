@@ -1,0 +1,3 @@
+do literal_text(n i64) -> string {
+    return "n"
+}

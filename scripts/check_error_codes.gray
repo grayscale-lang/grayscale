@@ -147,20 +147,20 @@ do main() {
     mut custom_message_sites [string] = {}
 
     for_each entry in walked {
-        mut path string = entry
-        if !strings.starts_with(path, "grayc/src") {
-            path = "grayc/src/${entry}"
+        mut file_path string = entry
+        if !strings.starts_with(file_path, "grayc/src") {
+            file_path = "grayc/src/${entry}"
         }
-        if !strings.ends_with(path, ".c") {
+        if !strings.ends_with(file_path, ".c") {
             continue
         }
-        if strings.ends_with(path, "/error_codes.c") {
+        if strings.ends_with(file_path, "/error_codes.c") {
             continue
         }
-        mut is_parser bool = strings.ends_with(path, "/parser.c")
-        mut is_typechecker bool = strings.ends_with(path, "/typechecker.c")
+        mut is_parser bool = strings.ends_with(file_path, "/parser.c")
+        mut is_typechecker bool = strings.ends_with(file_path, "/typechecker.c")
 
-        mut file_lines, file_err = io.read_lines(path)
+        mut file_lines, file_err = io.read_lines(file_path)
         if file_err != nil {
             continue
         }
@@ -172,13 +172,13 @@ do main() {
             }
             if is_typechecker && (strings.contains(src, "diagnostic_error_message(") ||
                     strings.contains(src, "diagnostic_warning_message(")) {
-                arrays.append(custom_message_sites, "${path} (${current_function})")
+                arrays.append(custom_message_sites, "${file_path} (${current_function})")
             }
             mut codes [string] = scan_line_codes(src)
             for_each code in codes {
                 if (code == "E3019" || code == "E3036" || code == "E3155") &&
                         !(is_typechecker && current_function == "check_expression_as") {
-                    arrays.append(sized_rule_sites, "${code} in ${path} (${current_function})")
+                    arrays.append(sized_rule_sites, "${code} in ${file_path} (${current_function})")
                 }
                 if !arrays.contains(emitted, code) {
                     arrays.append(emitted, code)

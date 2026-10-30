@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4005 - io.basename removed
+ * Expected: undefined function error; the path module replaces it
+ */
+
+import @io
+
+do main() {
+    mut result = io.basename("a/b")
+}

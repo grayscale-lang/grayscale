@@ -613,7 +613,8 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                     module_file_count++;
 
                     /* Read and parse the imported file */
-                    char *imported_source = gray_read_file(current_file_path, false);
+                    size_t imported_length = 0;
+                    char *imported_source = gray_read_file(current_file_path, false, &imported_length);
                     if (!imported_source) {
                         char message[MESSAGE_BUFFER_LARGE_SIZE];
                         snprintf(message, sizeof(message), "cannot find file or directory '%s'", current_file_path);
@@ -622,7 +623,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                         continue;
                     }
 
-                    Lexer *imported_lexer = lexer_create(arena, imported_source, current_file_path);
+                    Lexer *imported_lexer = lexer_create_sized(arena, imported_source, imported_length, current_file_path);
                     Parser *imported_parser = parser_create(arena, imported_lexer, current_file_path, diagnostics);
                     AstNode *imported_program = parser_parse_program(imported_parser);
 

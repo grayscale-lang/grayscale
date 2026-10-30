@@ -6,7 +6,7 @@
 
 
 do handle_home(req Request) -> Response {
-    println("Handling: ${req.method} ${req.path}")
+    println("Handling: ${req.method} ${req.route}")
     mut resp Response = Response{status: 200, body: "Welcome home!"}
     return resp
 }

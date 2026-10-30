@@ -1,0 +1,156 @@
+// lang_man.gray — The language reference of gray man: keywords, types, symbols and
+// attributes, each with its syntax, description and an example.
+
+import @strings
+
+// LangEntry holds documentation for a single language construct. kind is
+// "keyword", "type", "symbol" or "attribute".
+const LangEntry struct {
+    kind string
+    syntax string
+    desc string
+    example string
+}
+
+// LangGroup is one labeled group of names within a language category index.
+const LangGroup struct {
+    label string
+    names [string]
+}
+
+// lang_man_docs is the lookup table for gray man <keyword, type, symbol or attribute>.
+do lang_man_docs() -> map[string:LangEntry] {
+    mut docs map[string:LangEntry] = {:}
+    docs["if"] = LangEntry{kind: "keyword", syntax: "if <condition> { ... }", desc: "Executes the block if the condition is true.", example: "if x > 0 {\n    println(\"positive\")\n}"}
+    docs["else"] = LangEntry{kind: "keyword", syntax: "} else {", desc: "Alias for 'otherwise'. Default branch of an if/or chain.", example: "if ok {\n    println(\"yes\")\n} else {\n    println(\"no\")\n}"}
+    docs["otherwise"] = LangEntry{kind: "keyword", syntax: "} otherwise {", desc: "Default branch of an if/or chain. Alias: 'else'.", example: "if x > 0 {\n    println(\"pos\")\n} otherwise {\n    println(\"non-pos\")\n}"}
+    docs["or"] = LangEntry{kind: "keyword", syntax: "} or <condition> {", desc: "Else-if branch following an 'if'; introduces another condition. Equivalent to 'else if' in other languages. Alias: 'elif'.", example: "if x < 0 {\n    println(\"neg\")\n} or x == 0 {\n    println(\"zero\")\n}"}
+    docs["elif"] = LangEntry{kind: "keyword", syntax: "} elif <condition> {", desc: "Alias for 'or'. Else-if branch following an 'if'. Pairs with 'else': an 'elif' chain must close with 'else', not 'otherwise'.", example: "if x < 0 {\n    println(\"neg\")\n} elif x == 0 {\n    println(\"zero\")\n} else {\n    println(\"pos\")\n}"}
+    docs["for"] = LangEntry{kind: "keyword", syntax: "for <var> in range(<start>, <end>) { ... }", desc: "Iterates over a range of integers. The loop variable is scoped to the block.", example: "for i in range(0, 5) {\n    println(i)\n}"}
+    docs["for_each"] = LangEntry{kind: "keyword", syntax: "for_each [index,] item in <collection> { ... }", desc: "Iterates over every element in an array, map, or string. Optional index variable precedes the value.", example: "for_each i, v in items {\n    println(\"\${i}: \${v}\")\n}"}
+    docs["while"] = LangEntry{kind: "keyword", syntax: "while <condition> { ... }", desc: "Condition-based loop; executes until condition is false. Alias for 'as_long_as'.", example: "while count < 10 {\n    count++\n}"}
+    docs["as_long_as"] = LangEntry{kind: "keyword", syntax: "as_long_as <condition> { ... }", desc: "Condition-based loop; executes until condition is false. Alias: 'while'.", example: "as_long_as x > 0 {\n    x--\n}"}
+    docs["loop"] = LangEntry{kind: "keyword", syntax: "loop { ... }", desc: "Creates an infinite loop that runs until 'break' or 'return' exits it.", example: "loop {\n    mut s = input()\n    if s == \"quit\" { break }\n}"}
+    docs["when"] = LangEntry{kind: "keyword", syntax: "when <expr> { is <val> { ... } default { ... } }", desc: "Pattern-matching statement. Matches the expression against literal values, ranges, or enum variants. Alias: 'switch'.", example: "when x {\n    is 1 { println(\"one\") }\n    is 2, 3 { println(\"two or three\") }\n    default { println(\"other\") }\n}"}
+    docs["is"] = LangEntry{kind: "keyword", syntax: "is <value> { ... }", desc: "A branch inside a 'when' block that matches a specific value, list of values, range, or enum variant. Alias: 'case'.", example: "when dir {\n    is Direction.NORTH { println(\"north\") }\n    default { println(\"other\") }\n}"}
+    docs["switch"] = LangEntry{kind: "keyword", syntax: "switch <expr> { case <val> { ... } default { ... } }", desc: "Alias for 'when'. Pattern-matching statement. Pairs with 'case': a 'switch' must use 'case' branches, not 'is'.", example: "switch x {\n    case 1 { println(\"one\") }\n    case 2, 3 { println(\"two or three\") }\n    default { println(\"other\") }\n}"}
+    docs["case"] = LangEntry{kind: "keyword", syntax: "case <value> { ... }", desc: "Alias for 'is'. A branch inside a 'switch' block that matches a specific value, list of values, range, or enum variant.", example: "switch dir {\n    case Direction.NORTH { println(\"north\") }\n    default { println(\"other\") }\n}"}
+    docs["break"] = LangEntry{kind: "keyword", syntax: "break [label]", desc: "Terminates the innermost enclosing loop immediately, or the enclosing loop named by a label.", example: "outer: for y in range(0, 10) {\n    for x in range(0, 10) {\n        if x == y { break outer }\n    }\n}"}
+    docs["continue"] = LangEntry{kind: "keyword", syntax: "continue [label]", desc: "Skips the remainder of the current loop iteration and begins the next, of the innermost enclosing loop or of the loop named by a label.", example: "outer: for y in range(0, 10) {\n    for x in range(0, 10) {\n        if x == y { continue outer }\n    }\n}"}
+    docs["default"] = LangEntry{kind: "keyword", syntax: "default { ... }", desc: "The fallback branch inside a 'when' block, executed when no 'is' branch matches.", example: "when status {\n    is 0 { println(\"ok\") }\n    default { println(\"fail\") }\n}"}
+    docs["return"] = LangEntry{kind: "keyword", syntax: "return [value]", desc: "Exits the current function, optionally returning a value.", example: "do add(a i64, b i64) -> i64 {\n    return a + b\n}"}
+    docs["ensure"] = LangEntry{kind: "keyword", syntax: "ensure <function_call>()", desc: "Registers a function to be called when the enclosing function exits, whether via normal return or early return. Alias: 'defer'.", example: "do process() {\n    ensure cleanup()\n    // ... do work ...\n}"}
+    docs["defer"] = LangEntry{kind: "keyword", syntax: "defer <function_call>()", desc: "Alias for 'ensure'. Registers a function to be called when the enclosing function exits, whether via normal return or early return.", example: "do process() {\n    defer cleanup()\n    // ... do work ...\n}"}
+    docs["or_default"] = LangEntry{kind: "keyword", syntax: "<expr> or_default <fallback>[, <fallback>...]", desc: "Fallback shorthand: if the expression returns a non-nil Error, discards it and uses the fallback values instead, one per non-error value. The fallbacks are evaluated only on failure. Needs a binding.", example: "do main() {\n    mut port = strconv.to_i64(text) or_default 8080\n    mut low, high = bounds(text) or_default 0, 100\n}"}
+    docs["or_panic"] = LangEntry{kind: "keyword", syntax: "<expr> or_panic [\"message\"]", desc: "Abort shorthand: if the expression returns a non-nil Error, panics with the error's message (or the given message). Legal in main() and in functions that return no Error.", example: "do main() {\n    mut port = strconv.to_i64(\"8080\") or_panic\n    mut n = strconv.to_i64(text) or_panic \"text must be a number\"\n}"}
+    docs["or_return"] = LangEntry{kind: "keyword", syntax: "<expr> or_return [fallback_values]", desc: "Error propagation shorthand: if the expression returns a non-nil Error, immediately returns from the enclosing function.", example: "do load() -> (string, Error) {\n    mut content = read_file(\"f\") or_return\n    return content, nil\n}"}
+    docs["mut"] = LangEntry{kind: "keyword", syntax: "mut <name> [Type] = <value>", desc: "Declares a mutable variable. Must be initialized at declaration. Can be reassigned.", example: "mut count i64 = 0\nmut name = \"Alice\""}
+    docs["const"] = LangEntry{kind: "keyword", syntax: "const <name> [Type] = <value>", desc: "Declares an immutable constant or defines a struct/enum type. Cannot be reassigned.", example: "const PI f64 = 3.14159\nconst MAX i64 = 100"}
+    docs["do"] = LangEntry{kind: "keyword", syntax: "do <name>(<params>) [-> <ReturnType>] { ... }", desc: "Declares a function. Introduces both top-level functions and struct-namespaced functions. Alias: 'fn'.", example: "do add(a i64, b i64) -> i64 {\n    return a + b\n}"}
+    docs["fn"] = LangEntry{kind: "keyword", syntax: "fn <name>(<params>) [-> <ReturnType>] { ... }", desc: "Alias for 'do'. Declares a function, at the top level or inside a struct body.", example: "fn add(a i64, b i64) -> i64 {\n    return a + b\n}"}
+    docs["struct"] = LangEntry{kind: "keyword", syntax: "const <Name> struct { <field> <Type> ... }", desc: "Defines a composite type with named fields. Must be declared at the top level using 'const'.", example: "const Point struct {\n    x i64\n    y i64\n}"}
+    docs["enum"] = LangEntry{kind: "keyword", syntax: "const <Name> enum { VARIANT ... }", desc: "Defines a type with a fixed set of named values. Variants auto-increment from 0 by default. A plain enum also has Name.names() -> [string] and Name.variants() -> [Name], both in declaration order.", example: "const Direction enum {\n    NORTH\n    EAST\n    SOUTH\n    WEST\n}"}
+    docs["import"] = LangEntry{kind: "keyword", syntax: "import @<module> | import \"<path>\"", desc: "Brings a standard library module or a local file/directory into scope.", example: "import @math, @strings\nimport \"./helpers\""}
+    docs["using"] = LangEntry{kind: "keyword", syntax: "using <module>", desc: "Brings module members into scope for unqualified access. Can appear at file scope or function scope.", example: "import @strings\nusing strings\nprintln(to_upper(\"hello\"))"}
+    docs["use"] = LangEntry{kind: "keyword", syntax: "import and use @<module>[, @<module>...]", desc: "Reserved for the 'import and use' statement, which imports a module and brings its members into scope for unqualified access in one step. Has no other syntactic role.", example: "import and use @strings\nprintln(to_upper(\"hello\"))"}
+    docs["new"] = LangEntry{kind: "keyword", syntax: "new(<Type>) -> ^<Type>", desc: "Allocates a zero-initialized value of any type on the heap and returns a pointer to it. Works with primitives, structs, arrays, maps, and all other types.", example: "mut p = new(Point)\np.x = 10\nmut n = new(i64)\nn^ = 42"}
+    docs["private"] = LangEntry{kind: "keyword", syntax: "private do <name>(...) | private const <name>", desc: "Restricts a function or constant to the declaring module; not accessible from other modules.", example: "private do validate(n i64) -> bool {\n    return n > 0\n}"}
+    docs["generic"] = LangEntry{kind: "keyword", syntax: "do <name>(<T> generic, <value> <T>) -> <T>", desc: "Declares a type parameter: an ordinary function parameter whose argument is a type name. Its name is usable in later parameter types, the return types and the body, including new(T), size_of(T) and T{...} (struct types only). The type is passed explicitly at the call site; the compiler generates one specialized function per set of type arguments. Valid only as the type of a function parameter.", example: "do identity(kind generic, x kind) -> kind {\n    return x\n}\n\ndo make(kind generic) -> ^kind {\n    return new(kind)\n}\n\nmut n = identity(i64, 42)\nmut p = make(Point)"}
+    docs["alias"] = LangEntry{kind: "keyword", syntax: "alias <Name> = <Type>", desc: "Creates an interchangeable name for an existing type. Aliases are erased at compile time; type_of() returns the underlying type. Can alias primitives, structs, enums, and collections. File-scope only. Use 'private alias' to restrict to the declaring file. Prefix with 'distinct' for a type that does not convert implicitly.", example: "alias Meters = f64\nalias Vec2 = Point\nalias Names = [string]\n\ndo main() {\n    mut d Meters = 10.5\n    println(type_of(d))  // f64\n}"}
+    docs["distinct"] = LangEntry{kind: "keyword", syntax: "distinct alias <Name> = <PrimitiveType>", desc: "Prefix on 'alias' that declares a new type with the representation of a primitive type but no implicit conversion to or from it, or any other distinct type. Literals of a compatible kind are accepted; every other conversion goes through cast(). Same-type arithmetic and comparison are allowed. Erased in generated C, so it has no runtime cost. Primitive targets only (E3215). Combine with 'private' as 'private distinct alias'.", example: "distinct alias UserId = i64\ndistinct alias OrderId = i64\n\ndo delete_user(id UserId) { }\n\ndo main() {\n    mut user UserId = 5\n    mut order OrderId = 7\n    delete_user(user)                 // ok\n    delete_user(order)                // error: expected UserId, got OrderId\n    delete_user(cast(order, UserId))  // ok\n}"}
+    docs["in"] = LangEntry{kind: "keyword", syntax: "<value> in <collection_or_range>", desc: "Membership test operator. Returns true if the value is in the array, map (by key), or range.", example: "if 3 in numbers { println(\"found\") }\nif x in range(0, 10) { println(\"ok\") }"}
+    docs["not_in"] = LangEntry{kind: "keyword", syntax: "<value> not_in <collection>", desc: "Non-membership test. Returns true if value is not in the collection or range. Alias: '!in'.", example: "if \"key\" not_in m { println(\"missing\") }"}
+    docs["bit_and"] = LangEntry{kind: "keyword", syntax: "<a> bit_and <b>", desc: "Bitwise AND. Infix operator on integer types and char. Keyword syntax is used because '&' denotes mutable parameters.", example: "println(12 bit_and 10)  // 8"}
+    docs["bit_or"] = LangEntry{kind: "keyword", syntax: "<a> bit_or <b>", desc: "Bitwise OR. Infix operator on integer types and char.", example: "println(12 bit_or 10)  // 14"}
+    docs["bit_xor"] = LangEntry{kind: "keyword", syntax: "<a> bit_xor <b>", desc: "Bitwise XOR. Infix operator on integer types and char.", example: "println(12 bit_xor 10)  // 6"}
+    docs["bit_not"] = LangEntry{kind: "keyword", syntax: "bit_not <a>", desc: "Bitwise NOT (complement). Prefix operator on integer types and char.", example: "println(bit_not 10)  // -11"}
+    docs["bit_shift_left"] = LangEntry{kind: "keyword", syntax: "<a> bit_shift_left <n>", desc: "Left shift of 'a' by 'n' bits. Infix operator on integer types and char.", example: "println(1 bit_shift_left 3)  // 8"}
+    docs["bit_shift_right"] = LangEntry{kind: "keyword", syntax: "<a> bit_shift_right <n>", desc: "Right shift of 'a' by 'n' bits. Infix operator on integer types and char.", example: "println(16 bit_shift_right 1)  // 8"}
+    docs["true"] = LangEntry{kind: "keyword", syntax: "true", desc: "Boolean literal representing the true value.", example: "mut flag bool = true"}
+    docs["false"] = LangEntry{kind: "keyword", syntax: "false", desc: "Boolean literal representing the false value.", example: "mut flag bool = false"}
+    docs["nil"] = LangEntry{kind: "keyword", syntax: "nil", desc: "Represents the absence of a value. Used with pointers and Error returns.", example: "mut p ^i64 = nil\nif err != nil { panic(err) }"}
+    docs["string_type"] = LangEntry{kind: "type", syntax: "string", desc: "UTF-8 encoded u8 sequence. len() returns u8 length; use char_count() for codepoints. Supports \${expr} interpolation.", example: "mut s string = \"Hello, \${name}!\"\nmut raw string = `C:\\path\\file`"}
+    docs["bool_type"] = LangEntry{kind: "type", syntax: "bool", desc: "Boolean type with exactly two values: true and false.", example: "mut flag bool = true\nmut ok bool = 10 > 5"}
+    docs["char_type"] = LangEntry{kind: "type", syntax: "char", desc: "Single character type. Literals use single quotes. Convertible to/from integers (Unicode codepoint).", example: "mut letter char = 'A'\nmut code i64 = cast(letter, i64)  // 65"}
+    docs["i8_type"] = LangEntry{kind: "type", syntax: "i8", desc: "8-bit signed integer, range -128 to 127.", example: "mut x i8 = -100"}
+    docs["i16_type"] = LangEntry{kind: "type", syntax: "i16", desc: "16-bit signed integer, range -32,768 to 32,767.", example: "mut x i16 = 1000"}
+    docs["i32_type"] = LangEntry{kind: "type", syntax: "i32", desc: "32-bit signed integer, range -2^31 to 2^31-1.", example: "mut x i32 = cast(n, i32)"}
+    docs["i64_type"] = LangEntry{kind: "type", syntax: "i64", desc: "64-bit signed integer, range -2^63 to 2^63-1. Integer literals default to i64. Arithmetic is overflow-checked; overflow causes a runtime panic.", example: "mut x i64 = 42\nmut big i64 = 9223372036854775807"}
+    docs["u8_type"] = LangEntry{kind: "type", syntax: "u8", desc: "8-bit unsigned integer, range 0 to 255. Used for raw binary data; a [u8] stores one u8 per element.", example: "mut b u8 = 0xFF\nmut data [u8] = {104, 105}"}
+    docs["u16_type"] = LangEntry{kind: "type", syntax: "u16", desc: "16-bit unsigned integer, range 0 to 65,535.", example: "mut x u16 = cast(n, u16)"}
+    docs["u32_type"] = LangEntry{kind: "type", syntax: "u32", desc: "32-bit unsigned integer, range 0 to 2^32-1.", example: "mut x u32 = cast(n, u32)"}
+    docs["u64_type"] = LangEntry{kind: "type", syntax: "u64", desc: "64-bit unsigned integer, range 0 to 2^64-1. Overflow-checked; assigning a negative literal is a compile-time error.", example: "mut count u64 = 100"}
+    docs["i128_type"] = LangEntry{kind: "type", syntax: "i128", desc: "128-bit signed integer. Struct-based portable implementation. Supports all arithmetic and comparison operators.", example: "mut a i128 = i128(42)\nmut b i128 = a + i128(100)"}
+    docs["u128_type"] = LangEntry{kind: "type", syntax: "u128", desc: "128-bit unsigned integer. Struct-based portable implementation.", example: "mut a u128 = u128(18446744073709551616)"}
+    docs["i256_type"] = LangEntry{kind: "type", syntax: "i256", desc: "256-bit signed integer. Struct-based portable implementation.", example: "mut a i256 = i256(42)\nprintln(size_of(i256))  // 32"}
+    docs["u256_type"] = LangEntry{kind: "type", syntax: "u256", desc: "256-bit unsigned integer. Struct-based portable implementation.", example: "mut a u256 = u256(0)"}
+    docs["f32_type"] = LangEntry{kind: "type", syntax: "f32", desc: "32-bit IEEE 754 single-precision f64. Maps to C f64.", example: "mut x f32 = 1  // 1.0\nmut y f32 = cast(pi, f32)"}
+    docs["f64_type"] = LangEntry{kind: "type", syntax: "f64", desc: "64-bit IEEE 754 double-precision f64. Float literals default to f64. Maps to C double.", example: "mut pi f64 = 3.14159\nmut x f64 = 5  // promoted to 5.0"}
+    docs["map"] = LangEntry{kind: "type", syntax: "[K:V]  |  map[K:V]", desc: "Unordered collection of key-value pairs. The 'map' prefix is optional: '[K:V]' and 'map[K:V]' are identical. Keys may be any comparable primitive. The empty map literal is '{:}' (not '{}', which is an empty array).", example: "mut ages [string:i64] = {\"alice\": 30, \"bob\": 25}\nmut empty [string:i64] = {:}\nprintln(ages[\"alice\"])"}
+    docs["Error_type"] = LangEntry{kind: "type", syntax: "Error", desc: "Error type returned from fallible functions. Created with error(). Compared to nil to check for success.", example: "do parse(s string) -> (i64, Error) {\n    if s == \"\" { return 0, error(\"empty\") }\n    return 42, nil\n}"}
+    docs["^"] = LangEntry{kind: "symbol", syntax: "^<Type>  /  <ptr>^", desc: "Pointer sigil. As a type prefix (^i64) it denotes a pointer type; as a postfix on a variable (p^) it dereferences the pointer.", example: "mut x i64 = 42\nmut p ^i64 = addr(x)\np^ = 100\nprintln(x)  // 100"}
+    docs["&"] = LangEntry{kind: "symbol", syntax: "&<param>", desc: "Mutable parameter prefix in function signatures. Makes the parameter a mutable alias so writes propagate back to the caller.", example: "do bump(&v Vec) {\n    v.x = v.x + 1\n}"}
+    docs["->"] = LangEntry{kind: "symbol", syntax: "do <name>(...) -> <ReturnType>", desc: "Return type arrow. Separates the parameter list from the return type in a function declaration.", example: "do square(x i64) -> i64 {\n    return x * x\n}"}
+    docs["@"] = LangEntry{kind: "symbol", syntax: "import @<module>", desc: "Standard library module prefix in import statements. Distinguishes stdlib modules from local file paths.", example: "import @math, @strings\nmath.sqrt(16.0)"}
+    docs["#"] = LangEntry{kind: "symbol", syntax: "#<attribute>", desc: "Attribute prefix. Placed before a declaration to attach metadata or modify compiler behavior.", example: "#doc(\"A 2D point\")\nconst Point struct {\n    x i64\n    y i64\n}"}
+    docs["#doc"] = LangEntry{kind: "attribute", syntax: "#doc(\"<description>\")", desc: "Attaches documentation metadata to a function, struct, or enum. Used by 'gray doc' to generate documentation.", example: "#doc(\"Adds two integers\")\ndo add(a i64, b i64) -> i64 {\n    return a + b\n}"}
+    docs["#json"] = LangEntry{kind: "attribute", syntax: "#json", desc: "Marks a struct for JSON serialization/deserialization. The compiler generates marshal/unmarshal code automatically.", example: "#json\nconst User struct {\n    name string\n    age i64\n}"}
+    docs["#flags"] = LangEntry{kind: "attribute", syntax: "#flags", desc: "Marks an enum as a bitflag set. Variant values are powers of 2 (1, 2, 4, 8, ...) instead of sequential.", example: "#flags\nconst Permissions enum {\n    READ\n    WRITE\n    EXECUTE\n}"}
+    docs["#strict"] = LangEntry{kind: "attribute", syntax: "#strict", desc: "Requires exhaustive coverage of all enum variants in a 'when' block. Errors if any variant is missing without a 'default'.", example: "#strict\nwhen direction {\n    is Direction.NORTH { println(\"N\") }\n    is Direction.EAST  { println(\"E\") }\n    is Direction.SOUTH { println(\"S\") }\n    is Direction.WEST  { println(\"W\") }\n}"}
+    docs["#discard"] = LangEntry{kind: "attribute", syntax: "#discard", desc: "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).", example: "#discard\ndo tryInsert(value i64) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}"}
+    docs["#define"] = LangEntry{kind: "attribute", syntax: "#define", desc: "Marks a top-level const of a primitive type so 'gray -define:NAME=VALUE' can override its value at build time. The declared value is the default.", example: "#define\nconst ROSTER_PATH string = \"./roster.txt\"\n\n// gray build main.gray -define:ROSTER_PATH=./my/path"}
+    docs["#test"] = LangEntry{kind: "attribute", syntax: "#test", desc: "Marks a test function, run by 'gray test' and stripped from normal builds. Must take no parameters and no return type (E5046).", example: "#test\ndo test_add() {\n    assert(add(2, 3) == 5)\n}"}
+    return docs
+}
+
+// lang_categories maps category names to their display groups.
+do lang_categories() -> map[string:[LangGroup]] {
+    mut categories map[string:[LangGroup]] = {:}
+    categories["keywords"] = {
+        LangGroup{label: "Control flow  ", names: {"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
+        LangGroup{label: "Error handling", names: {"ensure", "defer", "or_return"}},
+        LangGroup{label: "Declarations  ", names: {"mut", "const", "do", "fn", "struct", "enum", "alias", "distinct", "generic", "import", "using", "use", "new", "private"}},
+        LangGroup{label: "Operators     ", names: {"in", "not_in", "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "cast", "range"}},
+        LangGroup{label: "Literals      ", names: {"true", "false", "nil"}}
+    }
+    categories["types"] = {
+        LangGroup{label: "Core   ", names: {"string", "bool", "char"}},
+        LangGroup{label: "Signed ", names: {"i8", "i16", "i32", "i64"}},
+        LangGroup{label: "Unsigned", names: {"u8", "u16", "u32", "u64"}},
+        LangGroup{label: "Wide   ", names: {"i128", "u128", "i256", "u256"}},
+        LangGroup{label: "Float  ", names: {"f32", "f64"}},
+        LangGroup{label: "Container", names: {"map"}},
+        LangGroup{label: "Special", names: {"func", "Error", "SourceLocation"}}
+    }
+    categories["symbols"] = {
+        LangGroup{label: "Symbols", names: {"^", "&", "->", "@", "#"}}
+    }
+    categories["attributes"] = {
+        LangGroup{label: "Attributes", names: {"#doc", "#json", "#flags", "#strict", "#discard", "#test", "#define"}}
+    }
+    return categories
+}
+
+// lang_symbol_aliases maps shell-friendly names to their symbol and attribute keys.
+do lang_symbol_aliases() -> map[string:string] {
+    mut aliases map[string:string] = {:}
+    aliases["ampersand"] = "&"
+    aliases["arrow"] = "->"
+    aliases["at"] = "@"
+    aliases["caret"] = "^"
+    aliases["define"] = "#define"
+    aliases["discard"] = "#discard"
+    aliases["doc"] = "#doc"
+    aliases["flags"] = "#flags"
+    aliases["hash"] = "#"
+    aliases["json"] = "#json"
+    aliases["pointer"] = "^"
+    aliases["strict"] = "#strict"
+    aliases["test"] = "#test"
+    return aliases
+}
+
+// lang_display_name strips the _type suffix used to avoid builtin key collisions.
+do lang_display_name(key string) -> string {
+    return strings.remove_suffix(key, "_type")
+}

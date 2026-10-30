@@ -1,0 +1,100 @@
+//
+// gen.gray - write deterministic benchmark fixtures into benchmarks/.gen/.
+// The fixtures are deterministic; running this again just rewrites them.
+// run.gray wipes .gen/ before calling this.
+//
+// Usage (run from the repo root):
+//   grayc benchmarks/gen.gray -o gen && ./gen
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @io, @os, @strings
+
+do write_or_exit(file_path string, content string) {
+    mut _, err = io.write_file(file_path, content)
+    if err != nil {
+        eprintln("error: cannot write ${file_path}")
+        exit(1)
+    }
+}
+
+// JSON blob: one flat object with 4000 string-valued keys (~300 KB).
+do json_blob() -> string {
+    mut out Builder = strings.builder()
+    strings.builder_append(out, "{")
+    for i in range(0, 4000) {
+        if i > 0 {
+            strings.builder_append(out, ",")
+        }
+        strings.builder_append(out, "\"key_${i}\":\"value number ${i} with filler text\"")
+    }
+    strings.builder_append(out, "}\n")
+    return strings.build(out)
+}
+
+// Source file for the lexer: ~8000 lines of function-shaped text.
+do lexer_source() -> string {
+    mut out Builder = strings.builder()
+    for i in range(0, 8000) {
+        strings.builder_append(out, "do func_${i}(a i64, b i64) -> i64 { mut x i64 = a + b * ${i % 97}; return x - ${i % 13} }\n")
+    }
+    return strings.build(out)
+}
+
+// KV op log: 40000 SET/GET/DEL ops over 2000 keys. The key index is
+// driven by i/5 and the op type by i%5, so every key sees every op type.
+do kv_ops() -> string {
+    mut out Builder = strings.builder()
+    for i in range(0, 40000) {
+        mut key i64 = ((i / 5) * 7 + 11) % 2000
+        mut mode i64 = i % 5
+        if mode <= 1 {
+            strings.builder_append(out, "SET key_${key} value_${i}\n")
+        } or mode <= 3 {
+            strings.builder_append(out, "GET key_${key}\n")
+        } otherwise {
+            strings.builder_append(out, "DEL key_${key}\n")
+        }
+    }
+    return strings.build(out)
+}
+
+// Blob to hash: ~500 KB of text.
+do hash_blob() -> string {
+    mut line string = strings.repeat("abcdefghijklmnopqrstuvwxyz0123456789 ", 32) + "\n"
+    return strings.repeat(line, 12000)
+}
+
+// Large .gray program for the compile-stress workload.
+do stress_program() -> string {
+    mut out Builder = strings.builder()
+    for i in range(0, 4000) {
+        strings.builder_append(out, "do helper_${i}(n i64) -> i64 { return n * ${i % 7} + ${i % 3} }\n")
+    }
+    strings.builder_append(out, "do main() {\n")
+    strings.builder_append(out, "    mut total i64 = 0\n")
+    for i in range(0, 4000) {
+        strings.builder_append(out, "    total += helper_${i}(${i})\n")
+    }
+    strings.builder_append(out, "    println(\"total=\${total}\")\n")
+    strings.builder_append(out, "}\n")
+    return strings.build(out)
+}
+
+do main() {
+    mut gen string = "${os.current_dir()}/benchmarks/.gen"
+    mut _, dir_err = io.make_dir_all(gen)
+    if dir_err != nil {
+        eprintln("error: cannot create ${gen}")
+        exit(1)
+    }
+
+    println("generating fixtures in ${gen} ...")
+    write_or_exit("${gen}/blob.json", json_blob())
+    write_or_exit("${gen}/source.txt", lexer_source())
+    write_or_exit("${gen}/ops.txt", kv_ops())
+    write_or_exit("${gen}/blob.bin", hash_blob())
+    write_or_exit("${gen}/stress.gray", stress_program())
+    println("fixtures generated.")
+}

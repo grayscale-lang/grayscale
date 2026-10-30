@@ -1,0 +1,202 @@
+// new.gray — "gray new": scaffold a project from the embedded templates,
+// optionally prepending the quick-reference comment block to the entry file.
+
+import @io
+import @maps
+import @path
+import @strings
+import @arrays
+import "./args"
+import "./templates"
+
+const ENTRY_FILE string = "main.gray"
+
+// QUICK_REFERENCE is prepended to the entry file of a scaffolded project when
+// --comments is given. Keep it short — a dense Grayscale cheat sheet, not a
+// tutorial.
+const QUICK_REFERENCE string = `// Grayscale Quick Reference
+// ---------------------
+// Variables:        mut x i64 = 5          mut x = 5          (inferred)
+// Constants:        const PI f64 = 3.14
+// Strings:          "Hello, ${name}!"      (interpolation; + is not supported)
+// Functions:        do greet(name string) -> string { return "Hi ${name}" }
+// Multi-return:     do swap(a i64, b i64) -> (x i64, y i64) { return b, a }
+// If/else:          if x > 0 { } or x == 0 { } otherwise { }
+// Loops:            for i in range(0, 10) { }    for_each item in items { }
+// Structs:          const Point struct { x i64, y i64 }
+//                   mut p = Point{ x: 1, y: 2 }
+// Imports:          import @os                   import "./sibling"
+//
+`
+
+// run_new is the gray new command: it returns the exit status. With no project
+// name it prompts for the name and for each option that was not given as a flag.
+do run_new(invocation args.Invocation) -> i64 {
+    mut template string = flag_text(invocation, "template", "basic")
+    mut server_type string = flag_text(invocation, "server-type", "normal")
+    mut comments bool = flag_text(invocation, "comments", "false") == "true"
+    force bool = flag_text(invocation, "force", "false") == "true"
+
+    mut name string = ""
+    if len(invocation.positional) == 0 {
+        name = prompt_for_input("Project name: ", "")
+        if name == "" {
+            eprintln("error: project name is required")
+            return 1
+        }
+
+        if !was_given(invocation, "template") {
+            template = prompt_for_input("Template (basic/cli/lib/multi/server/client) [basic]: ", "basic")
+        }
+
+        if (template == "server" || template == "client") && !was_given(invocation, "server-type") {
+            server_type = prompt_for_input("Type (minimal/normal) [normal]: ", "normal")
+        }
+
+        if !was_given(invocation, "comments") {
+            answer string = strings.to_lower(prompt_for_input("Include comments? (y/N): ", "n"))
+            comments = answer == "y" || answer == "yes"
+        }
+    } otherwise {
+        name = invocation.positional[0]
+    }
+
+    if !is_valid_project_name(name) {
+        eprintln("error: project name must be a plain directory name with no path separators, '..' sequences, or absolute paths")
+        return 1
+    }
+
+    if len(templates.template_files(template, server_type)) == 0 {
+        eprintln("Invalid template '${template}'. Choose from: basic, cli, lib, multi, server, client")
+        return 1
+    }
+
+    if (template == "server" || template == "client") && server_type != "minimal" && server_type != "normal" {
+        eprintln("Invalid type '${server_type}'. Choose from: minimal, normal")
+        return 1
+    }
+
+    created, create_err = create_project(name, template, server_type, comments, force)
+    if create_err != nil {
+        eprintln("Error: ${create_err.message}")
+        return 1
+    }
+    if !created {
+        return 0
+    }
+
+    if template == "server" {
+        println("\nDone! Run your server:")
+        println("  cd ${name} && gray main.gray")
+        println("  # Then visit http://localhost:8080")
+    } or template == "client" {
+        println("\nDone! Run your client:")
+        println("  cd ${name} && gray main.gray")
+    } otherwise {
+        println("\nDone! Run your project:")
+        println("  cd ${name} && gray main.gray")
+    }
+    return 0
+}
+
+// was_given reports whether a flag was given on the command line.
+do was_given(invocation args.Invocation, name string) -> bool {
+    return maps.contains_key(invocation.changed, name) && invocation.changed[name]
+}
+
+// flag_text is the value a flag was given, or fallback when it was not.
+do flag_text(invocation args.Invocation, name string, fallback string) -> string {
+    if was_given(invocation, name) {
+        return invocation.flag_values[name]
+    }
+    return fallback
+}
+
+// is_valid_project_name returns true only when name is a plain single-element
+// directory name safe for use across OS and shell environments. Only ASCII
+// letters, digits, hyphens, and underscores are allowed, and the name must
+// start with a letter, so path separators, parent references, absolute paths
+// and home-directory shortcuts are all rejected.
+do is_valid_project_name(name string) -> bool {
+    if name == "" || !is_ascii_letter(name[0]) {
+        return false
+    }
+    for index in range(0, len(name)) {
+        c char = name[index]
+        if !is_ascii_letter(c) && !(c >= '0' && c <= '9') && c != '-' && c != '_' {
+            return false
+        }
+    }
+    return true
+}
+
+do is_ascii_letter(c char) -> bool {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+do prompt_for_input(prompt string, default_value string) -> string {
+    print(prompt)
+    flush()
+    answer string = strings.trim(input())
+    if answer == "" {
+        return default_value
+    }
+    return answer
+}
+
+// create_project writes the template into a new directory called name. created
+// is false when the user declined to replace an existing directory.
+do create_project(name string, template string, server_type string, comments bool, force bool) -> (bool, Error) {
+    _, existing_err = io.stat(name)
+    if existing_err == nil {
+        if !force {
+            return false, error(.AlreadyExists, "directory '${name}' already exists (use --force to overwrite)")
+        }
+        println("Directory '${name}' already exists and will be permanently deleted.")
+        print("Delete '${name}/' and continue? (y/N): ")
+        flush()
+        response string = strings.to_lower(strings.trim(input()))
+        if response != "y" && response != "yes" {
+            println("Cancelled.")
+            return false, nil
+        }
+        _, remove_err = io.remove_dir_all(name)
+        if remove_err != nil {
+            return false, remove_err
+        }
+    }
+
+    println("\nCreating project '${name}' with template '${template}'...")
+
+    _, make_err = io.make_dir_all(name)
+    if make_err != nil {
+        return false, make_err
+    }
+    println("  created ${name}/")
+
+    for_each template_file in templates.template_files(template, server_type) {
+        destination string = path.join_parts({name, template_file.relative_path})
+        slash i64 = strings.last_index_of(template_file.relative_path, "/")
+        if slash >= 0 {
+            directory string = path.join_parts({name, strings.slice(template_file.relative_path, 0, slash)})
+            if !io.is_directory(directory) {
+                _, directory_err = io.make_dir_all(directory)
+                if directory_err != nil {
+                    return false, directory_err
+                }
+                println("  created ${directory}/")
+            }
+        }
+
+        mut contents string = template_file.contents
+        if comments && template_file.relative_path == ENTRY_FILE {
+            contents = QUICK_REFERENCE + contents
+        }
+        _, write_err = io.write_file(destination, contents)
+        if write_err != nil {
+            return false, write_err
+        }
+        println("  created ${destination}")
+    }
+    return true, nil
+}

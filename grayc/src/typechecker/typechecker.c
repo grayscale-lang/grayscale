@@ -3185,7 +3185,7 @@ typedef enum {
     FALLIBLE_TYPE_BOOL, FALLIBLE_TYPE_I64, FALLIBLE_TYPE_U64, FALLIBLE_TYPE_F64, FALLIBLE_TYPE_STRING,
     FALLIBLE_TYPE_ARRAY_STRING, FALLIBLE_TYPE_NESTED_ARRAY_STRING, FALLIBLE_TYPE_ARRAY_U8, FALLIBLE_TYPE_ARRAY_MAP,
     FALLIBLE_TYPE_STRUCT_DATABASE, FALLIBLE_TYPE_STRUCT_SOCKET, FALLIBLE_TYPE_STRUCT_LISTENER,
-    FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, FALLIBLE_TYPE_STRUCT_EXEC_RESULT, FALLIBLE_TYPE_STRUCT_MAP,
+    FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, FALLIBLE_TYPE_STRUCT_EXEC_RESULT, FALLIBLE_TYPE_STRUCT_FILE_INFO, FALLIBLE_TYPE_STRUCT_MAP,
     FALLIBLE_TYPE_ARRAY_F64, FALLIBLE_TYPE_I64_PAIR,
 } FallibleType;
 
@@ -3255,21 +3255,21 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"arrays", "split_every",  2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_I64}}, "[$0]"},
     {"arrays", "swap",         3, 3, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "void"},
     /* atomic */
-    {"atomic", "add",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "and",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "cas",              3, 3, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"bool"},
-    {"atomic", "exchange",         2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
+    {"atomic", "add",              2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
+    {"atomic", "and",              2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
+    {"atomic", "cas",              3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_I64}},"bool"},
+    {"atomic", "exchange",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
     {"atomic", "fence",            0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     {"atomic", "load",             1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "or",               2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
+    {"atomic", "or",               2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
     {"atomic", "spin_lock",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "spin_trylock",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "bool"},
     {"atomic", "spin_unlock",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
     {"atomic", "spinlock",         0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"SpinLock"},
     {"atomic", "spinlock_destroy", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_SPINLOCK}}, "void"},
-    {"atomic", "store",            2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"void"},
-    {"atomic", "sub",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
-    {"atomic", "xor",              2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64_POINTER}},"i64"},
+    {"atomic", "store",            2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"void"},
+    {"atomic", "sub",              2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
+    {"atomic", "xor",              2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_I64_POINTER}, {1, EXPECTED_ARGUMENT_I64}},"i64"},
     /* binary */
     {"binary", "decode_f32_be",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f32"},
     {"binary", "decode_f32_le",  1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "f32"},
@@ -3332,11 +3332,20 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"encoding", "to_string",   1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_U8_ARRAY}}, "string"},
     /* channels */
     {"channels", "close",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHANNEL}}, "void"},
-    {"channels", "open",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Channel"},
+    {"channels", "open",        1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_I64}},"Channel"},
     {"channels", "receive",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHANNEL}}, "i64"},
     {"channels", "send",        2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHANNEL}, {1, EXPECTED_ARGUMENT_I64}}, "void"},
     {"channels", "try_receive", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHANNEL}}, "i64"},
     {"channels", "try_send",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_CHANNEL}, {1, EXPECTED_ARGUMENT_I64}}, "bool"},
+    /* path */
+    {"path", "absolute_path", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "file_extension", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "is_absolute", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"path", "join_parts", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
+    {"path", "normalize_path", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "relative_path", 2, 2, true,  FALLIBLE_TYPE_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "split_dir_file", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"path", "to_forward_slashes", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* chars */
     {"chars", "escape",       1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"chars", "is_alnum", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHAR}}, "bool"},
@@ -3417,23 +3426,19 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     /* io */
     {"io", "append_bytes",   2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_U8_ARRAY}}, "bool"},
     {"io", "append_file",    2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"io", "basename",       1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "copy_file",      2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "delete_file",    1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"io", "dirname",        1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"io", "extension",      1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "file_exists",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
+    {"io", "stat",           1, 1, true,  FALLIBLE_TYPE_STRUCT_FILE_INFO, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "FileInfo"},
+    {"io", "chmod",          2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "bool"},
     {"io", "file_size",      1, 1, true,  FALLIBLE_TYPE_I64,          1, {{0, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"io", "glob",           1, 1, true,  FALLIBLE_TYPE_ARRAY_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[string]"},
-    {"io", "is_absolute",    1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "is_directory",   1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "is_file",        1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "list_dir",       1, 1, true,  FALLIBLE_TYPE_ARRAY_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "[string]"},
     {"io", "make_dir",       1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "make_dir_all",   1, 1, true,  FALLIBLE_TYPE_BOOL,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"io", "move_file",      2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"io", "normalize",      1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
-    {"io", "path_join",      1, 1, false, FALLIBLE_TYPE_NONE,         1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
     {"io", "read_bytes",     1, 1, true,  FALLIBLE_TYPE_ARRAY_U8,   1, {{0, EXPECTED_ARGUMENT_STRING}}, "[u8]"},
     {"io", "read_file",      1, 1, true,  FALLIBLE_TYPE_STRING,       1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"io", "read_lines",     1, 2, true,  FALLIBLE_TYPE_ARRAY_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "[string]"},
@@ -3552,6 +3557,8 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"os", "current_os",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Platform"},
     {"os", "environ",     0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"[string]"},
     {"os", "exec",        2, 2, true,  FALLIBLE_TYPE_STRUCT_EXEC_RESULT, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_ARRAY}}, "ExecResult"},
+    {"os", "executable_path", 0, 0, true, FALLIBLE_TYPE_STRING, 0, {{0}}, "string"},
+    {"os", "find_executable", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "get_env",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "home_dir",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},
     {"os", "hostname",    0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},
@@ -3694,7 +3701,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"threads", "is_alive",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "bool"},
     {"threads", "join",         1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_THREAD}}, "void"},
     {"threads", "spawn",        1, 1, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
-    {"threads", "spawn_arg",    2, 2, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Thread"},
+    {"threads", "spawn_arg",    2, 2, false, FALLIBLE_TYPE_NONE, 1, {{1, EXPECTED_ARGUMENT_I64}},"Thread"},
     {"threads", "thread_count", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"i64"},
     {"threads", "yield",        0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"void"},
     /* time */
@@ -3902,6 +3909,7 @@ static GrayType *typechecker_get_fallible_stdlib_type(const char *module_name, c
     case FALLIBLE_TYPE_STRUCT_LISTENER:     return type_struct("Listener");
     case FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE:return type_struct("HttpResponse");
     case FALLIBLE_TYPE_STRUCT_EXEC_RESULT:  return type_struct("ExecResult");
+    case FALLIBLE_TYPE_STRUCT_FILE_INFO:    return type_struct("FileInfo");
     case FALLIBLE_TYPE_STRUCT_MAP:          return type_from_name("map[string:string]");
     }
     return NULL;
@@ -4295,6 +4303,7 @@ static const struct { const char *type; const char *module_name; } stdlib_opaque
         {"HttpResponse", "http"},
         {"HttpResponse", "server"},
         {"ExecResult",   "os"},
+        {"FileInfo",     "io"},
         {"UUID",         "uuid"},
         {NULL, NULL}
 };
@@ -4586,6 +4595,8 @@ static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"math",     "modf",        2, {&TYPE_F64, &TYPE_F64}},
     {"uuid",     "timestamp",   2, {&TYPE_I64, &TYPE_BOOL}},
     {"os",       "lookup_env",  2, {&TYPE_STRING, &TYPE_BOOL}},
+    {"os",       "find_executable", 2, {&TYPE_STRING, &TYPE_BOOL}},
+    {"path",     "split_dir_file", 2, {&TYPE_STRING, &TYPE_STRING}},
     {NULL, NULL, 0, {NULL}}
 };
 
@@ -11046,6 +11057,17 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
              * routes the valid ones into instance dispatch before now. */
             const char *struct_name_text = object_type->kind == TYPE_KIND_POINTER
                 ? object_type->element_type : object_type->name;
+            /* A func-typed data field is called through the field, as it is
+             * for a plain-variable receiver. */
+            GrayType *field_type = struct_field_type(checker, struct_name_text, function_node->data.member.member);
+            if (field_type && field_type->kind == TYPE_KIND_FUNCTION) {
+                return (field_type->function_signature &&
+                        field_type->function_signature->return_count > 0 &&
+                        field_type->function_signature->return_types &&
+                        field_type->function_signature->return_types[0])
+                    ? type_from_name(field_type->function_signature->return_types[0])
+                    : &TYPE_UNKNOWN;
+            }
             NODE_ERROR_FORMATTED(checker, function_node, "E4018",
                 struct_display_name(checker, struct_name_text), function_node->data.member.member);
         }
@@ -19686,29 +19708,6 @@ static void register_declaration_functions(TypeChecker *checker, AstNode *progra
         /* Store line for unused function warning */
         checker->functions[checker->function_count - 1].definition_line = statement->token.line;
         finalize_generic_signature(&checker->functions[checker->function_count - 1], statement);
-        /* Also register unprefixed name for internal cross-references. */
-        const char *function_name = statement->data.function_declaration.name;
-        const char *underscore = strchr(function_name, '_');
-        if (underscore && underscore != function_name) {
-            const char *unprefixed = underscore + 1;
-            if (strcmp(unprefixed, "main") != 0) {
-                /* Only register if the prefix matches a known import */
-                for (int import_index = 0; import_index < checker->import_count; import_index++) {
-                    size_t module_length = strlen(checker->imported_modules[import_index]);
-                    if (strncmp(function_name, checker->imported_modules[import_index], module_length) == 0 &&
-                        function_name[module_length] == '_') {
-                        register_function(checker, unprefixed, parameter_types, parameter_count, return_types, return_count);
-                        checker->functions[checker->function_count - 1].is_private = statement->data.function_declaration.is_private;
-                        checker->functions[checker->function_count - 1].is_discard = statement->data.function_declaration.is_discard;
-                        checker->functions[checker->function_count - 1].is_deprecated = statement->data.function_declaration.is_deprecated;
-                        checker->functions[checker->function_count - 1].deprecated_message = statement->data.function_declaration.deprecated_message;
-                        checker->functions[checker->function_count - 1].definition_line = 0; /* suppress unused warning */
-                        finalize_generic_signature(&checker->functions[checker->function_count - 1], statement);
-                        break;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -20218,12 +20217,22 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         register_struct(checker, "HttpResponse", "HttpResponse", field_names, field_types, 3);
     }
 
+    if (program_imports_module(checker, "io")) {
+        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 6);
+        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 6);
+        field_names[0] = "size"; field_names[1] = "mode"; field_names[2] = "mod_time";
+        field_names[3] = "is_dir"; field_names[4] = "is_file"; field_names[5] = "is_symlink";
+        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_I64; field_types[2] = &TYPE_I64;
+        field_types[3] = &TYPE_BOOL; field_types[4] = &TYPE_BOOL; field_types[5] = &TYPE_BOOL;
+        register_struct(checker, "FileInfo", "FileInfo", field_names, field_types, 6);
+    }
+
     if (program_imports_module(checker, "os")) {
-        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 3);
-        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 3);
-        field_names[0] = "exit_code"; field_names[1] = "stdout"; field_names[2] = "stderr";
-        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_STRING; field_types[2] = &TYPE_STRING;
-        register_struct(checker, "ExecResult", "ExecResult", field_names, field_types, 3);
+        const char **field_names = arena_allocate(checker->arena, sizeof(const char *) * 4);
+        GrayType **field_types = arena_allocate(checker->arena, sizeof(GrayType *) * 4);
+        field_names[0] = "exit_code"; field_names[1] = "stdout"; field_names[2] = "stderr"; field_names[3] = "signal";
+        field_types[0] = &TYPE_I64; field_types[1] = &TYPE_STRING; field_types[2] = &TYPE_STRING; field_types[3] = &TYPE_I64;
+        register_struct(checker, "ExecResult", "ExecResult", field_names, field_types, 4);
     }
 
     if (program_imports_module(checker, "server")) {

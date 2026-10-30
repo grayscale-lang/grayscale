@@ -1696,7 +1696,7 @@ static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char 
     const char *auxiliary_flags[] = { "-aux-info", auxiliary_path, NULL };
     int status = run_c_probe(program, arena, c_compiler_command, cc_is_command, entry_file, includes,
                              auxiliary_flags, NULL);
-    char *auxiliary_info = status == 0 ? gray_read_file(auxiliary_path, false) : NULL;
+    char *auxiliary_info = status == 0 ? gray_read_file(auxiliary_path, false, NULL) : NULL;
     gray_remove_file(auxiliary_path);
     if (!auxiliary_info) return NULL;
 
@@ -2157,10 +2157,13 @@ int main(int argc, char **argv) {
     }
 
     /* Read source file */
-    char *source = (options.is_check_only && gray_is_directory(options.input_file))
+    size_t source_length = 0;
+    bool is_directory_entry = options.is_check_only && gray_is_directory(options.input_file);
+    char *source = is_directory_entry
         ? directory_entry_source(&options)
-        : gray_read_file(options.input_file, true);
+        : gray_read_file(options.input_file, true, &source_length);
     if (!source) return 1;
+    if (is_directory_entry) source_length = strlen(source);
 
     /* fmt mode: reformat and write back, then exit */
     if (options.is_format_mode) {
@@ -2171,7 +2174,7 @@ int main(int argc, char **argv) {
             DiagnosticList *format_diagnostics = diagnostic_create();
             diagnostic_set_source(format_diagnostics, options.input_file, source);
             if (options.is_color_disabled) format_diagnostics->should_use_color = false;
-            Lexer *format_lexer = lexer_create(format_arena, source, options.input_file);
+            Lexer *format_lexer = lexer_create_sized(format_arena, source, source_length, options.input_file);
             Parser *format_parser = parser_create(format_arena, format_lexer, options.input_file, format_diagnostics);
             parser_parse_program(format_parser);
             bool has_syntax_errors = diagnostic_has_errors(format_diagnostics);
@@ -2270,24 +2273,12 @@ int main(int argc, char **argv) {
     double start_time = monotonic_milliseconds();
 
     /* Lex */
-    Lexer *lexer = lexer_create(arena, source, options.input_file);
+    Lexer *lexer = lexer_create_sized(arena, source, source_length, options.input_file);
 
     /* Parse */
     Parser *parser = parser_create(arena, lexer, options.input_file, diagnostics);
     AstNode *program = parser_parse_program(parser);
 
-    if (diagnostic_has_errors(diagnostics)) {
-        diagnostic_print_all(diagnostics);
-        diagnostic_print_summary(diagnostics);
-        diagnostic_destroy(diagnostics);
-        arena_destroy(arena);
-        free(source);
-        return 1;
-    }
-
-    /* Apply -define: overrides to the entry file's #define constants before
-     * anything reads their values. */
-    defines_apply(arena, diagnostics, program, options.input_file, options.defines, options.define_count);
     if (diagnostic_has_errors(diagnostics)) {
         diagnostic_print_all(diagnostics);
         diagnostic_print_summary(diagnostics);
@@ -2304,11 +2295,22 @@ int main(int argc, char **argv) {
     ImportResolution imports;
     imports_resolve(arena, diagnostics, program, options.input_file, &imports);
 
-
     /* An import that failed to resolve merged no declarations, so every
      * reference to the module it named is about to be reported undefined.
      * Those follow-on errors bury the one that matters and all disappear
      * when it is fixed, so stop here and report the import failure alone. */
+    if (diagnostic_has_errors(diagnostics)) {
+        diagnostic_print_all(diagnostics);
+        diagnostic_print_summary(diagnostics);
+        diagnostic_destroy(diagnostics);
+        arena_destroy(arena);
+        free(source);
+        return 1;
+    }
+
+    /* Apply -define: overrides to the #define constants of the entry file and every
+     * imported module before anything reads their values. */
+    defines_apply(arena, diagnostics, program, options.input_file, options.defines, options.define_count);
     if (diagnostic_has_errors(diagnostics)) {
         diagnostic_print_all(diagnostics);
         diagnostic_print_summary(diagnostics);

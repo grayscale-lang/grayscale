@@ -1,0 +1,47 @@
+import @io
+import @path
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    directory, file = path.split_dir_file("/tmp/gray_split_probe/a/b/x.h")
+
+    _, make_err = io.make_dir_all(directory)
+    if make_err == nil && io.file_exists(directory) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: make_dir_all with the directory part")
+    }
+
+    _, write_err = io.write_file(directory + file, "x")
+    if write_err == nil && io.file_exists(file) == false {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: write_file with the joined parts")
+    }
+
+    if io.file_exists(directory + file) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: file_exists with the joined parts")
+    }
+
+    _, delete_err = io.delete_file(directory + file)
+    if delete_err == nil {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: delete_file with the joined parts")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

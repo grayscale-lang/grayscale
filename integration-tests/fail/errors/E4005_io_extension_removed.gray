@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4005 - io.extension removed
+ * Expected: undefined function error; the path module replaces it
+ */
+
+import @io
+
+do main() {
+    mut result = io.extension("a.txt")
+}

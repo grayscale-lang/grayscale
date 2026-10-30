@@ -1,0 +1,11 @@
+import @json
+
+#json
+const Item struct {
+    name string
+}
+
+do load(text string) -> Item {
+    item Item = json.parse(text)
+    return item
+}

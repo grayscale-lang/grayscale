@@ -1,8 +1,7 @@
 /*
  * io.c — Implementation of the io stdlib module.
- * Provides file read/write, path manipulation (join, dirname, basename,
- * extension), directory operations, globbing, and recursive directory
- * walking.
+ * Provides file read/write, directory operations, globbing, and recursive
+ * directory walking.
  *
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -37,7 +36,6 @@
 #define GRAY_IO_PATH_BUFFER_SIZE          4096
 #define GRAY_IO_READ_BUFFER_SIZE          4096
 #define GRAY_IO_COPY_BUFFER_SIZE          8192
-#define GRAY_IO_MAX_SEGMENTS      256
 #define GRAY_IO_DIRECTORY_MODE          0755
 #define GRAY_IO_FILE_MODE         0644
 #define GRAY_IO_WALK_INITIAL_CAP  32
@@ -208,141 +206,6 @@ static bool io_path_is_directory(const char *path) {
     return stat(path, &file_info) == 0 && S_ISDIR(file_info.st_mode);
 }
 
-/* ---- Path manipulation (pure, no I/O) ---- */
-
-GrayString gray_io_path_join(GrayArena *arena, GrayArray parts) {
-    if (parts.len == 0) return gray_string_lit(".");
-    GrayString result = GRAY_ARRAY_GET(parts, GrayString, 0);
-    for (int32_t i = 1; i < parts.len; i++) {
-        GrayString segment = GRAY_ARRAY_GET(parts, GrayString, i);
-        if (segment.len == 0) continue;
-        /* Absolute segment replaces accumulated path */
-        if (segment.data[0] == '/' || segment.data[0] == '\\') {
-            result = segment;
-            continue;
-        }
-        bool already_separated = result.len > 0 &&
-            (result.data[result.len - 1] == '/' || result.data[result.len - 1] == '\\');
-        if (already_separated)
-            result = gray_string_format(arena, "%.*s%.*s", result.len, result.data, segment.len, segment.data);
-        else
-            result = gray_string_format(arena, "%.*s/%.*s", result.len, result.data, segment.len, segment.data);
-    }
-    return result;
-}
-
-GrayString gray_io_dirname(GrayArena *arena, GrayString path) {
-    if (path.len == 0) return gray_string_lit(".");
-    /* Strip trailing slashes (keep at least 1 char so "/" stays "/") */
-    int effective_length = path.len;
-    while (effective_length > 1 && (path.data[effective_length - 1] == '/' || path.data[effective_length - 1] == '\\')) effective_length--;
-    /* Find last separator in the stripped range */
-    int last_separator = -1;
-    for (int i = effective_length - 1; i >= 0; i--) {
-        if (path.data[i] == '/' || path.data[i] == '\\') {
-            last_separator = i;
-            break;
-        }
-    }
-    if (last_separator < 0) return gray_string_lit(".");
-    /* Collapse leading separator: dirname("/foo") -> "/" */
-    if (last_separator == 0) return gray_string_lit("/");
-    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)last_separator + 1);
-    memcpy(buffer, path.data, (size_t)last_separator);
-    buffer[last_separator] = '\0';
-    return (GrayString){ buffer, (int32_t)last_separator };
-}
-
-GrayString gray_io_basename(GrayArena *arena, GrayString path) {
-    (void)arena;
-    if (path.len == 0) return gray_string_lit(".");
-    int end_index = path.len;
-    while (end_index > 0 && (path.data[end_index - 1] == '/' || path.data[end_index - 1] == '\\')) end_index--;
-    if (end_index == 0) return gray_string_lit("/");
-    int start = end_index;
-    while (start > 0 && path.data[start - 1] != '/' && path.data[start - 1] != '\\') start--;
-    int32_t length = (int32_t)(end_index - start);
-    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
-    memcpy(buffer, path.data + start, (size_t)length);
-    buffer[length] = '\0';
-    return (GrayString){ buffer, length };
-}
-
-GrayString gray_io_extension(GrayArena *arena, GrayString path) {
-    (void)arena;
-    int last_separator = -1;
-    for (int i = path.len - 1; i >= 0; i--) {
-        if (path.data[i] == '/' || path.data[i] == '\\') { last_separator = i; break; }
-    }
-    int search_start = last_separator + 1;
-    int dot_position = -1;
-    for (int i = path.len - 1; i >= search_start; i--) {
-        if (path.data[i] == '.') { dot_position = i; break; }
-    }
-    if (dot_position < 0 || dot_position == path.len - 1) return gray_string_lit("");
-    /* Dotfiles: leading dot with no other dot is part of the name, not an extension */
-    if (dot_position == search_start) return gray_string_lit("");
-    int32_t length = (int32_t)(path.len - dot_position);
-    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
-    memcpy(buffer, path.data + dot_position, (size_t)length);
-    buffer[length] = '\0';
-    return (GrayString){ buffer, length };
-}
-
-bool gray_io_is_absolute(GrayString path) {
-    return path.len > 0 && path.data[0] == '/';
-}
-
-GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
-    if (path.len == 0) return gray_string_lit(".");
-    char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 1);
-    /* Copy input, converting backslashes to forward slashes */
-    for (int i = 0; i < path.len; i++) {
-        buffer[i] = (path.data[i] == '\\') ? '/' : path.data[i];
-    }
-    buffer[path.len] = '\0';
-    bool absolute = (buffer[0] == '/');
-
-    /* Split into segments */
-    char *segments[GRAY_IO_MAX_SEGMENTS];
-    int seg_count = 0;
-    char *cursor = buffer;
-    while (*cursor) {
-        while (*cursor == '/') cursor++;
-        if (*cursor == '\0') break;
-        char *seg_start = cursor;
-        while (*cursor && *cursor != '/') cursor++;
-        if (*cursor) { *cursor = '\0'; cursor++; }
-        if (strcmp(seg_start, ".") == 0) continue;
-        if (strcmp(seg_start, "..") == 0) {
-            if (seg_count > 0 && strcmp(segments[seg_count - 1], "..") != 0) {
-                seg_count--;
-            } else if (!absolute) {
-                segments[seg_count++] = seg_start;
-            }
-        } else {
-            if (seg_count < GRAY_IO_MAX_SEGMENTS) segments[seg_count++] = seg_start;
-        }
-    }
-
-    /* Rebuild */
-    char *output = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 2);
-    int position = 0;
-    if (absolute) output[position++] = '/';
-    for (int i = 0; i < seg_count; i++) {
-        if (i > 0) output[position++] = '/';
-        int segment_length = (int)strlen(segments[i]);
-        memcpy(output + position, segments[i], (size_t)segment_length);
-        position += segment_length;
-    }
-    if (position == 0) {
-        output[0] = '.';
-        position = 1;
-    }
-    output[position] = '\0';
-    return (GrayString){ output, (int32_t)position };
-}
-
 /* ---- Existing file operations ---- */
 
 /* Read an already-opened file into a GrayString. Tries seek-based sizing
@@ -495,6 +358,41 @@ GrayResult_i64 gray_io_file_size_result(GrayArena *arena, GrayString path) {
         return (GrayResult_i64){-1, gray_error_new(arena, gray_errno_code(errno),
             gray_string_format(arena, "cannot stat '%s'", path.data))};
     return (GrayResult_i64){(int64_t)file_info.st_size, NULL};
+}
+
+GrayResult_io_stat gray_io_stat_result(GrayArena *arena, GrayString path) {
+    validate_path(path);
+    GrayResult_io_stat result = {{0, 0, 0, false, false, false}, NULL};
+    struct stat file_info;
+#if GRAY_RUNTIME_WINDOWS
+    int stat_status = stat(path.data, &file_info);
+#else
+    int stat_status = lstat(path.data, &file_info);
+#endif
+    if (stat_status != 0) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno),
+            gray_string_format(arena, "cannot stat '%s'", path.data));
+        return result;
+    }
+    result.v0.size = (int64_t)file_info.st_size;
+    result.v0.mode = (int64_t)(file_info.st_mode & 0777);
+    result.v0.mod_time = (int64_t)file_info.st_mtime;
+#if GRAY_RUNTIME_WINDOWS
+    result.v0.is_symlink = is_link(path.data);
+    result.v0.is_dir = !result.v0.is_symlink && S_ISDIR(file_info.st_mode);
+    result.v0.is_file = !result.v0.is_symlink && S_ISREG(file_info.st_mode);
+#else
+    result.v0.is_symlink = S_ISLNK(file_info.st_mode);
+    result.v0.is_dir = S_ISDIR(file_info.st_mode);
+    result.v0.is_file = S_ISREG(file_info.st_mode);
+#endif
+    return result;
+}
+
+GrayResult_bool gray_io_chmod_result(GrayArena *arena, GrayString path, int64_t mode) {
+    validate_path(path);
+    GRAY_RESULT_WRAP_BOOL(arena, chmod(path.data, (mode_t)(mode & 07777)) == 0, gray_errno_code(errno),
+        gray_string_format(arena, "cannot change permissions of '%s'", path.data));
 }
 
 /* Closes a file that was just written. A buffered write only reaches the disk

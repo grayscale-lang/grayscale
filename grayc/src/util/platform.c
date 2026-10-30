@@ -748,9 +748,9 @@ const char *gray_find_c_compiler_fallback(void) {
 /* `report` prints why the file could not be opened. A caller that says so
  * itself passes false: the import path reports E6002 against the import
  * statement, and printed both the diagnostic and a raw duplicate of it. */
-char *gray_read_file(const char *path, bool report) {
+char *gray_read_file(const char *path, bool report, size_t *length_out) {
     /* Fast path for regular (seekable) files. */
-    char *fast = read_file_to_string(path);
+    char *fast = read_file_to_string(path, length_out);
     if (fast) return fast;
 
     /* Streaming fallback for non-seekable inputs (pipes, FIFOs, /dev/stdin). */
@@ -799,6 +799,7 @@ char *gray_read_file(const char *path, bool report) {
         contents = trimmed_contents;
     }
     contents[length] = '\0';
+    if (length_out) *length_out = length;
     fclose(file);
     return contents;
 }

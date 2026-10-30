@@ -1,0 +1,89 @@
+/*
+ * Test: path module - separator-aware path manipulation
+ * Results are compared through to_forward_slashes so the expectations hold on
+ * every platform.
+ */
+
+import @path
+
+do check(label string, got string, want string) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do check_bool(label string, got bool, want bool) -> i64 {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+
+    passed += check("join_parts resolves ..", path.to_forward_slashes(path.join_parts({"src", "stdlib", "../runtime", "io.c"})), "src/runtime/io.c")
+    passed += check("join_parts skips empty parts", path.to_forward_slashes(path.join_parts({"", "a", "", "b"})), "a/b")
+    passed += check("join_parts of empty parts is empty", path.join_parts({"", ""}), "")
+    passed += check("normalize_path collapses", path.to_forward_slashes(path.normalize_path("a//b/./c/../d")), "a/b/d")
+    passed += check("normalize_path of empty is .", path.normalize_path(""), ".")
+    passed += check("normalize_path drops .. at the root", path.to_forward_slashes(path.normalize_path("/../a")), "/a")
+    passed += check("normalize_path keeps leading ..", path.to_forward_slashes(path.normalize_path("../../a")), "../../a")
+    passed += check("normalize_path handles backslashes and drives", path.to_forward_slashes(path.normalize_path("C:\\a\\..\\b")), "C:/b")
+
+    mut dir, file = path.split_dir_file("src\\main.gray")
+    passed += check("split_dir_file directory", dir, "src\\")
+    passed += check("split_dir_file file", file, "main.gray")
+    mut bare_dir, bare_file = path.split_dir_file("main.gray")
+    passed += check("split_dir_file without separator, directory", bare_dir, "")
+    passed += check("split_dir_file without separator, file", bare_file, "main.gray")
+
+    passed += check("file_extension", path.file_extension("x/main.gray"), ".gray")
+    passed += check("file_extension ignores dots in directories", path.file_extension("a.b/c"), "")
+    passed += check("file_extension takes the last dot", path.file_extension("archive.tar.gz"), ".gz")
+
+    passed += check_bool("is_absolute /usr", path.is_absolute("/usr"), true)
+    passed += check_bool("is_absolute \\usr", path.is_absolute("\\usr"), true)
+    passed += check_bool("is_absolute C:\\Users", path.is_absolute("C:\\Users"), true)
+    passed += check_bool("is_absolute C:/Users", path.is_absolute("C:/Users"), true)
+    passed += check_bool("is_absolute UNC", path.is_absolute("\\\\server\\share\\x"), true)
+    passed += check_bool("is_absolute C:foo", path.is_absolute("C:foo"), false)
+    passed += check_bool("is_absolute a/b", path.is_absolute("a/b"), false)
+    passed += check_bool("is_absolute empty", path.is_absolute(""), false)
+
+    mut sibling, sibling_err = path.relative_path("/a/b", "/a/c/d")
+    passed += check("relative_path to a sibling", path.to_forward_slashes(sibling), "../c/d")
+    passed += check_bool("relative_path to a sibling has no error", sibling_err == nil, true)
+    mut same, _ = path.relative_path("/a/b", "/a/b")
+    passed += check("relative_path to itself", same, ".")
+    mut down, _ = path.relative_path("a", "a/b/c")
+    passed += check("relative_path to a descendant", path.to_forward_slashes(down), "b/c")
+    mut mixed, mixed_err = path.relative_path("/a", "b")
+    passed += check_bool("relative_path with one absolute path fails", mixed_err != nil, true)
+    passed += check("relative_path failure result is empty", mixed, "")
+    mut roots, roots_err = path.relative_path("C:\\a", "D:\\a")
+    passed += check_bool("relative_path across drives fails", roots_err != nil, true)
+    passed += check("relative_path across drives result is empty", roots, "")
+
+    mut absolute, absolute_err = path.absolute_path("x/../y")
+    passed += check_bool("absolute_path has no error", absolute_err == nil, true)
+    passed += check_bool("absolute_path result is absolute", path.is_absolute(absolute), true)
+    mut kept, _ = path.absolute_path("/p/./q")
+    passed += check("absolute_path normalizes an absolute path", path.to_forward_slashes(kept), "/p/q")
+
+    passed += check("to_forward_slashes", path.to_forward_slashes("a\\b\\c"), "a/b/c")
+
+    println("")
+    println("Results: ${passed}/35 passed")
+    if passed == 35 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

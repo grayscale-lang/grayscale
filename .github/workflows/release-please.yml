@@ -128,11 +128,6 @@ jobs:
         with:
           ref: ${{ needs.release-please.outputs.tag_name || inputs.tag_name }}
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
       # Pin the toolchain rather than relying on whatever gcc the runner
       # image happens to expose (same rationale as ci.yml's Windows job).
       - name: Install MinGW-w64 and GNU make (Windows)
@@ -140,7 +135,7 @@ jobs:
         run: choco install mingw make --no-progress
 
       # #1461: single-binary release. Build grayc first, stage into the
-      # embed directory, then `go build` so the Go CLI bakes the compiler
+      # embed directory, then compile the gray CLI so it bakes the compiler
       # and runtime in as assets.
       - name: Build Grayscale compiler
         shell: bash
@@ -158,15 +153,15 @@ jobs:
         run: |
           EXE=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXE=".exe"; fi
-          # go:embed reads the literal path runtime/grayc on every platform;
-          # the .exe rename happens on extraction (internal/driver/embedded.go).
-          cp "grayc/grayc${EXE}" internal/driver/runtime/grayc
-          cp grayc/libgrayrt.a internal/driver/runtime/libgrayrt.a
-          cp grayc/src/runtime/*.h grayc/src/runtime/*.c internal/driver/runtime/src/runtime/
-          cp grayc/src/stdlib/*.h grayc/src/stdlib/*.c internal/driver/runtime/src/stdlib/
+          # embed() reads the literal path runtime/grayc on every platform;
+          # the .exe rename happens on extraction (cli/embedded.gray).
+          cp "grayc/grayc${EXE}" cli/runtime/grayc
+          cp grayc/libgrayrt.a cli/runtime/libgrayrt.a
+          cp grayc/src/runtime/*.h grayc/src/runtime/*.c cli/runtime/src/runtime/
+          cp grayc/src/stdlib/*.h grayc/src/stdlib/*.c cli/runtime/src/stdlib/
           # runtime.c and builtins.c include util/ headers; without them the
           # compile-from-source fallback cannot build (mirrors Makefile staging).
-          cp grayc/src/util/*.h internal/driver/runtime/src/util/
+          cp grayc/src/util/*.h cli/runtime/src/util/
 
       # The embedded compiler is what every gray build/run/check executes, and
       # a wrong-architecture copy still stages and packages cleanly — the
@@ -182,7 +177,7 @@ jobs:
             darwin-arm64) want="arm64" ;;
             *) echo "no architecture check for ${{ matrix.grayc_arch }}"; exit 0 ;;
           esac
-          got=$(file -b internal/driver/runtime/grayc)
+          got=$(file -b cli/runtime/grayc)
           echo "embedded grayc: $got"
           case "$got" in
             *"$want"*) echo "matches expected architecture ($want)" ;;
@@ -190,15 +185,15 @@ jobs:
           esac
 
       - name: Build Grayscale CLI (with embedded runtime)
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
           EXE=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXE=".exe"; fi
           BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
           EMBED_TAG=$(make -s SHELL=bash embed-tag)
-          go build -ldflags "-X main.Version=${RELEASE_TAG} -X main.BuildTime=${BUILD_TIME} -X github.com/grayscale-lang/grayscale/internal/driver.embedTag=${EMBED_TAG}" -o "gray${EXE}" ./cli
+          # embed() takes one file path, so a generated module lists every staged file.
+          "./grayc/grayc${EXE}" scripts/generate_embedded_assets.gray -o generate_embedded_assets
+          ./generate_embedded_assets
+          "./grayc/grayc${EXE}" cli/main.gray -o "gray${EXE}" --define=VERSION=${RELEASE_TAG} --define=BUILD_TIME=${BUILD_TIME} --define=EMBED_TAG=${EMBED_TAG}
         shell: bash
 
       - name: Package single-binary release
@@ -208,7 +203,7 @@ jobs:
           mkdir -p staging dist
           if [ "${{ matrix.goos }}" = "windows" ]; then
             # .zip, not .tar.gz: gray update's extractor picks the format by
-            # platform (cli/update.go getAssetName/extractZip).
+            # platform (cli/update.gray asset_name).
             cp gray.exe staging/
             (cd staging && 7z a "../dist/gray-${ARCH}.zip" gray.exe)
           else

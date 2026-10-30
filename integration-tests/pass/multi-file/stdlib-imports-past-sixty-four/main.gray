@@ -1,0 +1,42 @@
+import "./m01"
+import "./m02"
+import "./m03"
+import "./m04"
+import "./m05"
+import "./m06"
+import "./m07"
+import "./m08"
+import "./m09"
+import "./m10"
+import "./m11"
+import "./m12"
+import "./m13"
+import "./m14"
+import "./m15"
+import "./lib"
+
+do main() {
+    m01.f01()
+    m02.f02()
+    m03.f03()
+    m04.f04()
+    m05.f05()
+    m06.f06()
+    m07.f07()
+    m08.f08()
+    m09.f09()
+    m10.f10()
+    m11.f11()
+    m12.f12()
+    m13.f13()
+    m14.f14()
+    m15.f15()
+    item lib.Item = lib.load("{\"name\": \"x\"}")
+    if item.name == "x" {
+        println("passed: 1, failed: 0")
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("passed: 0, failed: 1")
+        println("SOME TESTS FAILED")
+    }
+}

@@ -134,7 +134,7 @@ bool         char        Error       func        map
 nil          SourceLocation          string
 ```
 
-`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse`, `ExecResult` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
+`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse`, `ExecResult`, `FileInfo` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
 
 **Sized types (reserved names):**
 ```
@@ -1258,7 +1258,7 @@ const origin = Point{x: 0, y: 0}
 const LOW, HIGH i64 = 1, 99     // several constants on one line
 ```
 
-> ⚠️ At file scope, `const` declarations of primitive types (integer and float types, `string`, `bool`, `char`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations.
+> ⚠️ At file scope, `const` declarations of primitive types (integer and float types, `string`, `bool`, `char`) and arrays require explicit type annotations. Struct literals and enum values can still be inferred. Inside function bodies, type inference works for all `const` declarations. A `const` initializer must be a compile-time value and may not contain a function call (E5013 at file scope, E5040 inside a function body); use `mut` to initialize from a function's return value.
 
 ### 4.3 Mutability
 
@@ -1280,8 +1280,8 @@ do get_data() -> [i64] {
 mut arr = get_data()  // arr is mutable
 arrays.append(arr, 4)  // OK - can modify directly
 
-const fixed = get_data()  // fixed is immutable
-arrays.append(fixed, 4)   // ERROR - cannot modify const
+const fixed [i64, 3] = {1, 2, 3}  // fixed is immutable
+arrays.append(fixed, 4)           // ERROR - cannot modify const
 ```
 
 ### 4.4 Scope
@@ -2647,7 +2647,8 @@ gray build main.gray -define:ROSTER_PATH=./my/path     # ROSTER_PATH is "./my/pa
 - The declaration still requires a value. It is the default, used when no flag names the constant.
 - The flag value replaces the constant's initializer before anything else is evaluated, so a constant initialized from an overridden constant sees the new value. If `BAR` is initialized from `FOO` and both are `#define`, `-define:FOO=...` changes both, and `-define:BAR=...` replaces `BAR` alone.
 - The flag value is the bare value text, with no quotes of its own (the shell strips them): an integer is base-10 with an optional sign, a float is decimal or exponent notation, a `bool` is `true` or `false`, a `char` is one Unicode codepoint, and a `string` is taken verbatim.
-- `-define:` naming a constant the program does not declare is `E4040`. Naming a constant that has no `#define` is `E5066`. A value that does not parse as the constant's type, or is out of range for it, is `E3214`.
+- `-define:NAME=VALUE` overrides every `#define` constant named `NAME` in the program, whether it is declared in the entry file or in an imported module. When several modules declare a `#define` constant with the same name, all of them take the value. There is no module-qualified form.
+- `-define:` naming a constant that no module of the program declares is `E4040`. Naming a constant that has no `#define` is `E5066`. A value that does not parse as the constant's type, or is out of range for it, is `E3214`.
 - A `-define:` argument without `=`, or the same name given twice, is a usage error from the `gray` command.
 - Accepted by `gray <file>`, `build`, `check`, `watch`, and `cross build`. Arguments after a bare `--` belong to the program and are not read as flags.
 
@@ -3345,7 +3346,7 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 `extern import` is an opt-in to unsafe operations outside Grayscale's memory safety. ASBAM, the pointer escape checks (11.7), and bounds checking reason only about Grayscale code — they cannot analyze a C function, so their guarantees stop at the `extern.` call. Once a program calls into C, "memory safe by default" no longer holds for anything that crosses the boundary.
 
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
-- **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
+- **The address of a local cannot be passed to C (E3154).** A C function may retain the pointer past the enclosing Grayscale scope, leaving it dangling once the pointee is freed. The compiler rejects `addr(local)`, `raw(local)`, and `ref(local)` as an `extern.` argument, as well as a pointer to a local that was copied to another variable, stored in a struct field or array element, or passed through a helper function or struct function on its way to an `extern.` call. Allocate with `new()` or take the address of a file-scope variable instead; both are accepted. This includes out-parameters such as `modf`, `frexp`, and the end-pointer of `strtol`. The check does not cover pointers that C itself returns, or strings that C retains (see below).
 - **A string passed to a C function that keeps the pointer dangles.** A string's storage is reclaimed with its scope. `putenv`, `setbuf`, `setvbuf` (buffer argument), and `strtok` (first argument) keep the pointer, so passing them a string other than a literal or a file-scope string is a compile error (E3216); pass `to_c_string(...)` instead. A C function outside this list that keeps a `char*` is the programmer's responsibility.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
 - **Numeric arguments narrow silently.** Integer and float literals are `i64` and `f64`. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
@@ -4006,6 +4007,8 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
 | `file_size` | `(path string) -> i64` | Get file size in bytes (fallible; see below) |
+| `chmod` | `(path string, mode i64) -> bool` | Set permission bits; on Windows only the read-only bit (fallible; see below) |
+| `stat` | `(path string) -> FileInfo` | Get file metadata without following a final symlink (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
 | `move_file` | `(src string, dst string) -> bool` | Move file |
@@ -4029,22 +4032,6 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `temp_file` | `() -> string` | Create a temporary file; returns its path. Automatically deleted on exit |
 | `temp_dir` | `() -> string` | Create a temporary directory; returns its path. Automatically deleted on exit |
 
-#### Path Manipulation
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `path_join` | `(parts [string]) -> string` | Join path segments; an absolute segment replaces the accumulated path |
-| `dirname` | `(path string) -> string` | Parent directory of path |
-| `basename` | `(path string) -> string` | Filename component of path |
-| `extension` | `(path string) -> string` | File extension including dot (e.g. `".txt"`); empty string if none |
-| `is_absolute` | `(path string) -> bool` | Check if path is absolute |
-| `normalize` | `(path string) -> string` | Clean and normalize path |
-
-```gray
-mut p string = io.path_join({"/home", "user", "docs"})  // "/home/user/docs"
-mut q string = io.path_join({"a/b", "/abs"})            // "/abs", absolute replaces
-```
-
 #### Fallible Functions
 
 The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) See [Section 4.5](#45-return-value-handling).
@@ -4055,6 +4042,8 @@ The functions below are fallible: they return `(T, Error)`, and the tables above
 | `read_bytes` | `([u8], Error)` |
 | `read_lines` | `([string], Error)` |
 | `file_size` | `(i64, Error)` |
+| `chmod` | `(bool, Error)` |
+| `stat` | `(FileInfo, Error)` |
 | `write_file` | `(bool, Error)` |
 | `append_file` | `(bool, Error)` |
 | `delete_file` | `(bool, Error)` |
@@ -4088,6 +4077,19 @@ for_each line in lines {
 }
 
 mut sz, err = io.file_size("data.txt")
+```
+
+#### `FileInfo` Struct
+
+`stat` returns a `FileInfo`: `size i64` (bytes), `mode i64` (permission bits, also on Windows), `mod_time i64` (seconds since the Unix epoch), and `is_dir`, `is_file`, `is_symlink` (all `bool`). `stat` does not follow a final symlink, so `is_symlink` is accurate. A missing path returns an `Error`. `FileInfo` is reserved as a type name only while `@io` is imported.
+
+```gray
+import @io
+
+mut info, err = io.stat("data.txt")
+if err == nil {
+    println("${info.size} bytes, symlink: ${info.is_symlink}")
+}
 ```
 
 #### `OpenFlag` Enum
@@ -4146,12 +4148,14 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `args` | `() -> [string]` | Get command-line arguments |
 | `current_dir` | `() -> string` | Get current working directory |
 | `home_dir` | `() -> string` | Get the current user's home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) |
+| `find_executable` | `(name string) -> (string, bool)` | Full path of the first executable regular file called `name` on `PATH`, and whether one was found. A `name` containing a path separator is checked directly instead of searched. On Windows the `PATHEXT` extensions are tried and `PATH` is split on `;` |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> i64` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
 | `arch` | `() -> string` | Get CPU architecture |
 | `cpu_count` | `() -> i64` | Number of logical CPUs available to the process; falls back to 1 |
 | `is_tty` | `() -> bool` | True if standard output is a terminal (not a file or pipe) |
+| `executable_path` | `() -> (string, Error)` | Absolute path of the running binary; `Error` is `IoFailure` if it cannot be determined, `Unsupported` on a platform without a way to ask |
 | `cpu_usage` | `(interval_ms i64) -> (f64, Error)` | Busy percentage (0.0–100.0) of all logical CPUs over a window of `interval_ms`; blocks for the window; panics if `interval_ms` is less than 1 |
 | `memory_usage` | `() -> (i64, i64, Error)` | `(used, total)` bytes of physical memory; `used` excludes memory available to new allocations |
 | `disk_usage` | `(path string) -> (i64, i64, Error)` | `(used, total)` bytes of the filesystem containing `path`; a missing path returns `(0, 0)` and a `NotFound` Error |
@@ -4165,7 +4169,7 @@ The four live metrics are fallible. macOS and Linux are supported; on any other 
 |----------|-----------|-------------|
 | `exec` | `(cmd string, args [string]) -> (ExecResult, Error)` | Run a subprocess and capture its output. `err` is non-nil only when the process could not be launched; a non-zero exit code is not an error. |
 
-`ExecResult` has the fields `exit_code` (`i64`), `stdout` (`string`) and `stderr` (`string`). It is reserved as a type name only while `@os` is imported.
+`ExecResult` has the fields `exit_code` (`i64`), `stdout` (`string`), `stderr` (`string`) and `signal` (`i64`). `signal` is the number of the signal that terminated the process, or `0` when it exited normally; it is always `0` on Windows. It is reserved as a type name only while `@os` is imported.
 
 ```gray
 mut result, err = os.exec("ls", {"-l", "/tmp"})
@@ -4261,7 +4265,7 @@ A failed request returns an Error with a fixed message and a specific code: `Uns
 | `url_decode` | `(s string) -> (string, Error)` | URL percent-decode; returns an error on a malformed escape |
 | `html_escape` | `(s string) -> string` | Escape `& < > " '` as HTML entities |
 | `html_unescape` | `(s string) -> string` | Resolve named and numeric HTML entities |
-| `shell_escape` | `(s string) -> string` | Quote a string as one POSIX shell argument |
+| `shell_escape` | `(s string) -> string` | Quote a string as one argument for the platform shell (POSIX or cmd.exe) |
 
 #### Byte Conversion
 
@@ -4903,6 +4907,37 @@ println(chars.string_width("中文")) // 4 (two wide chars)
 
 **Behavior:**
 - No function in this module fails.
+
+### 9.30 Path Module (`@path`)
+
+Separator-aware path manipulation on strings. Every function treats both `/` and `\` as
+separators on every platform, and recognizes Windows drive letters (`C:`) and UNC prefixes
+(`\\server\share`). Results use the platform's separator (`\` on Windows, `/` elsewhere),
+except `to_forward_slashes`. Only `absolute_path` consults the environment (the working directory).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `join_parts` | `(parts [string]) -> string` | Join the non-empty parts and normalize; `""` when all parts are empty |
+| `normalize_path` | `(p string) -> string` | Collapse separators, drop `.`, resolve `..` lexically; empty result becomes `.` |
+| `split_dir_file` | `(p string) -> (string, string)` | Split after the final separator into directory (with trailing separator) and file name |
+| `file_extension` | `(p string) -> string` | Suffix of the final element from its last dot, including the dot; `""` if none |
+| `is_absolute` | `(p string) -> bool` | Leading separator, UNC prefix, or drive letter followed by a separator |
+| `relative_path` | `(base string, target string) -> (string, Error)` | Lexical path from `base` to `target` |
+| `absolute_path` | `(p string) -> (string, Error)` | Normalized absolute path, resolving against the working directory |
+| `to_forward_slashes` | `(p string) -> string` | Replace every `\` with `/` |
+
+`relative_path` and `absolute_path` are fallible: always use destructuring. `relative_path`
+fails when only one path is absolute, when the roots (drive or UNC) differ, or when `base`
+holds unresolvable `..` elements. `absolute_path` fails when the working directory cannot be
+read or when `p` is drive-relative (`C:file`).
+
+```gray
+import @path
+
+println(path.join_parts({"src", "stdlib", "../runtime", "io.c"}))   // src/runtime/io.c
+mut dir, file = path.split_dir_file("src/main.gray")                // "src/", "main.gray"
+mut rel, err = path.relative_path("/a/b", "/a/c/d")                 // "../c/d"
+```
 
 ---
 

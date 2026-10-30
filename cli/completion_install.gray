@@ -1,0 +1,180 @@
+// completion_install.gray — Places the shell completion script where the
+// user's shell loads it. Run by make install, gray update and gray install.
+
+import @io
+import @os
+import @path
+import @strings
+import @arrays
+import @crypto
+
+// CompletionSite is where one shell's completion script is written: the
+// script's full path, and whether a missing directory may be made.
+const CompletionSite struct {
+    file string
+    create_directory bool
+}
+
+// detect_completion_shell names the user's shell from the environment, or ""
+// when it is not one of bash, zsh, fish or powershell.
+do detect_completion_shell() -> string {
+    if os.current_os() == os.WINDOWS {
+        return "powershell"
+    }
+    _, shell_name = path.split_dir_file(os.get_env("SHELL"))
+    if shell_name == "bash" || shell_name == "zsh" || shell_name == "fish" {
+        return shell_name
+    }
+    return ""
+}
+
+// is_writable_directory reports whether a file can be created in directory.
+do is_writable_directory(directory string) -> bool {
+    if !io.is_directory(directory) {
+        return false
+    }
+    probe string = path.join_parts({directory, ".gray-completion-${crypto.random_hex(8)}"})
+    _, write_err = io.write_file(probe, "")
+    if write_err != nil {
+        return false
+    }
+    _, _ = io.delete_file(probe)
+    return true
+}
+
+// query_zsh_fpath asks a non-interactive zsh for its fpath.
+do query_zsh_fpath() -> [string] {
+    mut directories [string] = {}
+    result, launch_err = os.exec("zsh", {"-c", "print -l -- \$fpath"})
+    if launch_err != nil || result.exit_code != 0 {
+        return directories
+    }
+    for_each line in strings.split(result.stdout, "\n") {
+        directory string = strings.trim(line)
+        if directory != "" {
+            arrays.append(directories, directory)
+        }
+    }
+    return directories
+}
+
+// completion_site_for picks the script path for shell. zsh has no user
+// directory it loads everywhere, so the first writable directory on its fpath
+// is used. ok is false when no directory fits.
+do completion_site_for(shell string, home string) -> (CompletionSite, bool) {
+    none CompletionSite = CompletionSite{file: "", create_directory: false}
+    when shell {
+        is "fish" {
+            mut base string = os.get_env("XDG_CONFIG_HOME")
+            if base == "" {
+                base = path.join_parts({home, ".config"})
+            }
+            return CompletionSite{file: path.join_parts({base, "fish", "completions", "gray.fish"}), create_directory: true}, true
+        }
+        is "bash" {
+            mut base string = os.get_env("XDG_DATA_HOME")
+            if base == "" {
+                base = path.join_parts({home, ".local", "share"})
+            }
+            return CompletionSite{file: path.join_parts({base, "bash-completion", "completions", "gray"}), create_directory: true}, true
+        }
+        is "powershell" {
+            return CompletionSite{file: path.join_parts({home, ".gray", "completions", "gray.ps1"}), create_directory: true}, true
+        }
+        is "zsh" {
+            for_each directory in query_zsh_fpath() {
+                if is_writable_directory(directory) {
+                    return CompletionSite{file: path.join_parts({directory, "_gray"}), create_directory: false}, true
+                }
+            }
+        }
+        default { return none, false }
+    }
+    return none, false
+}
+
+// completion_hint is the one line printed when the script was not installed.
+do completion_hint(shell string) -> string {
+    when shell {
+        is "zsh" { return "add `source <(gray completion zsh)` to ~/.zshrc" }
+        is "bash" { return "add `source <(gray completion bash)` to ~/.bashrc" }
+        is "fish" { return "run `gray completion fish > ~/.config/fish/completions/gray.fish`" }
+        is "powershell" { return "add `gray completion powershell | Out-String | Invoke-Expression` to your profile" }
+        default { return "run `gray completion <bash|zsh|fish|powershell>` and load the output" }
+    }
+}
+
+// completion_installed_line is the line printed once the script is written.
+// PowerShell loads no directory on its own, so it names the profile line too.
+do completion_installed_line(shell string, script_path string) -> string {
+    if shell == "powershell" {
+        return "Shell completion written to ${script_path}; add `. \"${script_path}\"` to your profile to load it"
+    }
+    return "Shell completion installed: ${script_path}"
+}
+
+// write_file_if_changed writes content to file_path, creating its directory
+// when asked, and leaves an identical file untouched.
+do write_file_if_changed(file_path string, content string, create_directory bool) -> bool {
+    existing, read_err = io.read_file(file_path)
+    if read_err == nil && existing == content {
+        return true
+    }
+    if create_directory {
+        directory, _ = path.split_dir_file(file_path)
+        _, make_err = io.make_dir_all(path.normalize_path(directory))
+        if make_err != nil {
+            return false
+        }
+    }
+    _, write_err = io.write_file(file_path, content)
+    return write_err == nil
+}
+
+// place_completion_script writes the script that binary_path generates for
+// shell to its site and returns the path, or "" when there is nowhere to write
+// it or the write fails.
+do place_completion_script(shell string, home string, binary_path string) -> string {
+    site, found = completion_site_for(shell, home)
+    if !found {
+        return ""
+    }
+    generated, launch_err = os.exec(binary_path, {"completion", shell})
+    if launch_err != nil || generated.exit_code != 0 || generated.stdout == "" {
+        return ""
+    }
+    if !write_file_if_changed(site.file, generated.stdout, site.create_directory) {
+        return ""
+    }
+    return site.file
+}
+
+// install_completion_script writes the completion script generated by the gray
+// binary at binary_path into the directory the user's shell reads. It never
+// fails the caller: when the shell, directory or write is unavailable it
+// prints one line with the command to run instead. No rc file is touched.
+do install_completion_script(binary_path string) {
+    // Under sudo the user's home is not the home that was meant.
+    if os.get_env("SUDO_USER") != "" {
+        return
+    }
+    shell string = detect_completion_shell()
+    home string = os.home_dir()
+    if shell != "" && home != "" {
+        script_path string = place_completion_script(shell, home, binary_path)
+        if script_path != "" {
+            println(completion_installed_line(shell, script_path))
+            return
+        }
+    }
+    println("Shell completion not installed: ${completion_hint(shell)}")
+}
+
+// run_completion_install is gray completion install.
+do run_completion_install() -> i64 {
+    binary_path, executable_err = os.executable_path()
+    if executable_err == nil {
+        install_completion_script(binary_path)
+    }
+    return 0
+}

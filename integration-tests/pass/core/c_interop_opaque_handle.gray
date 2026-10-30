@@ -14,9 +14,9 @@ unsafe do main() {
     mut passed i64 = 0
     mut failed i64 = 0
 
-    mut path string = "/tmp/gray_c_interop_opaque_handle.txt"
+    mut file_path string = "/tmp/gray_c_interop_opaque_handle.txt"
 
-    mut w ^u8 = extern.fopen(path, "w")
+    mut w ^u8 = extern.fopen(file_path, "w")
     mut wrote i64 = extern.fputs("payload\n", w)
     if wrote >= 0 {
         println("  [PASS] fputs through ^u8 handle")
@@ -35,7 +35,7 @@ unsafe do main() {
         failed += 1
     }
 
-    extern.remove(path)
+    extern.remove(file_path)
 
     println("")
     println("Results: ${passed} passed, ${failed} failed")

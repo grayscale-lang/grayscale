@@ -1,0 +1,486 @@
+// doc.gray — Documentation generator for Grayscale source files ("gray doc").
+// Extracts #doc attributes from functions, structs, enums and file-scope
+// variables, then emits a structured Markdown reference file.
+
+import @io
+import @os
+import @strings
+import @arrays
+import @path
+import "./scanner"
+import "./sources"
+
+const DEFAULT_DOC_OUTPUT_PATH string = "DOCS.md"
+
+// DocEntry represents a documented item.
+const DocEntry struct {
+    name string
+    kind string  // "function", "struct", "enum", "variable"
+    signature string
+    description string
+    file string  // absolute while collecting; rewritten relative before rendering
+    line i64     // 1-indexed line of the declaration (not the #doc line)
+}
+
+// generate_docs is the entry point for the gray doc command. output_path is
+// the destination markdown file. It returns false when an argument was
+// reported and skipped.
+do generate_docs(args [string], output_path string) -> bool {
+    files, args_ok = sources.expand_source_args("doc", args)
+    mut entries [DocEntry] = {}
+    for_each file in files {
+        for_each entry in collect_docs_from_file(file) {
+            arrays.append(entries, entry)
+        }
+    }
+
+    if len(entries) == 0 {
+        println("No documented items found.")
+        return args_ok
+    }
+
+    // Rewrite each entry's absolute source path to one relative to the
+    // directory the Markdown file is written to, so the file:line links
+    // resolve from there and no machine-specific absolute paths land in the
+    // output.
+    normalize_doc_paths(entries, output_path)
+
+    output string = generate_markdown(entries)
+
+    // Warn when --output resolves to a path outside the working directory.
+    output_abs, abs_err = path.absolute_path(output_path)
+    if abs_err == nil {
+        relative_to_cwd, rel_err = path.relative_path(os.current_dir(), output_abs)
+        if rel_err != nil || strings.starts_with(relative_to_cwd, "..") {
+            println("Warning: output path '${output_path}' is outside the current directory")
+        }
+    }
+
+    // Make sure the parent directory exists when --output points at a
+    // nested path like docs/API.md.
+    output_dir string = parent_directory(output_path)
+    if output_dir != "" && output_dir != "." {
+        _, dir_err = io.make_dir_all(output_dir)
+        if dir_err != nil {
+            println("Error creating output directory ${output_dir}: ${dir_err.message}")
+            return args_ok
+        }
+    }
+
+    _, write_err = io.write_file(output_path, output)
+    if write_err != nil {
+        println("Error writing ${output_path}: ${write_err.message}")
+        return args_ok
+    }
+
+    println("Generated ${output_path} with ${len(entries)} documented item(s)")
+    return args_ok
+}
+
+// parent_directory is the directory part of file_path without its trailing
+// separator, "." when there is none.
+do parent_directory(file_path string) -> string {
+    directory, _ = path.split_dir_file(file_path)
+    return path.normalize_path(directory)
+}
+
+// normalize_doc_paths rewrites each entry's file from an absolute path to a
+// slash path relative to the directory that will hold output_path, so the
+// file:line links resolve from where the Markdown is written. It falls back
+// to a cwd-relative path, then the bare file name, when no relative path can
+// be formed (e.g. a different Windows volume).
+do normalize_doc_paths(&entries [DocEntry], output_path string) {
+    mut base string = "."
+    output_abs, abs_err = path.absolute_path(output_path)
+    if abs_err == nil {
+        base = parent_directory(output_abs)
+    }
+    cwd string = os.current_dir()
+
+    for i in range(0, len(entries)) {
+        source string = entries[i].file
+        relative_to_base, base_err = path.relative_path(base, source)
+        if base_err == nil {
+            entries[i].file = path.to_forward_slashes(relative_to_base)
+            continue
+        }
+        if cwd != "" {
+            relative_to_cwd, cwd_err = path.relative_path(cwd, source)
+            if cwd_err == nil {
+                entries[i].file = path.to_forward_slashes(relative_to_cwd)
+                continue
+            }
+        }
+        _, file_name = path.split_dir_file(source)
+        entries[i].file = path.to_forward_slashes(file_name)
+    }
+}
+
+// trim_carriage_return removes one trailing "\r".
+do trim_carriage_return(text string) -> string {
+    return strings.remove_suffix(text, "\r")
+}
+
+// paren_depth is the number of "(" minus ")" in text.
+do paren_depth(text string) -> i64 {
+    return strings.count(text, "(") - strings.count(text, ")")
+}
+
+// nesting_depth is the number of opening brackets minus closing brackets of
+// every kind in text.
+do nesting_depth(text string) -> i64 {
+    return strings.count(text, "{") + strings.count(text, "[") + strings.count(text, "(") - strings.count(text, "}") - strings.count(text, "]") - strings.count(text, ")")
+}
+
+// collect_docs_from_file extracts documented items from a single .gray file
+// using text scanning. It looks for #doc("description") followed by a
+// do/const struct/const enum/variable declaration.
+do collect_docs_from_file(file_name string) -> [DocEntry] {
+    mut entries [DocEntry] = {}
+
+    absolute_path string = ""
+    resolved, resolve_err = path.absolute_path(file_name)
+    if resolve_err != nil {
+        println("Error resolving path ${file_name}: ${resolve_err.message}")
+        return entries
+    }
+    absolute_path = resolved
+
+    data, read_err = io.read_file(absolute_path)
+    if read_err != nil {
+        println("Error reading file ${file_name}: ${read_err.message}")
+        return entries
+    }
+
+    source_lines [string] = strings.split(data, "\n")
+    line_count i64 = len(source_lines)
+    in_raw_string, in_block_comment = scanner.multi_line_literal_line_starts(data, line_count)
+    mut pending_doc string = ""
+    mut in_block bool = false
+    mut block_lines [string] = {}
+    mut block_kind string = ""
+    mut block_name string = ""
+    mut block_line i64 = 0
+    mut brace_depth i64 = 0
+    mut consumed_until i64 = 0
+
+    for index in range(0, line_count) {
+        // Lines already joined into a signature or initializer.
+        if index < consumed_until {
+            continue
+        }
+        line_number i64 = index + 1
+        line string = trim_carriage_return(source_lines[index])
+        trimmed string = strings.trim(line)
+
+        // Text inside a raw string or block comment is not a declaration.
+        if in_raw_string[index] || in_block_comment[index] {
+            continue
+        }
+
+        // Collecting a block (struct/enum body).
+        if in_block {
+            arrays.append(block_lines, line)
+            brace_depth = brace_depth + strings.count(line, "{") - strings.count(line, "}")
+            if brace_depth <= 0 {
+                in_block = false
+                arrays.append(entries, DocEntry{name: block_name, kind: block_kind, signature: strings.join(block_lines, "\n"), description: pending_doc, file: absolute_path, line: block_line})
+                pending_doc = ""
+                block_lines = {}
+            }
+            continue
+        }
+
+        // Check for a #doc attribute, standalone or inside a grouped #[...] list.
+        if strings.starts_with(trimmed, "#doc(") || (strings.starts_with(trimmed, "#[") && strings.contains(trimmed, "doc(")) {
+            pending_doc = extract_doc_string(trimmed)
+            continue
+        }
+
+        // With a pending doc, the next non-empty line should be a declaration.
+        if pending_doc == "" || trimmed == "" {
+            continue
+        }
+
+        if strings.starts_with(trimmed, "#") {
+            // Another attribute (#test, ...) stacked with #doc: the
+            // declaration is still ahead.
+            continue
+        }
+
+        if strings.starts_with(trimmed, "do ") || strings.starts_with(trimmed, "private do ") {
+            // Function declaration: capture the signature. A wrapped
+            // parameter list continues on the following lines until its
+            // parentheses close.
+            mut signature string = trimmed
+            mut depth i64 = paren_depth(signature)
+            mut last i64 = index
+            as_long_as depth > 0 && last + 1 < line_count {
+                last = last + 1
+                continuation string = strings.trim(trim_carriage_return(source_lines[last]))
+                signature = signature + " " + continuation
+                depth = depth + paren_depth(continuation)
+            }
+            consumed_until = last + 1
+            // Strip the body (everything after {).
+            body_start i64 = strings.index_of(signature, "{")
+            if body_start >= 0 {
+                signature = strings.trim(strings.slice(signature, 0, body_start))
+            }
+            signature = tidy_signature(signature)
+            arrays.append(entries, DocEntry{name: extract_func_name(trimmed), kind: "function", signature: signature, description: pending_doc, file: absolute_path, line: line_number})
+            pending_doc = ""
+        } or strings.contains(trimmed, " struct ") && strings.starts_with(trimmed, "const ") {
+            block_name = extract_struct_enum_name(trimmed)
+            block_kind = "struct"
+            block_line = line_number
+            block_lines = {line}
+            brace_depth = strings.count(line, "{") - strings.count(line, "}")
+            if brace_depth > 0 {
+                in_block = true
+            } otherwise {
+                arrays.append(entries, DocEntry{name: block_name, kind: "struct", signature: trimmed, description: pending_doc, file: absolute_path, line: line_number})
+                pending_doc = ""
+            }
+        } or strings.contains(trimmed, " enum ") && strings.starts_with(trimmed, "const ") {
+            block_name = extract_struct_enum_name(trimmed)
+            block_kind = "enum"
+            block_line = line_number
+            block_lines = {line}
+            brace_depth = strings.count(line, "{") - strings.count(line, "}")
+            if brace_depth > 0 {
+                in_block = true
+            } otherwise {
+                arrays.append(entries, DocEntry{name: block_name, kind: "enum", signature: trimmed, description: pending_doc, file: absolute_path, line: line_number})
+                pending_doc = ""
+            }
+        } or is_var_decl(trimmed) {
+            // File-scope variable (const or mut). An initializer that opens a
+            // bracket continues until it closes.
+            mut signature string = trimmed
+            mut depth i64 = nesting_depth(line)
+            mut last i64 = index
+            as_long_as depth > 0 && last + 1 < line_count {
+                last = last + 1
+                continuation string = trim_carriage_return(source_lines[last])
+                signature = signature + "\n" + continuation
+                depth = depth + nesting_depth(continuation)
+            }
+            consumed_until = last + 1
+            arrays.append(entries, DocEntry{name: extract_var_name(trimmed), kind: "variable", signature: signature, description: pending_doc, file: absolute_path, line: line_number})
+            pending_doc = ""
+        } otherwise {
+            // Not a documentable declaration: discard the pending doc.
+            pending_doc = ""
+        }
+    }
+
+    return entries
+}
+
+// tidy_signature joins a wrapped parameter list: "( " becomes "(", ", )" and
+// " )" become ")". At each position the first matching pattern wins.
+do tidy_signature(signature string) -> string {
+    mut parts [string] = {}
+    signature_length i64 = len(signature)
+    mut i i64 = 0
+    as_long_as i < signature_length {
+        rest string = strings.slice(signature, i, signature_length)
+        if strings.starts_with(rest, "( ") {
+            arrays.append(parts, "(")
+            i = i + 2
+        } or strings.starts_with(rest, ", )") {
+            arrays.append(parts, ")")
+            i = i + 3
+        } or strings.starts_with(rest, " )") {
+            arrays.append(parts, ")")
+            i = i + 2
+        } otherwise {
+            arrays.append(parts, strings.slice(signature, i, i + 1))
+            i = i + 1
+        }
+    }
+    return strings.join(parts, "")
+}
+
+// extract_doc_string extracts the description from a doc("some text")
+// attribute, whether standalone (#doc("...")) or inside a grouped list
+// (#[..., doc("...")]).
+do extract_doc_string(line string) -> string {
+    marker_index i64 = strings.index_of(line, "doc(")
+    if marker_index < 0 {
+        return ""
+    }
+    rest string = strings.slice(line, marker_index + 4, len(line))
+    rest_length i64 = len(rest)
+
+    mut start i64 = -1
+    mut i i64 = 0
+    as_long_as i < rest_length && start < 0 {
+        if rest[i] == '"' || rest[i] == '\'' {
+            start = i
+        }
+        i = i + 1
+    }
+    if start < 0 {
+        return ""
+    }
+
+    quote char = rest[start]
+    mut pieces [string] = {}
+    i = start + 1
+    as_long_as i < rest_length {
+        c char = rest[i]
+        if c == quote {
+            return strings.join(pieces, "")
+        }
+        if c == '\\' && i + 1 < rest_length {
+            i = i + 1
+            if rest[i] == 'n' {
+                arrays.append(pieces, "\n")
+            } or rest[i] == 't' {
+                arrays.append(pieces, "\t")
+            } otherwise {
+                arrays.append(pieces, strings.slice(rest, i, i + 1))
+            }
+        } otherwise {
+            arrays.append(pieces, strings.slice(rest, i, i + 1))
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// extract_func_name extracts the function name from "do name(" or
+// "private do name(".
+do extract_func_name(line string) -> string {
+    mut name string = strings.remove_prefix(line, "private ")
+    name = strings.remove_prefix(name, "do ")
+    paren_index i64 = strings.index_of(name, "(")
+    if paren_index >= 0 {
+        return strings.trim(strings.slice(name, 0, paren_index))
+    }
+    return first_word(name)
+}
+
+// extract_struct_enum_name extracts the name from "const Name struct {" or
+// "const Name enum {".
+do extract_struct_enum_name(line string) -> string {
+    return first_word(strings.remove_prefix(line, "const "))
+}
+
+// first_word is the first whitespace-separated field of text, "" when none.
+do first_word(text string) -> string {
+    words [string] = strings.split_whitespace(text)
+    if len(words) > 0 {
+        return words[0]
+    }
+    return ""
+}
+
+// is_var_decl returns true if the line is a file-scope variable declaration
+// (const or mut) that is not a struct or enum.
+do is_var_decl(line string) -> bool {
+    stripped string = strings.remove_prefix(line, "private ")
+    if !strings.starts_with(stripped, "const ") && !strings.starts_with(stripped, "mut ") {
+        return false
+    }
+    if strings.contains(line, " struct ") || strings.contains(line, " enum ") {
+        return false
+    }
+    return strings.contains(line, "=")
+}
+
+// extract_var_name extracts the variable name from "const NAME type = ..." or
+// "mut NAME type = ...".
+do extract_var_name(line string) -> string {
+    mut name string = strings.remove_prefix(line, "private ")
+    name = strings.remove_prefix(name, "const ")
+    name = strings.remove_prefix(name, "mut ")
+    return first_word(name)
+}
+
+do entry_name_less(a DocEntry, b DocEntry) -> bool {
+    return strings.compare(a.name, b.name) < 0
+}
+
+do write_section(&lines [string], title string, items [DocEntry]) {
+    if len(items) == 0 {
+        return
+    }
+    arrays.append(lines, "## ${title}\n")
+    for_each entry in items {
+        arrays.append(lines, "### ${entry.name}\n")
+        arrays.append(lines, "```gray\n${entry.signature}\n```\n")
+        if entry.file != "" && entry.line > 0 {
+            arrays.append(lines, "*Defined in [`${entry.file}:${entry.line}`](${entry.file}#L${entry.line})*\n")
+        }
+        if entry.description != "" {
+            arrays.append(lines, "${entry.description}\n")
+        }
+    }
+}
+
+do generate_markdown(entries [DocEntry]) -> string {
+    mut functions [DocEntry] = {}
+    mut structs [DocEntry] = {}
+    mut enums [DocEntry] = {}
+    mut variables [DocEntry] = {}
+    for_each entry in entries {
+        if entry.kind == "function" {
+            arrays.append(functions, entry)
+        } or entry.kind == "struct" {
+            arrays.append(structs, entry)
+        } or entry.kind == "enum" {
+            arrays.append(enums, entry)
+        } or entry.kind == "variable" {
+            arrays.append(variables, entry)
+        }
+    }
+
+    arrays.sort_by(functions, ()entry_name_less)
+    arrays.sort_by(structs, ()entry_name_less)
+    arrays.sort_by(enums, ()entry_name_less)
+    arrays.sort_by(variables, ()entry_name_less)
+
+    mut lines [string] = {"# Documentation\n", "*Generated by `gray doc`*\n"}
+    write_section(lines, "Functions", functions)
+    write_section(lines, "Structs", structs)
+    write_section(lines, "Enums", enums)
+    write_section(lines, "Variables", variables)
+    return strings.join(lines, "\n") + "\n"
+}
+
+do main() {
+    argv [string] = os.args()
+    mut output_path string = DEFAULT_DOC_OUTPUT_PATH
+    mut paths [string] = {}
+    mut i i64 = 1
+    as_long_as i < len(argv) {
+        arg string = argv[i]
+        if arg == "-o" || arg == "--output" {
+            if i + 1 >= len(argv) {
+                if arg == "-o" {
+                    eprintln("flag needs an argument: 'o' in -o")
+                } otherwise {
+                    eprintln("flag needs an argument: --output")
+                }
+                exit(1)
+            }
+            i = i + 1
+            output_path = argv[i]
+        } or strings.starts_with(arg, "--output=") {
+            output_path = strings.slice(arg, 9, len(arg))
+        } or strings.starts_with(arg, "-o=") {
+            output_path = strings.slice(arg, 3, len(arg))
+        } or strings.starts_with(arg, "-o") && !strings.starts_with(arg, "--") {
+            output_path = strings.slice(arg, 2, len(arg))
+        } otherwise {
+            arrays.append(paths, arg)
+        }
+        i = i + 1
+    }
+    if !generate_docs(paths, output_path) {
+        exit(1)
+    }
+}

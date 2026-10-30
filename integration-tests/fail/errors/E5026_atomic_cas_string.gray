@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5026 - atomic.cas rejects string
+ * Expected: "expected integer"
+ */
+
+import @atomic
+
+do main() {
+    mut n i64 = 0
+    mut ok bool = atomic.cas(addr(n), 0, "s")
+}

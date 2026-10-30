@@ -1,0 +1,212 @@
+// fmt.gray — Self-hosted `gray fmt`. Runs `grayc --fmt` on each file, then
+// normalizes the text: leading tabs become four spaces, trailing whitespace is
+// stripped, runs of blank lines collapse to two, and the file ends in exactly
+// one newline. CRLF line endings are kept. `--check` formats a temporary copy
+// and reports `would format: <path>` for each file that differs.
+
+import @io
+import @strings
+import @arrays
+import "./driver"
+import "./scanner"
+import "./sources"
+
+const TAB_WIDTH i64 = 4
+const MAX_CONSECUTIVE_BLANK_LINES i64 = 2
+
+// format_gray_source applies the text-level normalizations to Grayscale source.
+do format_gray_source(src string) -> string {
+    mut lines [string] = strings.split(src, "\n")
+    line_count i64 = len(lines)
+    starts_in_raw, _ = scanner.multi_line_literal_line_starts(src, line_count)
+
+    // A CRLF line ending is kept as it was; the "\r" is set aside so it is
+    // neither mistaken for line content nor lost.
+    mut ends_in_carriage_return [bool] = {}
+    for i in range(0, line_count) {
+        line string = lines[i]
+        if strings.ends_with(line, "\r") {
+            arrays.append(ends_in_carriage_return, true)
+            lines[i] = strings.slice(line, 0, len(line) - 1)
+        } otherwise {
+            arrays.append(ends_in_carriage_return, false)
+        }
+    }
+
+    // Expand leading tabs and strip trailing whitespace on each line. A line
+    // that starts inside a raw string keeps its leading whitespace, and one
+    // that ends inside a raw string keeps its trailing whitespace, since both
+    // belong to the literal's value.
+    for i in range(0, line_count) {
+        line string = lines[i]
+        ends_in_raw bool = i + 1 < len(starts_in_raw) && starts_in_raw[i + 1]
+        if !starts_in_raw[i] && !ends_in_raw && strings.trim(line) == "" {
+            lines[i] = ""
+            continue
+        }
+        mut j i64 = 0
+        mut prefix string = ""
+        if !starts_in_raw[i] {
+            as_long_as j < len(line) && (line[j] == '\t' || line[j] == ' ') {
+                if line[j] == '\t' {
+                    prefix = prefix + strings.repeat(" ", TAB_WIDTH)
+                } otherwise {
+                    prefix = prefix + " "
+                }
+                j = j + 1
+            }
+        }
+        mut rest string = strings.slice(line, j, len(line))
+        if !ends_in_raw {
+            rest = trim_trailing_blanks(rest)
+        }
+        lines[i] = prefix + rest
+    }
+
+    // Collapse runs of more than two consecutive blank lines.
+    mut out [string] = {}
+    mut out_carriage_return [bool] = {}
+    mut blank i64 = 0
+    for i in range(0, line_count) {
+        line string = lines[i]
+        if line == "" && !starts_in_raw[i] {
+            blank = blank + 1
+            if blank > MAX_CONSECUTIVE_BLANK_LINES {
+                continue
+            }
+        } otherwise {
+            blank = 0
+        }
+        arrays.append(out, line)
+        arrays.append(out_carriage_return, ends_in_carriage_return[i])
+    }
+
+    // Strip trailing blank lines, then add exactly one trailing newline.
+    mut kept i64 = len(out)
+    as_long_as kept > 0 && out[kept - 1] == "" {
+        kept = kept - 1
+    }
+    mut result [string] = {}
+    for i in range(0, kept) {
+        if out_carriage_return[i] {
+            arrays.append(result, out[i] + "\r\n")
+        } otherwise {
+            arrays.append(result, out[i] + "\n")
+        }
+    }
+    if kept == 0 {
+        return "\n"
+    }
+    return strings.join(result, "")
+}
+
+// trim_trailing_blanks removes trailing spaces and tabs only.
+do trim_trailing_blanks(text string) -> string {
+    mut end i64 = len(text)
+    as_long_as end > 0 && (text[end - 1] == ' ' || text[end - 1] == '\t') {
+        end = end - 1
+    }
+    return strings.slice(text, 0, end)
+}
+
+// run_grayc_fmt formats one file in place with `grayc --fmt`.
+do run_grayc_fmt(file_path string) -> bool {
+    code, format_err = driver.format_file(file_path)
+    return format_err == nil && code == 0
+}
+
+// run_fmt is the entry point for `gray fmt`; it returns the exit code.
+do run_fmt(args [string], check_mode bool) -> i64 {
+    files, expanded_ok = sources.expand_source_args("fmt", args)
+    mut exit_code i64 = 0
+    if !expanded_ok {
+        exit_code = 1
+    }
+    if len(files) == 0 {
+        println("gray fmt: no source files found")
+        return exit_code
+    }
+
+    mut changed i64 = 0
+
+    for_each file_path in files {
+        original, read_err = io.read_file(file_path)
+        if read_err != nil {
+            eprintln("gray fmt: ${read_err.message}")
+            exit_code = 1
+            continue
+        }
+
+        if check_mode {
+            // Copy to a temp file, format it, compare. io.temp_file() returns
+            // a path with no extension, so the copy moves to .gray first.
+            temp_path, temp_err = io.temp_file()
+            if temp_err != nil {
+                eprintln("gray fmt: ${temp_err.message}")
+                exit_code = 1
+                continue
+            }
+            formatted_copy string = temp_path + ".gray"
+            _, move_err = io.move_file(temp_path, formatted_copy)
+            if move_err != nil {
+                eprintln("gray fmt: ${move_err.message}")
+                exit_code = 1
+                continue
+            }
+            _, write_err = io.write_file(formatted_copy, original)
+            if write_err != nil {
+                mut _, _ = io.delete_file(formatted_copy)
+                eprintln("gray fmt: ${write_err.message}")
+                exit_code = 1
+                continue
+            }
+            if !run_grayc_fmt(formatted_copy) {
+                mut _, _ = io.delete_file(formatted_copy)
+                eprintln("gray fmt: failed to format '${file_path}'")
+                exit_code = 1
+                continue
+            }
+            formatted, formatted_err = io.read_file(formatted_copy)
+            mut _, _ = io.delete_file(formatted_copy)
+            if formatted_err != nil {
+                eprintln("gray fmt: ${formatted_err.message}")
+                exit_code = 1
+                continue
+            }
+            if original != format_gray_source(formatted) {
+                println("would format: ${file_path}")
+                exit_code = 1
+            }
+            continue
+        }
+
+        // Normal mode: format in place.
+        if !run_grayc_fmt(file_path) {
+            eprintln("gray fmt: failed to format '${file_path}'")
+            exit_code = 1
+            continue
+        }
+        after, after_err = io.read_file(file_path)
+        if after_err != nil {
+            eprintln("gray fmt: ${after_err.message}")
+            exit_code = 1
+            continue
+        }
+        normalized string = format_gray_source(after)
+        _, wrote_err = io.write_file(file_path, normalized)
+        if wrote_err != nil {
+            eprintln("gray fmt: ${wrote_err.message}")
+            exit_code = 1
+            continue
+        }
+        if original != normalized {
+            println("formatted: ${file_path}")
+            changed = changed + 1
+        }
+    }
+
+    if !check_mode && changed == 0 && exit_code == 0 {
+        println("gray fmt: ${len(files)} file(s) checked, already formatted")
+    }
+    return exit_code
+}

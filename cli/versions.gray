@@ -1,0 +1,274 @@
+// versions.gray — Version strings of the gray CLI: the pieces of the build's
+// version, semver parsing and precedence, and the ranges the changelog shows.
+
+import @strings
+import @arrays
+import @strconv
+
+const RELEASE_TAG_PREFIX string = "grayscale-"
+
+// VersionInfo holds the derived pieces of the version string baked in at
+// build time.
+const VersionInfo struct {
+    display string         // e.g. "v3.0.0-alpha.6", the git-describe trailer stripped
+    channel string         // "stable", "pre-release" or "dev"
+    commit string          // git short hash, empty if not a dev build
+    commits_ahead i64      // commits past the base tag
+    dirty bool             // the working tree was dirty at build time
+}
+
+// Semver is a version split into its numeric parts and its pre-release label.
+const Semver struct {
+    major i64
+    minor i64
+    patch i64
+    pre string             // empty for a stable version
+}
+
+// GitDescribe is a "-4-g0cbcb58" or "-4-g0cbcb58-dirty" trailer, as `git
+// describe --dirty` appends to a version in a local build.
+const GitDescribe struct {
+    start i64               // where the trailer begins in the text
+    commits_ahead i64
+    commit string
+    dirty bool
+}
+
+do is_digit_text(text string) -> bool {
+    if text == "" {
+        return false
+    }
+    for index in range(0, len(text)) {
+        if text[index] < '0' || text[index] > '9' {
+            return false
+        }
+    }
+    return true
+}
+
+do is_hex_text(text string) -> bool {
+    if text == "" {
+        return false
+    }
+    for index in range(0, len(text)) {
+        c char = text[index]
+        if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
+            return false
+        }
+    }
+    return true
+}
+
+// find_git_describe finds a git-describe trailer at the end of text.
+do find_git_describe(text string) -> (GitDescribe, bool) {
+    none GitDescribe = GitDescribe{start: 0, commits_ahead: 0, commit: "", dirty: false}
+    mut body string = text
+    mut dirty bool = false
+    if strings.ends_with(body, "-dirty") {
+        body = strings.remove_suffix(body, "-dirty")
+        dirty = true
+    }
+    g_index i64 = strings.last_index_of(body, "g")
+    if g_index < 2 || body[g_index - 1] != '-' {
+        return none, false
+    }
+    commit string = strings.slice(body, g_index + 1, len(body))
+    if !is_hex_text(commit) {
+        return none, false
+    }
+    before string = strings.slice(body, 0, g_index - 1)
+    start i64 = strings.last_index_of(before, "-")
+    if start < 0 {
+        return none, false
+    }
+    commits_text string = strings.slice(before, start + 1, len(before))
+    if !is_digit_text(commits_text) {
+        return none, false
+    }
+    commits_ahead, _ = scan_integer(commits_text)
+    return GitDescribe{start: start, commits_ahead: commits_ahead, commit: commit, dirty: dirty}, true
+}
+
+// scan_integer reads the integer a text starts with, as fmt.Sscanf("%d")
+// does: an optional sign and digits, stopping at the first other character.
+// ok is false when the text does not start with an integer.
+do scan_integer(text string) -> (i64, bool) {
+    mut index i64 = 0
+    mut negative bool = false
+    if index < len(text) && (text[index] == '-' || text[index] == '+') {
+        negative = text[index] == '-'
+        index = index + 1
+    }
+    digits_start i64 = index
+    mut value i64 = 0
+    as_long_as index < len(text) && text[index] >= '0' && text[index] <= '9' {
+        value = value * 10 + cast(text[index] - '0', i64)
+        index = index + 1
+    }
+    if index == digits_start {
+        return 0, false
+    }
+    if negative {
+        return -value, true
+    }
+    return value, true
+}
+
+// version_info parses the version string of the build into its parts.
+do version_info(version string) -> VersionInfo {
+    mut info VersionInfo = VersionInfo{display: version, channel: "", commit: "", commits_ahead: 0, dirty: false}
+    describe, found = find_git_describe(version)
+    if found {
+        info.commits_ahead = describe.commits_ahead
+        info.commit = describe.commit
+        info.dirty = describe.dirty
+        info.display = strings.slice(version, 0, describe.start)
+    }
+    semver Semver = parse_semver(info.display)
+    if version == "dev" {
+        info.channel = "dev"
+    } or info.commit != "" {
+        info.channel = "dev"
+    } or semver.pre != "" {
+        info.channel = "pre-release"
+    } otherwise {
+        info.channel = "stable"
+    }
+    return info
+}
+
+// parse_semver parses a version like "v3.0.0-beta.2" or "0.16.10" into its
+// numeric parts and its raw pre-release label (empty for stable). Build
+// metadata after '+' is dropped. A git-describe trailer on the label is
+// stripped back to the real identifier so a local build orders correctly
+// against upstream tags.
+do parse_semver(version string) -> Semver {
+    mut rest string = strings.remove_prefix(version, RELEASE_TAG_PREFIX)
+    rest = strings.remove_prefix(rest, "v")
+    plus_index i64 = strings.index_of(rest, "+")
+    if plus_index != -1 {
+        rest = strings.slice(rest, 0, plus_index)
+    }
+
+    mut base string = rest
+    mut pre string = ""
+    dash_index i64 = strings.index_of(rest, "-")
+    if dash_index != -1 {
+        base = strings.slice(rest, 0, dash_index)
+        pre = strings.slice(rest, dash_index + 1, len(rest))
+        describe, found = find_git_describe(pre)
+        if found {
+            pre = strings.slice(pre, 0, describe.start)
+        }
+    }
+
+    parts [string] = strings.split(base, ".")
+    mut semver Semver = Semver{major: 0, minor: 0, patch: 0, pre: pre}
+    if len(parts) >= 1 {
+        number, _ = scan_integer(parts[0])
+        semver.major = number
+    }
+    if len(parts) >= 2 {
+        number, _ = scan_integer(parts[1])
+        semver.minor = number
+    }
+    if len(parts) >= 3 {
+        number, _ = scan_integer(parts[2])
+        semver.patch = number
+    }
+    return semver
+}
+
+// compare_numbers returns -1, 0 or 1.
+do compare_numbers(first i64, second i64) -> i64 {
+    if first < second {
+        return -1
+    }
+    if first > second {
+        return 1
+    }
+    return 0
+}
+
+// is_canonical_number reports whether an identifier is a number as the
+// language prints it: no sign, no leading zeros.
+do is_canonical_number(text string) -> bool {
+    number, ok = scan_integer(text)
+    return ok && strconv.from_i64(number) == text
+}
+
+// compare_pre_identifiers compares two dot-separated pre-release label lists
+// by SemVer 2.0 rule 11.4: numeric identifiers compare numerically,
+// alphanumerics compare as ASCII, numeric is lower than alphanumeric, and a
+// shorter list with equal leading fields is lower. It returns -1, 0 or 1.
+do compare_pre_identifiers(first string, second string) -> i64 {
+    first_ids [string] = strings.split(first, ".")
+    second_ids [string] = strings.split(second, ".")
+    mut shared i64 = len(first_ids)
+    if len(second_ids) < shared {
+        shared = len(second_ids)
+    }
+    for index in range(0, shared) {
+        first_is_number bool = is_canonical_number(first_ids[index])
+        second_is_number bool = is_canonical_number(second_ids[index])
+        if first_is_number && second_is_number {
+            first_number, _ = scan_integer(first_ids[index])
+            second_number, _ = scan_integer(second_ids[index])
+            if first_number != second_number {
+                return compare_numbers(first_number, second_number)
+            }
+            continue
+        }
+        if first_is_number != second_is_number {
+            if first_is_number {
+                return -1
+            }
+            return 1
+        }
+        if first_ids[index] != second_ids[index] {
+            return strings.compare(first_ids[index], second_ids[index])
+        }
+    }
+    return compare_numbers(len(first_ids), len(second_ids))
+}
+
+// compare_semver compares two versions: -1 if first is lower, 0 if equal, 1 if
+// higher. A version without a pre-release label is higher than the same
+// version with one, and labels compare field by field.
+do compare_semver(first string, second string) -> i64 {
+    left Semver = parse_semver(first)
+    right Semver = parse_semver(second)
+    if left.major != right.major {
+        return compare_numbers(left.major, right.major)
+    }
+    if left.minor != right.minor {
+        return compare_numbers(left.minor, right.minor)
+    }
+    if left.patch != right.patch {
+        return compare_numbers(left.patch, right.patch)
+    }
+    if left.pre == "" && right.pre == "" {
+        return 0
+    }
+    if left.pre == "" {
+        return 1
+    }
+    if right.pre == "" {
+        return -1
+    }
+    return compare_pre_identifiers(left.pre, right.pre)
+}
+
+// is_newer_version reports whether remote is higher than local by SemVer
+// precedence, pre-release labels included.
+do is_newer_version(local string, remote string) -> bool {
+    return compare_semver(remote, local) > 0
+}
+
+// is_version_in_range reports whether from_version < version <= to_version.
+do is_version_in_range(version string, from_version string, to_version string) -> bool {
+    if !is_newer_version(from_version, version) {
+        return false
+    }
+    return !is_newer_version(to_version, version)
+}

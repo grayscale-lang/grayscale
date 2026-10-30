@@ -1,0 +1,4 @@
+do show() {
+    text = "hi"
+    println(text)
+}

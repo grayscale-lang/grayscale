@@ -1,0 +1,6 @@
+// expect-error: E5008
+import @path
+
+do main() {
+    println(path.join_parts({"a"}, {"b"}))
+}

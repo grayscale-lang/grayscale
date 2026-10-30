@@ -2376,8 +2376,8 @@ static void test_e2e_raw_string(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut path string = `C:\\Users\\n.txt`\n"
-        "  println(path)\n"
+        "  mut file_name string = `C:\\Users\\n.txt`\n"
+        "  println(file_name)\n"
         "  mut m string = `a\n"
         "b`\n"
         "  println(m)\n"

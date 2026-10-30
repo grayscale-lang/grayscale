@@ -272,13 +272,13 @@ do main() {
             }
             listed = listed + 1
             mut name string = strings.remove_prefix(entry.key, "file|")
-            mut path string = "${VENDOR_DIR}/${name}"
-            if !io.is_file(path) {
+            mut file_path string = "${VENDOR_DIR}/${name}"
+            if !io.is_file(file_path) {
                 println("  MISSING  ${name}")
                 failed = true
                 continue
             }
-            mut content, content_err = io.read_file(path)
+            mut content, content_err = io.read_file(file_path)
             if content_err != nil {
                 println("  MISSING  ${name}")
                 failed = true

@@ -120,26 +120,13 @@ list; advisories are informational and do not fail it.
 
 ---
 
-## Go Tooling Tests
-
-The Go CLI (`gray`) has unit tests for the packages it uses:
-
-- `cli` — updater semver parsing/comparison, exact-version install validation, cross-compilation target map validation, zig lookup error handling, cross build flag wiring, and command registration.
-- `internal/driver` — compiler binary lookup, `GRAY_COMPILER_PATH` override behavior, and `BuildOpts` argument construction (including `--cc` flag for cross-compilation).
-
-```bash
-make test-go
-```
-
----
-
 ## Running Everything
 
 ```bash
 make test
 ```
 
-This builds the compiler, then runs unit tests, e2e tests, integration tests, and Go tests in sequence.
+This builds the compiler, then runs unit tests, e2e tests, and integration tests in sequence.
 
 ---
 
@@ -147,11 +134,11 @@ This builds the compiler, then runs unit tests, e2e tests, integration tests, an
 
 All tests run automatically on push to `main` via GitHub Actions:
 
-| Platform | Compiler | Sanitizers | Go Tooling |
-|----------|:--------:|:----------:|:----------:|
-| Ubuntu   | unit + e2e + integration | UBSan + ASan |  |
-| macOS    | unit + e2e + integration | UBSan |  |
-| Windows  | unit + e2e + integration | — | ✓ |
+| Platform | Compiler | Sanitizers |
+|----------|:--------:|:----------:|
+| Ubuntu   | unit + e2e + integration | UBSan + ASan |
+| macOS    | unit + e2e + integration | UBSan |
+| Windows  | unit + e2e + integration | — |
 
 CI workflow: `.github/workflows/ci.yml`
 
@@ -167,15 +154,13 @@ touches `grayc/src/vendor/**` or the check script.
 make test-unit             # C unit suites
 make test-e2e              # end-to-end codegen tests
 make test-integration      # integration tests (runs via scripts/run_tests.ps1)
-make test-go               # Go unit tests
 ```
 
 Or, with no POSIX shell:
 
 ```powershell
-.\scripts\test.ps1                 # unit suites + Go tests
+.\scripts\test.ps1                 # unit suites
 .\scripts\test.ps1 -KeepBinaries   # leave the test .exe files in place
-.\scripts\test.ps1 -SkipGo
 ```
 
 `test_panics` is the one suite that does not run on Windows: it forks a child

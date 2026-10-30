@@ -24,9 +24,11 @@
 #include <limits.h>
 #include <errno.h>
 #include <time.h>
+#include <sys/stat.h>
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <sys/sysctl.h>
+#include <mach-o/dyld.h>
 #endif
 #if !GRAY_RUNTIME_WINDOWS
 #include <sys/statvfs.h>
@@ -106,7 +108,7 @@ static void os_validate_exec_strings(GrayString command, GrayArray args) {
 
 /* A failed launch: a zeroed result and a fixed-message error. */
 static GrayResult_os_exec os_exec_failure(GrayArena *arena, int64_t code, const char *message) {
-    GrayResult_os_exec result = {{0, gray_string_lit(""), gray_string_lit("")}, NULL};
+    GrayResult_os_exec result = {{0, gray_string_lit(""), gray_string_lit(""), 0}, NULL};
     result.v1 = gray_error_new(arena, code, gray_string_lit(message));
     return result;
 }
@@ -123,6 +125,143 @@ GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
     const char *value = getenv(name.data);
     if (!value) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
     return (GrayOsLookupEnvResult){gray_string_new(arena, value, (int32_t)strlen(value)), true};
+}
+
+/* A candidate is an executable regular file. Windows has no execute bit; the
+ * PATHEXT extension on the candidate is what makes it executable there. */
+static bool os_is_executable_file(const char *path) {
+    struct stat file_info;
+    if (stat(path, &file_info) != 0 || !S_ISREG(file_info.st_mode)) return false;
+#if GRAY_RUNTIME_WINDOWS
+    return true;
+#else
+    return access(path, X_OK) == 0;
+#endif
+}
+
+static bool os_has_path_separator(GrayString name) {
+    for (int32_t i = 0; i < name.len; i++) {
+#if GRAY_RUNTIME_WINDOWS
+        if (name.data[i] == '/' || name.data[i] == '\\') return true;
+#else
+        if (name.data[i] == '/') return true;
+#endif
+    }
+    return false;
+}
+
+/* Checks `directory`/`name` (or `name` alone when directory is NULL) as is
+ * and, on Windows, with each PATHEXT extension appended. Writes the first
+ * match into `found`. */
+static bool os_find_in_directory(const char *directory, size_t directory_length,
+                                 GrayString name, const char *extensions,
+                                 char *found, size_t found_size) {
+    size_t prefix = 0;
+    if (directory) {
+        if (directory_length + 1 + (size_t)name.len + 1 > found_size) return false;
+        memcpy(found, directory, directory_length);
+#if GRAY_RUNTIME_WINDOWS
+        found[directory_length] = '\\';
+#else
+        found[directory_length] = '/';
+#endif
+        prefix = directory_length + 1;
+    }
+    if (prefix + (size_t)name.len + 1 > found_size) return false;
+    memcpy(found + prefix, name.data, (size_t)name.len);
+    size_t base_length = prefix + (size_t)name.len;
+    found[base_length] = '\0';
+#if GRAY_RUNTIME_WINDOWS
+    const char *cursor = extensions;
+    while (*cursor) {
+        const char *end = strchr(cursor, ';');
+        size_t extension_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (extension_length > 0 && base_length + extension_length + 1 <= found_size) {
+            memcpy(found + base_length, cursor, extension_length);
+            found[base_length + extension_length] = '\0';
+            if (os_is_executable_file(found)) return true;
+        }
+        if (!end) break;
+        cursor = end + 1;
+    }
+    found[base_length] = '\0';
+    /* name already carries a PATHEXT extension */
+    for (cursor = extensions; *cursor;) {
+        const char *end = strchr(cursor, ';');
+        size_t extension_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (extension_length > 0 && base_length >= extension_length &&
+            _strnicmp(found + base_length - extension_length, cursor, extension_length) == 0 &&
+            os_is_executable_file(found))
+            return true;
+        if (!end) break;
+        cursor = end + 1;
+    }
+    return false;
+#else
+    (void)extensions;
+    return os_is_executable_file(found);
+#endif
+}
+
+GrayOsFindExecutableResult gray_os_find_executable(GrayArena *arena, GrayString name) {
+    GrayOsFindExecutableResult not_found = {gray_string_lit(""), false};
+    if (name.len == 0 || memchr(name.data, '\0', (size_t)name.len)) return not_found;
+
+    const char *extensions = ".COM;.EXE;.BAT;.CMD";
+#if GRAY_RUNTIME_WINDOWS
+    const char path_separator = ';';
+    const char *pathext = getenv("PATHEXT");
+    if (pathext && *pathext) extensions = pathext;
+#else
+    const char path_separator = ':';
+#endif
+    char found[PATH_MAX];
+
+    if (os_has_path_separator(name)) {
+        if (!os_find_in_directory(NULL, 0, name, extensions, found, sizeof(found))) return not_found;
+        return (GrayOsFindExecutableResult){gray_string_new(arena, found, (int32_t)strlen(found)), true};
+    }
+
+    const char *path = getenv("PATH");
+    if (!path) return not_found;
+    const char *cursor = path;
+    while (true) {
+        const char *end = strchr(cursor, path_separator);
+        size_t directory_length = end ? (size_t)(end - cursor) : strlen(cursor);
+        if (directory_length > 0 &&
+            os_find_in_directory(cursor, directory_length, name, extensions, found, sizeof(found)))
+            return (GrayOsFindExecutableResult){gray_string_new(arena, found, (int32_t)strlen(found)), true};
+        if (!end) break;
+        cursor = end + 1;
+    }
+    return not_found;
+}
+
+GrayOsExecutablePathResult gray_os_executable_path(GrayArena *arena) {
+    char path[PATH_MAX];
+#if GRAY_RUNTIME_WINDOWS
+    DWORD length = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
+    if (length == 0 || length >= sizeof(path)) goto failure;
+#elif defined(__APPLE__)
+    char raw_path[PATH_MAX];
+    uint32_t raw_size = (uint32_t)sizeof(raw_path);
+    if (_NSGetExecutablePath(raw_path, &raw_size) != 0 || !realpath(raw_path, path)) goto failure;
+#elif defined(__linux__)
+    ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1);
+    if (length <= 0) goto failure;
+    path[length] = '\0';
+#else
+    return (GrayOsExecutablePathResult){gray_string_lit(""),
+        gray_error_new(arena, GRAY_ERR_Unsupported,
+            gray_string_lit("os.executable_path is not supported on this platform"))};
+#endif
+    return (GrayOsExecutablePathResult){gray_string_new(arena, path, (int32_t)strlen(path)), NULL};
+#if GRAY_RUNTIME_WINDOWS || defined(__APPLE__) || defined(__linux__)
+failure:
+    return (GrayOsExecutablePathResult){gray_string_lit(""),
+        gray_error_new(arena, GRAY_ERR_IoFailure,
+            gray_string_lit("cannot determine the path of the running binary"))};
+#endif
 }
 
 GrayArray gray_os_environ(GrayArena *arena) {
@@ -550,7 +689,7 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
 
     GrayString stdout_text = gray_string_new(arena, stdout_reader.buffer, (int32_t)stdout_reader.total);
     GrayString stderr_text = gray_string_new(arena, stderr_reader.buffer, (int32_t)stderr_reader.total);
-    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text}, NULL};
+    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text, 0}, NULL};
     return result;
 }
 
@@ -694,10 +833,12 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
     }
 
     int exit_code = 0;
+    int terminating_signal = 0;
     if (WIFEXITED(status)) {
         exit_code = WEXITSTATUS(status);
     } else if (WIFSIGNALED(status)) {
-        exit_code = 128 + WTERMSIG(status);
+        terminating_signal = WTERMSIG(status);
+        exit_code = 128 + terminating_signal;
     }
 
     if (truncated) {
@@ -706,7 +847,7 @@ GrayResult_os_exec gray_os_exec_result(GrayArena *arena, GrayString command, Gra
 
     GrayString stdout_text = gray_string_new(arena, stdout_buffer, (int32_t)stdout_total);
     GrayString stderr_text = gray_string_new(arena, stderr_buffer, (int32_t)stderr_total);
-    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text}, NULL};
+    GrayResult_os_exec result = {{(int64_t)exit_code, stdout_text, stderr_text, (int64_t)terminating_signal}, NULL};
     return result;
 }
 

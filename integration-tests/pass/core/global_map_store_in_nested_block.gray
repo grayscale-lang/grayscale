@@ -1,0 +1,27 @@
+// Test: an entry stored into a module-level map inside a nested block survives the function's return
+import @strings
+import @arrays
+
+mut cache map[string:[string]] = {:}
+
+do store(flag bool) {
+    if flag {
+        cache["k"] = strings.split("alpha,beta,gamma", ",")
+    }
+}
+
+do churn() -> string {
+    mut parts [string] = {}
+    for i in range(0, 200) { arrays.append(parts, "filler text number ${i} to reuse freed memory") }
+    return strings.join(parts, ",")
+}
+
+do main() {
+    store(true)
+    junk = churn()
+    if len(junk) > 0 && cache["k"][0] == "alpha" && cache["k"][2] == "gamma" {
+        println("  [PASS] map entry stored in a nested block survives return")
+    } else {
+        println("  [FAIL] map entry stored in a nested block survives return")
+    }
+}

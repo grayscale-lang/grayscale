@@ -1,5 +1,5 @@
 // or_return with user-provided error fallback value
-do read_file(path string) -> (string, Error) {
+do read_file(file_path string) -> (string, Error) {
     return "", error(.Unknown, "file not found")
 }
 

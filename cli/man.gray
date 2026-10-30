@@ -1,0 +1,295 @@
+// man.gray — "gray man": builtin, stdlib and language reference documentation.
+
+import @maps
+import @strings
+import @arrays
+import "./args"
+import "./commands"
+import "./lang_man"
+import "./man_data"
+
+const STANDARD_URL string = "https://github.com/grayscale-lang/grayscale/blob/main/STANDARD.md"
+
+// BuiltinGroup is one labeled line of the builtins index.
+const BuiltinGroup struct {
+    label string
+    names [string]
+}
+
+do rule(width i64) -> string {
+    mut dashes [string] = {}
+    for _ in range(0, width) {
+        arrays.append(dashes, "─")
+    }
+    return strings.join(dashes, "")
+}
+
+do sorted_module_names(modules map[string:[string]]) -> [string] {
+    mut names [string] = {}
+    for_each name, _ in modules {
+        arrays.append(names, name)
+    }
+    arrays.sort_asc(names)
+    return names
+}
+
+do print_man_usage(modules map[string:[string]]) {
+    println("gray man — builtin, stdlib, and language reference documentation")
+    println("")
+    println("Usage:")
+    println("  gray man builtins          list all builtins")
+    println("  gray man <module>          list all items in a stdlib module")
+    println("                           (e.g. gray man math)")
+    println("  gray man <name>            docs for a specific function, type, or constant")
+    println("                           (e.g. gray man println, gray man sqrt, gray man PI)")
+    println("  gray man <name()>          same — trailing () is ignored")
+    println("  gray man <module>.<name>   qualified lookup to avoid ambiguity")
+    println("                           (e.g. gray man strings.contains, gray man math.PI)")
+    println("")
+    println("Currently Supported Stdlib Modules:")
+    println("  ${strings.join(sorted_module_names(modules), "  ")}")
+    println("")
+    println("Language Reference:")
+    println("  gray man lang              overview of all language reference categories")
+    println("  gray man keywords          list all keywords")
+    println("  gray man types             list all types")
+    println("  gray man symbols           list all symbols")
+    println("  gray man attributes        list all attributes")
+    println("")
+    println("  Note: for attributes, omit the # prefix (e.g. gray man flags, not gray man #flags)")
+    println("  Note: for functions, omit the () suffix (e.g. gray man math.sqrt, not gray man math.sqrt())")
+    println("")
+    println("See the full language standard: ${STANDARD_URL}")
+}
+
+do builtin_groups() -> [BuiltinGroup] {
+    return {
+        BuiltinGroup{label: "I/O        ", names: {"println", "print", "eprintln", "eprint", "input", "flush"}},
+        BuiltinGroup{label: "Control    ", names: {"exit", "panic", "assert"}},
+        BuiltinGroup{label: "Sleep      ", names: {"sleep_s", "sleep_ms", "sleep_ns"}},
+        BuiltinGroup{label: "Type casts ", names: {"string", "char", "bool", "cast"}},
+        BuiltinGroup{label: "Width casts", names: {"i128", "u128", "i256", "u256"}},
+        BuiltinGroup{label: "Memory     ", names: {"new", "ref", "addr", "copy"}},
+        BuiltinGroup{label: "Introspect ", names: {"len", "type_of", "size_of"}},
+        BuiltinGroup{label: "Wrapping   ", names: {"wrap_add", "wrap_sub", "wrap_mult", "wrap_div"}},
+        BuiltinGroup{label: "Misc       ", names: {"error", "range", "from_c_string", "to_c_string", "to_char", "char_count", "here"}},
+        BuiltinGroup{label: "Types      ", names: {"SourceLocation", "Error"}}
+    }
+}
+
+do print_builtins_index() {
+    docs map[string:man_data.ManEntry] = man_data.builtin_man_docs()
+    println("Builtins  (gray man <name> for details)")
+    println(rule(50))
+    for_each group in builtin_groups() {
+        mut labels [string] = {}
+        for_each name in group.names {
+            if maps.contains_key(docs, name) && docs[name].kind == "func" {
+                arrays.append(labels, "${name}()")
+            } otherwise {
+                arrays.append(labels, name)
+            }
+        }
+        println("  ${group.label}  ${strings.join(labels, "  ")}")
+    }
+}
+
+// print_man_entry prints one builtin or stdlib entry under its module name.
+do print_man_entry(module string, name string, entry man_data.ManEntry) {
+    mut label string = name
+    if entry.kind == "func" && strings.contains(entry.sig, "(") {
+        label = "${name}()"
+    }
+    println("${module}: ${label}")
+    println(rule(44))
+    println("Module:  ${module}")
+    if entry.kind == "type" {
+        println("Kind:    type")
+        if entry.type_fields != "" {
+            println("\nFields:")
+            for_each field_line in strings.split(entry.type_fields, "\n") {
+                words [string] = strings.split_whitespace(field_line)
+                if len(words) >= 2 {
+                    println("  ${commands.pad_right(words[0], 12)} ${words[1]}")
+                }
+            }
+        }
+        println("\n${entry.desc}")
+    } or entry.kind == "const" {
+        println("Kind:    constant")
+        if entry.sig != "" {
+            println("Value:   ${entry.sig}")
+        }
+        println("\n${entry.desc}")
+    } otherwise {
+        println("Kind:    function")
+        println("Signature:  ${entry.sig}\n")
+        println(entry.desc)
+    }
+    if entry.example != "" {
+        println("\nExample:")
+        for_each example_line in strings.split(entry.example, "\n") {
+            println("  ${example_line}")
+        }
+    }
+}
+
+// print_stdlib_module_index lists a module's items by group.
+do print_stdlib_module_index(module string) {
+    docs map[string:man_data.ManEntry] = man_data.stdlib_man_docs()
+    groups [man_data.ManGroup] = man_data.stdlib_module_groups()[module]
+    println("module: ${module}  (gray man <name> for details)")
+    println(rule(50))
+    for_each group in groups {
+        mut labels [string] = {}
+        for_each name in group.names {
+            key string = "${module}.${name}"
+            if maps.contains_key(docs, key) && docs[key].kind == "func" && strings.contains(docs[key].sig, "(") {
+                arrays.append(labels, "${name}()")
+            } otherwise {
+                arrays.append(labels, name)
+            }
+        }
+        println("  ${group.label}  ${strings.join(labels, "  ")}")
+    }
+    println("")
+    println("  Tip: omit the () when looking up functions (e.g. gray man ${module}.${groups[0].names[0]})")
+}
+
+do print_lang_index() {
+    categories map[string:[lang_man.LangGroup]] = lang_man.lang_categories()
+    println("Language Reference  (gray man <category> for details)")
+    println(rule(50))
+    for_each category in {"keywords", "types", "symbols", "attributes"} {
+        mut all_names [string] = {}
+        for_each group in categories[category] {
+            for_each name in group.names {
+                arrays.append(all_names, name)
+            }
+        }
+        println("  ${commands.pad_right(category, 14)} ${strings.join(all_names, "  ")}")
+    }
+}
+
+do print_lang_category_index(category string) {
+    println("lang: ${category}  (gray man <name> for details)")
+    println(rule(50))
+    for_each group in lang_man.lang_categories()[category] {
+        println("  ${group.label}  ${strings.join(group.names, "  ")}")
+    }
+    if category == "attributes" {
+        println("")
+        println("  Tip: omit the # when looking up attributes (e.g. gray man flags)")
+    }
+}
+
+do print_lang_entry(display_name string, entry lang_man.LangEntry) {
+    println("lang: ${display_name}")
+    println(rule(46))
+    println("Kind:    ${entry.kind}")
+    println("Syntax:  ${entry.syntax}")
+    println("\n${entry.desc}")
+    if entry.example != "" {
+        println("\nExample:")
+        for_each example_line in strings.split(entry.example, "\n") {
+            println("  ${example_line}")
+        }
+    }
+}
+
+// run_man is gray man. It returns the exit status.
+do run_man(invocation args.Invocation) -> i64 {
+    modules map[string:[string]] = man_data.stdlib_modules()
+    if len(invocation.positional) == 0 {
+        print_man_usage(modules)
+        return 0
+    }
+
+    name string = strings.remove_suffix(invocation.positional[0], "()")
+
+    if name == "builtins" || name == "builtin" {
+        print_builtins_index()
+        return 0
+    }
+
+    // Language reference index and categories.
+    if name == "lang" || name == "language" {
+        print_lang_index()
+        return 0
+    }
+    if name == "keywords" || name == "types" || name == "symbols" || name == "attributes" {
+        print_lang_category_index(name)
+        return 0
+    }
+
+    // Module-level index (e.g. gray man math).
+    if maps.contains_key(modules, name) {
+        print_stdlib_module_index(name)
+        return 0
+    }
+
+    // Builtin lookup.
+    builtins map[string:man_data.ManEntry] = man_data.builtin_man_docs()
+    if maps.contains_key(builtins, name) {
+        print_man_entry("builtin", name, builtins[name])
+        return 0
+    }
+
+    // Stdlib function or type lookup: "module.func", or a plain "func".
+    stdlib map[string:man_data.ManEntry] = man_data.stdlib_man_docs()
+    lang map[string:lang_man.LangEntry] = lang_man.lang_man_docs()
+    if maps.contains_key(stdlib, name) {
+        mut display_name string = name
+        dot i64 = strings.last_index_of(name, ".")
+        if dot >= 0 {
+            display_name = strings.slice(name, dot + 1, len(name))
+        }
+        print_man_entry(stdlib[name].module, display_name, stdlib[name])
+        return 0
+    }
+    // A plain name: scan every module.func key for a match. Names that collide
+    // with language keywords need the qualified form (gray man atomic.or).
+    mut match_keys [string] = {}
+    if !maps.contains_key(lang, name) {
+        for_each key, _ in stdlib {
+            if strings.ends_with(key, ".${name}") {
+                arrays.append(match_keys, key)
+            }
+        }
+    }
+    arrays.sort_asc(match_keys)
+    if len(match_keys) == 1 {
+        print_man_entry(stdlib[match_keys[0]].module, name, stdlib[match_keys[0]])
+        return 0
+    }
+    if len(match_keys) > 1 {
+        mut message string = "gray: '${name}' exists in multiple modules. Use a qualified name:"
+        for_each key in match_keys {
+            message = message + "\n    gray man ${key}"
+        }
+        eprintln(message)
+        return 1
+    }
+
+    // Language reference lookup: the key itself, then its type form
+    // ("i8" -> "i8_type"), then a symbol alias ("pointer" -> "^").
+    if maps.contains_key(lang, name) {
+        print_lang_entry(lang_man.lang_display_name(name), lang[name])
+        return 0
+    }
+    if maps.contains_key(lang, "${name}_type") {
+        print_lang_entry(name, lang["${name}_type"])
+        return 0
+    }
+    aliases map[string:string] = lang_man.lang_symbol_aliases()
+    if maps.contains_key(aliases, name) {
+        target string = aliases[name]
+        if maps.contains_key(lang, target) {
+            print_lang_entry(target, lang[target])
+            return 0
+        }
+    }
+
+    eprintln("gray: no documentation for '${name}'\n    try: gray man builtins  or  gray man lang\n    See the full language standard: ${STANDARD_URL}")
+    return 1
+}
