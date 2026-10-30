@@ -1361,10 +1361,23 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
     emit_struct_deep_copy_depth--;
 }
 
+static const char *emit_enum_deep_copy_visiting[CYCLE_GUARD_DEPTH];
+static int emit_enum_deep_copy_depth = 0;
+
 /* Deep copy of a tagged enum: switch on the tag and copy the payloads of the
  * live variant that hold arena-backed data. */
 static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, const char *enum_type_name,
                                 const char *source_variable) {
+    /* Cycle detection: an enum that reaches itself through an array or map
+     * payload falls back to a bitwise copy at the inner occurrence, as
+     * emit_struct_deep_copy does. */
+    for (int j = 0; j < emit_enum_deep_copy_depth; j++) {
+        if (strcmp(emit_enum_deep_copy_visiting[j], enum_type_name) == 0) {
+            emit_formatted(codegen, "%s", source_variable);
+            return;
+        }
+    }
+    if (emit_enum_deep_copy_depth < CYCLE_GUARD_DEPTH) emit_enum_deep_copy_visiting[emit_enum_deep_copy_depth++] = enum_type_name;
     char c_enum[MESSAGE_BUFFER_SIZE];
     snprintf(c_enum, sizeof(c_enum), "%s", gray_type_to_c_codegen(codegen, enum_type_name));
     int unique_id = codegen_next_id(codegen);
@@ -1388,6 +1401,7 @@ static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, con
         emit(codegen, "break; ");
     }
     emit_formatted(codegen, "default: break; } _ed%d; })", unique_id);
+    emit_enum_deep_copy_depth--;
 }
 
 static void emit_value_deep_copy(CodeGen *codegen, const char *gray_type_name, const char *source_variable) {
