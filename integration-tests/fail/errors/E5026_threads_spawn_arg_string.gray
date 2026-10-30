@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5026 - threads.spawn_arg rejects string
+ * Expected: "expected integer"
+ */
+
+import @threads
+
+do worker(x i64) {
+    println("${x}")
+}
+
+unsafe do main() {
+    mut t Thread = threads.spawn_arg(()worker, "s")
+    threads.join(t)
+}
