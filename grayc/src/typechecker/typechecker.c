@@ -723,9 +723,15 @@ static const char *type_display_name(TypeChecker *checker, GrayType *type) {
     return type_name(type);
 }
 
+/* The file whose source is being checked: imports are file-scoped, so an alias
+ * means what the current file bound it to. The entry file is the checker's own. */
+static const char *checker_current_file(TypeChecker *checker) {
+    return checker->current_check_file ? checker->current_check_file : checker->file;
+}
+
 /* Resolve an import alias to the actual module name */
 static const char *typechecker_resolve_alias(TypeChecker *checker, const char *name) {
-    return module_table_resolve_alias(checker->modules, name);
+    return module_table_resolve_alias(checker->modules, checker_current_file(checker), name);
 }
 
 /* Position of the first `sep` in `s` that sits at bracket/paren nesting
@@ -1131,7 +1137,7 @@ static const char *module_member_key(TypeChecker *checker, const char *module_na
     DeclarationEntry *entry = module_resolve_qualified(checker->modules, &scope, module_name, name, NULL);
     if (entry) return module_mangle_into(entry, buffer, buffer_length);
     snprintf(buffer, buffer_length, "%s_%s",
-             module_table_resolve_alias(checker->modules, module_name), name);
+             module_table_resolve_alias(checker->modules, checker_current_file(checker), module_name), name);
     return buffer;
 }
 
@@ -18954,7 +18960,8 @@ static void register_declaration_imports(TypeChecker *checker, AstNode *program)
                     checker->import_count++;
                 }
                 /* Track alias → module mapping */
-                module_table_add_alias(checker->modules, item->alias, item->module);
+                module_table_add_alias(checker->modules, statement->token.file ? statement->token.file : checker->file,
+                                       item->alias, item->module);
             }
         }
     }
@@ -19969,7 +19976,7 @@ static void resolve_qualified_member(TypeChecker *checker, AstNode *node) {
     const char *qualifier = ast_member_qualifier(node);
     if (!qualifier) return;
     if (!module_table_find(checker->modules,
-                           module_table_resolve_alias(checker->modules, qualifier)))
+                           module_table_resolve_alias(checker->modules, checker_current_file(checker), qualifier)))
         return;
     ResolveScope scope = checker_scope(checker);
     ResolveStatus status;
@@ -20233,7 +20240,7 @@ void typechecker_set_directory_entry(TypeChecker *checker, bool enabled) {
 
 void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
                                   const char *module_name) {
-    module_table_add_alias(checker->modules, alias, module_name);
+    module_table_add_alias(checker->modules, NULL, alias, module_name);
 }
 
 void typechecker_check(TypeChecker *checker, AstNode *program) {

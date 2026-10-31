@@ -295,26 +295,38 @@ DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
 
 /* --- Aliases --- */
 
-void module_table_add_alias(ModuleTable *table, const char *alias,
+static bool alias_bound_in(const char *bound_file, const char *file) {
+    if (!bound_file || !file) return bound_file == file;
+    return strcmp(bound_file, file) == 0;
+}
+
+void module_table_add_alias(ModuleTable *table, const char *file, const char *alias,
                             const char *module_name) {
     if (!alias || !module_name || strcmp(alias, module_name) == 0) return;
     for (int i = 0; i < table->alias_count; i++) {
-        if (strcmp(table->alias_names[i], alias) == 0) return;
+        if (strcmp(table->alias_names[i], alias) == 0 && alias_bound_in(table->alias_files[i], file)) return;
     }
     if (table->alias_count >= table->alias_capacity) {
         table->alias_capacity = GROW_NEXT_CAPACITY(table->alias_capacity);
         ARENA_GROW_TO(table->arena, table->alias_names, table->alias_count, table->alias_capacity);
         ARENA_GROW_TO(table->arena, table->alias_modules, table->alias_count, table->alias_capacity);
+        ARENA_GROW_TO(table->arena, table->alias_files, table->alias_count, table->alias_capacity);
     }
     table->alias_names[table->alias_count] = arena_copy_string(table->arena, alias);
     table->alias_modules[table->alias_count] = arena_copy_string(table->arena, module_name);
+    table->alias_files[table->alias_count] = file ? arena_copy_string(table->arena, file) : NULL;
     table->alias_count++;
 }
 
-const char *module_table_resolve_alias(ModuleTable *table, const char *alias) {
+const char *module_table_resolve_alias(ModuleTable *table, const char *file, const char *alias) {
     if (!table || !alias) return alias;
+    /* A binding written in this file wins over one every file sees. */
     for (int i = 0; i < table->alias_count; i++) {
-        if (strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
+        if (table->alias_files[i] && file && alias_bound_in(table->alias_files[i], file) &&
+            strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
+    }
+    for (int i = 0; i < table->alias_count; i++) {
+        if (!table->alias_files[i] && strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
     }
     return alias;
 }
@@ -342,7 +354,7 @@ DeclarationEntry *module_resolve_qualified(ModuleTable *table,
      * spell. Guarding here keeps a stray empty qualifier from reaching into
      * the entry file's declarations. */
     if (table && module_or_alias && *module_or_alias && name) {
-        const char *module_name = module_table_resolve_alias(table, module_or_alias);
+        const char *module_name = module_table_resolve_alias(table, scope ? scope->file : NULL, module_or_alias);
         ModuleScope *module_scope = module_table_find(table, module_name);
         if (module_scope) {
             entry = module_scope_lookup(module_scope, name);
@@ -374,7 +386,7 @@ DeclarationEntry *module_resolve_unqualified(ModuleTable *table,
 
     DeclarationEntry *found = NULL;
     for (int i = 0; i < scope->using_count; i++) {
-        const char *module_name = module_table_resolve_alias(table, scope->using_modules[i]);
+        const char *module_name = module_table_resolve_alias(table, scope->file, scope->using_modules[i]);
         ModuleScope *module_scope = module_table_find(table, module_name);
         if (!module_scope) continue;
         DeclarationEntry *entry = module_scope_lookup(module_scope, name);

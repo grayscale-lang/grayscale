@@ -97,9 +97,11 @@ typedef struct {
     ModuleHashEntry *hash;
     int hash_capacity;
 
-    /* import alias -> real module name */
+    /* import alias -> real module name, bound in one file. A NULL file is a
+     * binding every file sees (a sibling inside a directory module). */
     const char **alias_names;
     const char **alias_modules;
+    const char **alias_files;
     int alias_count;
     int alias_capacity;
 
@@ -193,12 +195,16 @@ DeclarationEntry *module_table_declare_synthetic(ModuleTable *table, const char 
                                           DeclarationKind kind, const char *name,
                                           const char *origin_file);
 
-void module_table_add_alias(ModuleTable *table, const char *alias,
+/* Bind `alias` to the module it names in `file`. Imports are file-scoped, so
+ * the same alias may name different modules in different files. A NULL `file`
+ * binds the alias in every file. */
+void module_table_add_alias(ModuleTable *table, const char *file, const char *alias,
                             const char *module_name);
 
-/* Map an import alias to the module it names. Returns `alias` unchanged when
- * it is not an alias, so the result is always usable as a module name. */
-const char *module_table_resolve_alias(ModuleTable *table, const char *alias);
+/* Map an import alias, as written in `file`, to the module it names. Returns
+ * `alias` unchanged when it is not an alias, so the result is always usable as
+ * a module name. */
+const char *module_table_resolve_alias(ModuleTable *table, const char *file, const char *alias);
 
 /* Resolve `module_or_alias.name` as seen from `scope`, applying the
  * visibility rule. `out_status` may be NULL. On RESOLVE_PRIVATE the entry is

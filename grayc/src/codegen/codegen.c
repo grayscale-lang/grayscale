@@ -1550,7 +1550,7 @@ static void emit_stored_member(CodeGen *codegen, AstNode *value) {
 /* Resolve an import alias to the actual module name, or return the name
  * itself. The mapping is the type checker's, not a second copy built here. */
 static const char *resolve_alias(CodeGen *codegen, const char *name) {
-    return module_table_resolve_alias(codegen->modules, name);
+    return module_table_resolve_alias(codegen->modules, codegen->current_file ? codegen->current_file : codegen->file, name);
 }
 
 /* Check if a variable name is a mutable parameter in the current function */

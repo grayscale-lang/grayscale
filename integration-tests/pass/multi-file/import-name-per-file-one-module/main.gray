@@ -1,0 +1,14 @@
+// One module imported under a different name in each file: every file's name
+// binds only in that file.
+import "./second", "./first"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if first.bump_first() == 1 && second.bump_second() == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if second.read(first.make()) == 9 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

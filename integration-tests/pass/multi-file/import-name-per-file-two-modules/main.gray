@@ -1,0 +1,14 @@
+// Two different modules with the same name, each imported by a different
+// file: the name binds only in the file that wrote it.
+import "./from_x", "./from_y"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if from_x.from_x() == "x" { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if from_y.from_y() == "y" { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

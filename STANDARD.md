@@ -3101,7 +3101,7 @@ import "./my-utils"       // Error: 'my-utils' is not a valid identifier
 import u "./my-utils"     // OK
 ```
 
-**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
+**Collision detection:** The name an import binds is scoped to the file that writes it, so two files may use the same name for different modules, or different names for one module. If two different imports in the same file resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
 
 ```gray
 // Error: both resolve to module name "utils"

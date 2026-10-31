@@ -269,6 +269,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
         }
 
         const char **seen_modules = NULL;
+        const char **seen_written = NULL;
         const char **seen_paths = NULL;
         const char **seen_files = NULL;
         bool *seen_is_stdlib = NULL;
@@ -296,7 +297,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                     if (!stdlib_name) continue;
                     bool is_bound = false;
                     for (int seen_index = 0; seen_index < seen_count; seen_index++) {
-                        if (strcmp(seen_modules[seen_index], stdlib_name) != 0) continue;
+                        if (strcmp(seen_written[seen_index], stdlib_name) != 0) continue;
                         if (!seen_is_stdlib[seen_index]) {
                             char message[MESSAGE_BUFFER_SIZE];
                             snprintf(message, sizeof(message),
@@ -322,11 +323,13 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                     if (seen_count >= seen_capacity) {
                         seen_capacity = GROW_NEXT_CAPACITY(seen_capacity);
                         ARENA_GROW_TO(arena, seen_modules, seen_count, seen_capacity);
+                        ARENA_GROW_TO(arena, seen_written, seen_count, seen_capacity);
                         ARENA_GROW_TO(arena, seen_paths, seen_count, seen_capacity);
                         ARENA_GROW_TO(arena, seen_files, seen_count, seen_capacity);
                         ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_capacity);
                     }
                     seen_modules[seen_count] = stdlib_name;
+                    seen_written[seen_count] = stdlib_name;
                     seen_paths[seen_count] = NULL;
                     seen_files[seen_count] = statement_file;
                     seen_is_stdlib[seen_count] = true;
@@ -472,45 +475,74 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                     has_collision = true;
                     break;
                 }
-                /* Module name collision detection. Don't collide with the main
-                 * file's own module name. Diamond dependencies (the same file
-                 * reached from two different files) are silently deduped rather
-                 * than causing a false E6001 error. */
+                /* The name written here binds in this file only. It collides
+                 * with a name this file already bound, or with a standard
+                 * library module, whose name every file shares. */
+                const char *written_name = module_name;
                 for (int seen_index = 0; seen_index < seen_count && !has_collision; seen_index++) {
-                    if (strcmp(seen_modules[seen_index], module_name) != 0) continue;
-                    if (!seen_is_stdlib[seen_index] && strcmp(seen_paths[seen_index], normalized_import_path) == 0) {
-                        /* Same target, same module name, different importing
-                         * file — a diamond dependency. */
-                        has_collision = true;
-                        break;
-                    }
-                    /* Different file, same module name — genuine collision */
+                    if (strcmp(seen_written[seen_index], written_name) != 0) continue;
+                    if (!seen_is_stdlib[seen_index] && !same_import_file(seen_files[seen_index], statement_file)) continue;
                     char message[MESSAGE_BUFFER_SIZE];
                     snprintf(message, sizeof(message),
                         "module name '%s' is already imported; use an alias to distinguish them",
-                        module_name);
+                        written_name);
                     diagnostic_error_message(diagnostics, "E6001", strdup(message),
                         statement_file, import_statement->token.line, import_statement->token.column, 0);
                     has_collision = true;
-                    break;
                 }
                 if (has_collision) continue;
+
+                /* The module is identified by its target, not by what any one
+                 * file calls it. A target another file already imported keeps
+                 * the name it was first given, and a different target that
+                 * wants a name already in use gets a distinct one. */
+                const char *existing_module = NULL;
+                for (int seen_index = 0; seen_index < seen_count; seen_index++) {
+                    if (seen_is_stdlib[seen_index] || !seen_paths[seen_index]) continue;
+                    if (strcmp(seen_paths[seen_index], normalized_import_path) != 0) continue;
+                    existing_module = seen_modules[seen_index];
+                    break;
+                }
+                if (!existing_module) {
+                    int suffix = 1;
+                    bool is_name_taken = true;
+                    while (is_name_taken) {
+                        if (suffix > 1) {
+                            char distinct_name[MESSAGE_BUFFER_SIZE];
+                            snprintf(distinct_name, sizeof(distinct_name), "%s__%d", written_name, suffix);
+                            module_name = arena_copy_string(arena, distinct_name);
+                        }
+                        is_name_taken = false;
+                        for (int seen_index = 0; seen_index < seen_count; seen_index++) {
+                            if (strcmp(seen_modules[seen_index], module_name) == 0) { is_name_taken = true; break; }
+                        }
+                        suffix++;
+                    }
+                } else {
+                    module_name = existing_module;
+                }
+
                 if (seen_count >= seen_capacity) {
                     seen_capacity = GROW_NEXT_CAPACITY(seen_capacity);
                     ARENA_GROW_TO(arena, seen_modules, seen_count, seen_capacity);
+                    ARENA_GROW_TO(arena, seen_written, seen_count, seen_capacity);
                     ARENA_GROW_TO(arena, seen_paths, seen_count, seen_capacity);
                     ARENA_GROW_TO(arena, seen_files, seen_count, seen_capacity);
                     ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_capacity);
                 }
                 seen_modules[seen_count] = module_name;
+                seen_written[seen_count] = written_name;
                 seen_paths[seen_count] = arena_copy_string(arena, normalized_import_path);
                 seen_files[seen_count] = statement_file;
                 seen_is_stdlib[seen_count] = false;
                 seen_count++;
 
-                /* Set the alias if not already set */
-                if (!item->alias) item->alias = module_name;
-                if (!item->module) item->module = module_name;
+                /* The name this file writes, and the module it names. */
+                if (!item->alias) item->alias = written_name;
+                item->module = module_name;
+
+                /* A target another file already brought in is merged once. */
+                if (existing_module) continue;
 
                 /* Process each file in the import (1 for single file, N for directory).
                  * For directory imports, we use a two-pass approach:

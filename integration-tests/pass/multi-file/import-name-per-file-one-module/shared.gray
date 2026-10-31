@@ -1,0 +1,10 @@
+const Item struct {
+    value i64
+}
+
+mut counter i64 = 0
+
+do bump() -> i64 {
+    counter = counter + 1
+    return counter
+}
