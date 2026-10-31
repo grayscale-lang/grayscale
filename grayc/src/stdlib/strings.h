@@ -379,7 +379,7 @@ GrayString gray_strings_reverse(GrayArena *arena, GrayString string);
  *@module strings
  *@group Transformation
  *@sig truncate(s string, max i64, ellipsis string) -> string
- *@desc Returns s unchanged when its byte length is at most max. Otherwise returns the first (max - len(ellipsis)) bytes of s followed by ellipsis, for a total byte length of exactly max. Panics if max is smaller than the byte length of ellipsis.
+ *@desc Returns s unchanged when its byte length is at most max. Otherwise returns the first (max - len(ellipsis)) bytes of s followed by ellipsis, for a total byte length of at most max. The cut snaps back to the start of the character it lands in, so the result is always valid UTF-8. Panics if max is smaller than the byte length of ellipsis.
  *@example
  *   import @strings
  *   println(strings.truncate("hello world", 8, "..."))
@@ -490,7 +490,7 @@ GrayString gray_strings_prepend_char(GrayArena *arena, GrayString string, int32_
  *@module strings
  *@group Editing
  *@sig insert_char_at(s string, index i64, c char) -> string
- *@desc Returns a new string with c (UTF-8 encoded) inserted at byte index. An index equal to the length appends; panics if the index is negative or greater than the length. s is unchanged.
+ *@desc Returns a new string with c (UTF-8 encoded) inserted at byte index. An index inside a character snaps back to the start of that character. An index equal to the length appends; panics if the index is negative or greater than the length. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.insert_char_at("helo", 3, 'l'))
@@ -502,7 +502,7 @@ GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString string, int6
  *@module strings
  *@group Editing
  *@sig remove_at(s string, index i64) -> string
- *@desc Returns a new string with the byte at byte index removed. Panics if the index is out of bounds. s is unchanged.
+ *@desc Returns a new string with the character at byte index removed. An index inside a character snaps back to the start of that character. Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.remove_at("hello!", 5))
@@ -514,7 +514,7 @@ GrayString gray_strings_remove_at(GrayArena *arena, GrayString string, int64_t i
  *@module strings
  *@group Editing
  *@sig set_char_at(s string, index i64, c char) -> string
- *@desc Returns a new string with the byte at byte index replaced by c (UTF-8 encoded). Panics if the index is out of bounds. s is unchanged.
+ *@desc Returns a new string with the character at byte index replaced by c (UTF-8 encoded). An index inside a character snaps back to the start of that character. Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
  *   println(strings.set_char_at("hello", 0, 'H'))

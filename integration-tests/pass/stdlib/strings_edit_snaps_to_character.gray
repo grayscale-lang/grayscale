@@ -1,0 +1,52 @@
+/*
+ * Test: truncate, insert_char_at, remove_at and set_char_at snap an index that
+ * lands inside a multibyte character back to the start of that character.
+ */
+import @strings
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if strings.insert_char_at("aéb", 2, 'x') == "axéb" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] insert_char_at")
+        failed += 1
+    }
+
+    if strings.remove_at("aéb", 1) == "ab" && strings.remove_at("aéb", 2) == "ab" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] remove_at")
+        failed += 1
+    }
+
+    if strings.set_char_at("aéb", 1, 'x') == "axb" && strings.set_char_at("aéb", 2, 'x') == "axb" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] set_char_at")
+        failed += 1
+    }
+
+    if strings.truncate("日本語", 5, "…") == "…" && strings.truncate("日本語", 6, "…") == "日…" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] truncate")
+        failed += 1
+    }
+
+    if strings.remove_at("abc", 1) == "ac" && strings.insert_char_at("abc", 3, 'z') == "abcz" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] ASCII unchanged")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

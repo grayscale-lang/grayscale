@@ -3634,9 +3634,9 @@ result.
 |----------|-----------|-------------|
 | `append_char` | `(s string, c char) -> string` | New string with `c` added at the end |
 | `prepend_char` | `(s string, c char) -> string` | New string with `c` added at the front |
-| `insert_char_at` | `(s string, index i64, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
-| `remove_at` | `(s string, index i64) -> string` | New string with the byte at `index` removed; panics if out of bounds |
-| `set_char_at` | `(s string, index i64, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
+| `insert_char_at` | `(s string, index i64, c char) -> string` | New string with `c` inserted at byte `index` (an index inside a character snaps back to its start); `index == len` appends; panics if `index < 0` or `index > len` |
+| `remove_at` | `(s string, index i64) -> string` | New string with the character at `index` removed (an index inside a character snaps back to its start); panics if out of bounds |
+| `set_char_at` | `(s string, index i64, c char) -> string` | New string with the character at `index` replaced by `c` (an index inside a character snaps back to its start); panics if out of bounds |
 
 #### Query Functions
 
@@ -3665,7 +3665,7 @@ result.
 | `replace` | `(s string, old string, new string) -> string` | Replace all occurrences |
 | `repeat` | `(s string, count i64) -> string` | Repeat string |
 | `reverse` | `(s string) -> string` | Reverse string |
-| `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes plus `ellipsis` (total byte length exactly `max`); panics if `max < len(ellipsis)` |
+| `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes (cut back to a character boundary) plus `ellipsis` (total byte length at most `max`; the cut snaps back to a character boundary); panics if `max < len(ellipsis)` |
 
 #### Conversion Functions
 

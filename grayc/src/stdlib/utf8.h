@@ -52,4 +52,17 @@ static inline int gray_utf8_decode(const uint8_t *cursor, const uint8_t *end_cur
     return bytes;
 }
 
+/* The start of the character that contains byte `index` of data[0, length): the
+ * index itself when it already starts a character (or equals length), else the
+ * lead byte of the well-formed sequence that spans it. */
+static inline int32_t gray_utf8_char_start(const uint8_t *data, int32_t length, int32_t index) {
+    if (index <= 0 || index >= length || (data[index] & 0xC0) != 0x80) return index;
+    for (int32_t back = 1; back <= 3 && back <= index; back++) {
+        int32_t codepoint;
+        int consumed = gray_utf8_decode(data + index - back, data + length, &codepoint);
+        if (consumed > back) return index - back;
+    }
+    return index;
+}
+
 #endif /* GRAY_UTF8_H */
