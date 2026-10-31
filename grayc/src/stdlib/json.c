@@ -18,14 +18,24 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include "utf8.h"
 
 /* --- Encoder --- */
 
 /* Exact byte count that json_append_escaped would write (includes quotes). */
 size_t json_escaped_len(GrayString string) {
     size_t byte_count = 2; /* opening + closing quote */
+    const uint8_t *end_cursor = (const uint8_t *)string.data + string.len;
     for (int32_t i = 0; i < string.len; i++) {
         unsigned char character = (unsigned char)string.data[i];
+        if (character >= 0x80) {
+            /* An invalid byte is written as U+FFFD (3 bytes). */
+            int32_t codepoint;
+            int length = gray_utf8_decode((const uint8_t *)string.data + i, end_cursor, &codepoint);
+            byte_count += (codepoint == 0xFFFD && length == 1) ? 3 : (size_t)length;
+            i += length - 1;
+            continue;
+        }
         if (character == '"' || character == '\\') byte_count += 2;
         else if (character == '\b' || character == '\f' || character == '\n' || character == '\r' || character == '\t') byte_count += 2;
         else if (character < 0x20) byte_count += 6; /* \uXXXX */
@@ -41,8 +51,20 @@ void json_append_escaped(char *buffer, int *position, GrayString string) {
     char *output = buffer + *position;
     *output++ = '"';
     int32_t run_start = 0;
+    const uint8_t *end_cursor = (const uint8_t *)string.data + string.len;
     for (int32_t i = 0; i < string.len; i++) {
         unsigned char character = (unsigned char)string.data[i];
+        if (character >= 0x80) {
+            int32_t codepoint;
+            int length = gray_utf8_decode((const uint8_t *)string.data + i, end_cursor, &codepoint);
+            if (codepoint != 0xFFFD || length != 1) { i += length - 1; continue; }
+            /* An invalid byte is written as U+FFFD. */
+            memcpy(output, string.data + run_start, (size_t)(i - run_start));
+            output += i - run_start;
+            run_start = i + 1;
+            *output++ = (char)0xEF; *output++ = (char)0xBF; *output++ = (char)0xBD;
+            continue;
+        }
         if (character >= 0x20 && character != '"' && character != '\\') continue;
         memcpy(output, string.data + run_start, (size_t)(i - run_start));
         output += i - run_start;
@@ -716,6 +738,16 @@ static bool validate_json_value(const char **cursor, const char *end_cursor, int
 
 bool gray_json_is_valid(GrayString text) {
     if (text.len <= 0 || !text.data) return false;
+    /* RFC 8259 section 8.1: JSON text is UTF-8. */
+    const uint8_t *scan = (const uint8_t *)text.data;
+    const uint8_t *scan_end = scan + text.len;
+    while (scan < scan_end) {
+        if (*scan < 0x80) { scan++; continue; }
+        int32_t codepoint;
+        int length = gray_utf8_decode(scan, scan_end, &codepoint);
+        if (codepoint == 0xFFFD && length == 1) return false;
+        scan += length;
+    }
     const char *cursor = text.data;
     const char *end_cursor = cursor + text.len;
     skip_whitespace(&cursor, end_cursor);

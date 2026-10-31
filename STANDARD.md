@@ -3964,11 +3964,11 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
+| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring; text that is not valid UTF-8 is an error |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
-| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (integers, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, a string-keyed map of primitives, or a `#json` struct or array of `#json` structs. `char` encodes as its codepoint number. |
+| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (integers, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, a string-keyed map of primitives, or a `#json` struct or array of `#json` structs. `char` encodes as its codepoint number. Each invalid UTF-8 byte in a string is written as U+FFFD. |
 | `pretty_print` | `(m map[K:V], indent i64) -> string` | Pretty-print a map as indented JSON |
-| `is_valid` | `(text string) -> bool` | Check if valid JSON |
+| `is_valid` | `(text string) -> bool` | Check if valid JSON; text that is not valid UTF-8 is not valid |
 
 `decode` is fallible: destructure the result (`mut m, err = ...` or `mut m, _ = ...`).
 

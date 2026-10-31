@@ -31,7 +31,7 @@ GrayString gray_json_enum_from_str(GrayString raw_text,
  *@module json
  *@group Encoding
  *@sig encode(value T) -> string
- *@desc Encodes a value as a JSON string. Accepts any primitive (integers, f32/f64, char, bool, string), a flat array of primitives, a string-keyed map of primitives, or a #json struct or array of #json structs. char is encoded as its codepoint number.
+ *@desc Encodes a value as a JSON string. Accepts any primitive (integers, f32/f64, char, bool, string), a flat array of primitives, a string-keyed map of primitives, or a #json struct or array of #json structs. char is encoded as its codepoint number. Each invalid UTF-8 byte in a string is written as U+FFFD, so the output is always valid JSON.
  *@example
  *   import @json
  *   mut m map[string:string] = {"name": "Alice"}
@@ -72,7 +72,7 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
  *@module json
  *@group Decoding
  *@sig decode(text string) -> (map[string:string], Error)
- *@desc Parses a JSON object string into a map[string:string]. All values are returned as strings. Always use destructuring (`mut m, err = ...` or `mut m, _ = ...`) — single-variable assignment is a compile error; on invalid input err is non-nil and, with `_`, the map is empty.
+ *@desc Parses a JSON object string into a map[string:string]. All values are returned as strings. Always use destructuring (`mut m, err = ...` or `mut m, _ = ...`) — single-variable assignment is a compile error; on invalid input (including text that is not valid UTF-8) err is non-nil and, with `_`, the map is empty.
  *@example
  *   import @json
  *   mut m, err = json.decode("{\"key\": \"value\"}")
@@ -116,7 +116,7 @@ GrayString gray_json_element_as_string(GrayArena *arena, GrayString element, Gra
  *@module json
  *@group Query
  *@sig is_valid(text string) -> bool
- *@desc Returns true if text is a valid JSON string, false otherwise.
+ *@desc Returns true if text is a valid JSON document, false otherwise. Text that is not valid UTF-8 is not valid. A lone UTF-16 surrogate escape sequence is valid.
  *@example
  *   import @json
  *   println(json.is_valid("{\"ok\": true}"))
