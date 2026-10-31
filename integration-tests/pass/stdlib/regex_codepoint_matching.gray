@@ -1,0 +1,60 @@
+/*
+ * Test: "." and bracket expressions match one codepoint, not one byte.
+ */
+import @regex
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if regex.is_match("^.$", "é") && !regex.is_match("^..$", "é") && regex.is_match("^[é]$", "é") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] dot and bracket on é")
+        failed += 1
+    }
+
+    if regex.is_match("^.$", "日") && regex.is_match("^.$", "😀") && !regex.is_match("^..$", "😀") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] dot on 3 and 4 byte characters")
+        failed += 1
+    }
+
+    if !regex.is_match("^[é]$", "è") && regex.is_match("^[^a]$", "é") && !regex.is_match("^[^é]$", "é") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] bracket membership and negation")
+        failed += 1
+    }
+
+    if regex.is_match("^[à-ü]$", "é") && !regex.is_match("^[à-ü]$", "日") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] codepoint range")
+        failed += 1
+    }
+
+    mut parts, e = regex.find_all(".", "aé日😀")
+    if len(parts) == 4 && parts[1] == "é" && parts[3] == "😀" && e == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] find_all dot, got ${len(parts)}")
+        failed += 1
+    }
+
+    mut run, e2 = regex.find("é+", "aééb")
+    if run == "éé" && e2 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] quantified é")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
