@@ -430,7 +430,7 @@
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
-    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111)") \
+    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode scalar value (0 to 1114111, excluding the surrogates 55296 to 57343)") \
     GRAY_ERROR("E7015", "stdlib", "'len()' is not supported for type '%s'") \
     GRAY_ERROR("E9002", "stdlib", "'arrays.%s()' requires a numeric array, got array of '%s'") \
     GRAY_ERROR("E9003", "stdlib", "'arrays.%s()' requires a function reference; use '()func_name' to pass a function") \

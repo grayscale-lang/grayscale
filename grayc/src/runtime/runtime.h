@@ -571,11 +571,21 @@ static inline int64_t gray_cast_check(int64_t value, int64_t minimum_value, int6
     return value;
 }
 
+/* A char is a Unicode scalar value: the unsigned cast checks whose maximum is
+ * U+10FFFF (the only type with that maximum is char) also reject surrogates. */
+static inline void gray_char_surrogate_check(uint64_t value, uint64_t maximum_value,
+    const char *type_name, const char *file, int line) {
+    if (maximum_value == 0x10FFFFULL && value >= 0xD800ULL && value <= 0xDFFFULL)
+        gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %llu is a surrogate (U+D800 to U+DFFF), not a valid character",
+            type_name, (unsigned long long)value);
+}
+
 static inline uint64_t gray_ucast_check(int64_t value, uint64_t maximum_value,
     const char *type_name, const char *file, int line) {
     if (value < 0 || (uint64_t)value > maximum_value)
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %lld is outside the valid range (0 to %llu)",
             type_name, (long long)value, (unsigned long long)maximum_value);
+    gray_char_surrogate_check((uint64_t)value, maximum_value, type_name, file, line);
     return (uint64_t)value;
 }
 
@@ -634,6 +644,7 @@ static inline uint64_t gray_ucast_check_u64(uint64_t value, uint64_t maximum_val
     if (value > maximum_value)
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %llu is outside the valid range (0 to %llu)",
             type_name, (unsigned long long)value, (unsigned long long)maximum_value);
+    gray_char_surrogate_check(value, maximum_value, type_name, file, line);
     return value;
 }
 
@@ -653,6 +664,7 @@ static inline uint64_t gray_ucast_check_f64(double value, uint64_t maximum_value
     if (!(value > -1.0 && value < (double)maximum_value + 1.0))
         gray_panic_code_at(file, line, "P0019", "cast to %s failed; value %.17g is outside the valid range (0 to %llu)",
             type_name, value, (unsigned long long)maximum_value);
+    gray_char_surrogate_check((uint64_t)value, maximum_value, type_name, file, line);
     return (uint64_t)value;
 }
 

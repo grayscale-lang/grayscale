@@ -9755,7 +9755,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         /* E7014: char() with a constant outside U+0000–U+10FFFF */
         int64_t literal_value;
-        if (literal_i64_value(node->data.call.arguments[0], &literal_value) && (literal_value < 0 || literal_value > 0x10FFFF)) {
+        if (literal_i64_value(node->data.call.arguments[0], &literal_value) && (literal_value < 0 || literal_value > 0x10FFFF || (literal_value >= 0xD800 && literal_value <= 0xDFFF))) {
             NODE_ERROR_FORMATTED(checker, node, "E7014", (long long)literal_value);
         }
         /* E5026: char() converts an integer codepoint; reject any non-integer

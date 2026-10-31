@@ -1,0 +1,26 @@
+/*
+ * Test: cast(n, char) accepts the codepoints on both sides of the surrogate
+ * range; the panic for a surrogate itself is exercised by the fail test.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut below i64 = 55295
+    mut above i64 = 57344
+    mut top i64 = 1114111
+    if cast(cast(below, char), i64) == 55295 && cast(cast(above, char), i64) == 57344 && cast(cast(top, char), i64) == 1114111 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] codepoints around the surrogate range")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

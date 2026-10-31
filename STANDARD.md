@@ -409,7 +409,7 @@ mut result bool = 10 > 5  // true
 
 #### 3.1.5 Character Type (`char`)
 
-The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `u8` (8-bit, 0–255) and from the other integer types. At the C boundary a `char` is `int32_t`.
+The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF, excluding the surrogates U+D800–U+DFFF. It is distinct from `u8` (8-bit, 0–255) and from the other integer types. At the C boundary a `char` is `int32_t`.
 
 ```gray
 mut letter char = 'A'          // U+0041
@@ -418,7 +418,7 @@ mut eacute char = '\u{E9}'     // U+00E9  é
 mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
+- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF, or a surrogate U+D800–U+DFFF, is a compile-time error for a constant argument and a runtime panic otherwise.
 - Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
 - `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `i64`.
 - `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.

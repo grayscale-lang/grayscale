@@ -1,0 +1,8 @@
+/*
+ * Error Test: E7014 - char() of a surrogate codepoint
+ */
+
+do main() {
+    mut c char = char(55296)
+    println("${cast(c, i64)}")
+}
