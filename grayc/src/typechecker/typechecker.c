@@ -287,6 +287,8 @@ static bool reference_names_function(TypeChecker *checker, AstNode *argument);
  * assignment target, or a pointer dereference. Used by addr(), raw(), and
  * ref() to reject literals, call results, arithmetic expressions, and type
  * names — none of which have an address to take. */
+static bool assign_target_outlives_locals(TypeChecker *checker, AstNode *target);
+
 static bool is_assignment_target(TypeChecker *checker, AstNode *expression) {
     if (!expression) return false;
     switch (expression->kind) {
@@ -10574,15 +10576,32 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
         if (sink && argument_count > sink->value_argument && argument_count > sink->container_argument &&
             !((reported_argument_bits >> sink->value_argument) & 1)) {
             const char *destination_root =
-                assignment_target_root_name(node->data.call.arguments[sink->container_argument]);
+                escape_root_name(node->data.call.arguments[sink->container_argument]);
             int destination_depth = destination_root
                 ? symbol_scope_depth(checker->current_scope, destination_root) : 0;
             AstNode *argument = node->data.call.arguments[sink->value_argument];
             const char *original_name = NULL;
             int origin_depth = expression_origin(checker, argument, &original_name);
-            if (origin_depth > 0 && origin_depth > destination_depth)
+            if (origin_depth > 0 && origin_depth > destination_depth) {
                 NODE_ERROR_FORMATTED(checker, argument, "E3163",
                     destination_root ? destination_root : original_name, original_name);
+            } else if (origin_depth > 0 &&
+                       assign_target_outlives_locals(checker, node->data.call.arguments[sink->container_argument])) {
+                /* A container reached through a pointer or &ref parameter is
+                 * the caller's memory: it outlives every local of this
+                 * function, parameters sitting at the same scope depth. */
+                if (origin_depth >= checker->current_function_scope_depth)
+                    NODE_ERROR_FORMATTED(checker, argument, "E3163",
+                        destination_root ? destination_root : original_name, original_name);
+            } else if (origin_depth > 0 && destination_root) {
+                /* A local container now holds the address, so returning or
+                 * storing the container carries it out of scope. */
+                Symbol *container_symbol = scope_lookup(checker->current_scope, destination_root);
+                if (container_symbol && origin_depth > container_symbol->field_origin_depth) {
+                    container_symbol->field_origin_depth = origin_depth;
+                    container_symbol->field_origin_name = original_name;
+                }
+            }
         }
         /* user helper whose summary escapes one of its parameters. For
          * instance dispatch (s.stash(addr(y))) resolve_call_signature() finds
@@ -15485,7 +15504,12 @@ static bool assign_target_outlives_locals(TypeChecker *checker, AstNode *target)
     AstNode *base = target;
     bool through_deref = false;
     while (base) {
-        if (base->kind == NODE_MEMBER_EXPRESSION) base = base->data.member.object;
+        if (base->kind == NODE_MEMBER_EXPRESSION) {
+            /* `.` on a pointer reads through it exactly as `^.` does. */
+            GrayType *object_type = resolve_expression(checker, base->data.member.object);
+            if (object_type && object_type->kind == TYPE_KIND_POINTER) through_deref = true;
+            base = base->data.member.object;
+        }
         else if (base->kind == NODE_INDEX_EXPRESSION) base = base->data.index_expression.left;
         else if (base->kind == NODE_POSTFIX_EXPRESSION && base->data.postfix.operator == TOKEN_CARET) {
             through_deref = true;

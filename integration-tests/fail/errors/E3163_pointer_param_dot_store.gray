@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3163 - storing the address of a local through a pointer
+ * parameter with the dot operator, which dereferences like '^.' does
+ */
+// expect-error: E3163
+// expect-error-count: 1
+
+const Node struct {
+    value i64
+    next ^Node
+}
+
+do link(dst ^Node) {
+    mut local Node = Node{value: 42, next: nil}
+    dst.next = addr(local)
+}
+
+do main() {
+    mut head Node = Node{value: 0, next: nil}
+    link(addr(head))
+}
