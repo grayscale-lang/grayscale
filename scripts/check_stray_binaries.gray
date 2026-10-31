@@ -18,8 +18,8 @@ import @io, @os, @strings, @arrays
 const MAX_LISTED i64 = 10
 
 // is_binary reports whether the file starts with an ELF or Mach-O magic number.
-do is_binary(path string) -> bool {
-    mut bytes, read_err = io.read_bytes(path)
+do is_binary(file_path string) -> bool {
+    mut bytes, read_err = io.read_bytes(file_path)
     if read_err != nil || len(bytes) < 4 {
         return false
     }
@@ -49,8 +49,8 @@ do is_binary(path string) -> bool {
 
 // is_symlink reports whether the path is a symbolic link; io.is_file follows
 // links, so a link to a binary would otherwise be reported and removed.
-do is_symlink(path string) -> bool {
-    mut result, exec_err = os.exec("test", {"-L", path})
+do is_symlink(file_path string) -> bool {
+    mut result, exec_err = os.exec("test", {"-L", file_path})
     return exec_err == nil && result.exit_code == 0
 }
 
@@ -85,8 +85,8 @@ do main() {
     }
 
     if clean {
-        for_each path in stray {
-            mut _, _ = io.delete_file(path)
+        for_each file_path in stray {
+            mut _, _ = io.delete_file(file_path)
         }
         println("Removed ${len(stray)} stray binary(ies) from repo root.")
         exit(0)
@@ -94,11 +94,11 @@ do main() {
 
     println("ERROR: ${len(stray)} stray compiled binary(ies) found at repo root:")
     mut shown i64 = 0
-    for_each path in stray {
+    for_each file_path in stray {
         if shown >= MAX_LISTED {
             break
         }
-        println(path)
+        println(file_path)
         shown = shown + 1
     }
     if len(stray) > MAX_LISTED {

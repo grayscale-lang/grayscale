@@ -102,7 +102,7 @@ const SHAPES [string, 6] = {"variable", "element", "map_value", "field", "deref"
 
 // Case is one generated function, buffered until its output file is written.
 const Case struct {
-    path string
+    file_path string
     code string
     id string
     text string
@@ -263,17 +263,17 @@ do range_slot_outcome(slot string, s string) -> string {
 // code, slot and label.
 do make_case(slot string, outcome string, label string, t string, setup string, e string, id i64) -> Case {
     mut id_text string = "${id}"
-    mut path string = "${PASS_DIR}/sized_grid_${slot}.gray"
+    mut file_path string = "${PASS_DIR}/sized_grid_${slot}.gray"
     if outcome != "ok" {
-        path = "${FAIL_DIR}/${outcome}_sized_grid_${slot}_${label}.gray"
+        file_path = "${FAIL_DIR}/${outcome}_sized_grid_${slot}_${label}.gray"
     }
-    return Case{path: path, code: outcome, id: id_text, text: slot_case(slot, id_text, t, setup, e)}
+    return Case{file_path: file_path, code: outcome, id: id_text, text: slot_case(slot, id_text, t, setup, e)}
 }
 
-do write_file_or_exit(path string, content string) {
-    mut _, write_err = io.write_file(path, content)
+do write_file_or_exit(file_path string, content string) {
+    mut _, write_err = io.write_file(file_path, content)
     if write_err != nil {
-        eprintln("generate_sized_type_tests.gray: error: cannot write ${path}")
+        eprintln("generate_sized_type_tests.gray: error: cannot write ${file_path}")
         exit(1)
     }
 }
@@ -372,9 +372,9 @@ do main() {
     mut calls [string] = {}
     mut counts [i64] = {}
     for_each c in cases {
-        mut index i64 = arrays.index_of(paths, c.path)
+        mut index i64 = arrays.index_of(paths, c.file_path)
         if index == -1 {
-            arrays.append(paths, c.path)
+            arrays.append(paths, c.file_path)
             arrays.append(codes, c.code)
             arrays.append(bodies, "")
             arrays.append(calls, "")
