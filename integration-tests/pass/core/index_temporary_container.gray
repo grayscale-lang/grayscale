@@ -1,0 +1,45 @@
+/*
+ * Test: indexing a container that is a literal, or a field of a call result,
+ * binds it to a temporary instead of taking the address of a value.
+ */
+
+const Holder struct {
+    items [i64]
+    lookup map[string:i64]
+    grid [[i64]]
+}
+
+do make_holder() -> Holder {
+    return Holder{items: {5, 6}, lookup: {"k": 9}, grid: {{1, 2}, {3, 4}}}
+}
+
+do check(label string, got i64, want i64) -> i64 {
+    if got == want {
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+    mut total i64 = 0
+
+    total = total + 1
+    passed = passed + check("array literal", {1, 2}[1], 2)
+    total = total + 1
+    passed = passed + check("nested array literal", {{1, 2}, {3, 4}}[1][0], 3)
+    total = total + 1
+    passed = passed + check("map literal", {"a": 1}["a"], 1)
+    total = total + 1
+    passed = passed + check("map literal holding an array", {"x": {1, 2}}["x"][1], 2)
+    total = total + 1
+    passed = passed + check("array field of a call result", make_holder().items[1], 6)
+    total = total + 1
+    passed = passed + check("nested array field of a call result", make_holder().grid[1][0], 3)
+    total = total + 1
+    passed = passed + check("map field of a call result", make_holder().lookup["k"], 9)
+
+    println("passed: ${passed}, failed: ${total - passed}")
+    if passed != total { exit(1) }
+}

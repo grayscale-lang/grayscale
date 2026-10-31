@@ -4337,6 +4337,23 @@ static void emit_member_expression(CodeGen *codegen, AstNode *node) {
 /* True when `left` is a map lookup (m[key], or a chained one). Such a lookup
  * lowers to a statement-expression that yields the stored value by rvalue, so
  * an outer index on it cannot take its address and must bind it to a temp. */
+/* True when `left`, the container an index expression subscripts, is a value
+ * with no storage of its own: a literal, a call result, or a field read off
+ * one. Taking its address is invalid C, so the subscript binds it to a temp. */
+static bool index_base_is_temporary(AstNode *left) {
+    if (!left) return false;
+    switch (left->kind) {
+    case NODE_CALL_EXPRESSION:
+    case NODE_ARRAY_VALUE:
+    case NODE_MAP_VALUE:
+        return true;
+    case NODE_MEMBER_EXPRESSION:
+        return index_base_is_temporary(left->data.member.object);
+    default:
+        return false;
+    }
+}
+
 static bool index_left_is_map_lookup(CodeGen *codegen, AstNode *left) {
     if (!left || left->kind != NODE_INDEX_EXPRESSION) return false;
     GrayType *inner = codegen_type_of(codegen, left->data.index_expression.left);
@@ -4352,7 +4369,7 @@ static bool index_expression_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
     if (!node || node->kind != NODE_INDEX_EXPRESSION) return false;
     AstNode *left = node->data.index_expression.left;
     if (!left) return false;
-    if (left->kind == NODE_CALL_EXPRESSION) return true;
+    if (index_base_is_temporary(left)) return true;
     if (index_left_is_map_lookup(codegen, left)) return true;
     if (left->kind == NODE_POSTFIX_EXPRESSION && left->data.postfix.operator == TOKEN_CARET)
         return true;
@@ -4471,7 +4488,7 @@ static void emit_index_expression(CodeGen *codegen, AstNode *node) {
             }
             emit_expression(codegen, node->data.index_expression.index);
             emit_formatted(codegen, ", \"%s\", %d); }))", codegen_file_literal(codegen), node->token.line);
-        } else if (node->data.index_expression.left->kind == NODE_CALL_EXPRESSION ||
+        } else if (index_base_is_temporary(node->data.index_expression.left) ||
                    index_left_is_map_lookup(codegen, node->data.index_expression.left) ||
                    (node->data.index_expression.left->kind == NODE_INDEX_EXPRESSION &&
                     index_expression_lowers_to_rvalue(codegen, node->data.index_expression.left))) {
@@ -4498,7 +4515,7 @@ static void emit_index_expression(CodeGen *codegen, AstNode *node) {
          * like m["a"]["x"], or pointer field access like p.map_field),
          * store it in a temp to make it addressable. */
         bool map_is_rvalue = (node->data.index_expression.left->kind == NODE_INDEX_EXPRESSION ||
-            node->data.index_expression.left->kind == NODE_CALL_EXPRESSION);
+            index_base_is_temporary(node->data.index_expression.left));
         if (!map_is_rvalue && node->data.index_expression.left->kind == NODE_MEMBER_EXPRESSION) {
             AstNode *object = node->data.index_expression.left->data.member.object;
             GrayType *object_type = codegen_type_of(codegen, object);
