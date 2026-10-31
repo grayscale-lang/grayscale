@@ -816,6 +816,17 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
                     if (*cursor == '"') cursor++; /* skip closing " */
                     continue;
                 }
+                /* Likewise a char literal: '}', '{' and '"' are characters,
+                 * not interpolation syntax. */
+                if (*cursor == '\'') {
+                    cursor++; /* skip opening ' */
+                    while (*cursor && *cursor != '\'') {
+                        if (*cursor == '\\' && *(cursor + 1)) cursor++;
+                        cursor++;
+                    }
+                    if (*cursor == '\'') cursor++; /* skip closing ' */
+                    continue;
+                }
                 if (*cursor == '{') brace_depth++;
                 else if (*cursor == '}') brace_depth--;
                 if (brace_depth > 0) cursor++;
