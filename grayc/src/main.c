@@ -442,6 +442,7 @@ static const char *const STDLIB_SOURCES[] = {
     "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
     "stdlib/threads.c",  "stdlib/runtime_mod.c",
     "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
+    "stdlib/path.c",
     "vendor/sqlite3.c"
 };
 
