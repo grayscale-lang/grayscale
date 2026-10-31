@@ -213,6 +213,24 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
     return number_text;
 }
 
+/* Flag a string literal's source bytes [start, position) that are not valid UTF-8.
+ * An escape such as "\xff" is ASCII in the source, so it is not affected. */
+static void check_literal_utf8(Lexer *lexer, int start) {
+    if (lexer->error_code) return;
+    const uint8_t *cursor = (const uint8_t *)lexer->input + start;
+    const uint8_t *end_cursor = (const uint8_t *)lexer->input + lexer->position;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        int length = gray_utf8_decode(cursor, end_cursor, &codepoint);
+        if (codepoint == 0xFFFD && length == 1) {
+            lexer->error_code = "E1018";
+            lexer->error_message = "malformed UTF-8 in string literal";
+            return;
+        }
+        cursor += length;
+    }
+}
+
 static const char *read_string(Lexer *lexer) {
     read_character(lexer); /* skip opening " */
     int start = lexer->position;
@@ -302,6 +320,7 @@ static const char *read_string(Lexer *lexer) {
         read_character(lexer);
     }
 
+    check_literal_utf8(lexer, start);
     const char *literal_text = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
     if (lexer->current_character == '"') {
         read_character(lexer); /* skip closing " */
@@ -319,6 +338,7 @@ static const char *read_raw_string(Lexer *lexer) {
         read_character(lexer);
     }
 
+    check_literal_utf8(lexer, start);
     const char *literal_text = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
     if (lexer->current_character == '`') {
         read_character(lexer); /* skip closing ` */

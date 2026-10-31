@@ -1,0 +1,25 @@
+/*
+ * Test: an invalid byte written as a \x escape is still accepted in a string
+ * literal, and valid multibyte text is unaffected.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut escaped string = "bad \xff byte"
+    mut backticked string = `héllo 🎉`
+    if len(escaped) == 10 && len(backticked) == 11 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] lengths ${len(escaped)} ${len(backticked)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
