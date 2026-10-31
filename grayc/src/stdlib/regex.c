@@ -116,6 +116,62 @@ static const char *regex_next_character(const char *cursor) {
     return cursor + gray_utf8_decode((const uint8_t *)cursor, (const uint8_t *)cursor + available, &codepoint);
 }
 
+/* POSIX classes are ASCII only, but libc runs them in the UTF-8 locale and so
+ * matches non-ASCII letters too. Spell each [:class:] inside a bracket
+ * expression as its ASCII members. */
+static const char *regex_ascii_class_members(const char *name, size_t name_length) {
+    static const struct { const char *name; const char *members; } classes[] = {
+        {"alpha", "a-zA-Z"}, {"digit", "0-9"}, {"alnum", "a-zA-Z0-9"}, {"upper", "A-Z"},
+        {"lower", "a-z"}, {"space", " \t\n\v\f\r"}, {"blank", " \t"}, {"punct", "!-/:-@[-`{-~"},
+        {"print", " -~"}, {"graph", "!-~"}, {"cntrl", "\x01-\x1f\x7f"}, {"xdigit", "0-9A-Fa-f"},
+    };
+    for (size_t i = 0; i < sizeof(classes) / sizeof(classes[0]); i++) {
+        if (strlen(classes[i].name) == name_length && memcmp(classes[i].name, name, name_length) == 0)
+            return classes[i].members;
+    }
+    return NULL;
+}
+
+static char *regex_ascii_classes(GrayArena *arena, const char *pattern) {
+    if (!strstr(pattern, "[:")) return (char *)pattern;
+    /* The longest expansion is shorter than the "[:xdigit:]" it replaces plus
+     * a few bytes, so 2x is always enough. */
+    char *output = (char *)gray_arena_alloc_uninitialized(arena, strlen(pattern) * 2 + 1);
+    char *write = output;
+    const char *cursor = pattern;
+    while (*cursor) {
+        if (*cursor == '\\' && cursor[1]) { *write++ = *cursor++; *write++ = *cursor++; continue; }
+        if (*cursor != '[') { *write++ = *cursor++; continue; }
+        /* A bracket expression: copy it through, expanding its [:class:] items. */
+        *write++ = *cursor++;
+        if (*cursor == '^') *write++ = *cursor++;
+        if (*cursor == ']') *write++ = *cursor++;
+        while (*cursor && *cursor != ']') {
+            if (cursor[0] == '[' && (cursor[1] == ':' || cursor[1] == '.' || cursor[1] == '=')) {
+                char kind = cursor[1];
+                const char *close = cursor + 2;
+                while (*close && !(close[0] == kind && close[1] == ']')) close++;
+                if (!*close) break;
+                const char *members = kind == ':' ? regex_ascii_class_members(cursor + 2, (size_t)(close - cursor - 2)) : NULL;
+                if (members) {
+                    size_t length = strlen(members);
+                    memcpy(write, members, length);
+                    write += length;
+                } else {
+                    memcpy(write, cursor, (size_t)(close + 2 - cursor));
+                    write += close + 2 - cursor;
+                }
+                cursor = close + 2;
+                continue;
+            }
+            *write++ = *cursor++;
+        }
+        if (*cursor == ']') *write++ = *cursor++;
+    }
+    *write = '\0';
+    return output;
+}
+
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success (with gray_regex_lock held — release it with
  * regex_session_end), non-zero on error (lock not held). */
@@ -127,7 +183,7 @@ static int compile_pattern(GrayString pattern, regex_t *regex, int flags) {
         return REG_BADPAT;
     }
     regex_enter_utf8_locale();
-    int result_code = regcomp(regex, pattern_buffer, flags | REG_EXTENDED);
+    int result_code = regcomp(regex, regex_ascii_classes(gray_default_arena, pattern_buffer), flags | REG_EXTENDED);
     if (result_code != 0) {
         regex_leave_utf8_locale();
         pthread_mutex_unlock(&gray_regex_lock);

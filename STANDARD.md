@@ -4473,7 +4473,7 @@ Regular expression operations using POSIX extended regex syntax.
 `find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, `split`, and `count` are fallible: destructure the result (`mut v, err = ...` or `mut v, _ = ...`).
 
 
-An invalid UTF-8 byte in the text is one U+FFFD character: it matches `.` and a negated bracket expression, and it never makes the match fail.POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`.
+An invalid UTF-8 byte in the text is one U+FFFD character: it matches `.` and a negated bracket expression, and it never makes the match fail.POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`. The classes match ASCII characters only, as in the `chars` module; `[[:alpha:]]` does not match `é`.
 
 ### 9.19 CSV Module (`@csv`)
 
