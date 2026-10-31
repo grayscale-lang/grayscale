@@ -357,7 +357,7 @@ build: stubs
 	@echo "Building gray CLI (with embedded runtime)..."
 	@# Content-hash the staged assets once here so the installed binary does
 	@# not hash them on every invocation just to name its extract dir.
-	@TAG=$$("$(MAKE)" -s embed-tag) || exit 1; \
+	@TAG=$$("$(MAKE)" -s --no-print-directory embed-tag) || exit 1; \
 	./grayc/grayc cli/main.gray -o $(BINARY_NAME) --define=VERSION=$(VERSION) --define=BUILD_TIME=$(BUILD_TIME) --define=EMBED_TAG=$$TAG
 	@echo ""
 	@echo "Build complete: ./$(BINARY_NAME)"
