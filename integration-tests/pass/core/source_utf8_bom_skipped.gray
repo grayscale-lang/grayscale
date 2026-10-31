@@ -1,0 +1,20 @@
+﻿// Test: a leading UTF-8 byte order mark is skipped
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if len("bom") == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] bom")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

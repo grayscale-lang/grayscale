@@ -463,6 +463,11 @@ static const struct { const char *spelling; TokenType type; } attribute_keywords
 
 Lexer *lexer_create_sized(Arena *arena, const char *input, size_t raw_length, const char *file) {
     Lexer *lexer = arena_allocate(arena, sizeof(Lexer));
+    /* A leading UTF-8 byte order mark is not part of the source text. */
+    if (raw_length >= 3 && memcmp(input, "\xEF\xBB\xBF", 3) == 0) {
+        input += 3;
+        raw_length -= 3;
+    }
     lexer->input = input;
     if (raw_length > (size_t)INT32_MAX) raw_length = (size_t)INT32_MAX;
     lexer->input_length = (int)raw_length;
