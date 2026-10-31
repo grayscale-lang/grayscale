@@ -1,0 +1,56 @@
+/*
+ * Test: an invalid byte in the text is one U+FFFD character to every regex
+ * function; it does not make the match fail.
+ */
+import @regex
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if regex.is_match("a", "a\xffb") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] is_match")
+        failed += 1
+    }
+
+    mut n, e = regex.count("[a-z]", "ab\xffcd")
+    if n == 4 && e == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] count ${n}")
+        failed += 1
+    }
+
+    mut r, e2 = regex.replace("a", "a\xffa", "X")
+    if r == "X\xffX" && e2 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] replace, len ${len(r)}")
+        failed += 1
+    }
+
+    mut dots, e3 = regex.find_all(".", "a\xffb")
+    if len(dots) == 3 && dots[1] == "\xff" && e3 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] find_all dot")
+        failed += 1
+    }
+
+    mut parts, e4 = regex.split(",", "a\xff,b")
+    if len(parts) == 2 && parts[0] == "a\xff" && parts[1] == "b" && e4 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] split")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
