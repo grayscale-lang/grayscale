@@ -1,0 +1,7 @@
+/*
+ * Error Test: E1018 - value above U+10FFFF as raw bytes in a char literal
+ */
+
+do main() {
+    mut c char = 'ô€€'
+}

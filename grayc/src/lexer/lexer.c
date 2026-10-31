@@ -10,6 +10,7 @@
 
 #include "lexer.h"
 #include "../util/constants.h"
+#include "../stdlib/utf8.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -328,16 +329,6 @@ static const char *read_raw_string(Lexer *lexer) {
     return literal_text;
 }
 
-/* Length of the UTF-8 sequence a lead byte introduces, or 0 if it is not a
- * valid lead byte (continuation byte or 0xF8+). */
-static int utf8_sequence_length(unsigned char lead) {
-    if (lead < 0x80) return 1;
-    if ((lead & 0xE0) == 0xC0) return 2;
-    if ((lead & 0xF0) == 0xE0) return 3;
-    if ((lead & 0xF8) == 0xF0) return 4;
-    return 0;
-}
-
 static const char *read_char_literal(Lexer *lexer) {
     read_character(lexer); /* skip opening ' */
     int start = lexer->position;
@@ -387,21 +378,15 @@ static const char *read_char_literal(Lexer *lexer) {
     } else {
         /* One UTF-8 encoded codepoint: consume the lead byte and its
          * continuation bytes so a non-ASCII character is a single literal. */
-        int sequence_length = utf8_sequence_length((unsigned char)lexer->current_character);
-        if (sequence_length == 0) {
+        int32_t codepoint;
+        int sequence_length = gray_utf8_decode((const uint8_t *)lexer->input + lexer->position,
+                                               (const uint8_t *)lexer->input + lexer->input_length, &codepoint);
+        if (codepoint == 0xFFFD && sequence_length == 1 && (unsigned char)lexer->current_character >= 0x80) {
             lexer->error_code = "E1018";
             lexer->error_message = "malformed UTF-8 in character literal";
             read_character(lexer);
         } else {
-            read_character(lexer); /* consumed lead byte */
-            for (int i = 1; i < sequence_length && !lexer->error_code; i++) {
-                if (((unsigned char)lexer->current_character & 0xC0) != 0x80) {
-                    lexer->error_code = "E1018";
-                    lexer->error_message = "malformed UTF-8 in character literal";
-                    break;
-                }
-                read_character(lexer);
-            }
+            for (int i = 0; i < sequence_length; i++) read_character(lexer);
         }
     }
 
@@ -688,11 +673,10 @@ Token lexer_next_token(Lexer *lexer) {
         } else {
             char message_buffer[TYPE_NAME_MAX];
             unsigned char lead = (unsigned char)lexer->current_character;
-            int sequence_length = utf8_sequence_length(lead);
-            bool is_whole_sequence = sequence_length > 0;
-            for (int i = 1; i < sequence_length && is_whole_sequence; i++)
-                is_whole_sequence = lexer->read_position + i - 1 < lexer->input_length &&
-                    ((unsigned char)lexer->input[lexer->read_position + i - 1] & 0xC0) == 0x80;
+            int32_t codepoint;
+            int sequence_length = gray_utf8_decode((const uint8_t *)lexer->input + lexer->position,
+                                                   (const uint8_t *)lexer->input + lexer->input_length, &codepoint);
+            bool is_whole_sequence = codepoint != 0xFFFD || sequence_length > 1;
             if (!is_whole_sequence) {
                 snprintf(message_buffer, sizeof(message_buffer), "unexpected character '\\x%02x'", lead);
             } else {

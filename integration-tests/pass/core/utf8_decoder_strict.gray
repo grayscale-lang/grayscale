@@ -1,0 +1,40 @@
+/*
+ * Test: the UTF-8 decoder rejects overlong forms, surrogates and values above
+ * U+10FFFF; every invalid byte decodes as one U+FFFD.
+ */
+
+do decode(text string) -> string {
+    mut out string = ""
+    for_each c in text { out = out + "${cast(c, i64)}," }
+    return out
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut cases [string] = {"\xc0\x80", "\xc0\xaf", "\xe0\x80\xaf", "\xf0\x80\x80\xaf", "\xed\xa0\x80", "\xf4\x90\x80\x80"}
+    mut expected [string] = {"65533,65533,", "65533,65533,", "65533,65533,65533,", "65533,65533,65533,65533,", "65533,65533,65533,", "65533,65533,65533,65533,"}
+    for i in range(0, len(cases)) {
+        if decode(cases[i]) == expected[i] {
+            passed += 1
+        } otherwise {
+            println("[FAIL] case ${i}: ${decode(cases[i])}")
+            failed += 1
+        }
+    }
+
+    if decode("é🎉") == "233,127881," && char_count("\xc0\x80") == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] valid multibyte or char_count")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

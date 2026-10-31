@@ -11,6 +11,7 @@
 
 #include "chars.h"
 #include "ascii.h"
+#include "utf8.h"
 #include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -149,33 +150,13 @@ int32_t gray_chars_width(int32_t codepoint) {
     return 1;
 }
 
-/* Decode the next UTF-8 codepoint; returns bytes consumed (1-4). Mirrors
- * builtins.c's utf8_next, duplicated here to keep chars.c self-contained. */
-static int chars_utf8_next(const uint8_t *cursor, const uint8_t *end_cursor, int32_t *cp_out) {
-    uint8_t lead_byte = *cursor;
-    int32_t codepoint;
-    int bytes;
-    if (lead_byte < 0x80) { *cp_out = lead_byte; return 1; }
-    else if ((lead_byte & 0xE0) == 0xC0) { codepoint = lead_byte & 0x1F; bytes = 2; }
-    else if ((lead_byte & 0xF0) == 0xE0) { codepoint = lead_byte & 0x0F; bytes = 3; }
-    else if ((lead_byte & 0xF8) == 0xF0) { codepoint = lead_byte & 0x07; bytes = 4; }
-    else { *cp_out = 0xFFFD; return 1; }
-    if (cursor + bytes > end_cursor) { *cp_out = 0xFFFD; return 1; }
-    for (int i = 1; i < bytes; i++) {
-        if ((cursor[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
-        codepoint = (codepoint << 6) | (cursor[i] & 0x3F);
-    }
-    *cp_out = codepoint;
-    return bytes;
-}
-
 int64_t gray_chars_string_width(GrayString string) {
     const uint8_t *cursor = (const uint8_t *)string.data;
     const uint8_t *end_cursor = cursor + string.len;
     int64_t total = 0;
     while (cursor < end_cursor) {
         int32_t codepoint;
-        cursor += chars_utf8_next(cursor, end_cursor, &codepoint);
+        cursor += gray_utf8_decode(cursor, end_cursor, &codepoint);
         int32_t width = gray_chars_width(codepoint);
         if (width > 0) total += width;
     }

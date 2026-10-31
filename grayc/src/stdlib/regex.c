@@ -9,6 +9,7 @@
  */
 
 #include "regex.h"
+#include "utf8.h"
 #include "../runtime/platform_rt.h"
 #if GRAY_RUNTIME_WINDOWS
 #include "../runtime/regex_win.h" /* Windows ships no <regex.h> */
@@ -90,9 +91,10 @@ static void regex_leave_utf8_locale(void) {}
 
 /* The position after the UTF-8 character that starts at `cursor`. */
 static const char *regex_next_character(const char *cursor) {
-    cursor++;
-    while (((unsigned char)*cursor & 0xC0) == 0x80) cursor++;
-    return cursor;
+    size_t available = 0;
+    while (available < 4 && cursor[available]) available++;
+    int32_t codepoint;
+    return cursor + gray_utf8_decode((const uint8_t *)cursor, (const uint8_t *)cursor + available, &codepoint);
 }
 
 /* Helper: compile pattern into a null-terminated C string and regex_t.
