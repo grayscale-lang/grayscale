@@ -324,6 +324,31 @@ static const char *assignment_target_root_name(AstNode *expression) {
     }
 }
 
+/* True when an assignment target is, or is a field or element of, a value with
+ * no storage of its own: a call result or a literal. Writing to it changes
+ * nothing the program can read, and the generated C takes the address of an
+ * rvalue. A field reached through a pointer is memory of its own, so a call
+ * returning a pointer is a valid base. */
+static bool assignment_target_is_temporary(TypeChecker *checker, AstNode *target) {
+    if (!target) return false;
+    switch (target->kind) {
+    case NODE_CALL_EXPRESSION:
+    case NODE_ARRAY_VALUE:
+    case NODE_MAP_VALUE:
+    case NODE_STRUCT_VALUE:
+        return true;
+    case NODE_MEMBER_EXPRESSION: {
+        GrayType *object_type = resolve_expression(checker, target->data.member.object);
+        if (object_type && object_type->kind == TYPE_KIND_POINTER) return false;
+        return assignment_target_is_temporary(checker, target->data.member.object);
+    }
+    case NODE_INDEX_EXPRESSION:
+        return assignment_target_is_temporary(checker, target->data.index_expression.left);
+    default:
+        return false;
+    }
+}
+
 /* Depth of the scope declaring `name`, biased by +1 so 0 means "not found".
  * Deeper means shorter-lived: a pointer may only hold an address whose
  * origin depth is at most the pointer's own. */
@@ -12876,6 +12901,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                 !(node->data.postfix.left->kind == NODE_POSTFIX_EXPRESSION &&
                   node->data.postfix.left->data.postfix.operator == TOKEN_CARET)) {
                 NODE_ERROR(checker, node, "E5015");
+            } else if (assignment_target_is_temporary(checker, node->data.postfix.left)) {
+                NODE_ERROR(checker, node, "E5015");
             }
             /* ++ and -- only valid on mutable numeric types.
              * Walk nested member/index chains so that e.g. p.x++ is caught. */
@@ -15674,6 +15701,8 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
         target->kind != NODE_INDEX_EXPRESSION &&
         target->kind != NODE_PREFIX_EXPRESSION &&
         target->kind != NODE_POSTFIX_EXPRESSION) {
+        NODE_ERROR(checker, node, "E5025");
+    } else if (assignment_target_is_temporary(checker, target)) {
         NODE_ERROR(checker, node, "E5025");
     }
 

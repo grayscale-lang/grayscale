@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5015 - incrementing an element of a call result
+ * Expected: "++ and -- require a variable" error
+ */
+
+do make_array() -> [i64] {
+    return {1, 2}
+}
+
+do main() {
+    make_array()[0]++
+}

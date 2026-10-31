@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5025 - assigning to an element of an array literal
+ * Expected: "cannot assign to this expression" error
+ */
+
+do main() {
+    {1, 2}[0] = 5
+}
