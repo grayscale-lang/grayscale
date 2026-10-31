@@ -349,7 +349,8 @@
     GRAY_ERROR("E4040", "names", "-define: names '%s', but the program declares no such constant") \
     GRAY_ERROR("E4041", "names", "'%s' is not a known statement; did you mean '%s'?") \
     GRAY_ERROR("E4042", "names", "loop label '%s' is already used by an enclosing loop") \
-    GRAY_ERROR("E4043", "names", "no enclosing loop is labeled '%s'")
+    GRAY_ERROR("E4043", "names", "no enclosing loop is labeled '%s'") \
+    GRAY_ERROR("E4044", "names", "'%s' is already declared as %s at %s:%d")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

@@ -1,0 +1,5 @@
+const LIMIT i64 = 2
+
+do second() -> i64 {
+    return LIMIT
+}

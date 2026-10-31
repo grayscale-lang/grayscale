@@ -1,0 +1,8 @@
+// Error Test: E4003 - a constant declared in two files of one directory module
+// expect-error: E4003
+// expect-error-count: 1
+import "./mylib"
+
+do main() {
+    println(mylib.first() + mylib.second())
+}

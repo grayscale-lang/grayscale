@@ -19778,6 +19778,54 @@ static void register_declaration_consts(TypeChecker *checker, AstNode *program) 
     }
 }
 
+/* How a top-level declaration of this kind is described to the user. */
+static const char *declaration_kind_description(DeclarationKind kind) {
+    switch (kind) {
+    case DECLARATION_FUNCTION: return "a function";
+    case DECLARATION_CONST:    return "a global variable";
+    default:                   return "a type";
+    }
+}
+
+/* A top-level name is declared once per module, whichever file of the module
+ * wrote it. module_scope_define keeps the first declaration and hands it back
+ * for a later one, so a returned entry that is not this statement's own is a
+ * collision. Two functions and two types are reported where they register; a
+ * variable or constant is the case with no check of its own across files, and
+ * it shares its namespace with functions and types. */
+static void report_declaration_collision(TypeChecker *checker, AstNode *statement,
+                                         DeclarationKind kind, const char *name,
+                                         const DeclarationEntry *entry) {
+    if (!entry || entry->ast_node == statement || !entry->ast_node) return;
+    if (kind != DECLARATION_CONST && entry->kind != DECLARATION_CONST) {
+        /* A function and a type share a name. When the type comes first the
+         * function's own registration reports it; when the function comes
+         * first, nothing does, so it is reported here against the function. */
+        if (entry->kind == DECLARATION_FUNCTION && kind != DECLARATION_FUNCTION) {
+            NODE_ERROR_FORMATTED(checker, entry->ast_node, "E4036", FUNCTION_DISPLAY_NAME(entry->ast_node));
+        } else if (kind == DECLARATION_FUNCTION && entry->kind == DECLARATION_ALIAS) {
+            NODE_ERROR_FORMATTED(checker, statement, "E4036", FUNCTION_DISPLAY_NAME(statement));
+        }
+        return;
+    }
+    const char *file = entry->origin_file ? entry->origin_file : "";
+    const char *file_name = gray_path_basename(file);
+    if (kind == DECLARATION_CONST && entry->kind == DECLARATION_CONST) {
+        /* The same file declaring it twice is E4003 where the variable is declared. */
+        if (same_source_file(entry->origin_file, NODE_FILE(checker, statement))) return;
+        char help[MESSAGE_BUFFER_SIZE];
+        snprintf(help, sizeof(help), "the other declaration is in %s", file_name);
+        NODE_ERROR_FORMATTED_HELP(checker, statement, "E4003", arena_copy_string(checker->arena, help),
+                                  name, entry->origin_line);
+        return;
+    }
+    /* A variable declared after a function or type is E4012 or E4013 where it is
+     * declared; the variable coming first is the order with no check. */
+    if (kind == DECLARATION_CONST) return;
+    NODE_ERROR_FORMATTED(checker, statement, "E4044", name, declaration_kind_description(entry->kind),
+                         file_name, entry->origin_line);
+}
+
 /* Put every top-level declaration into its module's scope before anything
  * resolves a type. The passes below resolve field, parameter, and return
  * types as they register, and a type may name a declaration that appears
@@ -19789,27 +19837,32 @@ static void register_declaration_symbols(TypeChecker *checker, AstNode *program)
         AstNode *statement = program->data.program.statements[i];
         switch (statement->kind) {
         case NODE_ALIAS_DECLARATION:
-            module_register(checker, statement, DECLARATION_ALIAS, statement->data.alias_declaration.name,
-                            statement->data.alias_declaration.is_private);
+            report_declaration_collision(checker, statement, DECLARATION_ALIAS, statement->data.alias_declaration.name,
+                module_register(checker, statement, DECLARATION_ALIAS, statement->data.alias_declaration.name,
+                               statement->data.alias_declaration.is_private));
             break;
         case NODE_ENUM_DECLARATION:
-            module_register(checker, statement, DECLARATION_ENUM, ENUM_DISPLAY_NAME(statement),
-                            statement->data.enum_declaration.is_private);
+            report_declaration_collision(checker, statement, DECLARATION_ENUM, ENUM_DISPLAY_NAME(statement),
+                module_register(checker, statement, DECLARATION_ENUM, ENUM_DISPLAY_NAME(statement),
+                               statement->data.enum_declaration.is_private));
             break;
         case NODE_STRUCT_DECLARATION:
-            module_register(checker, statement, DECLARATION_STRUCT, STRUCT_DISPLAY_NAME(statement),
-                            statement->data.struct_declaration.is_private);
+            report_declaration_collision(checker, statement, DECLARATION_STRUCT, STRUCT_DISPLAY_NAME(statement),
+                module_register(checker, statement, DECLARATION_STRUCT, STRUCT_DISPLAY_NAME(statement),
+                               statement->data.struct_declaration.is_private));
             break;
         case NODE_FUNCTION_DECLARATION:
-            module_register(checker, statement, DECLARATION_FUNCTION, FUNCTION_DISPLAY_NAME(statement),
-                            statement->data.function_declaration.is_private);
+            report_declaration_collision(checker, statement, DECLARATION_FUNCTION, FUNCTION_DISPLAY_NAME(statement),
+                module_register(checker, statement, DECLARATION_FUNCTION, FUNCTION_DISPLAY_NAME(statement),
+                               statement->data.function_declaration.is_private));
             break;
         case NODE_VARIABLE_DECLARATION:
             if (!statement->data.variable_declaration.is_synthetic) {
                 const char *source_name = statement->data.variable_declaration.original_name
                     ? statement->data.variable_declaration.original_name : statement->data.variable_declaration.name;
-                module_register(checker, statement, DECLARATION_CONST, source_name,
-                                statement->data.variable_declaration.is_private);
+                report_declaration_collision(checker, statement, DECLARATION_CONST, source_name,
+                    module_register(checker, statement, DECLARATION_CONST, source_name,
+                                   statement->data.variable_declaration.is_private));
             }
             break;
         default:

@@ -1,0 +1,17 @@
+/*
+ * Error Test: E4036 - function name conflicts with a struct declared after it
+ * Expected: "function 'Point' conflicts with a type of the same name" error
+ */
+
+do Point() -> i64 {
+    return 0
+}
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do main() {
+    println("x")
+}

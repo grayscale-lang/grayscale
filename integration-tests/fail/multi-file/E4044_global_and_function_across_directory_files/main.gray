@@ -1,0 +1,8 @@
+// Error Test: E4044 - a global variable and a function with one name in two files of a directory module
+// expect-error: E4044
+// expect-error-count: 1
+import "./mylib"
+
+do main() {
+    println(mylib.other())
+}

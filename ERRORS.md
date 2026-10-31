@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
 
-**Total: 577 codes** (404 errors, 17 warnings, 156 panics)
+**Total: 578 codes** (405 errors, 17 warnings, 156 panics)
 
 ---
 
@@ -331,6 +331,7 @@
 | `E4041` | names | '%s' is not a known statement; did you mean '%s'? |
 | `E4042` | names | loop label '%s' is already used by an enclosing loop |
 | `E4043` | names | no enclosing loop is labeled '%s' |
+| `E4044` | names | '%s' is already declared as %s at %s:%d |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | '%s()' expects %s argument(s), got %d |
 | `E5009` | arguments | invalid base %lld for 'strconv.%s'; base must be between 2 and 36 |
@@ -628,4 +629,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-27 21:56:04 UTC*
+*Generated on 2026-10-31 16:20:18 UTC*
