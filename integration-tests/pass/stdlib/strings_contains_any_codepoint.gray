@@ -1,0 +1,37 @@
+/*
+ * Test: strings.contains_any compares by codepoint, not by byte.
+ */
+import @strings
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if !strings.contains_any("日", "本") && !strings.contains_any("é", "è") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] characters sharing a byte matched")
+        failed += 1
+    }
+
+    if strings.contains_any("日本語", "本x") && strings.contains_any("café", "é") && strings.contains_any("hello", "xyz!l") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] matching characters not found")
+        failed += 1
+    }
+
+    if !strings.contains_any("hello", "") && !strings.contains_any("", "a") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] empty operands")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

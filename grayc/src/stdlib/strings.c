@@ -319,9 +319,15 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString string, int64_t start
 }
 
 bool gray_strings_contains_any(GrayString string, GrayString chars) {
-    for (int32_t i = 0; i < string.len; i++) {
-        for (int32_t j = 0; j < chars.len; j++) {
-            if (string.data[i] == chars.data[j]) return true;
+    const uint8_t *string_end = (const uint8_t *)string.data + string.len;
+    const uint8_t *chars_end = (const uint8_t *)chars.data + chars.len;
+    for (const uint8_t *cursor = (const uint8_t *)string.data; cursor < string_end; ) {
+        int32_t codepoint;
+        cursor += gray_builtin_utf8_next(cursor, string_end, &codepoint);
+        for (const uint8_t *chars_cursor = (const uint8_t *)chars.data; chars_cursor < chars_end; ) {
+            int32_t candidate;
+            chars_cursor += gray_builtin_utf8_next(chars_cursor, chars_end, &candidate);
+            if (candidate == codepoint) return true;
         }
     }
     return false;
