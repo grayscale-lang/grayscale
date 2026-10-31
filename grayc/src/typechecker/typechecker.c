@@ -14835,13 +14835,15 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
         if (declared->kind == TYPE_KIND_STRUCT && value_type->kind == TYPE_KIND_STRUCT &&
             declared->name && value_type->name &&
             strcmp(declared->name, value_type->name) != 0 &&
-            !struct_alias_match) {
+            !struct_alias_match &&
+            types_assignable(checker, declared, value_type)) {
             typechecker_error_assign_type(checker, node, type_display_name(checker, value_type), type_display_name(checker, declared));
         }
         /* Enum-to-enum name mismatch (both TYPE_KIND_ENUM but different enum types) */
         if (declared->kind == TYPE_KIND_ENUM && value_type->kind == TYPE_KIND_ENUM &&
             declared->name && value_type->name &&
-            !typechecker_same_enum_type(checker, declared->name, value_type->name)) {
+            !typechecker_same_enum_type(checker, declared->name, value_type->name) &&
+            types_assignable(checker, declared, value_type)) {
             typechecker_error_assign_type(checker, node, type_display_name(checker, value_type), type_display_name(checker, declared));
         }
         /* Map key/value type mismatch (both TYPE_KIND_MAP but different key or value types) */
@@ -15818,14 +15820,16 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL &&
         target_type->kind == TYPE_KIND_STRUCT && assigned_value_type->kind == TYPE_KIND_STRUCT &&
         target_type->name && assigned_value_type->name &&
-        strcmp(target_type->name, assigned_value_type->name) != 0) {
+        strcmp(target_type->name, assigned_value_type->name) != 0 &&
+        types_assignable(checker, target_type, assigned_value_type)) {
         typechecker_error_assign_type(checker, node, type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
     }
     /* Enum-to-enum name mismatch on direct variable assignment */
     if (target->kind == NODE_LABEL &&
         target_type->kind == TYPE_KIND_ENUM && assigned_value_type->kind == TYPE_KIND_ENUM &&
         target_type->name && assigned_value_type->name &&
-        !typechecker_same_enum_type(checker, target_type->name, assigned_value_type->name)) {
+        !typechecker_same_enum_type(checker, target_type->name, assigned_value_type->name) &&
+        types_assignable(checker, target_type, assigned_value_type)) {
         typechecker_error_assign_type(checker, node, type_display_name(checker, assigned_value_type), type_display_name(checker, target_type));
     }
     /* Function-to-function signature mismatch on direct variable assignment */

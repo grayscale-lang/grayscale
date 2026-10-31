@@ -1,0 +1,13 @@
+// Error Test: E3001 - assigning one enum type to another is one mistake,
+// reported once whether it is a declaration or an assignment
+// expect-error: E3001
+// expect-error-count: 2
+
+const Kind enum { A; B }
+const Other enum { X; Y }
+
+do main() {
+    mut other Other = Other.X
+    mut kind Kind = other
+    kind = other
+}
