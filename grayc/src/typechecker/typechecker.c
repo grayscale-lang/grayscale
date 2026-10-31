@@ -5178,10 +5178,55 @@ static DeclarationEntry *private_target_leaf(TypeChecker *checker, const char *w
             entry->kind == DECLARATION_ALIAS) ? entry : NULL;
 }
 
+/* E4033 when `qualifier` names a user module that the file being checked does
+ * not import. The module is only loaded because some other file imports it, so
+ * without this check what a file may name depends on the rest of the program. */
+static void reject_unimported_module(TypeChecker *checker, AstNode *node, const char *qualifier) {
+    const char *module_name = typechecker_resolve_alias(checker, qualifier);
+    if (typechecker_is_imported_module(checker, qualifier) ||
+        typechecker_is_imported_module(checker, module_name)) return;
+    if (is_unimported_user_module(checker, qualifier, module_name)) {
+        NODE_ERROR_FORMATTED_HELP(checker, node, "E4033", "add an import for it at the top of the file", qualifier);
+    }
+}
+
+/* reject_unimported_module for the module a written type name is qualified
+ * with, at every leaf of a container or pointer spelling. */
+static void reject_unimported_type_module(TypeChecker *checker, AstNode *node, const char *written) {
+    if (!written || !*written || !checker->modules) return;
+
+    char parts[2][MESSAGE_BUFFER_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++) reject_unimported_type_module(checker, node, parts[i]);
+        return;
+    }
+
+    if (strncmp(written, "func(", 5) == 0) {
+        GrayFunctionSignature *signature = type_from_name(written)->function_signature;
+        if (!signature) return;
+        for (int i = 0; i < signature->parameter_count; i++)
+            reject_unimported_type_module(checker, node, signature->parameter_types[i]);
+        for (int i = 0; i < signature->return_count; i++)
+            reject_unimported_type_module(checker, node, signature->return_types[i]);
+        return;
+    }
+
+    const char *dot = strchr(written, '.');
+    if (!dot || dot == written) return;
+    char qualifier[MESSAGE_BUFFER_SIZE];
+    size_t qualifier_length = (size_t)(dot - written);
+    if (qualifier_length >= sizeof(qualifier)) return;
+    memcpy(qualifier, written, qualifier_length);
+    qualifier[qualifier_length] = '\0';
+    reject_unimported_module(checker, node, qualifier);
+}
+
 /* Naming a private declaration from outside the file that declares it is an
  * error whatever the declaration is; the kind only picks which code to
  * report. Called once per written annotation, against the node that wrote it. */
 static void reject_private_type(TypeChecker *checker, AstNode *node, const char *written) {
+    reject_unimported_type_module(checker, node, written);
     DeclarationEntry *entry = private_type_leaf(checker, written);
     if (!entry) return;
     NODE_ERROR_FORMATTED(checker, node, entry->kind == DECLARATION_ALIAS ? "E4021" : "E4015", entry->name);
@@ -5194,6 +5239,7 @@ static void reject_private_type(TypeChecker *checker, AstNode *node, const char 
 static bool reject_private_qualified_type(TypeChecker *checker, AstNode *report_node,
                                           const char *module_name, const char *type) {
     if (scope_lookup(checker->current_scope, module_name)) return false;
+    reject_unimported_module(checker, report_node, module_name);
     return reject_if_private(checker, report_node, module_name, type);
 }
 
