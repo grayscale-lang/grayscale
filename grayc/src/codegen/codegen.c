@@ -5604,11 +5604,11 @@ static void append_c_literal_byte(CodeGen *codegen, unsigned char byte) {
  * Grayscale i64/u64 arguments (which are int64_t/uint64_t) to avoid -Wformat.
  * If append_newline is true, a \n is appended before the closing quote. */
 static void emit_format_string_normalized_extended(CodeGen *codegen, const char *format_text, int format_length,
-    AstNode *call_node, bool append_newline)
+    AstNode *call_node, bool append_newline, int first_value_index)
 {
     const char *cursor = format_text;
     const char *format_end = format_text + format_length;
-    int directive_index = 0; /* which element of args corresponds to the next directive */
+    int directive_index = first_value_index; /* which element of args corresponds to the next directive */
     append_char_to_buffer(&codegen->output, '"');
     while (cursor < format_end) {
         if (*cursor == '\0') {
@@ -5743,6 +5743,8 @@ typedef struct {
     int32_t width;   /* 0 when none */
     bool left_align; /* the '-' flag */
     int32_t precision; /* -1 when none */
+    int start;       /* byte offset of the directive's '%' (or of the NUL byte) in the format text */
+    int end;         /* byte offset just past the directive */
 } FormatDirective;
 
 /* Record each directive in format_text, and each NUL byte, in the order the
@@ -5756,15 +5758,16 @@ static int scan_format_directives(const char *format_text, int format_length, Fo
     int count = 0;
     while (cursor < format_end) {
         if (*cursor == '\0') {
-            directives[count++] = (FormatDirective){'\0', 0, false, -1};
+            directives[count++] = (FormatDirective){'\0', 0, false, -1, (int)(cursor - format_text), (int)(cursor - format_text) + 1};
             cursor++;
             continue;
         }
         if (*cursor != '%') { cursor++; continue; }
+        int directive_start = (int)(cursor - format_text);
         cursor++;
         if (!*cursor) break;
         if (*cursor == '%') { cursor++; continue; }
-        FormatDirective directive = {0, 0, false, -1};
+        FormatDirective directive = {0, 0, false, -1, directive_start, 0};
         while (*cursor == '-' || *cursor == '+' || *cursor == ' ' || *cursor == '0' || *cursor == '#') {
             if (*cursor == '-') directive.left_align = true;
             cursor++;
@@ -5784,6 +5787,7 @@ static int scan_format_directives(const char *format_text, int format_length, Fo
         else if (*cursor == 'L') cursor++;
         if (!*cursor) break;
         directive.specifier = *cursor++;
+        directive.end = (int)(cursor - format_text);
         directives[count++] = directive;
     }
     return count;
@@ -5876,23 +5880,20 @@ static void emit_format_value(CodeGen *codegen, GrayType *value_type, FormatDire
 /* Emit the printf values after the format string: an array literal's
  * elements, or one bounds-checked read of the array held in
  * _gray_format_values<values_id> per directive. */
-static void emit_format_arguments(CodeGen *codegen, AstNode *node, int values_id) {
+static void emit_format_arguments(CodeGen *codegen, AstNode *node, int values_id,
+                                  const char *format_text, int format_length, int first_value_index) {
     FormatDirective *directives = NULL;
     int directive_count = 0;
-    AstNode *format_argument = node->data.call.arguments[0];
-    if (format_argument->kind == NODE_STRING_VALUE) {
-        int format_length = 0;
-        char *format_text = decoded_format_text(format_argument, &format_length);
+    if (format_text) {
         directives = xmalloc(sizeof(FormatDirective) * ((size_t)format_length + 1));
         directive_count = scan_format_directives(format_text, format_length, directives);
-        free(format_text);
     }
     AstNode *values = node->data.call.arguments[1];
     bool is_literal = values->kind == NODE_ARRAY_VALUE;
     GrayType *values_type = is_literal ? NULL : codegen_type_of(codegen, values);
     const char *c_element_type = is_literal ? NULL
         : array_element_c_type(codegen, values_type ? values_type->element_type : NULL);
-    int value_index = 0;
+    int value_index = first_value_index;
     for (int i = 0; i < directive_count; i++) {
         if (!directives[i].specifier) {
             emit(codegen, ", 0"); /* the %c that writes a NUL byte */
@@ -9031,6 +9032,73 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *funct
 
 /* --- @fmt module --- */
 
+/* Is this directive a %s that prints a string argument? Its bytes are written
+ * as they are, because C's %s would stop at an embedded NUL. */
+static bool format_directive_is_string(CodeGen *codegen, AstNode *call_node, FormatDirective directive, int value_index) {
+    if (directive.specifier != 's') return false;
+    GrayType *value_type = format_value_type(codegen, call_node, value_index);
+    return value_type && value_type->kind == TYPE_KIND_STRING;
+}
+
+/* Emit the string value printed by the directive at value_index (its width and
+ * precision applied) as a GrayString expression. */
+static void emit_format_string_value(CodeGen *codegen, AstNode *node, int values_id, FormatDirective directive, int value_index) {
+    AstNode *values = node->data.call.arguments[1];
+    bool is_field = directive.width > 0 || directive.precision >= 0;
+    if (is_field) emit(codegen, "gray_fmt_string_field(gray_default_arena, ");
+    if (values->kind == NODE_ARRAY_VALUE) {
+        emit_expression(codegen, values->data.array_value.elements[value_index]);
+    } else {
+        GrayType *values_type = codegen_type_of(codegen, values);
+        const char *c_element_type = array_element_c_type(codegen, values_type ? values_type->element_type : NULL);
+        emit_formatted(codegen, "(*(%s *)gray_array_get_ptr(&_gray_format_values%d, %d, \"%s\", %d))",
+            c_element_type, values_id, value_index, codegen_file_literal(codegen), node->token.line);
+    }
+    if (is_field)
+        emit_formatted(codegen, ", %d, %s, %d)", directive.width, directive.left_align ? "true" : "false", directive.precision);
+}
+
+/* A format with a %s of a string argument: the text between those directives goes
+ * through C's printf as before, and each string is written as raw bytes. */
+static void emit_segmented_format(CodeGen *codegen, AstNode *node, const char *prefix, bool newline, int values_id,
+                                  const char *format_text, int format_length, FormatDirective *directives, int directive_count) {
+    bool to_string = strcmp(prefix, "gray_string_format(gray_default_arena, ") == 0;
+    const char *stream = strcmp(prefix, "fprintf(stderr, ") == 0 ? "stderr" : "stdout";
+    int unique_id = codegen_next_id(codegen);
+    if (to_string) emit_formatted(codegen, "({ GrayFmtOut _gray_fs%d = {0}; ", unique_id);
+    else emit(codegen, "({ ");
+    int segment_start = 0, segment_first_value = 0, value_index = 0;
+    for (int i = 0; i <= directive_count; i++) {
+        bool is_last = i == directive_count;
+        bool is_string = !is_last && directives[i].specifier &&
+            format_directive_is_string(codegen, node, directives[i], value_index);
+        if (!is_last && !is_string) {
+            if (directives[i].specifier) value_index++;
+            continue;
+        }
+        int segment_end = is_last ? format_length : directives[i].start;
+        if (segment_end > segment_start || (is_last && newline)) {
+            if (to_string) emit_formatted(codegen, "gray_fmt_out_printf(&_gray_fs%d, ", unique_id);
+            else emit_formatted(codegen, "fprintf(%s, ", stream);
+            emit_format_string_normalized_extended(codegen, format_text + segment_start, segment_end - segment_start,
+                                                   node, is_last && newline, segment_first_value);
+            emit_format_arguments(codegen, node, values_id, format_text + segment_start, segment_end - segment_start,
+                                  segment_first_value);
+            emit(codegen, "); ");
+        }
+        if (is_last) break;
+        emit(codegen, "{ GrayString _gray_fv = ");
+        emit_format_string_value(codegen, node, values_id, directives[i], value_index);
+        if (to_string) emit_formatted(codegen, "; gray_fmt_out_write(_gray_fv.data, 1, (size_t)_gray_fv.len, &_gray_fs%d); } ", unique_id);
+        else emit_formatted(codegen, "; fwrite(_gray_fv.data, 1, (size_t)_gray_fv.len, %s); } ", stream);
+        value_index++;
+        segment_start = directives[i].end;
+        segment_first_value = value_index;
+    }
+    if (to_string) emit_formatted(codegen, "gray_fmt_out_finish(gray_default_arena, &_gray_fs%d); })", unique_id);
+    else emit(codegen, "(void)0; })");
+}
+
 static void emit_format_body(CodeGen *codegen, AstNode *node, const char *prefix, bool newline) {
     /* An array variable is evaluated once; each directive then reads one
      * element of it. A literal's elements are passed directly. */
@@ -9042,19 +9110,35 @@ static void emit_format_body(CodeGen *codegen, AstNode *node, const char *prefix
         emit_expression(codegen, values);
         emit(codegen, "; ");
     }
-    emit(codegen, prefix);
     AstNode *format_argument = node->data.call.arguments[0];
     if (format_argument->kind == NODE_STRING_VALUE) {
         int format_length = 0;
         char *format_text = decoded_format_text(format_argument, &format_length);
-        emit_format_string_normalized_extended(codegen, format_text, format_length, node, newline);
+        FormatDirective *directives = xmalloc(sizeof(FormatDirective) * ((size_t)format_length + 1));
+        int directive_count = scan_format_directives(format_text, format_length, directives);
+        bool has_string_directive = false;
+        for (int i = 0, value_index = 0; i < directive_count && !has_string_directive; i++) {
+            if (!directives[i].specifier) continue;
+            has_string_directive = format_directive_is_string(codegen, node, directives[i], value_index++);
+        }
+        if (has_string_directive) {
+            emit_segmented_format(codegen, node, prefix, newline, values_id, format_text, format_length,
+                                  directives, directive_count);
+        } else {
+            emit(codegen, prefix);
+            emit_format_string_normalized_extended(codegen, format_text, format_length, node, newline, 0);
+            emit_format_arguments(codegen, node, values_id, format_text, format_length, 0);
+            emit(codegen, ")");
+        }
+        free(directives);
         free(format_text);
     } else {
+        emit(codegen, prefix);
         emit_expression(codegen, format_argument);
         emit(codegen, ".data");
+        emit_format_arguments(codegen, node, values_id, NULL, 0, 0);
+        emit(codegen, ")");
     }
-    emit_format_arguments(codegen, node, values_id);
-    emit(codegen, ")");
     if (values->kind != NODE_ARRAY_VALUE) emit(codegen, "; })");
 }
 
