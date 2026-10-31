@@ -4023,7 +4023,7 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `remove_dir` | `(path string) -> bool` | Remove empty directory |
 | `remove_dir_all` | `(path string) -> bool` | Remove directory and all contents |
 | `walk` | `(path string) -> [string]` | Recursively list all files |
-| `glob` | `(pattern string) -> [string]` | Match files by glob pattern; returns empty array on no match |
+| `glob` | `(pattern string) -> [string]` | Match files by glob pattern; `?` and a bracket expression match one character (a codepoint), not one byte; returns empty array on no match |
 
 #### Temporary Files
 

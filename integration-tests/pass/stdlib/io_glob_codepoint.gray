@@ -1,0 +1,37 @@
+/*
+ * Test: io.glob '?' and bracket expressions match one codepoint, not one byte.
+ */
+import @io
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut directory string = "/tmp/gray_io_glob_codepoint"
+    mut _, _ = io.remove_dir_all(directory)
+    mut _, _ = io.make_dir_all(directory)
+    mut names [string] = {"cafe.txt", "café.txt", "a日.txt", "ab.txt"}
+    for_each name in names {
+        mut _, _ = io.write_file("${directory}/${name}", "x")
+    }
+
+    mut a, e1 = io.glob("${directory}/caf?.txt")
+    mut b, e2 = io.glob("${directory}/a?.txt")
+    mut c, e3 = io.glob("${directory}/caf[é].txt")
+    mut d, e4 = io.glob("${directory}/a[日].txt")
+    if len(a) == 2 && len(b) == 2 && len(c) == 1 && len(d) == 1 && e1 == nil && e2 == nil && e3 == nil && e4 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] glob counts ${len(a)} ${len(b)} ${len(c)} ${len(d)}")
+        failed += 1
+    }
+
+    mut _, _ = io.remove_dir_all(directory)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
