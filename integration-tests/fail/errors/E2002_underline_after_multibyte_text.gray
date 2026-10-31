@@ -1,0 +1,7 @@
+/*
+ * Error Test: E2002 - the underline lines up under the token after multibyte text
+ */
+
+do main() {
+    println("日本語"); mut x i64 = @
+}
