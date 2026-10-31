@@ -453,12 +453,12 @@ GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
     return gray_string_new(arena, buffer, position);
 }
 
-char gray_strings_char_at(GrayString string, int64_t index) {
+int32_t gray_strings_char_at(GrayString string, int64_t index) {
     if (index < 0 || index >= string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
                       (long long)index, (int)string.len);
     }
-    return string.data[index];
+    return (unsigned char)string.data[index];
 }
 
 /* Build a new string: bytes [0,cut) of str, then ins, then bytes [cut+drop,str.len) of str.

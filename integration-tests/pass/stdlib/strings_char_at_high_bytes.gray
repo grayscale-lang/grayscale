@@ -1,0 +1,34 @@
+/*
+ * Test: strings.char_at returns the raw byte 0-255, the same as s[i], for
+ * bytes of 128 or more.
+ */
+
+import @strings
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut s string = "aé日😀z"
+
+    for i in range(0, len(s)) {
+        mut indexed char = s[i]
+        mut fetched char = strings.char_at(s, i)
+        if indexed == fetched && cast(fetched, i64) >= 0 {
+            passed = passed + 1
+        } otherwise {
+            failed = failed + 1
+            println("  [FAIL] byte ${i}: s[i]=${cast(indexed, i64)} char_at=${cast(fetched, i64)}")
+        }
+    }
+
+    mut high char = strings.char_at("é", 0)
+    if cast(high, i64) == 195 && !(high < 'a') {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("  [FAIL] high byte is not 195 or orders below 'a'")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

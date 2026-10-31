@@ -460,7 +460,7 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray array, GrayString separ
  *   println(strings.char_at("hello", 4))
  *@end
  */
-char gray_strings_char_at(GrayString string, int64_t index);
+int32_t gray_strings_char_at(GrayString string, int64_t index);
 
 /*@man append_char
  *@module strings
