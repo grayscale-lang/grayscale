@@ -11,6 +11,7 @@
  */
 
 #include "codegen.h"
+#include "runtime_macros.h"
 #include "../util/constants.h"
 #include "../util/platform.h"
 #include "../util/xalloc.h"
@@ -15079,6 +15080,14 @@ static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *
     /* Emit user C interop headers (after Grayscale internals to prevent collisions) */
     if (codegen->c_header_count > 0) {
         emit(codegen, "\n/* C interop headers */\n");
+        /* A C header can #undef and redefine a runtime macro, which would turn
+         * off the bounds, nil, overflow and arena checks of every line of
+         * generated code after it, and so would a macro named like a runtime
+         * function. Save every runtime name here; restoring them once the
+         * headers are in drops any macro a header made of one. */
+#define GRAY_EMIT_PUSH_MACRO(name) emit(codegen, "#pragma push_macro(\"" #name "\")\n");
+        GRAY_RUNTIME_MACROS(GRAY_EMIT_PUSH_MACRO)
+#undef GRAY_EMIT_PUSH_MACRO
         for (int i = 0; i < codegen->c_header_count; i++) {
             const char *header_path = codegen->c_headers[i];
             /* Defense-in-depth: skip any path that slipped through with a
@@ -15106,6 +15115,9 @@ static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *
                 emit_formatted(codegen, "#include <%s>\n", header_path);
             }
         }
+#define GRAY_EMIT_POP_MACRO(name) emit(codegen, "#pragma pop_macro(\"" #name "\")\n");
+        GRAY_RUNTIME_MACROS(GRAY_EMIT_POP_MACRO)
+#undef GRAY_EMIT_POP_MACRO
     }
     emit(codegen, "\n");
     codegen->preamble_end = codegen->output.length;

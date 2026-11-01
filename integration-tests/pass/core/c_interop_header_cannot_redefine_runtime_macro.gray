@@ -1,0 +1,16 @@
+/*
+ * A C header imported with `extern import` redefines a runtime macro. The
+ * runtime's own definition must stay in effect for the generated code, so
+ * the array read below returns the stored element.
+ */
+
+extern import "./c_interop_header_cannot_redefine_runtime_macro.h"
+
+do main() {
+    mut a [i64] = {1, 2, 3}
+    if a[1] != 2 {
+        println("runtime macro was redefined by a C header")
+        exit(1)
+    }
+    println("ok")
+}
