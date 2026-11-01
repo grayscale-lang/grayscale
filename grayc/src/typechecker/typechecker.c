@@ -2865,9 +2865,17 @@ static void apply_call_parameter_escape_and_mem_effects(TypeChecker *checker,
                 : (argument_index < MAX_TRACKED_PARAMETERS && callee_signature->parameter_escape_global_name[argument_index])
                 ? callee_signature->parameter_escape_global_name[argument_index] : "a global";
         } else {
-            const char *destination_root = (parameter_escape < argument_count)
-                ? assignment_target_root_name(node->data.call.arguments[parameter_escape])
-                : NULL;
+            /* The destination is the memory an `addr(x)` / `raw(x)` argument
+             * points at, so its lifetime is x's. */
+            AstNode *destination_argument = parameter_escape < argument_count
+                ? node->data.call.arguments[parameter_escape] : NULL;
+            if (destination_argument && destination_argument->kind == NODE_CALL_EXPRESSION &&
+                destination_argument->data.call.function->kind == NODE_LABEL &&
+                (strcmp(destination_argument->data.call.function->data.label.value, "addr") == 0 ||
+                 strcmp(destination_argument->data.call.function->data.label.value, "raw") == 0) &&
+                destination_argument->data.call.argument_count == 1)
+                destination_argument = destination_argument->data.call.arguments[0];
+            const char *destination_root = assignment_target_root_name(destination_argument);
             sink_depth = destination_root
                 ? symbol_scope_depth(checker->current_scope, destination_root) : 0;
             sink_name = destination_root ? destination_root : original_name;

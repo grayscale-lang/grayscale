@@ -1,0 +1,37 @@
+/*
+ * Pass Test: a helper that stores one pointer parameter into another's field
+ * is accepted when both arguments are locals of the same scope, since both
+ * are freed together.
+ */
+
+const Node struct {
+    value i64
+    next ^Node
+}
+
+do link(destination ^Node, source ^Node) {
+    destination.next = source
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut first Node = Node{value: 0, next: nil}
+    mut second Node = Node{value: 1, next: nil}
+    link(addr(first), addr(second))
+
+    if first.next.value == 1 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] helper link between same-scope locals")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
