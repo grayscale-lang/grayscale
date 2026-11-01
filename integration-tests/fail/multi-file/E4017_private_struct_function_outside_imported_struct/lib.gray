@@ -1,0 +1,7 @@
+const Pub struct {
+    a i64
+    private do inner(self Pub) -> i64 { return self.a }
+    private do inner_p(self ^Pub) -> i64 { return self^.a }
+    do outer(self Pub) -> i64 { return self.inner() }
+    do outer_p(self ^Pub) -> i64 { return self^.inner_p() }
+}

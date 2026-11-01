@@ -276,6 +276,17 @@ static bool is_enum_name(TypeChecker *checker, const char *name);
 static const char *checker_resolve_declaration_into(TypeChecker *checker, const char *written,
                                              char *buffer, size_t buffer_length);
 static void checker_refresh_using(TypeChecker *checker);
+
+/* Is the struct whose functions are being checked the one keyed `struct_key`?
+ * The current struct is held as written in its own module, and a call site
+ * holds the module-prefixed key, so the written name is resolved first. */
+static bool is_inside_struct(TypeChecker *checker, const char *struct_key) {
+    if (!checker->current_struct_name || !struct_key) return false;
+    if (strcmp(checker->current_struct_name, struct_key) == 0) return true;
+    char resolved[MESSAGE_BUFFER_SIZE];
+    return strcmp(checker_resolve_declaration_into(checker, checker->current_struct_name,
+                                                   resolved, sizeof(resolved)), struct_key) == 0;
+}
 static ResolveScope checker_scope(TypeChecker *checker);
 static bool type_argument_names_a_type(TypeChecker *checker, const char *name);
 static DeclarationEntry *checker_resolve_entry(TypeChecker *checker, const char *written);
@@ -8599,7 +8610,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 if (is_self_function) {
                     /* E4017: private struct function via instance dispatch */
                     if (struct_function_signature->is_private &&
-                        !(checker->current_struct_name && strcmp(checker->current_struct_name, struct_name) == 0)) {
+                        !is_inside_struct(checker, struct_name)) {
                         NODE_ERROR_FORMATTED(checker, node, "E4017", display_struct_name, member_function_name);
                     }
                     /* Resolve named arguments before AST rewrite.
@@ -8776,7 +8787,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * time codegen sees it. */
                     /* E4017: private struct function via instance dispatch */
                     if (struct_function_signature->is_private &&
-                        !(checker->current_struct_name && strcmp(checker->current_struct_name, struct_name) == 0)) {
+                        !is_inside_struct(checker, struct_name)) {
                         NODE_ERROR_FORMATTED(checker, node, "E4017", display_struct_name, member_function_name);
                     }
                     /* Resolve named arguments if present */
@@ -10796,8 +10807,7 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
             if (signature->is_private) {
                 char struct_key[MESSAGE_BUFFER_SIZE];
                 snprintf(struct_key, sizeof(struct_key), "%s_%s", module_name, struct_name);
-                if (!(checker->current_struct_name &&
-                      strcmp(checker->current_struct_name, struct_key) == 0)) {
+                if (!is_inside_struct(checker, struct_key)) {
                     NODE_ERROR_FORMATTED(checker, node, "E4017", struct_name, chained_function_name);
                 }
             }
@@ -12449,8 +12459,7 @@ static GrayType *resolve_function_reference(TypeChecker *checker, AstNode *node)
         }
         /* E4017: private struct function referenced from outside the struct */
         if (reference_signature->is_private && reference_struct_key &&
-            !(checker->current_struct_name &&
-              strcmp(checker->current_struct_name, reference_struct_key) == 0)) {
+            !is_inside_struct(checker, reference_struct_key)) {
             NODE_ERROR_FORMATTED(checker, node, "E4017", reference_struct_name, reference_member_name);
         }
     } else if (reference_name) {
