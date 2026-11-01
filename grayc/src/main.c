@@ -19,6 +19,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "util/arena.h"
 #include "util/buf.h"
@@ -41,6 +42,7 @@
 #endif
 #define PATH_BUFFER_SIZE 2048
 #define COMPILER_ARENA_SIZE (1024 * 1024)
+#define MAX_ARENA_LIMIT 9223372036854775807ULL
 
 /* Wall-clock milliseconds from a monotonic source. clock() would measure only
  * this process's CPU time and miss the C compiler, which runs as a spawned
@@ -2095,7 +2097,17 @@ static ArgumentsStatus parse_arguments(int argc, char **argv, CompilerOptions *o
             continue;
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
-            options->arena_limit = strtoull(argv[i] + 14, NULL, 10);
+            const char *limit_text = argv[i] + 14;
+            char *limit_end = NULL;
+            errno = 0;
+            unsigned long long limit = strtoull(limit_text, &limit_end, 10);
+            if (!isdigit((unsigned char)limit_text[0]) || *limit_end != '\0' || errno == ERANGE ||
+                limit == 0 || limit > MAX_ARENA_LIMIT) {
+                fprintf(stderr, "gray: invalid --arena-limit '%s': expected a positive number of bytes up to %llu\n",
+                        limit_text, MAX_ARENA_LIMIT);
+                return ARGUMENTS_ERROR;
+            }
+            options->arena_limit = (size_t)limit;
             continue;
         }
         if (strncmp(argv[i], "--define=", 9) == 0) {
