@@ -19854,6 +19854,9 @@ static void report_declaration_collision(TypeChecker *checker, AstNode *statemen
                                          DeclarationKind kind, const char *name,
                                          const DeclarationEntry *entry) {
     if (!entry || entry->ast_node == statement || !entry->ast_node) return;
+    /* The entry point is the only declaration allowed to be named main; whatever
+     * else takes the name already got E4026, so the function is not reported too. */
+    if (strcmp(name, "main") == 0 && (kind == DECLARATION_FUNCTION || entry->kind == DECLARATION_FUNCTION)) return;
     if (kind != DECLARATION_CONST && entry->kind != DECLARATION_CONST) {
         /* A function and a type share a name. When the type comes first the
          * function's own registration reports it; when the function comes
