@@ -1,0 +1,41 @@
+/*
+ * Pass Test: a struct built from a scalar field read through a pointer
+ * parameter holds a copy, so returning the result of such a call from the
+ * caller does not return the address of a local.
+ */
+
+const Token struct {
+    pos i64
+}
+
+const Lexer struct {
+    pos i64
+
+    do next(self ^Lexer) -> Token {
+        return Token{pos: self^.pos}
+    }
+}
+
+do collect() -> Token {
+    mut lexer Lexer = Lexer{pos: 5}
+    return lexer.next()
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if collect().pos == 5 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] token built from a pointer parameter's field")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

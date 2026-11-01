@@ -1319,9 +1319,15 @@ static bool is_tagged_enum_variant_call(TypeChecker *checker, AstNode *node) {
  *
  * A bare `p^` yields the pointee *value*, so it carries nothing; `p^.field`
  * reaches into the pointee and can. */
+static bool expression_is_plain_scalar(TypeChecker *checker, FunctionSignature *function_signature, AstNode *node);
+
 static unsigned long long return_expression_parameter_bits(TypeChecker *checker,
                                                  FunctionSignature *function_signature, AstNode *node) {
     if (!node || !function_signature->declaration) return 0;
+    /* A number, bool or char read through a pointer is a copy of the field. */
+    if ((node->kind == NODE_LABEL || node->kind == NODE_MEMBER_EXPRESSION) &&
+        expression_is_plain_scalar(checker, function_signature, node))
+        return 0;
     switch (node->kind) {
     case NODE_LABEL: {
         int parameter_count = function_signature->declaration->data.function_declaration.parameter_count;
