@@ -293,10 +293,10 @@ static void test_private_is_file_scoped_within_a_module(void) {
 static void test_alias_resolves_to_module(void) {
     ModuleTable *table = table_with_modules();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
-    module_table_add_alias(table, "l", "lib");
+    module_table_add_alias(table, module_file(MODULE_ENTRY_NAME), "l", "lib");
     define(table, "lib", "helper", VISIBILITY_PUBLIC);
 
-    ASSERT_STR_EQ(module_table_resolve_alias(table, "l"), "lib");
+    ASSERT_STR_EQ(module_table_resolve_alias(table, module_file(MODULE_ENTRY_NAME), "l"), "lib");
     ResolveStatus status;
     DeclarationEntry *found = module_resolve_qualified(table, &sc, "l", "helper", &status);
     ASSERT_EQ(status, RESOLVE_OK);
@@ -306,12 +306,12 @@ static void test_alias_resolves_to_module(void) {
 
 static void test_non_alias_passes_through(void) {
     ModuleTable *table = table_with_modules();
-    ASSERT_STR_EQ(module_table_resolve_alias(table, "lib"), "lib");
+    ASSERT_STR_EQ(module_table_resolve_alias(table, module_file(MODULE_ENTRY_NAME), "lib"), "lib");
 }
 
 static void test_self_alias_ignored(void) {
     ModuleTable *table = table_with_modules();
-    module_table_add_alias(table, "lib", "lib");
+    module_table_add_alias(table, module_file(MODULE_ENTRY_NAME), "lib", "lib");
     ASSERT_EQ(table->alias_count, 0);
 }
 
