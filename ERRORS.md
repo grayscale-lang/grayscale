@@ -74,7 +74,7 @@
 | `E2079` | syntax | 'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause |
 | `E2080` | syntax | invalid character in C header path; only [A-Za-z0-9./_+-] are permitted |
 | `E2081` | syntax | '^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^' |
-| `E2082` | syntax | arrays of typed func signatures are not supported; use '[func]' or '[func, N]' with '()func_name' elements instead |
+| `E2082` | syntax | arrays and maps of typed func signatures are not supported; use '[func]', '[func, N]' or 'map[K:func]' with '()func_name' values instead |
 | `E2083` | syntax | enum variant '%s' cannot have both a payload and an explicit value |
 | `E2084` | syntax | blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result |
 | `E2085` | syntax | when statement already has a default branch; only one default is allowed |
@@ -629,4 +629,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-31 17:17:16 UTC*
+*Generated on 2026-11-01 16:31:06 UTC*

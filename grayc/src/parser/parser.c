@@ -412,19 +412,25 @@ static const char *parse_complex_type(Parser *parser);
 
 /* The body of a bracketed type, from its element (or key) type through its
  * closing ']': "[T]", "[T,N]", or "map[K:V]" for the shorthand. */
+/* Arrays and maps hold bare `func` only. Reports E2082 and returns true when
+ * the parser sits on a typed `func(...)` element or value type. */
+static bool reject_typed_func_element(Parser *parser) {
+    if (!(current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
+          peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)))
+        return false;
+    diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
+    return true;
+}
+
 static const char *parse_bracketed_type(Parser *parser) {
-    if (current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
-        peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-        /* Arrays of typed func signatures are not supported. */
-        diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
-        return NULL;
-    }
+    if (reject_typed_func_element(parser)) return NULL;
     const char *element_type = parse_complex_type(parser);
     if (!element_type) return NULL;
     if (peek_token_is(parser, TOKEN_COLON)) {
         /* Map shorthand: [K:V] → normalized to "map[K:V]" */
         next_token(parser); /* skip : */
         next_token(parser); /* value type */
+        if (reject_typed_func_element(parser)) return NULL;
         const char *value_type = parse_complex_type(parser);
         if (!value_type) return NULL;
         if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
@@ -521,6 +527,7 @@ static const char *parse_complex_type_unbounded(Parser *parser) {
         const char *key_type = read_type_name(parser);
         if (!expect_peek_token(parser, TOKEN_COLON)) return NULL;
         next_token(parser); /* value type */
+        if (reject_typed_func_element(parser)) return NULL;
         const char *value_type = parse_complex_type(parser);
         if (!value_type) return NULL;
         if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;

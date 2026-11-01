@@ -87,7 +87,7 @@
     GRAY_ERROR("E2079", "syntax", "'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause") \
     GRAY_ERROR("E2080", "syntax", "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted") \
     GRAY_ERROR("E2081", "syntax", "'^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^'") \
-    GRAY_ERROR("E2082", "syntax", "arrays of typed func signatures are not supported; use '[func]' or '[func, N]' with '()func_name' elements instead") \
+    GRAY_ERROR("E2082", "syntax", "arrays and maps of typed func signatures are not supported; use '[func]', '[func, N]' or 'map[K:func]' with '()func_name' values instead") \
     GRAY_ERROR("E2083", "syntax", "enum variant '%s' cannot have both a payload and an explicit value") \
     GRAY_ERROR("E2084", "syntax", "blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result") \
     GRAY_ERROR("E2085", "syntax", "when statement already has a default branch; only one default is allowed") \
