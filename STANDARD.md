@@ -245,6 +245,7 @@ Escape sequences:
 - `\'` - single quote
 - `\$` - literal `$` (suppresses string interpolation, e.g. `"\${x}"` is the text `${x}`)
 - `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline)
+- `\u{H…}` - the UTF-8 encoding of a codepoint given by 1–6 hex digits (U+0000–U+10FFFF, no surrogates), the same as in a character literal (e.g., `"\u{65E5}"` is `日`)
 
 String interpolation allows embedding expressions within strings:
 

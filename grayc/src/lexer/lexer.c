@@ -11,6 +11,8 @@
 #include "lexer.h"
 #include "../util/constants.h"
 #include "../stdlib/utf8.h"
+#include "../util/xalloc.h"
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -231,15 +233,89 @@ static void check_literal_utf8(Lexer *lexer, int start) {
     }
 }
 
+/* A \u{...} escape in a string literal: where it sits in the source and the
+ * codepoint it names. */
+typedef struct {
+    int begin;
+    int end;
+    int32_t codepoint;
+} UnicodeEscape;
+
+/* The literal text with each \u{...} escape rewritten as the \xNN escapes of its
+ * UTF-8 bytes, so everything downstream sees only escapes it already handles. */
+static const char *expand_unicode_escapes(Lexer *lexer, int start, UnicodeEscape *escapes, int escape_count) {
+    int length = lexer->position - start;
+    char *text = arena_allocate(lexer->arena, (size_t)length + (size_t)escape_count * 16 + 1);
+    char *write = text;
+    int copied = start;
+    for (int i = 0; i < escape_count; i++) {
+        memcpy(write, lexer->input + copied, (size_t)(escapes[i].begin - copied));
+        write += escapes[i].begin - copied;
+        uint8_t bytes[4];
+        int32_t codepoint = escapes[i].codepoint;
+        int byte_count;
+        if (codepoint < 0x80) { bytes[0] = (uint8_t)codepoint; byte_count = 1; }
+        else if (codepoint < 0x800) { bytes[0] = (uint8_t)(0xC0 | (codepoint >> 6)); bytes[1] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 2; }
+        else if (codepoint < 0x10000) { bytes[0] = (uint8_t)(0xE0 | (codepoint >> 12)); bytes[1] = (uint8_t)(0x80 | ((codepoint >> 6) & 0x3F)); bytes[2] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 3; }
+        else { bytes[0] = (uint8_t)(0xF0 | (codepoint >> 18)); bytes[1] = (uint8_t)(0x80 | ((codepoint >> 12) & 0x3F)); bytes[2] = (uint8_t)(0x80 | ((codepoint >> 6) & 0x3F)); bytes[3] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 4; }
+        for (int j = 0; j < byte_count; j++) write += sprintf(write, "\\x%02x", bytes[j]);
+        copied = escapes[i].end;
+    }
+    memcpy(write, lexer->input + copied, (size_t)(lexer->position - copied));
+    write += lexer->position - copied;
+    *write = '\0';
+    return text;
+}
+
 static const char *read_string(Lexer *lexer) {
     read_character(lexer); /* skip opening " */
     int start = lexer->position;
     int brace_depth = 0;
+    UnicodeEscape *unicode_escapes = NULL;
+    int unicode_escape_count = 0, unicode_escape_capacity = 0;
 
     while (lexer->current_character != 0) {
         if (lexer->current_character == '\\') {
+            int escape_begin = lexer->position;
             read_character(lexer); /* move to escape char */
             /* Validate escape sequence */
+            if (lexer->current_character == 'u' && brace_depth == 0) {
+                /* \u{H...}: 1 to 6 hex digits, the same rules as a char literal */
+                read_character(lexer);
+                if (lexer->current_character != '{') {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "malformed '\\u' escape in string; expected '\\u{...}'";
+                    continue;
+                }
+                read_character(lexer); /* skip { */
+                int hex_digit_count = 0;
+                long codepoint = 0;
+                while (isxdigit((unsigned char)lexer->current_character)) {
+                    if (hex_digit_count < 7) codepoint = codepoint * 16 + (isdigit((unsigned char)lexer->current_character) ? lexer->current_character - '0' : tolower((unsigned char)lexer->current_character) - 'a' + 10);
+                    read_character(lexer);
+                    hex_digit_count++;
+                }
+                if (lexer->current_character != '}' || hex_digit_count < 1 || hex_digit_count > 6) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "malformed '\\u{}' escape in string; expected 1 to 6 hex digits";
+                    continue;
+                }
+                read_character(lexer); /* skip } */
+                if (codepoint > 0x10FFFF) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF";
+                } else if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "'\\u{}' codepoint is a UTF-16 surrogate, which has no UTF-8 encoding";
+                } else {
+                    if (unicode_escape_count == unicode_escape_capacity) {
+                        unicode_escape_capacity = unicode_escape_capacity ? unicode_escape_capacity * 2 : 4;
+                        unicode_escapes = xrealloc(unicode_escapes, (size_t)unicode_escape_capacity * sizeof(UnicodeEscape));
+                    }
+                    unicode_escapes[unicode_escape_count++] = (UnicodeEscape){escape_begin, lexer->position, (int32_t)codepoint};
+                }
+                continue;
+            }
             if (lexer->current_character == 'x') {
                 /* Hex escape: \xNN; exactly two hex digits */
                 read_character(lexer);
@@ -321,7 +397,10 @@ static const char *read_string(Lexer *lexer) {
     }
 
     check_literal_utf8(lexer, start);
-    const char *literal_text = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+    const char *literal_text = unicode_escape_count > 0
+        ? expand_unicode_escapes(lexer, start, unicode_escapes, unicode_escape_count)
+        : arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+    free(unicode_escapes);
     if (lexer->current_character == '"') {
         read_character(lexer); /* skip closing " */
     } else if (!lexer->error_code) {

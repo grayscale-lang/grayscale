@@ -1,0 +1,44 @@
+/*
+ * Test: a string literal accepts \u{...}, encoded as UTF-8; \xNN stays a byte.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if "\u{65E5}" == "日" && len("\u{65E5}") == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] 3 byte escape")
+        failed += 1
+    }
+
+    if "\u{e9}" == "é" && "\u{41}" == "A" && "\u{1F600}" == "😀" && "\u{10FFFF}" == "\xf4\x8f\xbf\xbf" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] other widths")
+        failed += 1
+    }
+
+    if "a\u{65E5}b\u{e9}1" == "a日bé1" && "\u{e9}9" == "é9" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] mixed text")
+        failed += 1
+    }
+
+    mut name string = "x"
+    if "${name}\u{65E5}" == "x日" && len("\xe9") == 1 && cast('\xe9', i64) == 233 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] interpolation or \\x")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

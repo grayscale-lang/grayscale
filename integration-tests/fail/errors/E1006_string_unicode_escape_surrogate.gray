@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1006 - a surrogate in a string \u{} escape
+ */
+
+do main() {
+    mut s string = "\u{D800}"
+    println(s)
+}
