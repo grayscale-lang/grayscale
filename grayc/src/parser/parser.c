@@ -2061,6 +2061,7 @@ static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) 
                         AstNode *temporary_declaration =
                             make_synthetic_temporary_declaration(parser, temporary_names[i], values[i]);
                         temporary_declaration->data.variable_declaration.type_name = types[i];
+                        temporary_declaration->data.variable_declaration.holds_single_value = true;
                         declarations->data.block.statements[declarations->data.block.count++] = temporary_declaration;
                     }
                 }

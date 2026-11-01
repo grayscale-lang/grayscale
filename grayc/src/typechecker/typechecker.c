@@ -14766,6 +14766,10 @@ static GrayType *check_variable_declaration_initializer(TypeChecker *checker, As
             strncmp(node->data.variable_declaration.name, GRAY_SYNTHETIC_TEMPORARY, sizeof(GRAY_SYNTHETIC_TEMPORARY) - 1) != 0 &&
             strncmp(node->data.variable_declaration.name, GRAY_SYNTHETIC_OR, sizeof(GRAY_SYNTHETIC_OR) - 1) != 0) {
             reject_multi_value_call(checker, node->data.variable_declaration.value, node, false);
+        } else if (node->data.variable_declaration.holds_single_value) {
+            /* One value of `mut x, y = 1, f()`: it is bound to exactly one
+             * name, so a fallible or multi-value call is unhandled. */
+            reject_multi_return_in_single_position(checker, node->data.variable_declaration.value);
         }
         /* Reject nil on non-nullable types */
         if (value_type->kind == TYPE_KIND_NIL && declared->kind != TYPE_KIND_UNKNOWN &&
