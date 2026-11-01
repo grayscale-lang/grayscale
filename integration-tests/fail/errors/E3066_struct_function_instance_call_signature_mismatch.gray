@@ -1,0 +1,12 @@
+const Cal struct {
+    z i64
+
+    do cb(self Cal, g func(i64) -> i64) -> i64 { return g(1) }
+}
+
+do sq(s string) -> string { return s }
+
+do main() {
+    mut c Cal = Cal{z: 1}
+    println("${c.cb(()sq)}")
+}

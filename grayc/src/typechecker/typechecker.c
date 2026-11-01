@@ -5631,6 +5631,15 @@ static bool types_assignable(TypeChecker *checker, GrayType *destination_type, G
     return false;
 }
 
+/* E3066: a function reference passed to a `func(...)` parameter must have
+ * exactly that signature, whichever spelling the call took. */
+static void check_function_argument_type(TypeChecker *checker, AstNode *argument,
+                                         GrayType *parameter_type, GrayType *argument_type) {
+    if (function_types_mismatch(checker, argument_type, parameter_type))
+        NODE_ERROR_FORMATTED(checker, argument, "E3066",
+            type_display_name(checker, parameter_type), type_display_name(checker, argument_type));
+}
+
 /* True when an argument of type `arg_t` cannot be passed to a parameter of
  * type `param_t`. Owns the implicit coercions every call path accepts: an
  * integer for an enum, and nil for a pointer
@@ -8416,6 +8425,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     report_argument_mismatch(checker, argument_node, argument_index, callee, parameter_type, argument_type);
                     was_argument_reported = true;
                 }
+                check_function_argument_type(checker, argument_node, parameter_type, argument_type);
                 /* Enum-to-enum: kinds both TYPE_KIND_ENUM but different names */
                 if (!was_argument_reported && argument_type->kind == TYPE_KIND_ENUM && parameter_type->kind == TYPE_KIND_ENUM &&
                     argument_type->name && parameter_type->name &&
@@ -8540,6 +8550,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                     if (argument_type_mismatches(checker, parameter_type, argument_type))
                         report_argument_mismatch(checker, argument, argument_index, display, parameter_type, argument_type);
+                    check_function_argument_type(checker, argument, parameter_type, argument_type);
                 }
             }
         } else {
@@ -8719,6 +8730,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 report_argument_mismatch(checker, argument_node, argument_index, callee, parameter_type, argument_type);
                                 was_argument_reported = true;
                             }
+                            check_function_argument_type(checker, argument_node, parameter_type, argument_type);
                             /* Struct-to-struct: kinds both TYPE_KIND_STRUCT but different names */
                             if (!was_argument_reported && argument_type && parameter_type &&
                                 argument_type->kind == TYPE_KIND_STRUCT && parameter_type->kind == TYPE_KIND_STRUCT &&
@@ -8828,6 +8840,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             if (argument_type_mismatches(checker, parameter_type, argument_type)) {
                                 report_argument_mismatch(checker, argument_node, argument_index, callee, parameter_type, argument_type);
                             }
+                            check_function_argument_type(checker, argument_node, parameter_type, argument_type);
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -10861,6 +10874,9 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                     report_argument_mismatch(checker, node->data.call.arguments[argument_index], argument_index,
                         display, parameter_type, argument_type);
                 }
+                if (!is_chain_generic)
+                    check_function_argument_type(checker, node->data.call.arguments[argument_index],
+                                                 parameter_type, argument_type);
                 AstNode *argument = node->data.call.arguments[argument_index];
                 AstNode *found_declaration = NULL;
                 AstNode *struct_declaration = find_struct_in_program(checker, struct_name);
