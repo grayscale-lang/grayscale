@@ -6786,6 +6786,15 @@ static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expressi
         module_name = typechecker_resolve_alias(checker, raw_module_name);
         name = function_node->data.member.member;
         signature = find_module_function(checker, raw_module_name, name);
+    } else {
+        /* mod.Struct.func(...): the struct function, namespaced under its module. */
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (ast_member_chain(function_node, &chain_module, &chain_type)) {
+            name = function_node->data.member.member;
+            char prefixed[MESSAGE_BUFFER_SIZE];
+            snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", chain_module, chain_type, name);
+            signature = find_function(checker, prefixed);
+        }
     }
     const char *file = NODE_FILE(checker, report_node);
     int line = report_node->token.line;
@@ -17126,6 +17135,21 @@ static void check_discarded_call_result(TypeChecker *checker, AstNode *node,
                         const char *display_object = struct_display_name(checker, object_name);
                         snprintf(full, sizeof(full), "%s.%s()", display_object, mem_name);
                         char *message = typechecker_format(checker, "return value of '%s' is not used", full);
+                        diagnostic_error_help(checker->diagnostics, "E5011", message,
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            "assign the result to a variable, or use 'mut _ = ...' to discard it");
+                    }
+                }
+                const char *chain_module = NULL, *chain_type = NULL;
+                if (!object_name && !is_side_effect && ast_member_chain(function_node, &chain_module, &chain_type)) {
+                    /* mod.Struct.func(): the struct function namespaced under its module. */
+                    char prefixed[MESSAGE_BUFFER_SIZE];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", chain_module, chain_type,
+                             function_node->data.member.member);
+                    FunctionSignature *function_signature = find_function(checker, prefixed);
+                    if (!function_signature || !function_signature->is_discard) {
+                        char *message = typechecker_format(checker, "return value of '%s.%s.%s()' is not used",
+                            chain_module, chain_type, function_node->data.member.member);
                         diagnostic_error_help(checker->diagnostics, "E5011", message,
                             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                             "assign the result to a variable, or use 'mut _ = ...' to discard it");

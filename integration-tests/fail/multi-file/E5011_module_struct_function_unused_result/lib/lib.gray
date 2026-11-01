@@ -1,0 +1,7 @@
+const Cal struct {
+    z i64
+    do parse(s string) -> (i64, Error) { return 1, nil }
+    do pair() -> (i64, i64) { return 1, 2 }
+    do one() -> i64 { return 1 }
+    do none() { }
+}
