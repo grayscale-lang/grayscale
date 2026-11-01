@@ -1792,7 +1792,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *original_declarat
                      : build_or_return_guard(parser, temporary_name, fallback_values, fallback_count);
 
     /* x = _tmp.v0 */
-    AstNode *unwrapped_declaration = ast_allocate(parser->arena, NODE_VARIABLE_DECLARATION, parser->current_token);
+    AstNode *unwrapped_declaration = ast_allocate(parser->arena, NODE_VARIABLE_DECLARATION, original_declaration->token);
     unwrapped_declaration->data.variable_declaration.is_mutable = original_declaration->data.variable_declaration.is_mutable;
     unwrapped_declaration->data.variable_declaration.name = original_declaration->data.variable_declaration.name;
     unwrapped_declaration->data.variable_declaration.type_name = original_declaration->data.variable_declaration.type_name;
