@@ -2331,6 +2331,8 @@ int main(int argc, char **argv) {
         typechecker_add_file_module(checker, imports.files[i], imports.modules[i], false);
     for (int i = 0; i < imports.alias_count; i++)
         typechecker_add_module_alias(checker, imports.alias_names[i], imports.alias_targets[i]);
+    for (int i = 0; i < imports.include_count; i++)
+        typechecker_add_file_include(checker, imports.include_files[i], imports.include_modules[i]);
     typechecker_check(checker, program);
 
     if (diagnostic_has_errors(diagnostics)) {

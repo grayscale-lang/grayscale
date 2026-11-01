@@ -230,6 +230,9 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
     const char **module_alias_names = NULL;
     const char **module_alias_targets = NULL;
     int module_alias_count = 0, module_alias_capacity = 0;
+    const char **include_files = NULL;
+    const char **include_modules = NULL;
+    int include_count = 0, include_capacity = 0;
 
         /* Mark the main file as already imported (prevents circular import loops).
          * Use realpath so that diamond dependencies reaching the main file via
@@ -585,6 +588,28 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
 
                     /* Skip if already imported (handles cycles and duplicates) */
                     if (already_imported(normalized_path)) {
+                        /* The file belongs to the module that claimed it first,
+                         * but this import names it under another module too
+                         * (STANDARD 8.2): that module gets the file's
+                         * declarations as well. */
+                        const char *owner_module = imported_by_module(normalized_path);
+                        if (owner_module && strcmp(owner_module, module_name) != 0) {
+                            for (int owned_index = 0; owned_index < module_file_count; owned_index++) {
+                                char *owned_real_path = gray_realpath(module_files[owned_index]);
+                                bool is_owned_file = owned_real_path && gray_path_equal(owned_real_path, normalized_path);
+                                free(owned_real_path);
+                                if (!is_owned_file) continue;
+                                if (include_count >= include_capacity) {
+                                    include_capacity = GROW_NEXT_CAPACITY(include_capacity);
+                                    ARENA_GROW_TO(arena, include_files, include_count, include_capacity);
+                                    ARENA_GROW_TO(arena, include_modules, include_count, include_capacity);
+                                }
+                                include_files[include_count] = module_files[owned_index];
+                                include_modules[include_count] = module_name;
+                                include_count++;
+                                break;
+                            }
+                        }
                         /* If this is a transitive import from inside a directory
                          * module referencing a sibling already pulled in by the
                          * directory import, emit an informational warning. */
@@ -900,4 +925,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
     out->alias_names = module_alias_names;
     out->alias_targets = module_alias_targets;
     out->alias_count = module_alias_count;
+    out->include_files = include_files;
+    out->include_modules = include_modules;
+    out->include_count = include_count;
 }

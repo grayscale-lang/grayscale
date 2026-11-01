@@ -9767,6 +9767,14 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
              * its module, or an import alias. Try the symbol table first. */
             const char *resolved_name = codegen_resolve_declaration(codegen, raw_name);
             if (resolved_name == raw_name) resolved_name = resolve_alias(codegen, raw_name);
+            /* A module can expose a function another module owns (a file
+             * imported directly and through its directory), so the owner
+             * of the resolved declaration names the C symbol, not the
+             * qualifier. */
+            DeclarationEntry *callee_entry = node->data.call.function->resolved_declaration;
+            if (callee_entry && callee_entry->kind == DECLARATION_FUNCTION &&
+                !callee_entry->is_external && !callee_entry->is_module_entry)
+                resolved_name = callee_entry->module_name;
             /* Try to find as a namespaced function: Name_func or ResolvedAlias_func */
             char namespaced_name[IDENTIFIER_BUFFER_SIZE * 2];
             snprintf(namespaced_name, sizeof(namespaced_name), "%s_%s", resolved_name, member);

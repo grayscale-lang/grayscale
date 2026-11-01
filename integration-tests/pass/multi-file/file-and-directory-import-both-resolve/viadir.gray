@@ -1,0 +1,5 @@
+import "./pkg"
+
+do via_directory() -> i64 {
+    return pkg.one() + pkg.two()
+}

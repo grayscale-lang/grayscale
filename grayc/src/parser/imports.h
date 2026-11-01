@@ -32,6 +32,12 @@ typedef struct {
     const char **alias_names;
     const char **alias_targets;
     int alias_count;
+
+    /* Parallel arrays: the declarations of include_files[i] are also members
+     * of module include_modules[i], a second module that imports the file. */
+    const char **include_files;
+    const char **include_modules;
+    int include_count;
 } ImportResolution;
 
 /* Resolve every import reachable from `program`, merging the declarations it

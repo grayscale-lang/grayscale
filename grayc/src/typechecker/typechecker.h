@@ -550,6 +550,11 @@ void typechecker_add_file_module(TypeChecker *checker, const char *file,
  * modules but resolve to the directory's module. */
 void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
                                   const char *module_name);
+
+/* Make the declarations of `file` members of `module_name` as well as of the
+ * module that owns the file. */
+void typechecker_add_file_include(TypeChecker *checker, const char *file,
+                                 const char *module_name);
 void typechecker_check(TypeChecker *checker, AstNode *program);
 void typechecker_free(TypeChecker *checker);
 

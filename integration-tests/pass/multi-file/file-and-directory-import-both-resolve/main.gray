@@ -1,0 +1,35 @@
+/*
+ * Pass Test: a file imported directly in one place and through its directory
+ * in another resolves for both imports (STANDARD 8.2), whichever import the
+ * compiler sees first.
+ */
+
+import "./viafile", "./viadir"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if viafile.via_file() == 1 {
+        println("  [PASS] direct file import resolves")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] direct file import resolves")
+        failed += 1
+    }
+
+    if viadir.via_directory() == 3 {
+        println("  [PASS] directory import keeps every file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] directory import keeps every file")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

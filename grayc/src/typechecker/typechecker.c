@@ -18935,10 +18935,12 @@ static DeclarationEntry *module_register(TypeChecker *checker, AstNode *statemen
     const char *module = module_table_module_for_file(checker->modules, statement->token.file);
     ModuleScope *scope = module_table_find(checker->modules, module);
     if (!scope || !source_name) return NULL;
-    return module_scope_define(checker->modules, scope, kind, source_name,
-                               statement, NODE_FILE(checker, statement),
-                               statement->token.line,
-                               is_private ? VISIBILITY_PRIVATE : VISIBILITY_PUBLIC);
+    DeclarationEntry *entry = module_scope_define(checker->modules, scope, kind, source_name,
+                                                  statement, NODE_FILE(checker, statement),
+                                                  statement->token.line,
+                                                  is_private ? VISIBILITY_PRIVATE : VISIBILITY_PUBLIC);
+    module_table_share_with_includes(checker->modules, statement->token.file, entry);
+    return entry;
 }
 
 /* Put a stdlib module's declarations in the symbol table when it is imported,
@@ -20349,6 +20351,11 @@ void typechecker_set_main_optional(TypeChecker *checker, bool optional) {
 
 void typechecker_set_directory_entry(TypeChecker *checker, bool enabled) {
     checker->is_directory_entry = enabled;
+}
+
+void typechecker_add_file_include(TypeChecker *checker, const char *file,
+                                 const char *module_name) {
+    module_table_include_file(checker->modules, file, module_name);
 }
 
 void typechecker_add_module_alias(TypeChecker *checker, const char *alias,

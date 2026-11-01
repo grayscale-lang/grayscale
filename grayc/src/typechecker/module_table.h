@@ -126,6 +126,12 @@ typedef struct {
     int file_count;
     int file_capacity;
     int file_hash_capacity;
+
+    /* A file's declarations that a second module also exposes. */
+    const char **include_files;
+    const char **include_modules;
+    int include_count;
+    int include_capacity;
 } ModuleTable;
 
 /* Where a name is being resolved from. `module` scopes an unqualified
@@ -155,6 +161,13 @@ ModuleTable *module_table_create(Arena *arena);
  * is keyed under MODULE_ENTRY_NAME regardless of `module_name`. */
 void module_table_map_file(ModuleTable *table, const char *file,
                            const char *module_name, bool is_entry);
+
+/* Make `module_name` expose the declarations of `file` as well as the module
+ * that owns the file. The declarations keep their owner's C names. */
+void module_table_include_file(ModuleTable *table, const char *file, const char *module_name);
+
+/* Add `entry` to every module that includes `file`. */
+void module_table_share_with_includes(ModuleTable *table, const char *file, DeclarationEntry *entry);
 
 /* The module a file belongs to, falling back to the entry module for files
  * that were never mapped (synthetic nodes carry no usable path). */

@@ -143,6 +143,31 @@ void module_table_map_file(ModuleTable *table, const char *file,
     table->file_count++;
 }
 
+void module_table_include_file(ModuleTable *table, const char *file, const char *module_name) {
+    if (!table || !file || !module_name) return;
+    module_table_scope(table, module_name, false);
+    if (table->include_count >= table->include_capacity) {
+        table->include_capacity = GROW_NEXT_CAPACITY(table->include_capacity);
+        ARENA_GROW_TO(table->arena, table->include_files, table->include_count, table->include_capacity);
+        ARENA_GROW_TO(table->arena, table->include_modules, table->include_count, table->include_capacity);
+    }
+    table->include_files[table->include_count] = arena_copy_string(table->arena, file);
+    table->include_modules[table->include_count] = arena_copy_string(table->arena, module_name);
+    table->include_count++;
+}
+
+static void scope_add_entry(Arena *arena, ModuleScope *scope, DeclarationEntry *entry);
+
+void module_table_share_with_includes(ModuleTable *table, const char *file, DeclarationEntry *entry) {
+    if (!table || !file || !entry) return;
+    for (int i = 0; i < table->include_count; i++) {
+        if (strcmp(table->include_files[i], file) != 0) continue;
+        ModuleScope *scope = module_table_find(table, table->include_modules[i]);
+        if (!scope || module_scope_lookup(scope, entry->name)) continue;
+        scope_add_entry(table->arena, scope, entry);
+    }
+}
+
 const char *module_table_module_for_file(ModuleTable *table, const char *file) {
     if (!table) return NULL;
     if (file) {
@@ -253,6 +278,22 @@ DeclarationEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
     return index < 0 ? NULL : scope->entries[index];
 }
 
+static void scope_add_entry(Arena *arena, ModuleScope *scope, DeclarationEntry *entry) {
+    ARENA_GROW(arena, scope->entries, scope->count, scope->capacity);
+
+    int new_count = scope->count + 1;
+    if (!scope->hash || new_count * 2 > scope->hash_capacity) {
+        scope->hash_capacity = hash_target_capacity(scope->hash_capacity, new_count);
+        scope->hash = hash_allocate(arena, scope->hash_capacity);
+        for (int i = 0; i < scope->count; i++)
+            hash_place(scope->hash, scope->hash_capacity, scope->entries[i]->name, i);
+    }
+
+    scope->entries[scope->count] = entry;
+    hash_place(scope->hash, scope->hash_capacity, entry->name, scope->count);
+    scope->count++;
+}
+
 DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
                                DeclarationKind kind, const char *name,
                                AstNode *ast_node,
@@ -275,19 +316,7 @@ DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     entry->registry_index = -1;
     entry->is_external = false;
 
-    ARENA_GROW(arena, scope->entries, scope->count, scope->capacity);
-
-    int new_count = scope->count + 1;
-    if (!scope->hash || new_count * 2 > scope->hash_capacity) {
-        scope->hash_capacity = hash_target_capacity(scope->hash_capacity, new_count);
-        scope->hash = hash_allocate(arena, scope->hash_capacity);
-        for (int i = 0; i < scope->count; i++)
-            hash_place(scope->hash, scope->hash_capacity, scope->entries[i]->name, i);
-    }
-
-    scope->entries[scope->count] = entry;
-    hash_place(scope->hash, scope->hash_capacity, entry->name, scope->count);
-    scope->count++;
+    scope_add_entry(arena, scope, entry);
     node_index_add(table, ast_node, entry);
     mangled_index_add(table, entry);
     return entry;
