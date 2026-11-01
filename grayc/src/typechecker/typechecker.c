@@ -4267,20 +4267,22 @@ static const char *target_root_display(TypeChecker *checker, AstNode *target) {
                               reference->data.member.member);
 }
 
-/* E6008: a write that rebinds a `mut` module variable itself through a
- * qualified path — a full reassignment (`lib.X = v`) or a write to one of
- * its own fields (`lib.X.f = v`); the variable is read-only from outside
- * its module. A write through an index into a container the variable
- * already holds (`lib.X[i] = v`) mutates existing storage, not `lib.X`
- * itself, and is left alone: walking from `place` down to the module
- * reference must cross only member accesses, never an index. A constant is
- * not reported here: the caller reports it with the code its position
+/* E6008: a write that changes a `mut` module variable through a qualified
+ * path: a reassignment (`lib.X = v`), a write to one of its fields
+ * (`lib.X.f = v`) or elements (`lib.X[i] = v`), a mutating array or map
+ * function (`arrays.append(lib.X, v)`), or its address (`addr(lib.X)`). The
+ * variable is read-only from outside its module. Walking from `place` down to
+ * the module reference may cross member accesses and indexes but never a
+ * dereference, since memory behind a pointer is not the variable. A constant
+ * is not reported here: the caller reports it with the code its position
  * calls for. */
 static bool report_write_to_module_variable(TypeChecker *checker, AstNode *report_node, AstNode *place) {
     AstNode *reference = target_root_module_reference(checker, place);
     if (!reference) return false;
-    for (AstNode *name_node = place; name_node != reference; name_node = name_node->data.member.object) {
-        if (name_node->kind != NODE_MEMBER_EXPRESSION) return false;
+    for (AstNode *name_node = place; name_node != reference;) {
+        if (name_node->kind == NODE_MEMBER_EXPRESSION) name_node = name_node->data.member.object;
+        else if (name_node->kind == NODE_INDEX_EXPRESSION) name_node = name_node->data.index_expression.left;
+        else return false;
     }
     Symbol *symbol = qualified_module_symbol(checker, reference);
     if (!symbol || !symbol->is_mutable) return false;
@@ -4297,6 +4299,7 @@ static bool report_write_to_module_variable(TypeChecker *checker, AstNode *repor
  * binding. */
 static void report_write_to_const_container(TypeChecker *checker, AstNode *report_node,
                                             AstNode *container, const char *kind) {
+    if (report_write_to_module_variable(checker, report_node, container)) return;
     Symbol *symbol = target_root_symbol(checker, container);
     if (!symbol || symbol->is_mutable) return;
     if (container->kind != NODE_LABEL && symbol->type && symbol->type->kind == TYPE_KIND_POINTER) return;
@@ -9285,6 +9288,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (!is_assignment_target(checker, argument)) {
             NODE_ERROR_FORMATTED(checker, node, "E3012", "addr", "the address");
         }
+        report_write_to_module_variable(checker, node, argument);
         GrayType *argument_type = resolve_expression(checker, argument);
         result = type_pointer(type_name(argument_type));
     } else if (strcmp(function_name, "raw") == 0 && node->data.call.argument_count == 1) {

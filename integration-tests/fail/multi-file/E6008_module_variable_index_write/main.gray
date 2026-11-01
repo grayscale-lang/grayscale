@@ -1,0 +1,6 @@
+import "./lib"
+import @arrays
+
+do main() {
+    lib.list[0] = 1
+}
