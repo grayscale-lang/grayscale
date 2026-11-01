@@ -10320,6 +10320,14 @@ static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node,
                 if (signature && receiver) *leading_parameters = 1;
             }
         }
+        /* mod.Struct.func(...): the struct function, namespaced under its module. */
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (!qualifier && ast_member_chain(function_node, &chain_module, &chain_type)) {
+            char prefixed[MESSAGE_BUFFER_SIZE];
+            snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", chain_module, chain_type,
+                function_node->data.member.member);
+            signature = find_function(checker, prefixed);
+        }
     }
     return (signature && signature->declaration && signature->declaration->kind == NODE_FUNCTION_DECLARATION) ? signature->declaration : NULL;
 }
@@ -10816,6 +10824,17 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
             if (node->data.call.argument_count != signature->parameter_count) {
                 typechecker_error_arity(checker, node, typechecker_format(checker, "%s.%s.%s", module_name, struct_name, chained_function_name), typechecker_format(checker, "%d", signature->parameter_count), node->data.call.argument_count);
             }
+            /* A generic struct function needs the same binding, validation
+             * and instantiation recording as every other spelling of the
+             * call. Its arguments are checked against its type arguments
+             * there. */
+            bool is_chain_generic = false;
+            GenericBindings chain_bindings;
+            GrayType *chain_generic_return = resolve_generic_call(checker, node, signature,
+                typechecker_format(checker, "%s.%s.%s", module_name, struct_name, chained_function_name),
+                false, &chain_bindings, &is_chain_generic);
+            generic_bindings_clear(&chain_bindings);
+            if (is_chain_generic && chain_generic_return) result = chain_generic_return;
             /* E3027: mutable param checks for triple-namespaced calls.
              * Struct functions live inside NODE_STRUCT_DECLARATION, so scan
              * struct declarations in imported modules. */
@@ -10827,8 +10846,9 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                  * call paths; the triple chain was the one spelling that left
                  * expected_type unset here. */
                 GrayType *parameter_type = signature->parameter_types ? signature->parameter_types[argument_index] : NULL;
-                GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
-                if (argument_type_mismatches(checker, parameter_type, argument_type)) {
+                GrayType *argument_type = is_chain_generic ? NULL
+                    : check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
+                if (!is_chain_generic && argument_type_mismatches(checker, parameter_type, argument_type)) {
                     char display[MESSAGE_BUFFER_SIZE];
                     snprintf(display, sizeof(display), "%s.%s.%s", module_name, struct_name, chained_function_name);
                     report_argument_mismatch(checker, node->data.call.arguments[argument_index], argument_index,

@@ -9731,9 +9731,28 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             }
             AstNode *namespaced_function = find_function(codegen, full_name);
             if (namespaced_function) {
-                emit_formatted(codegen, "gray_fn_%s(", full_name);
+                if (function_is_generic(namespaced_function)) {
+                    /* The per-instantiation name, as every other spelling of a
+                     * generic struct function call emits it. */
+                    char *binding = codegen_call_binding(codegen, namespaced_function, node, 0);
+                    char mangled[MESSAGE_BUFFER_SIZE];
+                    size_t position = (size_t)snprintf(mangled, sizeof(mangled), "gray_fn_%s__", full_name);
+                    for (const char *cursor = binding; *cursor && position < sizeof(mangled) - 1; cursor++) {
+                        mangled[position++] = (isalnum((unsigned char)*cursor) || *cursor == '_') ? *cursor : '_';
+                    }
+                    mangled[position] = '\0';
+                    emit_formatted(codegen, "%s(", mangled);
+                    free(binding);
+                } else {
+                    emit_formatted(codegen, "gray_fn_%s(", full_name);
+                }
+                bool was_argument_emitted = false;
                 for (int i = 0; i < node->data.call.argument_count; i++) {
-                    if (i > 0) emit(codegen, ", ");
+                    /* Type parameters are erased in C. */
+                    if (i < namespaced_function->data.function_declaration.parameter_count &&
+                        namespaced_function->data.function_declaration.parameters[i].is_type_parameter) continue;
+                    if (was_argument_emitted) emit(codegen, ", ");
+                    was_argument_emitted = true;
                     emit_namespaced_call_argument(codegen, node->data.call.arguments[i],
                         namespaced_function, i, node->token.line);
                 }
