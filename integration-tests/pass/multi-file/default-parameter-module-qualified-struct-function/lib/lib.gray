@@ -1,0 +1,8 @@
+const Cal struct {
+    z i64
+    do mk(a i64, b i64 = 3) -> i64 { return a + b }
+}
+const Svc struct {
+    base i64
+    do add(self Svc, n i64 = 5) -> i64 { return self.base + n }
+}

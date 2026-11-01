@@ -9756,6 +9756,14 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     emit_namespaced_call_argument(codegen, node->data.call.arguments[i],
                         namespaced_function, i, node->token.line);
                 }
+                /* Inject default values for omitted trailing parameters */
+                for (int i = node->data.call.argument_count; i < namespaced_function->data.function_declaration.parameter_count; i++) {
+                    Parameter *omitted = &namespaced_function->data.function_declaration.parameters[i];
+                    if (omitted->is_type_parameter || !omitted->default_value) continue;
+                    if (was_argument_emitted) emit(codegen, ", ");
+                    was_argument_emitted = true;
+                    emit_parameter_default_value(codegen, namespaced_function, omitted);
+                }
                 emit(codegen, ")");
                 return true;
             }

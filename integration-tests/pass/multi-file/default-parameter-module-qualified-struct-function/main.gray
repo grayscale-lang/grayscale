@@ -1,0 +1,47 @@
+/*
+ * Pass Test: a struct function called as lib.Cal.mk(...) can omit a
+ * parameter that has a default value, like the single-file call.
+ */
+
+import "./lib"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut service lib.Svc = lib.Svc{base: 10}
+
+    if lib.Cal.mk(1) == 4 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] omitted default")
+        failed += 1
+    }
+
+    if lib.Cal.mk(a: 1) == 4 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] omitted default with a named argument")
+        failed += 1
+    }
+
+    if lib.Svc.add(service) == 15 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] omitted default after an explicit self")
+        failed += 1
+    }
+
+    if lib.Cal.mk(1, b: 2) == 3 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] supplied named argument")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

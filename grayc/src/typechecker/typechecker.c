@@ -10821,8 +10821,15 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
             }
             result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
             /* Check argument count */
-            if (node->data.call.argument_count != signature->parameter_count) {
-                typechecker_error_arity(checker, node, typechecker_format(checker, "%s.%s.%s", module_name, struct_name, chained_function_name), typechecker_format(checker, "%d", signature->parameter_count), node->data.call.argument_count);
+            {
+                int minimum_arguments = signature_minimum_arguments(signature);
+                if (node->data.call.argument_count < minimum_arguments ||
+                    node->data.call.argument_count > signature->parameter_count) {
+                    char *expected_count = minimum_arguments == signature->parameter_count
+                        ? typechecker_format(checker, "%d", signature->parameter_count)
+                        : typechecker_format(checker, "%d to %d", minimum_arguments, signature->parameter_count);
+                    typechecker_error_arity(checker, node, typechecker_format(checker, "%s.%s.%s", module_name, struct_name, chained_function_name), expected_count, node->data.call.argument_count);
+                }
             }
             /* A generic struct function needs the same binding, validation
              * and instantiation recording as every other spelling of the
