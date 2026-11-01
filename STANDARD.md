@@ -3349,6 +3349,7 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
 - **The address of a local cannot be passed to C (E3154).** A C function may retain the pointer past the enclosing Grayscale scope, leaving it dangling once the pointee is freed. The compiler rejects `addr(local)`, `raw(local)`, and `ref(local)` as an `extern.` argument, as well as a pointer to a local that was copied to another variable, stored in a struct field or array element, or passed through a helper function or struct function on its way to an `extern.` call. Allocate with `new()` or take the address of a file-scope variable instead; both are accepted. This includes out-parameters such as `modf`, `frexp`, and the end-pointer of `strtol`. The check does not cover pointers that C itself returns, or strings that C retains (see below).
 - **A string passed to a C function that keeps the pointer dangles.** A string's storage is reclaimed with its scope. `putenv`, `setbuf`, `setvbuf` (buffer argument), and `strtok` (first argument) keep the pointer, so passing them a string other than a literal or a file-scope string is a compile error (E3216); pass `to_c_string(...)` instead. A C function outside this list that keeps a `char*` is the programmer's responsibility.
+- **A C header cannot weaken Grayscale's own checks.** The generated code saves every runtime name (`gray_*`, `GRAY_*`, `Gray*`) before the `extern import` headers and restores it after them, so a header that `#undef`s or redefines a runtime macro, or turns a runtime function into a macro, has no effect on the bounds, nil, overflow, and arena checks. C library functions the generated code calls are not protected this way.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
 - **Numeric arguments narrow silently.** Integer and float literals are `i64` and `f64`. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
@@ -5310,6 +5311,8 @@ By default, the runtime's managed arenas (default and heap) are capped at **1 GB
 gray build main.gray --arena-limit=256MB   # restrict to 256 MB
 gray build main.gray --arena-limit=2GB     # allow up to 2 GB
 ```
+
+`grayc` rejects any `--arena-limit` value that is not a positive number of bytes up to 9223372036854775807 (an empty value, a sign, trailing characters, zero, and overflow are all errors); `gray build` also accepts the `KB`, `MB`, and `GB` suffixes.
 
 User-created arenas (via `mem.arena()`) are not subject to this limit.
 
