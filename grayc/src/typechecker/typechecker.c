@@ -442,7 +442,8 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
          * FunctionSignature to summarise at all (a stdlib module call, a bare
          * builtin). Only the latter falls back to the conservative
          * arguments-based guess — resolve_call_signature() tells them apart. */
-        if (!root_depth && !resolve_call_signature(checker, value))
+        if (!root_depth && value->data.call.function->kind != NODE_IMPLICIT_ENUM &&
+            !resolve_call_signature(checker, value))
             root_depth = stdlib_call_argument_origin(checker, value, out_name);
         return root_depth;
     }
@@ -10496,7 +10497,9 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
             continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
-        if (node->data.call.arguments[i]->kind == NODE_IMPLICIT_ENUM)
+        if (node->data.call.arguments[i]->kind == NODE_IMPLICIT_ENUM ||
+            (node->data.call.arguments[i]->kind == NODE_CALL_EXPRESSION &&
+             node->data.call.arguments[i]->data.call.function->kind == NODE_IMPLICIT_ENUM))
             continue;
         /* An array or map literal passed to a declared parameter takes the
          * parameter's element types, so it is checked where the call is
