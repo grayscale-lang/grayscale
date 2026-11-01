@@ -1,10 +1,10 @@
 # Grayscale Language Build System
-.PHONY: build embed-tag stubs install uninstall clean help leaks benchmark \
+.PHONY: build hooks embed-tag stubs install uninstall clean help leaks benchmark \
        test test-unit test-e2e test-integration \
        test-ubsan test-asan
 
 # Reject unknown targets before running anything.
-KNOWN_TARGETS := build embed-tag stubs install uninstall clean help leaks benchmark \
+KNOWN_TARGETS := build hooks embed-tag stubs install uninstall clean help leaks benchmark \
                  test test-unit test-e2e test-integration \
                  test-ubsan test-asan
 UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
@@ -53,6 +53,13 @@ make build - Build the gray binary (compiler embedded)
     VERSION=<tag>   Version string baked into the binary (default: git describe)
 
   Example: CC=clang VERSION=v0.12.0 make build
+endef
+
+define HELP_hooks
+make hooks - Enable the repo git hooks
+
+  Points git at .githooks, so every commit runs gray fmt --check on staged
+  .gray files under cli/, scripts/ and benchmarks/. Run once per clone.
 endef
 
 define HELP_embed-tag
@@ -246,6 +253,7 @@ else
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make build     - Build the gray binary (compiler embedded)"
+	@echo "  make hooks     - Enable the repo git hooks (gray fmt check on commit)"
 	@echo "  make stubs     - Create empty embed stubs"
 	@echo "  make install   - Install gray to $(INSTALL_PATH)"
 	@echo "  make uninstall - Remove gray from $(INSTALL_PATH)"
@@ -312,6 +320,9 @@ test-ubsan:
 # Leak detection is off, as in CI.
 test-asan:
 	@ASAN_OPTIONS=detect_leaks=0:allocator_may_return_null=1 "$(MAKE)" -C grayc test-asan
+
+hooks:
+	@git config core.hooksPath .githooks
 
 leaks:
 	@"$(MAKE)" -C grayc leaks

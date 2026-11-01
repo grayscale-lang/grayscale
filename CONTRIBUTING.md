@@ -68,6 +68,12 @@ echo 'do main() { println("hello") }' > main.gray
 ./gray main.gray
 ```
 
+Then enable the git hooks once per clone, so unformatted `.gray` files are rejected at commit time:
+
+```bash
+make hooks
+```
+
 > **Iterating on the compiler?** When `./gray` runs from a source checkout, it
 > automatically prefers the locally built `grayc/grayc` binary next to it over
 > the embedded or installed compiler, so a `make -C grayc build` is picked up
@@ -80,6 +86,7 @@ echo 'do main() { println("hello") }' > main.gray
 | Command | Description |
 |---------|-------------|
 | `make build` | Build the `gray` binary (compiler embedded) |
+| `make hooks` | Enable the git pre-commit hook (`gray fmt --check` on staged `.gray` files) |
 | `make stubs` | Create empty embed stubs |
 | `make install` | Install `gray` to `/usr/local/bin` |
 | `make uninstall` | Remove `gray` from `/usr/local/bin` |
@@ -459,9 +466,9 @@ For more details, see `TESTING.md`.
 
 ## Code Style
 
-### Grayscale code (`cli/`)
+### Grayscale code (`cli/`, `scripts/`, `benchmarks/`)
 
-- Run `gray fmt` before committing
+- Run `gray fmt` before committing (`make hooks` enforces it; CI checks it too)
 - Keep functions focused and readable
 
 ### C code (`grayc/src/`)
