@@ -18565,8 +18565,14 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
         for (int const_index = 0; const_index < node->data.when_statement.case_count && !has_enum_case; const_index++) {
             for (int case_value_index = 0; case_value_index < node->data.when_statement.cases[const_index].value_count && !has_enum_case; case_value_index++) {
                 AstNode *case_value = node->data.when_statement.cases[const_index].values[case_value_index];
+                const char *chain_module = NULL, *chain_type = NULL;
                 if (case_value->kind == NODE_IMPLICIT_ENUM || case_value->kind == NODE_WHEN_PATTERN) {
                     has_enum_case = true;
+                } else if (ast_member_chain(case_value, &chain_module, &chain_type)) {
+                    /* mod.Enum.VARIANT */
+                    char enum_key[MESSAGE_BUFFER_SIZE];
+                    module_member_key(checker, chain_module, chain_type, enum_key, sizeof(enum_key));
+                    has_enum_case = is_enum_name(checker, enum_key);
                 } else if (ast_member_qualifier(case_value)) {
                     const char *name = ast_member_qualifier(case_value);
                     if (is_enum_name(checker, name)) {

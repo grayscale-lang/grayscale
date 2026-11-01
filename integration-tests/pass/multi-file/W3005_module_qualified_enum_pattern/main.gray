@@ -1,0 +1,13 @@
+/*
+ * Warning Test: W3005 - a when over module-qualified enum variants with no
+ * #strict and no default does not check exhaustiveness.
+ */
+
+import "./lib"
+
+do main() {
+    mut operation lib.Op = lib.Op.ADD
+    when operation {
+        is lib.Op.ADD { println("add") }
+    }
+}
