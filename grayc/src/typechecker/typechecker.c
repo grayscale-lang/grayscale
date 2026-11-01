@@ -2770,6 +2770,14 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
     return best;
 }
 
+/* The line a symbol that can be shadowed was declared on, or 0 for one that
+ * carries none (a file-scope name registered before its line is known). */
+static int symbol_shadow_line(const Symbol *symbol) {
+    if (symbol->definition_line > 0) return symbol->definition_line;
+    if (symbol->binding_line > 0) return symbol->binding_line;
+    return symbol->parameter_line;
+}
+
 /* The name the programmer wrote, never the module-prefixed internal one.
  * FunctionSignature.name is the flattened lookup key (e.g. "mod_size" for `size`
  * imported from module `mod`); the user-facing name lives on the decl.
@@ -15010,6 +15018,12 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
              * function body's scope, so redeclaring it is. */
             NODE_ERROR_FORMATTED(checker, node, "E4003",
                 VARIABLE_DISPLAY_NAME(node), existing->definition_line != 0 ? existing->definition_line : existing->parameter_line);
+        } else if (existing && existing->binding_line > 0) {
+            /* A loop or `when` body shares its scope with the variable the
+             * statement binds, so this declaration shadows it. */
+            diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                "variable", VARIABLE_DISPLAY_NAME(node), existing->binding_line);
         }
         /* A `generic` parameter is not a scope symbol, but its name is as
          * taken at the top level of the body as an ordinary parameter's. */
@@ -15023,7 +15037,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
         if (!existing && checker->current_scope->parent) {
             Symbol *outer_symbol = scope_lookup(checker->current_scope->parent,
                 node->data.variable_declaration.name);
-            if (outer_symbol && outer_symbol->definition_line > 0) {
+            if (outer_symbol && symbol_shadow_line(outer_symbol) > 0) {
                 /* Check if it's a global (file-scope) variable */
                 Scope *outer_scope = checker->current_scope->parent;
                 while (outer_scope->parent) {
@@ -15035,11 +15049,11 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 if (is_global) {
                     diagnostic_warning_code_formatted(checker->diagnostics, "W2007",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        VARIABLE_DISPLAY_NAME(node), outer_symbol->definition_line);
+                        VARIABLE_DISPLAY_NAME(node), symbol_shadow_line(outer_symbol));
                 } else {
                     diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        "variable", VARIABLE_DISPLAY_NAME(node), outer_symbol->definition_line);
+                        "variable", VARIABLE_DISPLAY_NAME(node), symbol_shadow_line(outer_symbol));
                 }
             }
         }
@@ -17202,6 +17216,11 @@ static void check_loop_jump(TypeChecker *checker, AstNode *node) {
     NODE_ERROR_FORMATTED(checker, node, "E4043", label);
 }
 
+static void set_binding_line(Scope *scope, const char *name, int line) {
+    Symbol *symbol = name ? scope_lookup_local(scope, name) : NULL;
+    if (symbol) symbol->binding_line = line;
+}
+
 static void check_for_statement(TypeChecker *checker, AstNode *node) {
     Scope *loop_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
@@ -17218,7 +17237,7 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
             if (outer_symbol) {
                 diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "for variable", variable_name, outer_symbol->definition_line);
+                    "for variable", variable_name, symbol_shadow_line(outer_symbol));
             }
         }
     }
@@ -17233,6 +17252,7 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
             node->data.for_statement.variable_name, node->data.for_statement.variable_name);
     }
     scope_define(loop_scope, node->data.for_statement.variable_name, loop_variable_type, false);
+    set_binding_line(loop_scope, node->data.for_statement.variable_name, node->token.line);
     /* E9005: check range bounds when both bounds and step direction are compile-time known */
     if (node->data.for_statement.iterable &&
         node->data.for_statement.iterable->kind == NODE_RANGE_EXPRESSION) {
@@ -17293,7 +17313,7 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
             if (outer_symbol) {
                 diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "for_each variable", variable_name, outer_symbol->definition_line);
+                    "for_each variable", variable_name, symbol_shadow_line(outer_symbol));
             }
         }
         const char *index_name_text = node->data.for_each.index_name;
@@ -17302,7 +17322,7 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
             if (outer_symbol) {
                 diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "for_each index variable", index_name_text, outer_symbol->definition_line);
+                    "for_each index variable", index_name_text, symbol_shadow_line(outer_symbol));
             }
         }
     }
@@ -17368,6 +17388,8 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
         }
         scope_define(loop_scope, node->data.for_each.variable_name, element_type, false);
     }
+    set_binding_line(loop_scope, node->data.for_each.index_name, node->token.line);
+    set_binding_line(loop_scope, node->data.for_each.variable_name, node->token.line);
 
     /* Escape analysis: a pointer read out of a tracked container keeps the
      * container's lifetime origin (and @mem arena), so returning or storing
@@ -18264,9 +18286,10 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                             if (outer_symbol) {
                                 diagnostic_warning_code_formatted(checker->diagnostics, "W2002",
                                     NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
-                                    "when binding", binding_name, outer_symbol->definition_line);
+                                    "when binding", binding_name, symbol_shadow_line(outer_symbol));
                             }
                             scope_define(checker->current_scope, binding_name, base_type, false);
+                            set_binding_line(checker->current_scope, binding_name, value_node->token.line);
                             /* A payload read out of a value that holds a pointer
                              * to a const-declared variable is such a pointer. */
                             propagate_const_source(checker,
@@ -18926,6 +18949,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
 
     typechecker_error_undefined_type(checker, statement, type_name);
 }
+
 
 /* ── declaration registration sub-handlers ────────────────────────── */
 
