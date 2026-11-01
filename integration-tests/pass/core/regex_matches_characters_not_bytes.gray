@@ -12,12 +12,12 @@ do main() {
         println("FAIL: '.' matches one whole character")
     }
 
-    mut word, _ = regex.find("[[:alpha:]]+", "héllo")
-    if word == "héllo" {
+    mut accented, _ = regex.find("[é]+", "héé!")
+    if accented == "éé" {
         passed = passed + 1
     } otherwise {
         failed = failed + 1
-        println("FAIL: [[:alpha:]] matches a non-ASCII letter")
+        println("FAIL: a bracket expression matches a whole non-ASCII character")
     }
 
     mut replaced, _ = regex.replace(".", "é", "x")
