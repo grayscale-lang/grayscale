@@ -1,0 +1,12 @@
+const Node struct {
+    v i64
+    next ^Node
+
+    do link(self ^Node, other ^Node) {
+        self^.next = other
+    }
+}
+
+do link_free(a ^Node, b ^Node) {
+    a^.next = b
+}

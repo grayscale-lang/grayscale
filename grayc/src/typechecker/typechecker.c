@@ -2858,6 +2858,7 @@ static void apply_call_parameter_escape_and_mem_effects(TypeChecker *checker,
         int sink_depth;
         const char *sink_name;
         const char *via_global_name = NULL;
+        const char *destination_root = NULL;
         if (parameter_escape == PARAMETER_ESCAPE_GLOBAL && callee_signature->parameter_escape_via_function[argument_index] >= 0) {
             /* The escape is only a forward into an indirect call through one
              * of callee_signature's func-typed parameters. When this call supplies a known
@@ -2900,13 +2901,24 @@ static void apply_call_parameter_escape_and_mem_effects(TypeChecker *checker,
                  strcmp(destination_argument->data.call.function->data.label.value, "raw") == 0) &&
                 destination_argument->data.call.argument_count == 1)
                 destination_argument = destination_argument->data.call.arguments[0];
-            const char *destination_root = assignment_target_root_name(destination_argument);
+            destination_root = assignment_target_root_name(destination_argument);
             sink_depth = destination_root
                 ? symbol_scope_depth(checker->current_scope, destination_root) : 0;
             sink_name = destination_root ? destination_root : original_name;
         }
-        if (origin_depth > sink_depth)
+        if (origin_depth > sink_depth) {
             NODE_ERROR_FORMATTED(checker, argument, "E3163", sink_name, original_name);
+        } else if (parameter_escape != PARAMETER_ESCAPE_GLOBAL) {
+            /* The destination now holds the address, so returning or storing
+             * it carries the address out of scope — the same bookkeeping as a
+             * direct `heap^.next = addr(local)`. */
+            Symbol *destination_symbol = destination_root
+                ? scope_lookup(checker->current_scope, destination_root) : NULL;
+            if (destination_symbol && origin_depth > destination_symbol->field_origin_depth) {
+                destination_symbol->field_origin_depth = origin_depth;
+                destination_symbol->field_origin_name = original_name;
+            }
+        }
     }
     /* Pointer checker: a call to a helper that destroys/resets one of its own
      * @mem arena parameters — the parameter itself, or a field of it
@@ -10913,6 +10925,12 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                     check_mutable_argument(checker, argument, parameter_description, function_display);
                 }
             }
+            /* E3163 / @mem effects: resolve_call_signature() cannot name a
+             * callee spelled mod.Struct.func, so the early check in
+             * resolve_call_expression never saw this call. */
+            apply_call_parameter_escape_and_mem_effects(checker, node, signature, 0);
+            apply_call_parameter_extern_effects(checker, node, signature);
+            apply_call_parameter_write_effects(checker, node, signature);
             /* Return the signature's type directly. Falling through let a
              * later stage of this function overwrite it, which is why an
              * inferred binding from mod.Struct.func() came out unknown while
