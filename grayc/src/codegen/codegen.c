@@ -525,6 +525,18 @@ static const char *global_variable_c_name(CodeGen *codegen, const char *name) {
                                count > 0 ? (size_t)count : 0);
 }
 
+/* The name an enum is spelled with in a program: `Kind` in its own module,
+ * `tok.Kind` from outside it. The C key the constants are built from carries
+ * the module as a prefix and is not a name the program ever wrote. */
+static const char *enum_source_name(CodeGen *codegen, AstNode *enum_declaration) {
+    DeclarationEntry *entry = module_table_entry_for_node(codegen->modules, enum_declaration);
+    if (!entry) return enum_declaration->data.enum_declaration.name;
+    if (entry->is_module_entry) return entry->name;
+    char spelled[MESSAGE_BUFFER_SIZE];
+    int count = snprintf(spelled, sizeof(spelled), "%s.%s", entry->module_name, entry->name);
+    return arena_intern_string(codegen->modules->arena, spelled, count > 0 ? (size_t)count : 0);
+}
+
 /* True when a bare reference resolves to an entry-module file-scope
  * variable, i.e. one emitted through global_variable_c_name(). */
 static bool label_is_entry_global(AstNode *node) {
@@ -4715,8 +4727,7 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "GrayEnum_%s_%s", target,
                 target_enum_declaration->data.enum_declaration.values[variant_index].name);
         }
-        const char *display = target_enum_declaration->data.enum_declaration.original_name
-            ? target_enum_declaration->data.enum_declaration.original_name : target;
+        const char *display = enum_source_name(codegen, target_enum_declaration);
         emit_formatted(codegen, "}, %d, \"%s\", \"%s\", %d)",
             target_enum_declaration->data.enum_declaration.value_count,
             display, codegen_file_literal(codegen), node->token.line);
@@ -4903,8 +4914,7 @@ static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
             }
             /* The panic names the enum the way the program spells it, not the
              * module-prefixed key the C constants are built from. */
-            const char *display = target_enum_declaration->data.enum_declaration.original_name
-                ? target_enum_declaration->data.enum_declaration.original_name : target;
+            const char *display = enum_source_name(codegen, target_enum_declaration);
             emit_formatted(codegen, "}, %d, %s, \"%s\", \"%s\", %d)",
                 target_enum_declaration->data.enum_declaration.value_count,
                 target_enum_declaration->data.enum_declaration.is_flags ? "true" : "false",

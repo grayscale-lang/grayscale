@@ -1,0 +1,7 @@
+import "./tok"
+
+do main() {
+    mut n i64 = 9
+    mut k tok.Kind = cast(n, tok.Kind)
+    println(k)
+}
