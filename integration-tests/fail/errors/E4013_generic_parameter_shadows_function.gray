@@ -1,0 +1,5 @@
+do f(a i64) -> i64 { return a }
+do gen(f generic, v i64) -> i64 { return v }
+do main() {
+    println("${gen(i64, 1)}")
+}

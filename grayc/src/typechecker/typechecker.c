@@ -15035,6 +15035,41 @@ static void apply_call_return_slots(TypeChecker *checker, Symbol *symbol, Functi
     symbol->are_return_types_owned = (slots != signature->return_types);
 }
 
+/* E4013: a name bound here (a variable, parameter, loop variable or `when`
+ * binding) shadows a function callable by that same name from this file's
+ * scope. A function of another module is not callable by its bare name, so
+ * the flattened-key fallback only counts a function of the local's own
+ * module. Compare display names so that a local like `mod_size`, the
+ * internal name of `mod.size`, never fires. */
+static void report_shadowed_function(TypeChecker *checker, AstNode *node, const char *name,
+                                     const char *display_name) {
+    if (!name || strcmp(name, "_") == 0) return;
+    DeclarationEntry *shadowed_entry = checker_resolve_entry(checker, name);
+    if (!shadowed_entry) {
+        DeclarationEntry *mangled_entry = module_table_find_mangled(checker->modules, name);
+        const char *scope_module = checker_scope(checker).module;
+        if (mangled_entry && strcmp(mangled_entry->module_name ? mangled_entry->module_name : "",
+                                    scope_module ? scope_module : "") == 0)
+            shadowed_entry = mangled_entry;
+    }
+    FunctionSignature *shadowed = (shadowed_entry && shadowed_entry->kind == DECLARATION_FUNCTION &&
+                                   shadowed_entry->registry_index >= 0 &&
+                                   shadowed_entry->registry_index < checker->function_count)
+        ? &checker->functions[shadowed_entry->registry_index] : NULL;
+    if (shadowed && strcmp(function_display_name(shadowed), display_name) == 0) {
+        NODE_ERROR_FORMATTED(checker, node, "E4013", display_name);
+        return;
+    }
+    /* Inside a struct, a bare call also reaches the struct's own functions. */
+    if (checker->current_struct_name) {
+        char struct_key[MESSAGE_BUFFER_SIZE], sibling[MESSAGE_BUFFER_SIZE];
+        snprintf(sibling, sizeof(sibling), "%s_%s",
+                 checker_resolve_declaration_into(checker, checker->current_struct_name, struct_key, sizeof(struct_key)),
+                 name);
+        if (find_function(checker, sibling)) NODE_ERROR_FORMATTED(checker, node, "E4013", display_name);
+    }
+}
+
 /* Name-conflict checks for a named (non-`_`) var decl, then bind its symbol
  * and record the origin/reference tracking later checks read. */
 static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayType *declared) {
@@ -15119,24 +15154,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
          * name, so the flattened-key fallback only counts a function of the
          * local's own module. Compare display names so that a local like
          * `mod_size`, the internal name of `mod.size`, never fires. */
-        {
-            DeclarationEntry *shadowed_entry = checker_resolve_entry(checker, node->data.variable_declaration.name);
-            if (!shadowed_entry) {
-                DeclarationEntry *mangled_entry = module_table_find_mangled(checker->modules, node->data.variable_declaration.name);
-                const char *scope_module = checker_scope(checker).module;
-                if (mangled_entry && strcmp(mangled_entry->module_name ? mangled_entry->module_name : "",
-                                            scope_module ? scope_module : "") == 0)
-                    shadowed_entry = mangled_entry;
-            }
-            FunctionSignature *shadowed = (shadowed_entry && shadowed_entry->kind == DECLARATION_FUNCTION &&
-                                           shadowed_entry->registry_index >= 0 &&
-                                           shadowed_entry->registry_index < checker->function_count)
-                ? &checker->functions[shadowed_entry->registry_index] : NULL;
-            if (shadowed && strcmp(function_display_name(shadowed),
-                                   VARIABLE_DISPLAY_NAME(node)) == 0) {
-                NODE_ERROR_FORMATTED(checker, node, "E4013", VARIABLE_DISPLAY_NAME(node));
-            }
-        }
+        report_shadowed_function(checker, node, node->data.variable_declaration.name, VARIABLE_DISPLAY_NAME(node));
         /* E4014: shadows an imported module. imported_modules[] is a single
          * whole-program list covering every file's imports, so it must be
          * filtered to the imports visible in this variable's own file —
@@ -17287,6 +17305,8 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
         NODE_ERROR_FORMATTED(checker, node, "E3204",
             node->data.for_statement.variable_name, node->data.for_statement.variable_name);
     }
+    report_shadowed_function(checker, node, node->data.for_statement.variable_name,
+                             node->data.for_statement.variable_name);
     scope_define(loop_scope, node->data.for_statement.variable_name, loop_variable_type, false);
     set_binding_line(loop_scope, node->data.for_statement.variable_name, node->token.line);
     /* E9005: check range bounds when both bounds and step direction are compile-time known */
@@ -17424,6 +17444,8 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
         }
         scope_define(loop_scope, node->data.for_each.variable_name, element_type, false);
     }
+    report_shadowed_function(checker, node, node->data.for_each.index_name, node->data.for_each.index_name);
+    report_shadowed_function(checker, node, node->data.for_each.variable_name, node->data.for_each.variable_name);
     set_binding_line(loop_scope, node->data.for_each.index_name, node->token.line);
     set_binding_line(loop_scope, node->data.for_each.variable_name, node->token.line);
 
@@ -17553,6 +17575,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
                 break;
             }
         }
+        report_shadowed_function(checker, node, parameter->name, parameter->name);
         /* A type parameter is not a variable: its name stands for a type in
          * the parameter types after it, the return types and the body. */
         if (parameter->is_type_parameter) continue;
@@ -18324,6 +18347,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                                     NODE_FILE(checker, value_node), value_node->token.line, value_node->token.column, 0,
                                     "when binding", binding_name, symbol_shadow_line(outer_symbol));
                             }
+                            report_shadowed_function(checker, value_node, binding_name, binding_name);
                             scope_define(checker->current_scope, binding_name, base_type, false);
                             set_binding_line(checker->current_scope, binding_name, value_node->token.line);
                             /* A payload read out of a value that holds a pointer

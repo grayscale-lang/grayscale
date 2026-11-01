@@ -1,0 +1,10 @@
+const S struct {
+    n i64
+
+    do f(self S) -> i64 { return 1 }
+    do cb(f func(i64) -> i64) -> i64 { return 2 }
+}
+do main() {
+    mut s S = S{n: 1}
+    println("${s.f()}")
+}
