@@ -1,0 +1,8 @@
+import "./lib"
+
+do main() {
+    mut values [i64] = {1}
+    for_each lib in values {
+        println("${lib}")
+    }
+}

@@ -1,0 +1,9 @@
+import "./lib"
+
+const lib struct {
+    value i64
+}
+
+do main() {
+    println("x")
+}

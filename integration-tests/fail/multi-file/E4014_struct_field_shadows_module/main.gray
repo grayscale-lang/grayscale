@@ -1,0 +1,10 @@
+import "./lib"
+
+const Holder struct {
+    lib i64
+}
+
+do main() {
+    mut holder Holder = Holder{lib: 1}
+    println("${holder.lib}")
+}

@@ -15086,6 +15086,28 @@ static void report_shadowed_function(TypeChecker *checker, AstNode *node, const 
     }
 }
 
+/* E4014: a name bound at `node` shadows a module its own file imports.
+ * imported_modules[] is a single whole-program list covering every file's
+ * imports, so it is filtered to the imports visible in this node's own file,
+ * otherwise a name matching some unrelated file's import gets flagged.
+ * token.file is NULL for main-file nodes, matching import_files[]'s own
+ * NULL-means-main-file convention. */
+static void report_shadowed_module(TypeChecker *checker, AstNode *node, const char *name,
+                                   const char *display_name) {
+    if (!name) return;
+    const char *node_file = node->token.file;
+    for (int import_index = 0; import_index < checker->import_count; import_index++) {
+        const char *import_file = checker->import_files[import_index];
+        bool same_file = (!node_file && !import_file) ||
+            (node_file && import_file && strcmp(node_file, import_file) == 0);
+        if (!same_file) continue;
+        if (strcmp(checker->imported_modules[import_index], name) == 0) {
+            NODE_ERROR_FORMATTED(checker, node, "E4014", display_name);
+            return;
+        }
+    }
+}
+
 /* Name-conflict checks for a named (non-`_`) var decl, then bind its symbol
  * and record the origin/reference tracking later checks read. */
 static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayType *declared) {
@@ -15177,19 +15199,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
          * otherwise a local named after some unrelated file's import gets
          * flagged. token.file is NULL for main-file nodes, matching
          * import_files[]'s own NULL-means-main-file convention. */
-        {
-            const char *variable_file = node->token.file;
-            for (int import_index = 0; import_index < checker->import_count; import_index++) {
-                const char *imp_file = checker->import_files[import_index];
-                bool same_file = (!variable_file && !imp_file) ||
-                    (variable_file && imp_file && strcmp(variable_file, imp_file) == 0);
-                if (!same_file) continue;
-                if (strcmp(checker->imported_modules[import_index], node->data.variable_declaration.name) == 0) {
-                    NODE_ERROR_FORMATTED(checker, node, "E4014", VARIABLE_DISPLAY_NAME(node));
-                    break;
-                }
-            }
-        }
+        report_shadowed_module(checker, node, node->data.variable_declaration.name, VARIABLE_DISPLAY_NAME(node));
         } /* end: name != "main" */
         if (declared->kind == TYPE_KIND_UNKNOWN && !type_name_has_unbound_generic(declared->name) &&
             !(node->data.variable_declaration.value &&
@@ -17299,6 +17309,8 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
     if (is_stdlib_module_name(node->data.for_statement.variable_name)) {
         NODE_ERROR_FORMATTED(checker, node, "E5035", node->data.for_statement.variable_name, "a variable");
     }
+    report_shadowed_module(checker, node, node->data.for_statement.variable_name,
+                           node->data.for_statement.variable_name);
     /* W2002: the loop variable shadows an outer variable */
     {
         const char *variable_name = node->data.for_statement.variable_name;
@@ -17376,6 +17388,8 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
     if (node->data.for_each.index_name && is_stdlib_module_name(node->data.for_each.index_name)) {
         NODE_ERROR_FORMATTED(checker, node, "E5035", node->data.for_each.index_name, "a variable");
     }
+    report_shadowed_module(checker, node, node->data.for_each.variable_name, node->data.for_each.variable_name);
+    report_shadowed_module(checker, node, node->data.for_each.index_name, node->data.for_each.index_name);
 
     /* W2002: check if for_each iterator/index variables shadow outer variables */
     {
@@ -17582,6 +17596,7 @@ static void check_function_declaration(TypeChecker *checker, AstNode *node) {
         if (is_stdlib_module_name(parameter->name)) {
             NODE_ERROR_FORMATTED(checker, node, "E5035", parameter->name, "a parameter");
         }
+        report_shadowed_module(checker, node, parameter->name, parameter->name);
         /* E4026: 'main' is reserved for the entry-point function */
         check_reserved_main(checker, parameter->name, NODE_FILE(checker, node), node->token.line, node->token.column);
         /* Check for duplicate parameter name */
@@ -19693,6 +19708,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
             if (is_stdlib_module_name(field_names[j])) {
                 NODE_ERROR_FORMATTED(checker, statement, "E5035", field_names[j], "a struct field");
             }
+            report_shadowed_module(checker, statement, field_names[j], field_names[j]);
             /* E3061: struct field cannot be the enclosing struct by value */
             const char *field_type_name = statement->data.struct_declaration.fields[j].type_name;
             const char *inline_type_name = field_type_name ? fixed_array_innermost_element(checker, field_type_name) : NULL;
@@ -19759,6 +19775,7 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
         if (is_stdlib_module_name(statement->data.struct_declaration.name)) {
             NODE_ERROR_FORMATTED(checker, statement, "E5035", struct_name, "a struct");
         }
+        report_shadowed_module(checker, statement, statement->data.struct_declaration.name, struct_name);
         /* E4026: 'main' is reserved for the entry-point function */
         check_reserved_main(checker, statement->data.struct_declaration.name, NODE_FILE(checker, statement), statement->token.line, statement->token.column);
         /* E4007: duplicate struct name. A struct named `main` collides with
