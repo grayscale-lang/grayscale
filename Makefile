@@ -1,10 +1,12 @@
 # Grayscale Language Build System
 .PHONY: build hooks embed-tag stubs install uninstall clean help leaks benchmark \
+       generate-errors generate-sized-type-tests check-error-codes check-stray-binaries \
        test test-unit test-e2e test-integration \
        test-ubsan test-asan
 
 # Reject unknown targets before running anything.
 KNOWN_TARGETS := build hooks embed-tag stubs install uninstall clean help leaks benchmark \
+                 generate-errors generate-sized-type-tests check-error-codes check-stray-binaries \
                  test test-unit test-e2e test-integration \
                  test-ubsan test-asan
 UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
@@ -232,6 +234,42 @@ make test-asan - Run ASan+UBSan sanitizer tests (Linux recommended)
   Example: CC=clang make test-asan
 endef
 
+define HELP_generate-errors
+make generate-errors - Regenerate ERRORS.md from the error registry
+
+  Builds scripts/generate_errors.gray, runs it, and deletes the compiled binary.
+  Needs ./grayc/grayc (run make build first).
+
+  Example: make generate-errors
+endef
+
+define HELP_generate-sized-type-tests
+make generate-sized-type-tests - Regenerate the generated sized-type integration tests
+
+  Builds scripts/generate_sized_type_tests.gray, runs it, and deletes the compiled binary.
+  Needs ./grayc/grayc (run make build first).
+
+  Example: make generate-sized-type-tests
+endef
+
+define HELP_check-error-codes
+make check-error-codes - Check that every emitted error code is registered and well placed
+
+  Builds scripts/check_error_codes.gray, runs it, and deletes the compiled binary.
+  Needs ./grayc/grayc (run make build first).
+
+  Example: make check-error-codes
+endef
+
+define HELP_check-stray-binaries
+make check-stray-binaries - Fail if compiled binaries are left in the repo root
+
+  Builds scripts/check_stray_binaries.gray, runs it, and deletes the compiled binary.
+  Needs ./grayc/grayc (run make build first).
+
+  Example: make check-stray-binaries
+endef
+
 # Exported so the recipe prints the block verbatim, newlines intact.
 export HELP_BLOCK = $(HELP_$(TARGET))
 
@@ -260,6 +298,10 @@ else
 	@echo "  make clean     - Remove built binaries"
 	@echo "  make leaks     - Check compiler for memory leaks (macOS: leaks, Linux: valgrind)"
 	@echo "  make benchmark - Run the real-workload benchmark suite (POSIX only)"
+	@echo "  make generate-errors - Regenerate ERRORS.md from the error registry"
+	@echo "  make generate-sized-type-tests - Regenerate the generated sized-type integration tests"
+	@echo "  make check-error-codes - Check that every emitted error code is registered and well placed"
+	@echo "  make check-stray-binaries - Fail if compiled binaries are left in the repo root"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test             - Run the full test suite (unit + e2e + integration)"
@@ -415,6 +457,21 @@ uninstall:
 	@# Remove standalone grayc from prior install layouts
 	@rm -f $(INSTALL_PATH)/grayc
 	@echo "Grayscale uninstalled"
+
+# ===== Script targets =====
+# Each builds a helper script, runs it, and removes the binary.
+
+generate-errors:
+	@./grayc/grayc scripts/generate_errors.gray -o generate_errors && { ./generate_errors; status=$$?; rm -f generate_errors$(EXE); exit $$status; }
+
+generate-sized-type-tests:
+	@./grayc/grayc scripts/generate_sized_type_tests.gray -o generate_sized_type_tests && { ./generate_sized_type_tests; status=$$?; rm -f generate_sized_type_tests$(EXE); exit $$status; }
+
+check-error-codes:
+	@./grayc/grayc scripts/check_error_codes.gray -o check_error_codes && { ./check_error_codes; status=$$?; rm -f check_error_codes$(EXE); exit $$status; }
+
+check-stray-binaries:
+	@./grayc/grayc scripts/check_stray_binaries.gray -o check_stray_binaries && { ./check_stray_binaries; status=$$?; rm -f check_stray_binaries$(EXE); exit $$status; }
 
 clean:
 	@echo "Cleaning build artifacts..."

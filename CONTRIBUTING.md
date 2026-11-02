@@ -275,7 +275,7 @@ spread across more than 15 call sites.
    - `diagnostic_error_code_formatted()` — registry message template with `%s`/`%d` args
    - `diagnostic_error_message()` / `diagnostic_warning_message()` — custom message with a code
 
-3. **Regenerate `ERRORS.md`** by running `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` and committing the output.
+3. **Regenerate `ERRORS.md`** by running `make generate-errors` and committing the output.
 
 4. **Add a fail test** in `integration-tests/fail/errors/` named `E####_short_description.gray` that triggers the new error and verifies the compiler rejects it.
 
