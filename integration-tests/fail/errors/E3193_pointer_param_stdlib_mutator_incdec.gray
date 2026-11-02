@@ -1,0 +1,16 @@
+import @arrays
+
+const Box struct {
+    items [i64]
+    n i64
+
+    do grow(self ^Box) { arrays.append(self^.items, 1) }
+    do dec(self ^Box) { self^.n-- }
+}
+
+do main() {
+    const cb Box = Box{items: {1, 2}, n: 1}
+    cb.grow()
+    cb.dec()
+    println("${len(cb.items)} ${cb.n}")
+}

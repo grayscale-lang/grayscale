@@ -1842,7 +1842,14 @@ static unsigned long long pointer_parameter_bit_for_root(FunctionSignature *func
                 return parameter->type_name && parameter->type_name[0] == '^' ? 1ull << i : 0;
         }
         AstNode *initializer = local_initializer(body, root);
-        root = initializer && initializer->kind == NODE_LABEL ? initializer->data.label.value : NULL;
+        if (initializer && initializer->kind == NODE_CALL_EXPRESSION && initializer->data.call.function &&
+            initializer->data.call.function->kind == NODE_LABEL &&
+            strcmp(initializer->data.call.function->data.label.value, "ref") == 0 &&
+            initializer->data.call.argument_count == 1 &&
+            initializer->data.call.arguments[0]->kind != NODE_LABEL)
+            root = escape_root_name(initializer->data.call.arguments[0]);
+        else
+            root = initializer && initializer->kind == NODE_LABEL ? initializer->data.label.value : NULL;
     }
     return 0;
 }
@@ -1912,20 +1919,38 @@ typedef struct {
     const char *module_name;
     const char *function_name;
     const char *parameter_name;
+    bool container; /* mutates the array or map the first argument names, not the pointer */
 } PointerWriter;
 
 static const PointerWriter pointer_writers[] = {
-    {"atomic", "add",      "ptr"},
-    {"atomic", "sub",      "ptr"},
-    {"atomic", "exchange", "ptr"},
-    {"atomic", "and",      "ptr"},
-    {"atomic", "or",       "ptr"},
-    {"atomic", "xor",      "ptr"},
-    {"atomic", "store",    "ptr"},
-    {"atomic", "cas",      "ptr"},
-    {"mem",    "zero",     "ptr"},
-    {"mem",    "fill",     "ptr"},
-    {"mem",    "raw_copy", "dest"},
+    {"atomic", "add",      "ptr", false},
+    {"atomic", "sub",      "ptr", false},
+    {"atomic", "exchange", "ptr", false},
+    {"atomic", "and",      "ptr", false},
+    {"atomic", "or",       "ptr", false},
+    {"atomic", "xor",      "ptr", false},
+    {"atomic", "store",    "ptr", false},
+    {"atomic", "cas",      "ptr", false},
+    {"mem",    "zero",     "ptr", false},
+    {"mem",    "fill",     "ptr", false},
+    {"mem",    "raw_copy", "dest", false},
+    {"arrays", "append",       "arr", true},
+    {"arrays", "insert_at",    "arr", true},
+    {"arrays", "remove",       "arr", true},
+    {"arrays", "remove_at",    "arr", true},
+    {"arrays", "remove_last",  "arr", true},
+    {"arrays", "remove_first", "arr", true},
+    {"arrays", "prepend",      "arr", true},
+    {"arrays", "fill",         "arr", true},
+    {"arrays", "swap",         "arr", true},
+    {"arrays", "sort_asc",     "arr", true},
+    {"arrays", "sort_desc",    "arr", true},
+    {"arrays", "sort_by",      "arr", true},
+    {"arrays", "clear",        "arr", true},
+    {"maps",   "clear",        "m",   true},
+    {"maps",   "remove_key",   "m",   true},
+    {"maps",   "get_or_insert", "m",  true},
+    {"maps",   "get_and_remove", "m", true},
 };
 
 /* The stdlib writer a call names, or NULL. */
@@ -1995,8 +2020,9 @@ static void escape_walk(TypeChecker *checker, FunctionSignature *function_signat
         }
         const PointerWriter *stdlib_writer = find_pointer_writer(checker, node);
         if (stdlib_writer)
-            function_signature->writes_through_parameter |=
-                pointer_argument_parameter_bit(function_signature, body, node->data.call.arguments[0]);
+            function_signature->writes_through_parameter |= stdlib_writer->container
+                ? pointer_parameter_bit_for_root(function_signature, body, escape_root_name(node->data.call.arguments[0]))
+                : pointer_argument_parameter_bit(function_signature, body, node->data.call.arguments[0]);
         FunctionSignature *callee = resolve_call_signature_in_body(checker, body, node);
         if (!callee)
             function_signature->writes_through_parameter |= dispatch_receiver_write_bit(checker, function_signature, body, node);
@@ -2090,6 +2116,11 @@ static void escape_walk(TypeChecker *checker, FunctionSignature *function_signat
         break;
     case NODE_EXPRESSION_STATEMENT:
         escape_walk(checker, function_signature, body, node->data.expression_statement.expression);
+        break;
+    case NODE_POSTFIX_EXPRESSION:
+        if (node->data.postfix.operator == TOKEN_INCREMENT || node->data.postfix.operator == TOKEN_DECREMENT)
+            function_signature->writes_through_parameter |=
+                write_target_parameter_bit(function_signature, body, node->data.postfix.left);
         break;
     case NODE_ENSURE_STATEMENT:
         escape_walk(checker, function_signature, body, node->data.ensure_statement.expression);
@@ -3017,7 +3048,7 @@ static bool string_outlives_extern_call(TypeChecker *checker, AstNode *argument)
  * through; this refuses a pointer to a constant for any of them. */
 static void reject_const_pointer_to_stdlib_writer(TypeChecker *checker, AstNode *node) {
     const PointerWriter *writer = find_pointer_writer(checker, node);
-    if (!writer) return;
+    if (!writer || writer->container) return;
     AstNode *argument = node->data.call.arguments[0];
     if (!expression_points_to_const(checker, argument)) return;
     char display_name[IDENTIFIER_BUFFER_SIZE];
