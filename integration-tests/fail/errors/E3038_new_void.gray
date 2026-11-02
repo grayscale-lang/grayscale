@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3038 - void as the type argument of new()
+ */
+do main() {
+    mut p = new(void)
+}

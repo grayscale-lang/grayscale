@@ -5400,6 +5400,20 @@ static void reject_error_in_container(TypeChecker *checker, AstNode *node,
     }
 }
 
+static bool type_name_has_value_void(const char *type_name);
+
+/* E3038 for a written type that is bare 'void' or holds it as an array
+ * element or map value. '^void' and a typed-func return stay legal. */
+static void reject_void_type(TypeChecker *checker, AstNode *node, const char *written, const char *context) {
+    if (!written) return;
+    if (strcmp(written, "void") == 0) {
+        NODE_ERROR_FORMATTED(checker, node, "E3038", context);
+    } else if (strncmp(written, "func(", 5) != 0 && strncmp(written, "[func(", 6) != 0 &&
+               type_name_has_value_void(written)) {
+        NODE_ERROR_FORMATTED(checker, node, "E3038", "an element type in arrays or maps");
+    }
+}
+
 /* --- typechecker_type_from_name cache (spelling-keyed open addressing) --- */
 
 static void type_name_cache_insert_raw(const char **names, GrayType **types, int capacity,
@@ -9605,6 +9619,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (generic_bindings_find(&checker->generics, written) < 0) {
                 reject_private_type(checker, argument, written);
                 reject_error_in_container(checker, argument, written);
+                reject_void_type(checker, argument, written, "a type argument of 'size_of()'");
                 /* A container spelling types as TYPE_KIND_ARRAY or TYPE_KIND_MAP whatever
                  * its parts name, so the check has to look at every leaf. */
                 char leaf[MESSAGE_BUFFER_SIZE];
@@ -13545,6 +13560,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         }
         reject_private_type(checker, node, new_type);
         reject_error_in_container(checker, node, new_type);
+        reject_void_type(checker, node, new_type, "a type argument of 'new()'");
         /* Resolve the name as written, then aliases — the same order a type
          * annotation goes through, so `new(mod.T)` and `^mod.T` agree. */
         new_type = checker_resolve_type_name(checker, new_type);
@@ -18937,6 +18953,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         warn_if_type_name_deprecated(checker, node,
             checker_resolve_type_name(checker, node->data.alias_declaration.target_type), NULL);
         reject_error_in_container(checker, node, node->data.alias_declaration.target_type);
+        reject_void_type(checker, node, node->data.alias_declaration.target_type, "an alias target");
         break;
 
     case NODE_WHEN_STATEMENT:

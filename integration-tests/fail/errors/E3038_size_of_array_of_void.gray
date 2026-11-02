@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3038 - void as the element type in size_of()
+ */
+do main() {
+    println(size_of([void]))
+}
