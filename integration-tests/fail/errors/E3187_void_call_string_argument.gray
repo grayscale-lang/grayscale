@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3187 - void call as the argument of string()
+ */
+do nothing() { }
+
+do main() {
+    mut s string = string(nothing())
+}

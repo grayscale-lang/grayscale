@@ -4058,6 +4058,7 @@ static void typechecker_check_io_read_lines_limit(TypeChecker *checker, const ch
 }
 
 static void typechecker_check_binary_encode_argument(TypeChecker *checker, const char *function_name, AstNode *node);
+static void reject_void_in_context(TypeChecker *checker, AstNode *expression, GrayType *type, const char *context);
 
 /* A function-typed stdlib argument must have exactly the signature the
  * function stores and calls it with: E3066 for another function signature,
@@ -4143,6 +4144,12 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
             }
             AstNode *argument = node->data.call.arguments[argument_index];
             GrayType *argument_type = slot ? check_expression_as(checker, argument, slot) : resolve_expression(checker, argument);
+            if (kind == EXPECTED_ARGUMENT_ANY || kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST ||
+                kind == EXPECTED_ARGUMENT_SAME_AS_FIRST || kind == EXPECTED_ARGUMENT_KEY_OF_FIRST ||
+                kind == EXPECTED_ARGUMENT_VALUE_OF_FIRST) {
+                reject_void_in_context(checker, argument, argument_type,
+                    typechecker_format(checker, "a '%s.%s()' argument", module_name, function_name));
+            }
             if (argument_mismatches_first_argument_slot(checker, kind, slot, argument_type)) {
                 typechecker_error_argument_type(checker, argument, argument_index + 1, typechecker_format(checker, "%s.%s", module_name, function_name), type_display_name(checker, slot), type_display_name(checker, argument_type));
                 continue;
@@ -9860,6 +9867,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
     } else if (strcmp(function_name, "string") == 0 && node->data.call.argument_count == 1) {
         /* E3043: validate source type is convertible to string */
         GrayType *source_type = resolve_expression(checker, node->data.call.arguments[0]);
+        reject_void_in_context(checker, node->data.call.arguments[0], source_type, "a 'string()' argument");
         if (source_type->kind == TYPE_KIND_STRING) {
             NODE_ERROR_FORMATTED_HELP(checker, node, "E3043", "value is already a string", "string", "string");
         } else if (source_type->kind == TYPE_KIND_ARRAY || source_type->kind == TYPE_KIND_MAP ||
