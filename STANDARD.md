@@ -5124,6 +5124,8 @@ mut duplicate = copy(original)
 duplicate.age = 31  // original.age is still 30
 ```
 
+**Handle types are rejected.** `copy()` cannot be applied to a `Builder`, `Channel`, `Mutex`, `SpinLock`, `Thread`, `Database`, `Router`, `Socket`, `Listener`, or `Arena`, or to a value that holds one in a struct field, array element, or map value: a handle shares its state with every copy (E5070).
+
 **Pointer fields alias, not copy.** A pointer-typed field is deliberately left pointing at its original referent — `copy()` does not follow it and duplicate the pointee. If a struct holds a pointer into itself (a self-referential field), the copy's field still points at the *original* value, not the copy's own:
 
 ```gray

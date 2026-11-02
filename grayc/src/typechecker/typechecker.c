@@ -9272,6 +9272,29 @@ static const char *tagged_enum_in_printed_type(TypeChecker *checker, GrayType *t
     return NULL;
 }
 
+/* The handle type a copied value reaches through struct fields, array
+ * elements or map values, or NULL. A handle shares its state with every copy;
+ * a pointer is not followed, as copy() leaves it aliased. */
+static const char *handle_type_in_copied_type(TypeChecker *checker, GrayType *type, int depth) {
+    if (!type || depth > 8) return NULL;
+    if (type->kind == TYPE_KIND_ARRAY && type->element_type)
+        return handle_type_in_copied_type(checker, typechecker_type_from_name(checker, type->element_type), depth + 1);
+    if (type->kind == TYPE_KIND_MAP && type->value_type)
+        return handle_type_in_copied_type(checker, typechecker_type_from_name(checker, type->value_type), depth + 1);
+    if (type->kind != TYPE_KIND_STRUCT || !type->name) return NULL;
+    static const char *const handle_names[] = {"Builder", "Channel", "Mutex", "SpinLock", "Thread",
+        "Database", "Router", "Socket", "Listener", "Arena"};
+    for (size_t i = 0; i < sizeof(handle_names) / sizeof(handle_names[0]); i++)
+        if (strcmp(type->name, handle_names[i]) == 0) return handle_names[i];
+    StructInfo *struct_info = find_struct(checker, type->name);
+    if (!struct_info) return NULL;
+    for (int i = 0; i < struct_info->field_count; i++) {
+        const char *found = handle_type_in_copied_type(checker, struct_info->field_types[i], depth + 1);
+        if (found) return found;
+    }
+    return NULL;
+}
+
 /* Reject an argument to print/println/eprint/eprintln that is not a printable
  * value. Does nothing for a call with no arguments; the arity check is the
  * caller's. */
@@ -9824,6 +9847,12 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         } else if (result->kind == TYPE_KIND_POINTER) {
             NODE_ERROR(checker, node, "E5037");
             result = &TYPE_UNKNOWN;
+        } else {
+            const char *handle_name = handle_type_in_copied_type(checker, result, 0);
+            if (handle_name) {
+                NODE_ERROR_FORMATTED(checker, node, "E5070", handle_name);
+                result = &TYPE_UNKNOWN;
+            }
         }
     } else if (strcmp(function_name, "char") == 0) {
         /* E5008: char() requires exactly 1 argument */

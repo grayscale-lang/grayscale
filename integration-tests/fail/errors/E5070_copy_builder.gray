@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5070 - copy() on a handle type
+ */
+import @strings
+
+do main() {
+    mut a = strings.builder()
+    mut b = copy(a)
+}

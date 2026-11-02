@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5070 - copy() on a struct holding a handle type
+ */
+import @strings
+
+const Doc struct {
+    body Builder
+}
+
+do main() {
+    mut d = Doc{body: strings.builder()}
+    mut e = copy(d)
+}

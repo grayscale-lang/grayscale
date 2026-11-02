@@ -406,7 +406,8 @@
     GRAY_ERROR("E5066", "usage", "-define: names '%s', which is not marked #define") \
     GRAY_ERROR("E5067", "arguments", "callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares") \
     GRAY_ERROR("E5068", "arguments", "'%s' wraps integers only; got %s and %s") \
-    GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value")
+    GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value") \
+    GRAY_ERROR("E5070", "usage", "'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
