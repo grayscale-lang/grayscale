@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3013 - field access on an enum value
+ */
+const Mode enum { FAST; SLOW }
+
+do main() {
+    mut e Mode = Mode.FAST
+    println(e.name)
+}

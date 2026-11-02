@@ -9321,6 +9321,8 @@ static const char *tagged_enum_in_printed_type(TypeChecker *checker, GrayType *t
     return NULL;
 }
 
+static void report_missing_pointee_field(TypeChecker *checker, AstNode *node, const char *pointee, const char *member);
+
 /* The handle type a copied value reaches through struct fields, array
  * elements or map values, or NULL. A handle shares its state with every copy;
  * a pointer is not followed, as copy() leaves it aliased. */
@@ -12187,12 +12189,12 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             /* Pointer auto-deref field access */
             result = struct_field_type(checker, symbol->type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                NODE_ERROR_FORMATTED(checker, node, "E3010", symbol->type->element_type, member);
+                report_missing_pointee_field(checker, node, symbol->type->element_type, member);
             }
         } else if (symbol && symbol->type->kind == TYPE_KIND_ERROR) {
             result = resolve_error_field(checker, node, member);
         } else if (symbol && symbol->type->kind != TYPE_KIND_UNKNOWN &&
-                   symbol->type->kind != TYPE_KIND_STRUCT && symbol->type->kind != TYPE_KIND_ENUM &&
+                   symbol->type->kind != TYPE_KIND_STRUCT &&
                    symbol->type->kind != TYPE_KIND_POINTER &&
                    !(member[0] == 'v' && member[1] >= '0' && member[1] <= '9')) {
             NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(symbol->type));
@@ -12293,7 +12295,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             /* Auto-deref pointer field: a.next.val where a.next is ^Node */
             result = struct_field_type(checker, object_type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                NODE_ERROR_FORMATTED(checker, node, "E3010", object_type->element_type, member);
+                report_missing_pointee_field(checker, node, object_type->element_type, member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_ERROR) {
             result = resolve_error_field(checker, node, member);
@@ -12312,7 +12314,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             /* Auto-deref pointer from expression (array index, map index, call) */
             result = struct_field_type(checker, object_type->element_type, member);
             if (result->kind == TYPE_KIND_UNKNOWN && member[0] != 'v') {
-                NODE_ERROR_FORMATTED(checker, node, "E3010", object_type->element_type, member);
+                report_missing_pointee_field(checker, node, object_type->element_type, member);
             }
         } else if (object_type && object_type->kind == TYPE_KIND_ERROR) {
             /* Error from an expression: errs[0].code, m["k"].msg, f().code */
@@ -12324,6 +12326,16 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         }
     }
     return result;
+}
+
+/* A field read through a pointer whose pointee has no such field: E3010 for a
+ * struct, E3013 when the pointee is not a struct and has no fields at all. */
+static void report_missing_pointee_field(TypeChecker *checker, AstNode *node, const char *pointee, const char *member) {
+    GrayType *pointee_type = typechecker_type_from_name(checker, pointee);
+    if (pointee_type && pointee_type->kind != TYPE_KIND_STRUCT && pointee_type->kind != TYPE_KIND_UNKNOWN)
+        NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(pointee_type));
+    else
+        NODE_ERROR_FORMATTED(checker, node, "E3010", pointee, member);
 }
 
 /* A struct literal field value that does not fit its field: the kinds differ,
