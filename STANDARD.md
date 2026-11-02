@@ -2237,8 +2237,8 @@ So the names are not purely cosmetic documentation: they constrain what a `retur
 A return position can be named whatever its type is, including a `generic` parameter's name (section 7.9). The named variable is declared in the body with that type:
 
 ```gray
-do first(kind generic, arr [kind]) -> (result kind) {
-    mut result kind = arr[0]
+do first(T generic, arr [T]) -> (result T) {
+    mut result T = arr[0]
     return result
 }
 ```
@@ -2923,16 +2923,16 @@ do main() {
 A `generic` parameter is an ordinary function parameter whose argument is a type. Its name is a real name: it can be used as a type in the parameters that follow it, in the return types, and in the body.
 
 ```gray
-do identity(kind generic, x kind) -> kind {
+do identity(T generic, x T) -> T {
     return x
 }
 
-do make(kind generic) -> ^kind {
-    return new(kind)
+do make(T generic) -> ^T {
+    return new(T)
 }
 
-do first(kind generic, arr [kind]) -> (result kind) {
-    mut result kind = arr[0]
+do first(T generic, arr [T]) -> (result T) {
+    mut result T = arr[0]
     return result
 }
 
@@ -2940,10 +2940,10 @@ do pair(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (a_kind, b_kind) 
     return a, b
 }
 
-mut n = identity(i64, 42)        // kind is i64, returns i64
-mut s = identity(string, "hi")   // kind is string, returns string
+mut n = identity(i64, 42)        // T is i64, returns i64
+mut s = identity(string, "hi")   // T is string, returns string
 mut p = make(Point)              // allocates a Point, returns ^Point
-mut q = make(kind: Point)        // named arguments work as for any parameter
+mut q = make(T: Point)        // named arguments work as for any parameter
 ```
 
 Type and value parameters mix freely in one signature. The type is always passed explicitly at the call site; it is never inferred from the value arguments.
@@ -2963,7 +2963,7 @@ Type and value parameters mix freely in one signature. The type is always passed
 | Array or map element type (`[generic]`) | Rejected |
 | Alias target (`alias X = generic`) | Rejected |
 
-A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(kind)`, `size_of(kind)`, `kind{...}`).
+A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(T)`, `size_of(T)`, `T{...}`).
 
 #### Rules
 
@@ -2982,19 +2982,19 @@ mut e = make(Nonexistent) // Error — names no type
 - **Arguments are checked against the bound types.** An argument whose parameter is typed by a `generic` name must have the type that name is bound to, and an argument for a container of it must have the matching shape:
 
 ```gray
-mut x = identity(i64, "hello")   // Error — kind is i64, argument 2 is string
+mut x = identity(i64, "hello")   // Error — T is i64, argument 2 is string
 mut y = first(i64, 5)            // Error — argument 2 is not an [i64]
 ```
 
-- **A `kind{...}` body constrains the function to structs.** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal and names the call site that bound it:
+- **A `T{...}` body constrains the function to structs.** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal and names the call site that bound it:
 
 ```gray
-do make_stack(kind generic) -> kind {
-    return kind{}          // Error when kind is bound to a non-struct
+do make_stack(T generic) -> T {
+    return T{}          // Error when T is bound to a non-struct
 }
 
 mut s = make_stack(Point)  // OK
-mut n = make_stack(i64)    // Error — kind is used as a struct literal
+mut n = make_stack(i64)    // Error — T is used as a struct literal
 ```
 
 - **`return nil` is rejected** from a function whose return type contains a `generic` name; `nil` is not a value every type argument can hold.
@@ -3005,8 +3005,8 @@ mut n = make_stack(i64)    // Error — kind is used as a struct literal
 The compiler generates one specialized function per distinct set of type arguments. A generic function that is never called generates nothing. A type argument forwarded from one generic function to another resolves to what the caller was instantiated with:
 
 ```gray
-do wrap(kind generic) -> ^kind {
-    return make(kind)      // make is specialized for whatever wrap was
+do wrap(T generic) -> ^T {
+    return make(T)      // make is specialized for whatever wrap was
 }
 ```
 
