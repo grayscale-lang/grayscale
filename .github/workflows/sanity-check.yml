@@ -26,7 +26,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
           # Block by extension
-          BLOCKED=$(echo "$CHANGED_FILES" | grep -E '\.(exe|dll|out|db|sqlite|sqlite3)$' || true)
+          BLOCKED=$(echo "$CHANGED_FILES" | grep -E '\.(exe|dll|out|db|sqlite|sqlite3|sh)$' || true)
           if [ -n "$BLOCKED" ]; then
             echo "::error::Disallowed file extensions detected: $BLOCKED"
             exit 1
@@ -77,9 +77,9 @@ jobs:
                 continue
               fi
 
-              # Allow shell scripts (they report as "executable" but are text files)
-              if [[ "$file" =~ \.sh$ ]]; then
-                echo "Allowed shell script: $file"
+              # Allow git hooks (they report as "executable" but are text files)
+              if [[ "$file" =~ ^\.githooks/ ]]; then
+                echo "Allowed git hook: $file"
                 continue
               fi
 
