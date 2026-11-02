@@ -15259,6 +15259,9 @@ static void apply_call_return_slots(TypeChecker *checker, Symbol *symbol, Functi
 static void report_shadowed_function(TypeChecker *checker, AstNode *node, const char *name,
                                      const char *display_name) {
     if (!name || strcmp(name, "_") == 0) return;
+    /* A binding named `main` is already E4026; shadowing the entry point is
+     * the same situation. */
+    if (strcmp(name, "main") == 0) return;
     DeclarationEntry *shadowed_entry = checker_resolve_entry(checker, name);
     if (!shadowed_entry) {
         DeclarationEntry *mangled_entry = module_table_find_mangled(checker->modules, name);
