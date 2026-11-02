@@ -1,5 +1,78 @@
 # Changelog
 
+## [0.14.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.14.0...grayscale-v0.14.1) (2026-11-02)
+
+
+### Features
+
+* **lexer:** accept \u{...} in string literals ([#3323](https://github.com/grayscale-lang/grayscale/issues/3323)) ([e1f2176](https://github.com/grayscale-lang/grayscale/commit/e1f2176140247e383c084347fcb68f96a6a2173f))
+
+
+### Bug Fixes
+
+* **build:** add the path module to the compile-from-source stdlib list so TinyCC links it ([#3308](https://github.com/grayscale-lang/grayscale/issues/3308)) ([0666bdf](https://github.com/grayscale-lang/grayscale/commit/0666bdffc5bb7c35442ed8cf1e03757511d31b1e))
+* **build:** keep make's directory messages out of the embed tag in nested builds ([#3307](https://github.com/grayscale-lang/grayscale/issues/3307)) ([0e3ce1e](https://github.com/grayscale-lang/grayscale/commit/0e3ce1e8d0915de60a12a261fd35cf56bb2df976))
+* **codegen:** bind an indexed literal or call-result field to a temporary ([#3316](https://github.com/grayscale-lang/grayscale/issues/3316)) ([1b64b9b](https://github.com/grayscale-lang/grayscale/commit/1b64b9b069dc6311526489c08e269ea34e298077))
+* **codegen:** keep bytes after an embedded NUL in fmt %s ([#3335](https://github.com/grayscale-lang/grayscale/issues/3335)) ([069ef9e](https://github.com/grayscale-lang/grayscale/commit/069ef9ef79103c12bb6555deeb643221ec26e6ce))
+* **codegen:** keep the element size of an array literal whose entry deep-copies a struct array ([#3361](https://github.com/grayscale-lang/grayscale/issues/3361)) ([5250292](https://github.com/grayscale-lang/grayscale/commit/525029223ed40b1818db316861876ba3de475f4c))
+* **codegen:** name a module's enum as written in the cast panic ([#3321](https://github.com/grayscale-lang/grayscale/issues/3321)) ([2c138ef](https://github.com/grayscale-lang/grayscale/commit/2c138efb6a50492307bae482476c04f9674f5657))
+* **codegen:** panic on arrays.sort_by during for_each over the same array ([#3360](https://github.com/grayscale-lang/grayscale/issues/3360)) ([b39e84e](https://github.com/grayscale-lang/grayscale/commit/b39e84e53cdacd389c90f115df55dcb7b14c6d0a))
+* **codegen:** print a module struct's nested fields and its declared name ([#3365](https://github.com/grayscale-lang/grayscale/issues/3365)) ([51fb4d0](https://github.com/grayscale-lang/grayscale/commit/51fb4d092dd48ca27bd252b2fb9f3080a5119a0e))
+* **csv:** split parse_delimited on the whole delimiter codepoint ([#3324](https://github.com/grayscale-lang/grayscale/issues/3324)) ([c9f1d01](https://github.com/grayscale-lang/grayscale/commit/c9f1d0176d4f3abfa113aa2077bed8c665a245db))
+* **diagnostics:** align the underline under the token after multibyte text ([#3337](https://github.com/grayscale-lang/grayscale/issues/3337)) ([3bf982f](https://github.com/grayscale-lang/grayscale/commit/3bf982ff1e021e0d678797b3204ffa06a6f6ddd0))
+* **imports:** resolve a file imported directly and through its directory ([#3312](https://github.com/grayscale-lang/grayscale/issues/3312)) ([cf70965](https://github.com/grayscale-lang/grayscale/commit/cf70965295de6068d61d1a4450423b9ec8d108a7))
+* **imports:** scope the name an import binds to the file that writes it ([#3310](https://github.com/grayscale-lang/grayscale/issues/3310)) ([6baa7c6](https://github.com/grayscale-lang/grayscale/commit/6baa7c60d374f44027dd3c59abc3ca73b2f23e4f))
+* **io:** match one codepoint for ? and brackets in io.glob ([#3334](https://github.com/grayscale-lang/grayscale/issues/3334)) ([428bd52](https://github.com/grayscale-lang/grayscale/commit/428bd525e286505eef82634f80f18033a0a850e4))
+* **json:** handle invalid UTF-8 in encode, decode and is_valid ([#3338](https://github.com/grayscale-lang/grayscale/issues/3338)) ([526db55](https://github.com/grayscale-lang/grayscale/commit/526db5528a645399a712e2ae571a3208df704fa2))
+* **lexer:** reject invalid UTF-8 bytes in string literals ([#3331](https://github.com/grayscale-lang/grayscale/issues/3331)) ([d1e9617](https://github.com/grayscale-lang/grayscale/commit/d1e9617ab15b656f1e57b7d29d3832b754b4e0fc))
+* **lexer:** skip a leading UTF-8 byte order mark ([#3336](https://github.com/grayscale-lang/grayscale/issues/3336)) ([2312650](https://github.com/grayscale-lang/grayscale/commit/23126508abec830f3374a53c084ed1ee7fb4c841))
+* **parser:** reject a typed func signature as a map value ([#3342](https://github.com/grayscale-lang/grayscale/issues/3342)) ([5993e34](https://github.com/grayscale-lang/grayscale/commit/5993e34abe4b16eacf9ff98f0dd0bca0e2a03b18))
+* **parser:** report an or_return/or_default/or_panic declaration at the variable's position ([#3341](https://github.com/grayscale-lang/grayscale/issues/3341)) ([ddea490](https://github.com/grayscale-lang/grayscale/commit/ddea490db6a936bfddf525fa044013db8ceb86e5))
+* **parser:** skip char literals when finding the end of an interpolation ([#3315](https://github.com/grayscale-lang/grayscale/issues/3315)) ([8024107](https://github.com/grayscale-lang/grayscale/commit/802410728cd688215f2a0b079ffc331403348b95))
+* **regex:** make POSIX character classes match ASCII only ([#3329](https://github.com/grayscale-lang/grayscale/issues/3329)) ([208a67a](https://github.com/grayscale-lang/grayscale/commit/208a67a2d5234da47161f23c1ef00bac714c0cb8))
+* **regex:** match one codepoint for . and bracket expressions on every platform ([#3328](https://github.com/grayscale-lang/grayscale/issues/3328)) ([a5f7dda](https://github.com/grayscale-lang/grayscale/commit/a5f7ddac2ca0cf62570df1e6978df57afa5dfd9e))
+* **regex:** treat an invalid UTF-8 byte as one U+FFFD character ([#3333](https://github.com/grayscale-lang/grayscale/issues/3333)) ([e00918c](https://github.com/grayscale-lang/grayscale/commit/e00918c4b6cba07679ee7c77a38c7340d958c790))
+* **scripts:** rename the reserved name 'path' in the stray binary check and sized type test generator ([#3306](https://github.com/grayscale-lang/grayscale/issues/3306)) ([6e8e3a9](https://github.com/grayscale-lang/grayscale/commit/6e8e3a9012f557e3f0e020499b62e614b33b24d6))
+* **stdlib:** compare strings.contains_any by codepoint ([#3325](https://github.com/grayscale-lang/grayscale/issues/3325)) ([1497c68](https://github.com/grayscale-lang/grayscale/commit/1497c681c6fe2a647b11f60ef30b9a7dbd09dd16))
+* **stdlib:** decode UTF-8 strictly through one shared decoder ([#3326](https://github.com/grayscale-lang/grayscale/issues/3326)) ([9d988f8](https://github.com/grayscale-lang/grayscale/commit/9d988f8106bac932b6b053c2234dd1fdab95ebaa))
+* **stdlib:** return the raw byte from strings.char_at for bytes of 128 or more ([#3313](https://github.com/grayscale-lang/grayscale/issues/3313)) ([3fd753d](https://github.com/grayscale-lang/grayscale/commit/3fd753d7b02eb1470466d8c2318f081e6c068f7f))
+* **stdlib:** snap strings edit indexes back to a character boundary ([#3332](https://github.com/grayscale-lang/grayscale/issues/3332)) ([91e6795](https://github.com/grayscale-lang/grayscale/commit/91e6795151e26ec50a41a1c766fdeab38d959055))
+* **typechecker:** a scalar read through a pointer parameter carries no origin ([#3340](https://github.com/grayscale-lang/grayscale/issues/3340)) ([f1787d0](https://github.com/grayscale-lang/grayscale/commit/f1787d075e06227e24ad970b7d8e0c4282ed31d0))
+* **typechecker:** accept a helper linking two locals of one scope ([#3319](https://github.com/grayscale-lang/grayscale/issues/3319)) ([f809288](https://github.com/grayscale-lang/grayscale/commit/f80928863708068a1654d2b7446fb0bf9c4b3644))
+* **typechecker:** accept an implicit tagged-enum constructor as a call argument ([#3314](https://github.com/grayscale-lang/grayscale/issues/3314)) ([aca028a](https://github.com/grayscale-lang/grayscale/commit/aca028afd8e871aad9b14bd434d2bf20310ad507))
+* **typechecker:** allow a private struct function called through self in an imported struct ([#3345](https://github.com/grayscale-lang/grayscale/issues/3345)) ([a5e4aaa](https://github.com/grayscale-lang/grayscale/commit/a5e4aaa4a8d22af9a3467d2f0011f314eb5bf6d8))
+* **typechecker:** apply default parameters to a module-qualified struct function call ([#3347](https://github.com/grayscale-lang/grayscale/issues/3347)) ([33d1eb8](https://github.com/grayscale-lang/grayscale/commit/33d1eb8f798ac05b7b12d5f25c25f2ea72c262cf))
+* **typechecker:** check a function reference passed to a struct function's func parameter ([#3350](https://github.com/grayscale-lang/grayscale/issues/3350)) ([197d24d](https://github.com/grayscale-lang/grayscale/commit/197d24d98e6b884f70b50abbac15d31c7ec294fb))
+* **typechecker:** check the element type of stdlib array parameters ([#3367](https://github.com/grayscale-lang/grayscale/issues/3367)) ([10266e8](https://github.com/grayscale-lang/grayscale/commit/10266e8f41f0bc35731a5b924ac0646bb77af845))
+* **typechecker:** check the return value of a module-qualified struct function call ([#3348](https://github.com/grayscale-lang/grayscale/issues/3348)) ([8b7f165](https://github.com/grayscale-lang/grayscale/commit/8b7f1653e0b42cd7c74a2b5672f058427be0a50b))
+* **typechecker:** detect writes through a pointer parameter made by stdlib array and map mutators, ++/--, and ref() ([#3370](https://github.com/grayscale-lang/grayscale/issues/3370)) ([9bc210c](https://github.com/grayscale-lang/grayscale/commit/9bc210c6ea1db654fc984a1252f3a0c725894dd4))
+* **typechecker:** enforce const through ref(): mut ref to a const field or element, and writes through a const ref ([#3369](https://github.com/grayscale-lang/grayscale/issues/3369)) ([b21f743](https://github.com/grayscale-lang/grayscale/commit/b21f743d7f075c1c8af74541a76ab08c568fce3a))
+* **typechecker:** enforce E3153 on the type argument of new() and size_of() ([#3363](https://github.com/grayscale-lang/grayscale/issues/3363)) ([2f514f9](https://github.com/grayscale-lang/grayscale/commit/2f514f928c2dd6f7c597887a2d7b9deceae50b35))
+* **typechecker:** escape-check addr(local) stored through a pointer parameter with the dot operator ([#3318](https://github.com/grayscale-lang/grayscale/issues/3318)) ([baa4cd1](https://github.com/grayscale-lang/grayscale/commit/baa4cd19700fa76ed7f738da973a0da27f7da7fd))
+* **typechecker:** reject a void call as a value argument to string() and generic arrays/maps functions ([#3359](https://github.com/grayscale-lang/grayscale/issues/3359)) ([9df6fe2](https://github.com/grayscale-lang/grayscale/commit/9df6fe2a4adf0d988f8f07c28b5bbe00e8c095b9))
+* **typechecker:** reject assignment and increment through a call result or literal ([#3317](https://github.com/grayscale-lang/grayscale/issues/3317)) ([21cac7b](https://github.com/grayscale-lang/grayscale/commit/21cac7b30e25101e292398ab46f07a3f7e1e5d8a))
+* **typechecker:** reject copy() on a handle type instead of aliasing it ([#3362](https://github.com/grayscale-lang/grayscale/issues/3362)) ([d72f7a1](https://github.com/grayscale-lang/grayscale/commit/d72f7a1d32b73f0682337703fc312beb963918a2))
+* **typechecker:** reject duplicate globals and global/function/type name clashes across files of a module ([#3311](https://github.com/grayscale-lang/grayscale/issues/3311)) ([f31420e](https://github.com/grayscale-lang/grayscale/commit/f31420e802890ba2c6733d05821ca49bbc9808ba))
+* **typechecker:** reject field access on an enum value and through a pointer to a non-struct ([#3366](https://github.com/grayscale-lang/grayscale/issues/3366)) ([446b1d6](https://github.com/grayscale-lang/grayscale/commit/446b1d6a1fbf2d83b9ea42341371a1138ff25dfb))
+* **typechecker:** reject index writes, array/map functions and addr on a module variable from outside ([#3354](https://github.com/grayscale-lang/grayscale/issues/3354)) ([2376f55](https://github.com/grayscale-lang/grayscale/commit/2376f55d084e16d2072484cc63e2f3ed7c0bbc41))
+* **typechecker:** reject surrogates in char(n) and cast(n, char) ([#3327](https://github.com/grayscale-lang/grayscale/issues/3327)) ([139bbe8](https://github.com/grayscale-lang/grayscale/commit/139bbe861088b2d6fc3c013ce1aaa89bdf6c84c6))
+* **typechecker:** reject type, struct literal and enum member uses of a module the file does not import ([#3309](https://github.com/grayscale-lang/grayscale/issues/3309)) ([7c00847](https://github.com/grayscale-lang/grayscale/commit/7c008472b3ae343162196dfa160a11c5505c86ab))
+* **typechecker:** reject void as the type in new(), size_of() and alias ([#3364](https://github.com/grayscale-lang/grayscale/issues/3364)) ([82be77e](https://github.com/grayscale-lang/grayscale/commit/82be77e39610370d9f0087e93d66ad4c435e8df3))
+* **typechecker:** report a parameter named main once instead of also as shadowing a function ([5b15a9b](https://github.com/grayscale-lang/grayscale/commit/5b15a9be9e18f39f7cfbf6f7e3069ffcb9229a60))
+* **typechecker:** report a parameter, loop variable or struct named like an imported module ([#3352](https://github.com/grayscale-lang/grayscale/issues/3352)) ([268738f](https://github.com/grayscale-lang/grayscale/commit/268738f610ee91d1d941b2c85e792989fdff8c3d))
+* **typechecker:** report a parameter, loop variable or when binding named like a function ([#3349](https://github.com/grayscale-lang/grayscale/issues/3349)) ([e34ec6c](https://github.com/grayscale-lang/grayscale/commit/e34ec6c8f6c6cda90cc3985b0a89f53cf6c101f3))
+* **typechecker:** report an unhandled fallible call in a multi-value declaration ([#3343](https://github.com/grayscale-lang/grayscale/issues/3343)) ([4f088e9](https://github.com/grayscale-lang/grayscale/commit/4f088e95133584370f85bb3a9fce6db8ec137a2d))
+* **typechecker:** report assigning one struct or enum type to another once ([#3320](https://github.com/grayscale-lang/grayscale/issues/3320)) ([2c89f57](https://github.com/grayscale-lang/grayscale/commit/2c89f57728a187c18b88912f44c2e89f032bb672))
+* **typechecker:** report only E4026 for a type or const named main ([#3339](https://github.com/grayscale-lang/grayscale/issues/3339)) ([8c022cd](https://github.com/grayscale-lang/grayscale/commit/8c022cdac3b177fa936b275afb82e39c4e600838))
+* **typechecker:** report shadowing of a parameter, loop variable or when binding ([#3344](https://github.com/grayscale-lang/grayscale/issues/3344)) ([ab46d0d](https://github.com/grayscale-lang/grayscale/commit/ab46d0de42385b3e2775518f564aa81b4ce474c3))
+* **typechecker:** resolve a module-qualified call to a generic struct function ([#3346](https://github.com/grayscale-lang/grayscale/issues/3346)) ([34be85d](https://github.com/grayscale-lang/grayscale/commit/34be85d44763d2753533a7a1a069a1a5112f2686))
+* **typechecker:** warn on a when over module-qualified enum variants with no default ([#3353](https://github.com/grayscale-lang/grayscale/issues/3353)) ([432f094](https://github.com/grayscale-lang/grayscale/commit/432f094949378a695a2f274074b56443d096a884))
+
+
+### Miscellaneous
+
+* **release:** release as 0.14.1 ([3d54efd](https://github.com/grayscale-lang/grayscale/commit/3d54efd071cc6c6098893a0bf7992a5ead8cd966))
+
 ## [0.14.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.13.0...grayscale-v0.14.0) (2026-10-30)
 
 
