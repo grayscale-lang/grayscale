@@ -8529,7 +8529,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
         const char *c_element_type = gray_type_to_c_codegen(codegen, arrays_closure_element_type_name(codegen, node));
         emit(codegen, "({ GrayArray *_sb_arr = ");
         emit_array_argument_address(codegen, node->data.call.arguments[0]);
-        emit_formatted(codegen, "; bool (*_sb_fn)(%s, %s) = (void *)", c_element_type, c_element_type);
+        emit_formatted(codegen, "; if (gray_atomic_load32(&_sb_arr->iterating) > 0) { %s; } ", panic_call(codegen, node, "P0034", ""));
+        emit_formatted(codegen, "bool (*_sb_fn)(%s, %s) = (void *)", c_element_type, c_element_type);
         emit_expression(codegen, node->data.call.arguments[1]);
         emit_formatted(codegen, "; int32_t _sb_n = _sb_arr->len; if (_sb_n > 1) { "
             "%s *_sb_d = (%s *)gray_arena_alloc_uninitialized(gray_default_arena, 2 * sizeof(%s) * (size_t)_sb_n); "
