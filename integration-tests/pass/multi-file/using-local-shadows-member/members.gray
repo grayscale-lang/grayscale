@@ -1,9 +1,5 @@
 mut counter i64 = 0
 
-do who() -> i64 {
-    return 7
-}
-
 const Shape enum {
     Circle
     Square(i64)

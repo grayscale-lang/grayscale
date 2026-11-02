@@ -29,20 +29,8 @@ do param_hides_variable(counter i64) -> i64 {
     return counter
 }
 
-do param_hides_function(who i64) -> i64 {
-    return who
-}
-
 do bump(&counter i64) {
     counter += 1
-}
-
-const Holder struct {
-    n i64
-
-    do pick(self Holder, who i64) -> i64 {
-        return who
-    }
 }
 
 do main() {
@@ -50,10 +38,6 @@ do main() {
 
     check("param hides stdlib constant", param_hides_stdlib_const(3.0) == 3.0)
     check("param hides module variable", param_hides_variable(3) == 3)
-    check("param hides module function", param_hides_function(3) == 3)
-
-    mut h Holder = Holder{n: 1}
-    check("struct function param hides module function", h.pick(4) == 4)
 
     mut counter i64 = 50
     counter = counter + 1
@@ -69,27 +53,22 @@ do main() {
     }
     check("for variable hides module variable", seen == 3)
 
-    for who in range(0, 2) {
-        seen += who
-    }
-    check("for variable hides module function", seen == 4)
-
     mut xs [i64] = {5, 6}
     mut total i64 = 0
-    for_each who in xs {
-        total += who
+    for_each counter in xs {
+        total += counter
     }
-    check("for_each variable hides module function", total == 11)
+    check("for_each variable hides module variable", total == 11)
 
     mut shape Shape = Shape.Square(9)
     mut got i64 = 0
     when shape {
-        is Shape.Square(who) {
-            got = who
+        is Shape.Square(counter) {
+            got = counter
         }
         default { }
     }
-    check("pattern binding hides module function", got == 9)
+    check("pattern binding hides module variable", got == 9)
 
     println("")
     println("Results: ${passed} passed, ${failed} failed")

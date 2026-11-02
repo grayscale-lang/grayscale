@@ -2,3 +2,8 @@ import @arrays
 
 mut keys map[string:i64] = {:}
 mut names [string] = {}
+
+do record(name string) {
+    keys[name] = 1
+    arrays.append(names, name + "!")
+}

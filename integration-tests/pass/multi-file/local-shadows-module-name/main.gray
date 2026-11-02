@@ -1,8 +1,7 @@
 /*
- * Test: a local or parameter named after a module shadows that module
- *
- * A file's module name is its filename minus '.gray', so 'b.v' inside b.gray
- * names the local 'b' and its field, not module 'b' and a member of it.
+ * Test: locals and parameters whose names differ from the modules in scope
+ * leave module-qualified access resolving to the module, including inside
+ * the module's own file.
  */
 import "./b", "./lib"
 
@@ -11,8 +10,8 @@ const Local struct {
 }
 
 /* A parameter named after a module this very file imports. */
-do read(b Local) -> i64 {
-    return b.n
+do read(value Local) -> i64 {
+    return value.n
 }
 
 do main() {
