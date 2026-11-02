@@ -19,6 +19,7 @@
 
 #include "io.h"
 #include "../runtime/platform_rt.h"
+#include "utf8.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -31,6 +32,11 @@
 #include "../runtime/win32.h"
 #else
 #include <glob.h>
+#include <locale.h>
+#include <pthread.h>
+#if defined(__APPLE__) && !defined(__clang__)
+#include <xlocale.h> /* GCC's <locale.h> does not declare locale_t on macOS */
+#endif
 #endif
 
 #define GRAY_IO_PATH_BUFFER_SIZE          4096
@@ -62,13 +68,25 @@ typedef struct {
     char **gl_pathv;
 } glob_t;
 
+/* The byte length of the character at text, which is not the terminating NUL. */
+static int gray_glob_character_length(const char *text) {
+    size_t available = 0;
+    while (available < 4 && text[available]) available++;
+    int32_t codepoint;
+    return gray_utf8_decode((const uint8_t *)text, (const uint8_t *)text + available, &codepoint);
+}
+
 /* '*' and '?' matching, iterative with backtracking so a pattern like
- * "*a*b" cannot blow the stack on a long name. */
+ * "*a*b" cannot blow the stack on a long name. '?' matches one character,
+ * which may be several bytes. */
 static bool gray_glob_match(const char *pattern, const char *name) {
     const char *star = NULL;
     const char *retry = name;
     while (*name) {
-        if (*pattern == '?' || tolower((unsigned char)*pattern) == tolower((unsigned char)*name)) {
+        if (*pattern == '?') {
+            pattern++;
+            name += gray_glob_character_length(name);
+        } else if (tolower((unsigned char)*pattern) == tolower((unsigned char)*name)) {
             pattern++;
             name++;
         } else if (*pattern == '*') {
@@ -76,7 +94,8 @@ static bool gray_glob_match(const char *pattern, const char *name) {
             retry = name;
         } else if (star) {
             pattern = star + 1;
-            name = ++retry;
+            retry += gray_glob_character_length(retry);
+            name = retry;
         } else {
             return false;
         }
@@ -794,11 +813,32 @@ GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path, in
     return result;
 }
 
+#if !GRAY_RUNTIME_WINDOWS
+/* glob(3) matches '?' and bracket expressions by character in the thread's
+ * locale, and the runtime stays in the C locale, where a character is a byte.
+ * Globbing runs in a UTF-8 locale, so a character is a codepoint; NULL when the
+ * system has none. */
+static locale_t io_glob_locale;
+static pthread_once_t io_glob_locale_once = PTHREAD_ONCE_INIT;
+
+static void io_create_glob_locale(void) {
+    io_glob_locale = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
+    if (!io_glob_locale) io_glob_locale = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", (locale_t)0);
+}
+#endif
+
 GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern) {
     validate_path(pattern);
     GrayResult_array result;
     glob_t glob_result;
+#if !GRAY_RUNTIME_WINDOWS
+    pthread_once(&io_glob_locale_once, io_create_glob_locale);
+    locale_t previous_locale = io_glob_locale ? uselocale(io_glob_locale) : (locale_t)0;
+#endif
     int result_code = glob(pattern.data, GLOB_NOSORT, NULL, &glob_result);
+#if !GRAY_RUNTIME_WINDOWS
+    if (io_glob_locale) uselocale(previous_locale);
+#endif
     if (result_code != 0 && result_code != GLOB_NOMATCH) {
         result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,

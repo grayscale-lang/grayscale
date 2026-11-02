@@ -1,0 +1,21 @@
+import "./lib"
+
+do build_free() -> ^lib.Node {
+    mut heap ^lib.Node = new(lib.Node)
+    mut local = lib.Node{v: 42, next: nil}
+    lib.link_free(heap, addr(local))
+    return heap
+}
+
+do build_struct_function() -> ^lib.Node {
+    mut heap ^lib.Node = new(lib.Node)
+    mut local = lib.Node{v: 42, next: nil}
+    lib.Node.link(heap, addr(local))
+    return heap
+}
+
+do main() {
+    mut a = build_free()
+    mut b = build_struct_function()
+    println("${a^.v} ${b^.v}")
+}

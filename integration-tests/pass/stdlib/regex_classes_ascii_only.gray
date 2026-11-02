@@ -1,0 +1,56 @@
+/*
+ * Test: POSIX character classes match ASCII only, like the chars module.
+ */
+import @regex
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut word, e = regex.find("[[:alpha:]]+", "héllo")
+    if word == "h" && e == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] alpha, got ${word}")
+        failed += 1
+    }
+
+    mut upper, e2 = regex.find("[[:upper:]]", "É")
+    if upper == "" && e2 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] upper")
+        failed += 1
+    }
+
+    mut mixed, e3 = regex.find_all("[[:alnum:]_-]+", "ab-9_ é x1")
+    if len(mixed) == 2 && mixed[0] == "ab-9_" && mixed[1] == "x1" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] alnum set, got ${len(mixed)}")
+        failed += 1
+    }
+
+    mut negated, e4 = regex.find_all("[^[:space:]]+", "ab cd\té")
+    if len(negated) == 3 && e3 == nil && e4 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] negated space, got ${len(negated)}")
+        failed += 1
+    }
+
+    mut punct, e5 = regex.count("[[:punct:]]", "a,b.c!é")
+    if punct == 3 && e5 == nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] punct, got ${punct}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

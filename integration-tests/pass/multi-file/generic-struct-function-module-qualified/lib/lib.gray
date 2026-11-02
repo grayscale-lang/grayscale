@@ -1,0 +1,15 @@
+const Box struct {
+    v i64
+
+    do make(kind generic, v i64) -> i64 {
+        return size_of(kind) + v
+    }
+
+    do inst(self Box, kind generic, a kind) -> kind {
+        return a
+    }
+}
+
+const Pt struct {
+    x i64
+}

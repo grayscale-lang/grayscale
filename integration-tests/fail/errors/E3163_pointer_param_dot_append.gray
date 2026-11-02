@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3163 - appending the address of a local to an array reached
+ * through a pointer parameter with the dot operator
+ */
+// expect-error: E3163
+// expect-error-count: 1
+
+import @arrays
+
+const Node struct {
+    value i64
+    children [^Node]
+}
+
+do add_child(parent ^Node) {
+    mut local Node = Node{value: 42, children: {}}
+    arrays.append(parent.children, addr(local))
+}
+
+do main() {
+    mut head Node = Node{value: 0, children: {}}
+    add_child(addr(head))
+}

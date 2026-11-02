@@ -1,0 +1,6 @@
+const Cal struct {
+    z i64
+    do cb(g func(i64) -> i64) -> i64 { return g(1) }
+}
+do sq(s string) -> string { return s }
+do inc(x i64) -> i64 { return x + 1 }

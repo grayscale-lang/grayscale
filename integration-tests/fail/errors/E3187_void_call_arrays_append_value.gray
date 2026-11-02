@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3187 - void call as the value argument of a generic arrays function
+ */
+import @arrays
+
+do nothing() { }
+
+do main() {
+    mut a [i64] = {1}
+    arrays.append(a, nothing())
+}

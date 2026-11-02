@@ -1,0 +1,13 @@
+const Shape enum {
+    A(i64)
+    B
+}
+
+do f(a i64) -> i64 { return a }
+do main() {
+    mut s Shape = Shape.A(1)
+    when s {
+        is A(f) { println("${f}") }
+        default { println("other") }
+    }
+}

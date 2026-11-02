@@ -19,6 +19,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "util/arena.h"
 #include "util/buf.h"
@@ -41,6 +42,7 @@
 #endif
 #define PATH_BUFFER_SIZE 2048
 #define COMPILER_ARENA_SIZE (1024 * 1024)
+#define MAX_ARENA_LIMIT 9223372036854775807ULL
 
 /* Wall-clock milliseconds from a monotonic source. clock() would measure only
  * this process's CPU time and miss the C compiler, which runs as a spawned
@@ -442,6 +444,7 @@ static const char *const STDLIB_SOURCES[] = {
     "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
     "stdlib/threads.c",  "stdlib/runtime_mod.c",
     "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
+    "stdlib/path.c",
     "vendor/sqlite3.c"
 };
 
@@ -2094,7 +2097,17 @@ static ArgumentsStatus parse_arguments(int argc, char **argv, CompilerOptions *o
             continue;
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
-            options->arena_limit = strtoull(argv[i] + 14, NULL, 10);
+            const char *limit_text = argv[i] + 14;
+            char *limit_end = NULL;
+            errno = 0;
+            unsigned long long limit = strtoull(limit_text, &limit_end, 10);
+            if (!isdigit((unsigned char)limit_text[0]) || *limit_end != '\0' || errno == ERANGE ||
+                limit == 0 || limit > MAX_ARENA_LIMIT) {
+                fprintf(stderr, "gray: invalid --arena-limit '%s': expected a positive number of bytes up to %llu\n",
+                        limit_text, MAX_ARENA_LIMIT);
+                return ARGUMENTS_ERROR;
+            }
+            options->arena_limit = (size_t)limit;
             continue;
         }
         if (strncmp(argv[i], "--define=", 9) == 0) {
@@ -2330,6 +2343,8 @@ int main(int argc, char **argv) {
         typechecker_add_file_module(checker, imports.files[i], imports.modules[i], false);
     for (int i = 0; i < imports.alias_count; i++)
         typechecker_add_module_alias(checker, imports.alias_names[i], imports.alias_targets[i]);
+    for (int i = 0; i < imports.include_count; i++)
+        typechecker_add_file_include(checker, imports.include_files[i], imports.include_modules[i]);
     typechecker_check(checker, program);
 
     if (diagnostic_has_errors(diagnostics)) {

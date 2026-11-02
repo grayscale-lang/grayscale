@@ -1,0 +1,24 @@
+/*
+ * Error Test: E3162 - returning a local array that holds the address of a
+ * local variable appended to it
+ */
+// expect-error: E3162
+// expect-error-count: 1
+
+import @arrays
+
+const Node struct {
+    value i64
+}
+
+do build() -> [^Node] {
+    mut local Node = Node{value: 42}
+    mut result [^Node] = {}
+    arrays.append(result, addr(local))
+    return result
+}
+
+do main() {
+    mut nodes [^Node] = build()
+    println(len(nodes))
+}

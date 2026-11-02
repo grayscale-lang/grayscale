@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3153 - Error as the value type in size_of()
+ */
+do main() {
+    mut n = size_of(map[string:Error])
+}

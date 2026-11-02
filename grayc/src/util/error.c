@@ -299,18 +299,19 @@ static int write_visible(const char *text, int length, bool allow_newline) {
 }
 
 /* The columns write_visible() takes for the first `length` bytes of `text`,
- * counting each byte of a multi-byte character as one, as the underline's
- * padding always has. */
+ * counting each multi-byte character as one, so the underline lines up under
+ * the text above it. */
 static int visible_width(const char *text, int length) {
     int columns = 0;
     int pending = 0;
     for (int index = 0; index < length; index++) {
         unsigned char byte = (unsigned char)text[index];
+        bool is_continuation = pending > 0 && (byte & 0xC0) == 0x80;
         bool is_c1 = byte == 0xC2 && index + 1 < length && ((unsigned char)text[index + 1] & 0xE0) == 0x80;
         if (is_c1) { columns += 6; index++; pending = 0; }
         else if (byte != '\t' && (byte < 0x20 || byte == 0x7F)) { columns += 4; pending = 0; }
         else if (is_stray_byte(text, length, index, &pending)) columns += 4;
-        else columns++;
+        else if (!is_continuation) columns++;
     }
     return columns;
 }
@@ -433,6 +434,7 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic
         if (padding > maximum_padding) padding = maximum_padding;
         int visible_span = window_end - (start - 1);
         if (span_length > visible_span) span_length = visible_span;
+        if (span_length > 0 && start - 1 < line_length) span_length = visible_width(source_line_text + start - 1, span_length);
         if (span_length < 1) span_length = 1;
 
         fprintf(stderr, "   %s|%s ", color_code(diagnostics, COLOR_BLUE), color_code(diagnostics, COLOR_RESET));

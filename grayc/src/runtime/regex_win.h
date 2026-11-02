@@ -1,21 +1,30 @@
 /*
- * regex_win.h — A POSIX extended-regular-expression engine for Windows.
+ * regex_win.h — A POSIX extended-regular-expression engine that works on
+ * characters.
  *
- * Windows ships no <regex.h> and there is no Win32 equivalent, so this
- * provides the subset of the POSIX interface the regex stdlib module uses:
- * regcomp, regexec, regfree, regex_t (with re_nsub), regmatch_t, REG_EXTENDED,
- * and REG_NOSUB.
- * Including it in place of <regex.h> leaves the module's own code unchanged.
+ * Windows ships no <regex.h> and there is no Win32 equivalent, so the regex
+ * stdlib module uses this engine there. On macOS and Linux it is the fallback
+ * for a system with no UTF-8 locale, where libc matches bytes.
+ *
+ * A character is a UTF-8 codepoint, decoded by the shared decoder in
+ * utf8.h: an invalid byte is one U+FFFD character. '.' matches one
+ * character, a bracket expression holds codepoints and codepoint ranges, and
+ * a quantifier repeats a whole character.
  *
  * Supported: literals, '.', bracket expressions with ranges, negation and the
- * [:alpha:]-style classes, anchors, the '*', '+', '?' and '{n,m}' quantifiers,
- * alternation, grouping, and backslash escapes.
+ * [:alpha:]-style classes (ASCII only, like the chars module), anchors, the
+ * '*', '+', '?' and '{n,m}' quantifiers, alternation, grouping, and backslash
+ * escapes.
  *
- * Capture groups: regcomp counts them into re_nsub, and regexec writes each
- * group's extent to pmatch[1..nmatch-1] (rm_so == -1 for a group that did not
- * participate). A repeated group reports its last iteration. Matching is
+ * Capture groups: compiling counts them into group_count, and executing writes
+ * each group's extent to spans[1..nmatch-1] (rm_so == -1 for a group that did
+ * not participate). A repeated group reports its last iteration. Matching is
  * leftmost-first rather than POSIX's leftmost-longest, the same rule
  * Perl-style engines use.
+ *
+ * The includer may define GRAY_REGEX_SPAN_TYPE to name the span type the
+ * engine fills (the POSIX build uses regmatch_t, so libc and the engine share
+ * one type); otherwise the engine defines its own.
  *
  * Author:  Aristomedes (@Aristomedes)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -25,21 +34,20 @@
 #ifndef GRAY_REGEX_WIN_H
 #define GRAY_REGEX_WIN_H
 
-#include <ctype.h>
+#include "../stdlib/utf8.h"
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define REG_EXTENDED 1
-#define REG_NOSUB    2
-#define REG_NOTBOL   8  /* regexec eflag: cursor[0] is not beginning-of-line */
-#define REG_NOMATCH  1
-#define REG_BADPAT   2
-
+#ifdef GRAY_REGEX_SPAN_TYPE
+typedef GRAY_REGEX_SPAN_TYPE GrayRegexSpan;
+#else
 typedef struct {
     long rm_so;
     long rm_eo;
-} regmatch_t;
+} GrayRegexSpan;
+#endif
 
 /* --- Pattern representation ---
  *
@@ -60,11 +68,19 @@ typedef enum {
 typedef struct GrayRegexNode GrayRegexNode;
 typedef struct GrayRegexAlternation GrayRegexAlternation;
 
+/* An inclusive range of codepoints above ASCII held by a bracket expression. */
+typedef struct {
+    int32_t low;
+    int32_t high;
+} GrayRegexRange;
+
 struct GrayRegexNode {
     GrayRegexKind kind;
-    char character;       /* GRAY_REGEX_CHARACTER */
+    int32_t character;    /* GRAY_REGEX_CHARACTER: the codepoint */
     bool is_negated;      /* GRAY_REGEX_CLASS */
-    unsigned char character_set[32]; /* GRAY_REGEX_CLASS bitmap, 256 bits */
+    unsigned char ascii_set[16]; /* GRAY_REGEX_CLASS: bitmap of the 128 ASCII codepoints */
+    GrayRegexRange *ranges;      /* GRAY_REGEX_CLASS: codepoints of 128 and above */
+    int range_count, range_capacity;
     GrayRegexAlternation *group;        /* GRAY_REGEX_GROUP */
     int group_index;      /* GRAY_REGEX_GROUP: 1-based capture number */
     int minimum_repeat, maximum_repeat; /* quantifier; maximum_repeat < 0 means unbounded */
@@ -84,9 +100,19 @@ struct GrayRegexAlternation {
 
 typedef struct {
     GrayRegexAlternation *root;
-    bool has_no_submatches;
-    size_t re_nsub; /* number of capture groups */
-} regex_t;
+    size_t group_count; /* number of capture groups */
+} GrayRegexEngine;
+
+/* --- Characters --- */
+
+/* Decode the character at `position`, which must not be the terminating NUL;
+ * returns its byte length. The text is NUL-terminated, so the decoder never
+ * looks past the bytes that exist. */
+static int gray_regex_decode(const char *position, int32_t *codepoint) {
+    size_t available = 0;
+    while (available < 4 && position[available]) available++;
+    return gray_utf8_decode((const uint8_t *)position, (const uint8_t *)position + available, codepoint);
+}
 
 /* --- Parser --- */
 
@@ -98,37 +124,76 @@ typedef struct {
 
 static GrayRegexAlternation *gray_regex_parse_alternation(GrayRegexParser *parser);
 
-static void gray_regex_set_add(unsigned char *character_set, unsigned char character) {
-    character_set[character >> 3] |= (unsigned char)(1u << (character & 7));
+static int32_t gray_regex_next_codepoint(GrayRegexParser *parser) {
+    int32_t codepoint;
+    parser->cursor += gray_regex_decode(parser->cursor, &codepoint);
+    return codepoint;
 }
 
-static bool gray_regex_set_has(const unsigned char *character_set, unsigned char character) {
-    return (character_set[character >> 3] & (1u << (character & 7))) != 0;
+static void gray_regex_class_add_range(GrayRegexParser *parser, GrayRegexNode *node, int32_t low, int32_t high) {
+    for (int32_t codepoint = low; codepoint <= high && codepoint < 128; codepoint++)
+        node->ascii_set[codepoint >> 3] |= (unsigned char)(1u << (codepoint & 7));
+    if (high < 128) return;
+    if (low < 128) low = 128;
+    if (node->range_count == node->range_capacity) {
+        int capacity = node->range_capacity ? node->range_capacity * 2 : 4;
+        GrayRegexRange *grown = (GrayRegexRange *)realloc(node->ranges, (size_t)capacity * sizeof(GrayRegexRange));
+        if (!grown) { parser->failed = true; return; }
+        node->ranges = grown;
+        node->range_capacity = capacity;
+    }
+    node->ranges[node->range_count].low = low;
+    node->ranges[node->range_count].high = high;
+    node->range_count++;
+}
+
+static bool gray_regex_class_has(const GrayRegexNode *node, int32_t codepoint) {
+    if (codepoint < 128) return (node->ascii_set[codepoint >> 3] & (1u << (codepoint & 7))) != 0;
+    for (int i = 0; i < node->range_count; i++) {
+        if (codepoint >= node->ranges[i].low && codepoint <= node->ranges[i].high) return true;
+    }
+    return false;
+}
+
+/* Is the ASCII character in the POSIX class `name`? Every class is ASCII only,
+ * whatever the locale. Returns false for an unknown name. */
+static bool gray_regex_ascii_class_has(const char *name, int character) {
+    bool is_upper = character >= 'A' && character <= 'Z';
+    bool is_lower = character >= 'a' && character <= 'z';
+    bool is_digit = character >= '0' && character <= '9';
+    if (!strcmp(name, "alpha")) return is_upper || is_lower;
+    if (!strcmp(name, "digit")) return is_digit;
+    if (!strcmp(name, "alnum")) return is_upper || is_lower || is_digit;
+    if (!strcmp(name, "upper")) return is_upper;
+    if (!strcmp(name, "lower")) return is_lower;
+    if (!strcmp(name, "space")) return character == ' ' || (character >= '\t' && character <= '\r');
+    if (!strcmp(name, "blank")) return character == ' ' || character == '\t';
+    if (!strcmp(name, "punct")) return character > ' ' && character < 127 && !(is_upper || is_lower || is_digit);
+    if (!strcmp(name, "print")) return character >= ' ' && character < 127;
+    if (!strcmp(name, "graph")) return character > ' ' && character < 127;
+    if (!strcmp(name, "cntrl")) return character < ' ' || character == 127;
+    if (!strcmp(name, "xdigit")) return is_digit || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F');
+    return false;
 }
 
 /* Expand the escapes users reach for most often. POSIX ERE does not define
  * \d, \w or \s, but patterns in the wild assume them. */
-static bool gray_regex_escape_class(char escape_character, unsigned char *character_set) {
+static bool gray_regex_escape_class(GrayRegexParser *parser, char escape_character, GrayRegexNode *node) {
+    const char *name = NULL;
     switch (escape_character) {
-    case 'd':
-        for (int character = '0'; character <= '9'; character++) gray_regex_set_add(character_set, (unsigned char)character);
-        return true;
-    case 'w':
-        for (int character = 0; character < 256; character++) {
-            if (isalnum(character) || character == '_') gray_regex_set_add(character_set, (unsigned char)character);
-        }
-        return true;
-    case 's':
-        for (int character = 0; character < 256; character++) {
-            if (isspace(character)) gray_regex_set_add(character_set, (unsigned char)character);
-        }
-        return true;
-    default:
-        return false;
+    case 'd': name = "digit"; break;
+    case 'w': name = "alnum"; break;
+    case 's': name = "space"; break;
+    default: return false;
     }
+    for (int character = 0; character < 128; character++) {
+        if (gray_regex_ascii_class_has(name, character) || (escape_character == 'w' && character == '_'))
+            gray_regex_class_add_range(parser, node, character, character);
+    }
+    return true;
 }
 
-static char gray_regex_escape_character(char escape_character) {
+static int32_t gray_regex_escape_character(int32_t escape_character) {
     switch (escape_character) {
     case 'n': return '\n';
     case 't': return '\t';
@@ -140,9 +205,18 @@ static char gray_regex_escape_character(char escape_character) {
     }
 }
 
+/* One bracket item's codepoint: a character, or a backslash escape. */
+static int32_t gray_regex_bracket_codepoint(GrayRegexParser *parser) {
+    if (*parser->cursor == '\\' && parser->cursor[1]) {
+        parser->cursor++;
+        return gray_regex_escape_character(gray_regex_next_codepoint(parser));
+    }
+    return gray_regex_next_codepoint(parser);
+}
+
 static void gray_regex_parse_bracket(GrayRegexParser *parser, GrayRegexNode *node) {
     node->kind = GRAY_REGEX_CLASS;
-    memset(node->character_set, 0, sizeof(node->character_set));
+    memset(node->ascii_set, 0, sizeof(node->ascii_set));
     node->is_negated = false;
 
     if (*parser->cursor == '^') {
@@ -162,44 +236,28 @@ static void gray_regex_parse_bracket(GrayRegexParser *parser, GrayRegexNode *nod
                 size_t count = (size_t)(close - (parser->cursor + 2));
                 char name[16] = {0};
                 if (count < sizeof(name)) memcpy(name, parser->cursor + 2, count);
-                for (int character = 0; character < 256; character++) {
-                    bool is_negated = false;
-                    if (!strcmp(name, "alpha")) is_negated = isalpha(character);
-                    else if (!strcmp(name, "digit")) is_negated = isdigit(character);
-                    else if (!strcmp(name, "alnum")) is_negated = isalnum(character);
-                    else if (!strcmp(name, "space")) is_negated = isspace(character);
-                    else if (!strcmp(name, "upper")) is_negated = isupper(character);
-                    else if (!strcmp(name, "lower")) is_negated = islower(character);
-                    else if (!strcmp(name, "punct")) is_negated = ispunct(character);
-                    else if (!strcmp(name, "xdigit")) is_negated = isxdigit(character);
-                    if (is_negated) gray_regex_set_add(node->character_set, (unsigned char)character);
+                for (int character = 0; character < 128; character++) {
+                    if (gray_regex_ascii_class_has(name, character))
+                        gray_regex_class_add_range(parser, node, character, character);
                 }
                 parser->cursor = close + 2;
                 continue;
             }
         }
 
-        char range_low;
-        if (*parser->cursor == '\\' && parser->cursor[1]) {
-            parser->cursor++;
-            if (gray_regex_escape_class(*parser->cursor, node->character_set)) {
-                parser->cursor++;
-                continue;
-            }
-            range_low = gray_regex_escape_character(*parser->cursor++);
-        } else {
-            range_low = *parser->cursor++;
+        if (*parser->cursor == '\\' && parser->cursor[1] && gray_regex_escape_class(parser, parser->cursor[1], node)) {
+            parser->cursor += 2;
+            continue;
         }
+        int32_t range_low = gray_regex_bracket_codepoint(parser);
 
         /* range: a-z, but a trailing '-' before ']' is literal */
         if (*parser->cursor == '-' && parser->cursor[1] && parser->cursor[1] != ']') {
             parser->cursor++;
-            char range_high = (*parser->cursor == '\\' && parser->cursor[1]) ? (parser->cursor++, gray_regex_escape_character(*parser->cursor++)) : *parser->cursor++;
-            for (int character = (unsigned char)range_low; character <= (unsigned char)range_high; character++) {
-                gray_regex_set_add(node->character_set, (unsigned char)character);
-            }
+            int32_t range_high = gray_regex_bracket_codepoint(parser);
+            gray_regex_class_add_range(parser, node, range_low, range_high);
         } else {
-            gray_regex_set_add(node->character_set, (unsigned char)range_low);
+            gray_regex_class_add_range(parser, node, range_low, range_low);
         }
     }
 
@@ -239,19 +297,21 @@ static bool gray_regex_parse_atom(GrayRegexParser *parser, GrayRegexNode *node) 
         return true;
     } else if (character == '\\' && parser->cursor[1]) {
         parser->cursor++;
-        unsigned char character_set[32] = {0};
-        if (gray_regex_escape_class(*parser->cursor, character_set)) {
-            node->kind = GRAY_REGEX_CLASS;
-            node->is_negated = false;
-            memcpy(node->character_set, character_set, sizeof(character_set));
+        node->kind = GRAY_REGEX_CLASS;
+        node->is_negated = false;
+        if (gray_regex_escape_class(parser, *parser->cursor, node)) {
             parser->cursor++;
         } else {
+            free(node->ranges);
+            memset(node, 0, sizeof(*node));
+            node->minimum_repeat = 1;
+            node->maximum_repeat = 1;
             node->kind = GRAY_REGEX_CHARACTER;
-            node->character = gray_regex_escape_character(*parser->cursor++);
+            node->character = gray_regex_escape_character(gray_regex_next_codepoint(parser));
         }
     } else {
         node->kind = GRAY_REGEX_CHARACTER;
-        node->character = *parser->cursor++;
+        node->character = gray_regex_next_codepoint(parser);
     }
 
     switch (*parser->cursor) {
@@ -261,15 +321,15 @@ static bool gray_regex_parse_atom(GrayRegexParser *parser, GrayRegexNode *node) 
     case '{': {
         const char *save = parser->cursor;
         parser->cursor++;
-        if (!isdigit((unsigned char)*parser->cursor)) { parser->cursor = save; break; }
+        if (!(*parser->cursor >= '0' && *parser->cursor <= '9')) { parser->cursor = save; break; }
         int repeat_low = 0;
-        while (isdigit((unsigned char)*parser->cursor)) repeat_low = repeat_low * 10 + (*parser->cursor++ - '0');
+        while (*parser->cursor >= '0' && *parser->cursor <= '9') repeat_low = repeat_low * 10 + (*parser->cursor++ - '0');
         int repeat_high = repeat_low;
         if (*parser->cursor == ',') {
             parser->cursor++;
-            if (isdigit((unsigned char)*parser->cursor)) {
+            if (*parser->cursor >= '0' && *parser->cursor <= '9') {
                 repeat_high = 0;
-                while (isdigit((unsigned char)*parser->cursor)) repeat_high = repeat_high * 10 + (*parser->cursor++ - '0');
+                while (*parser->cursor >= '0' && *parser->cursor <= '9') repeat_high = repeat_high * 10 + (*parser->cursor++ - '0');
             } else {
                 repeat_high = -1;
             }
@@ -291,7 +351,7 @@ static GrayRegexSequence gray_regex_parse_sequence(GrayRegexParser *parser) {
         if (sequence.count == capacity) {
             capacity = capacity ? capacity * 2 : 8;
             GrayRegexNode *grown = (GrayRegexNode *)realloc(sequence.nodes, (size_t)capacity * sizeof(GrayRegexNode));
-            if (!grown) { parser->failed = true; break; }
+            if (!grown) { free(node.ranges); parser->failed = true; break; }
             sequence.nodes = grown;
         }
         sequence.nodes[sequence.count++] = node;
@@ -325,6 +385,7 @@ static void gray_regex_free_alternation(GrayRegexAlternation *alternation);
 static void gray_regex_free_sequence(GrayRegexSequence *sequence) {
     for (int i = 0; i < sequence->count; i++) {
         if (sequence->nodes[i].kind == GRAY_REGEX_GROUP) gray_regex_free_alternation(sequence->nodes[i].group);
+        free(sequence->nodes[i].ranges);
     }
     free(sequence->nodes);
 }
@@ -340,8 +401,8 @@ static void gray_regex_free_alternation(GrayRegexAlternation *alternation) {
 
 typedef struct {
     const char *begin; /* start of subject, for '^' */
-    bool is_not_beginning_of_line; /* REG_NOTBOL: '^' must not match at begin */
-    regmatch_t *captures; /* indexed by group number; NULL when nobody reads groups */
+    bool is_not_beginning_of_line; /* '^' must not match at begin */
+    GrayRegexSpan *captures; /* indexed by group number; NULL when nobody reads groups */
 } GrayRegexContext;
 
 /* Mark groups first..last as not participating. */
@@ -359,15 +420,22 @@ static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRege
 /* Does one atom match at scan_position, ignoring its quantifier? Returns the position
  * after it, or NULL. */
 static const char *gray_regex_match_one(GrayRegexContext *context, GrayRegexNode *node, const char *scan_position) {
+    int32_t codepoint;
     switch (node->kind) {
     case GRAY_REGEX_BEGINNING_OF_LINE: return (scan_position == context->begin && !context->is_not_beginning_of_line) ? scan_position : NULL;
     case GRAY_REGEX_END_OF_LINE: return (*scan_position == '\0') ? scan_position : NULL;
-    case GRAY_REGEX_ANY: return *scan_position ? scan_position + 1 : NULL;
-    case GRAY_REGEX_CHARACTER: return (*scan_position == node->character && *scan_position) ? scan_position + 1 : NULL;
+    case GRAY_REGEX_ANY:
+        if (!*scan_position) return NULL;
+        return scan_position + gray_regex_decode(scan_position, &codepoint);
+    case GRAY_REGEX_CHARACTER: {
+        if (!*scan_position) return NULL;
+        int length = gray_regex_decode(scan_position, &codepoint);
+        return codepoint == node->character ? scan_position + length : NULL;
+    }
     case GRAY_REGEX_CLASS: {
         if (!*scan_position) return NULL;
-        bool is_negated = gray_regex_set_has(node->character_set, (unsigned char)*scan_position);
-        return (is_negated != node->is_negated) ? scan_position + 1 : NULL;
+        int length = gray_regex_decode(scan_position, &codepoint);
+        return gray_regex_class_has(node, codepoint) != node->is_negated ? scan_position + length : NULL;
     }
     case GRAY_REGEX_GROUP: return gray_regex_match_alternation(context, node->group, scan_position);
     }
@@ -387,7 +455,7 @@ static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRege
         if (node->kind != GRAY_REGEX_GROUP || !context->captures) {
             return gray_regex_match_sequence(context, sequence, index + 1, next);
         }
-        regmatch_t previous = context->captures[node->group_index];
+        GrayRegexSpan previous = context->captures[node->group_index];
         context->captures[node->group_index].rm_so = (long)(scan_position - context->begin);
         context->captures[node->group_index].rm_eo = (long)(next - context->begin);
         const char *rest = gray_regex_match_sequence(context, sequence, index + 1, next);
@@ -413,7 +481,7 @@ static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRege
     }
 
     bool records_captures = node->kind == GRAY_REGEX_GROUP && context->captures;
-    regmatch_t previous = {-1, -1};
+    GrayRegexSpan previous = {-1, -1};
     if (records_captures) previous = context->captures[node->group_index];
 
     for (int take = depth; take >= node->minimum_repeat; take--) {
@@ -449,65 +517,70 @@ static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayR
     return NULL;
 }
 
-/* --- POSIX-shaped entry points --- */
+/* --- Entry points --- */
 
-static int regcomp(regex_t *regex, const char *pattern, int flags) {
+/* Compile `pattern`; returns 0, or non-zero for a malformed pattern. */
+static int gray_regex_engine_compile(GrayRegexEngine *engine, const char *pattern) {
     GrayRegexParser parser;
     parser.cursor = pattern;
     parser.failed = false;
     parser.group_count = 0;
-    regex->root = gray_regex_parse_alternation(&parser);
-    regex->has_no_submatches = (flags & REG_NOSUB) != 0;
-    regex->re_nsub = (size_t)parser.group_count;
+    engine->root = gray_regex_parse_alternation(&parser);
+    engine->group_count = (size_t)parser.group_count;
     if (parser.failed || *parser.cursor != '\0') {
-        gray_regex_free_alternation(regex->root);
-        regex->root = NULL;
-        return REG_BADPAT;
+        gray_regex_free_alternation(engine->root);
+        engine->root = NULL;
+        return 1;
     }
     return 0;
 }
 
-static int regexec(const regex_t *regex, const char *string, size_t nmatch, regmatch_t *pmatch,
-                   int eflags) {
-    if (!regex->root) return REG_NOMATCH;
+/* Search `string` for a match. Returns 0 on a match, non-zero otherwise.
+ * A match may only start at a character boundary. */
+static int gray_regex_engine_execute(const GrayRegexEngine *engine, const char *string, size_t nmatch,
+                                     GrayRegexSpan *spans, bool is_not_beginning_of_line) {
+    if (!engine->root) return 1;
 
     GrayRegexContext context;
     context.begin = string;
-    context.is_not_beginning_of_line = (eflags & REG_NOTBOL) != 0;
+    context.is_not_beginning_of_line = is_not_beginning_of_line;
     context.captures = NULL;
-    if (nmatch > 1 && pmatch && regex->re_nsub > 0) {
-        context.captures = (regmatch_t *)malloc((regex->re_nsub + 1) * sizeof(regmatch_t));
-        if (!context.captures) return REG_NOMATCH;
-        gray_regex_clear_captures(&context, 1, (int)regex->re_nsub);
+    if (nmatch > 1 && spans && engine->group_count > 0) {
+        context.captures = (GrayRegexSpan *)malloc((engine->group_count + 1) * sizeof(GrayRegexSpan));
+        if (!context.captures) return 1;
+        gray_regex_clear_captures(&context, 1, (int)engine->group_count);
     }
 
-    for (const char *start = string;; start++) {
-        const char *end_cursor = gray_regex_match_alternation(&context, regex->root, start);
+    const char *start = string;
+    for (;;) {
+        const char *end_cursor = gray_regex_match_alternation(&context, engine->root, start);
         if (end_cursor) {
-            if (nmatch > 0 && pmatch) {
-                pmatch[0].rm_so = (long)(start - string);
-                pmatch[0].rm_eo = (long)(end_cursor - string);
+            if (nmatch > 0 && spans) {
+                spans[0].rm_so = (long)(start - string);
+                spans[0].rm_eo = (long)(end_cursor - string);
             }
-            for (size_t group_index = 1; group_index < nmatch && pmatch; group_index++) {
-                if (context.captures && group_index <= regex->re_nsub) {
-                    pmatch[group_index] = context.captures[group_index];
+            for (size_t group_index = 1; group_index < nmatch && spans; group_index++) {
+                if (context.captures && group_index <= engine->group_count) {
+                    spans[group_index] = context.captures[group_index];
                 } else {
-                    pmatch[group_index].rm_so = -1;
-                    pmatch[group_index].rm_eo = -1;
+                    spans[group_index].rm_so = -1;
+                    spans[group_index].rm_eo = -1;
                 }
             }
             free(context.captures);
             return 0;
         }
         if (*start == '\0') break;
+        int32_t codepoint;
+        start += gray_regex_decode(start, &codepoint);
     }
     free(context.captures);
-    return REG_NOMATCH;
+    return 1;
 }
 
-static void regfree(regex_t *regex) {
-    gray_regex_free_alternation(regex->root);
-    regex->root = NULL;
+static void gray_regex_engine_release(GrayRegexEngine *engine) {
+    gray_regex_free_alternation(engine->root);
+    engine->root = NULL;
 }
 
 #endif

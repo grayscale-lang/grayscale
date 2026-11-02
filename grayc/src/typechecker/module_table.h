@@ -97,9 +97,11 @@ typedef struct {
     ModuleHashEntry *hash;
     int hash_capacity;
 
-    /* import alias -> real module name */
+    /* import alias -> real module name, bound in one file. A NULL file is a
+     * binding every file sees (a sibling inside a directory module). */
     const char **alias_names;
     const char **alias_modules;
+    const char **alias_files;
     int alias_count;
     int alias_capacity;
 
@@ -124,6 +126,12 @@ typedef struct {
     int file_count;
     int file_capacity;
     int file_hash_capacity;
+
+    /* A file's declarations that a second module also exposes. */
+    const char **include_files;
+    const char **include_modules;
+    int include_count;
+    int include_capacity;
 } ModuleTable;
 
 /* Where a name is being resolved from. `module` scopes an unqualified
@@ -153,6 +161,13 @@ ModuleTable *module_table_create(Arena *arena);
  * is keyed under MODULE_ENTRY_NAME regardless of `module_name`. */
 void module_table_map_file(ModuleTable *table, const char *file,
                            const char *module_name, bool is_entry);
+
+/* Make `module_name` expose the declarations of `file` as well as the module
+ * that owns the file. The declarations keep their owner's C names. */
+void module_table_include_file(ModuleTable *table, const char *file, const char *module_name);
+
+/* Add `entry` to every module that includes `file`. */
+void module_table_share_with_includes(ModuleTable *table, const char *file, DeclarationEntry *entry);
 
 /* The module a file belongs to, falling back to the entry module for files
  * that were never mapped (synthetic nodes carry no usable path). */
@@ -193,12 +208,16 @@ DeclarationEntry *module_table_declare_synthetic(ModuleTable *table, const char 
                                           DeclarationKind kind, const char *name,
                                           const char *origin_file);
 
-void module_table_add_alias(ModuleTable *table, const char *alias,
+/* Bind `alias` to the module it names in `file`. Imports are file-scoped, so
+ * the same alias may name different modules in different files. A NULL `file`
+ * binds the alias in every file. */
+void module_table_add_alias(ModuleTable *table, const char *file, const char *alias,
                             const char *module_name);
 
-/* Map an import alias to the module it names. Returns `alias` unchanged when
- * it is not an alias, so the result is always usable as a module name. */
-const char *module_table_resolve_alias(ModuleTable *table, const char *alias);
+/* Map an import alias, as written in `file`, to the module it names. Returns
+ * `alias` unchanged when it is not an alias, so the result is always usable as
+ * a module name. */
+const char *module_table_resolve_alias(ModuleTable *table, const char *file, const char *alias);
 
 /* Resolve `module_or_alias.name` as seen from `scope`, applying the
  * visibility rule. `out_status` may be NULL. On RESOLVE_PRIVATE the entry is

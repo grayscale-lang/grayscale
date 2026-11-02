@@ -1,0 +1,9 @@
+import s "./shared"
+
+do bump_first() -> i64 {
+    return s.bump()
+}
+
+do make() -> s.Item {
+    return s.Item{value: 7}
+}

@@ -1,0 +1,41 @@
+/*
+ * Warning Test: W2002 - a declaration shadows a parameter, a loop variable
+ * or a when payload binding, and the nested loop variable and when binding
+ * report the real line of the one they shadow.
+ */
+
+const Shape enum {
+    Circle(i64)
+    Dot
+}
+
+do shadow_parameter(a i64) {
+    if true {
+        mut a = 5
+        println("${a}")
+    }
+}
+
+do main() {
+    mut values [i64] = {1}
+    for i in range(0, 1) {
+        mut i = 7
+        println("${i}")
+    }
+    for_each value in values {
+        for_each value in values {
+            println("${value}")
+        }
+    }
+    mut shape Shape = Shape.Circle(1)
+    when shape {
+        is Circle(radius) {
+            mut radius = 3
+            println("${radius}")
+        }
+        default {
+            println("dot")
+        }
+    }
+    shadow_parameter(1)
+}

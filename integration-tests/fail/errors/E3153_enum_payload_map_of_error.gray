@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3153 - Error container in an enum variant payload
+ */
+const Event enum {
+    Failed(map[string:Error])
+    Done
+}
+
+do main() { }

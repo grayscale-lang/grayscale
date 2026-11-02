@@ -1,0 +1,6 @@
+import "./lib"
+
+do main() {
+    mut pair = lib.Cal.pair()
+    println("${pair}")
+}

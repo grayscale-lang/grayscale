@@ -412,19 +412,25 @@ static const char *parse_complex_type(Parser *parser);
 
 /* The body of a bracketed type, from its element (or key) type through its
  * closing ']': "[T]", "[T,N]", or "map[K:V]" for the shorthand. */
+/* Arrays and maps hold bare `func` only. Reports E2082 and returns true when
+ * the parser sits on a typed `func(...)` element or value type. */
+static bool reject_typed_func_element(Parser *parser) {
+    if (!(current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
+          peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)))
+        return false;
+    diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
+    return true;
+}
+
 static const char *parse_bracketed_type(Parser *parser) {
-    if (current_token_is(parser, TOKEN_IDENTIFIER) && strcmp(parser->current_token.literal, "func") == 0 &&
-        peek_token_is(parser, TOKEN_LEFT_PARENTHESIS)) {
-        /* Arrays of typed func signatures are not supported. */
-        diagnostic_error_code(parser->diagnostics, "E2082", parser->file, parser->current_token.line, parser->current_token.column, 0);
-        return NULL;
-    }
+    if (reject_typed_func_element(parser)) return NULL;
     const char *element_type = parse_complex_type(parser);
     if (!element_type) return NULL;
     if (peek_token_is(parser, TOKEN_COLON)) {
         /* Map shorthand: [K:V] → normalized to "map[K:V]" */
         next_token(parser); /* skip : */
         next_token(parser); /* value type */
+        if (reject_typed_func_element(parser)) return NULL;
         const char *value_type = parse_complex_type(parser);
         if (!value_type) return NULL;
         if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
@@ -521,6 +527,7 @@ static const char *parse_complex_type_unbounded(Parser *parser) {
         const char *key_type = read_type_name(parser);
         if (!expect_peek_token(parser, TOKEN_COLON)) return NULL;
         next_token(parser); /* value type */
+        if (reject_typed_func_element(parser)) return NULL;
         const char *value_type = parse_complex_type(parser);
         if (!value_type) return NULL;
         if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
@@ -814,6 +821,17 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
                         cursor++;
                     }
                     if (*cursor == '"') cursor++; /* skip closing " */
+                    continue;
+                }
+                /* Likewise a char literal: '}', '{' and '"' are characters,
+                 * not interpolation syntax. */
+                if (*cursor == '\'') {
+                    cursor++; /* skip opening ' */
+                    while (*cursor && *cursor != '\'') {
+                        if (*cursor == '\\' && *(cursor + 1)) cursor++;
+                        cursor++;
+                    }
+                    if (*cursor == '\'') cursor++; /* skip closing ' */
                     continue;
                 }
                 if (*cursor == '{') brace_depth++;
@@ -1781,7 +1799,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *original_declarat
                      : build_or_return_guard(parser, temporary_name, fallback_values, fallback_count);
 
     /* x = _tmp.v0 */
-    AstNode *unwrapped_declaration = ast_allocate(parser->arena, NODE_VARIABLE_DECLARATION, parser->current_token);
+    AstNode *unwrapped_declaration = ast_allocate(parser->arena, NODE_VARIABLE_DECLARATION, original_declaration->token);
     unwrapped_declaration->data.variable_declaration.is_mutable = original_declaration->data.variable_declaration.is_mutable;
     unwrapped_declaration->data.variable_declaration.name = original_declaration->data.variable_declaration.name;
     unwrapped_declaration->data.variable_declaration.type_name = original_declaration->data.variable_declaration.type_name;
@@ -2043,6 +2061,7 @@ static AstNode *parse_variable_declaration_common(Parser *parser, bool is_bare) 
                         AstNode *temporary_declaration =
                             make_synthetic_temporary_declaration(parser, temporary_names[i], values[i]);
                         temporary_declaration->data.variable_declaration.type_name = types[i];
+                        temporary_declaration->data.variable_declaration.holds_single_value = true;
                         declarations->data.block.statements[declarations->data.block.count++] = temporary_declaration;
                     }
                 }

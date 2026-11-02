@@ -1,0 +1,9 @@
+/*
+ * Panic Test: P0019 - cast of a surrogate codepoint to char
+ */
+
+do main() {
+    mut n i64 = 55296
+    mut d char = cast(n, char)
+    println("${cast(d, i64)}")
+}

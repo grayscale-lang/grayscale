@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5026 - csv.from_maps takes a [map[string:string]]
+ */
+import @csv
+
+do main() {
+    mut a [[string]] = {{"a"}}
+    println(csv.from_maps(a))
+}

@@ -336,6 +336,7 @@ struct AstNode {
             bool is_bare;              /* written `name type` with no mut or const */
             bool is_private;
             bool is_synthetic;         /* parser-generated temporary, not user-written */
+            bool holds_single_value;   /* synthetic temporary for one value of a value list, never a destructured call */
             bool is_define;            /* top-level const marked #define: -define: may override its value */
             /* File-scope multi-name declaration: the names declared before
              * this one on the same line. The initializer cannot see them. */

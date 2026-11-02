@@ -1,0 +1,28 @@
+// expect-error: E3162
+// expect-error-count: 1
+/*
+ * Error Test: E3162 - a free function stores its second pointer parameter
+ * into the pointee of its first. The caller passes a new() heap object and
+ * addr(local) and returns the object, which then holds a dangling pointer.
+ */
+
+const Node struct {
+    v i64
+    next ^Node
+}
+
+do link(a ^Node, b ^Node) {
+    a^.next = b
+}
+
+do build() -> ^Node {
+    mut heap ^Node = new(Node)
+    mut local = Node{v: 42, next: nil}
+    link(heap, addr(local))
+    return heap
+}
+
+do main() {
+    mut h = build()
+    println("${h^.next^.v}")
+}

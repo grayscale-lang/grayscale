@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` to regenerate.
+> Run `make generate-errors` to regenerate.
 
-**Total: 577 codes** (404 errors, 17 warnings, 156 panics)
+**Total: 579 codes** (406 errors, 17 warnings, 156 panics)
 
 ---
 
@@ -74,7 +74,7 @@
 | `E2079` | syntax | 'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause |
 | `E2080` | syntax | invalid character in C header path; only [A-Za-z0-9./_+-] are permitted |
 | `E2081` | syntax | '^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^' |
-| `E2082` | syntax | arrays of typed func signatures are not supported; use '[func]' or '[func, N]' with '()func_name' elements instead |
+| `E2082` | syntax | arrays and maps of typed func signatures are not supported; use '[func]', '[func, N]' or 'map[K:func]' with '()func_name' values instead |
 | `E2083` | syntax | enum variant '%s' cannot have both a payload and an explicit value |
 | `E2084` | syntax | blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result |
 | `E2085` | syntax | when statement already has a default branch; only one default is allowed |
@@ -331,6 +331,7 @@
 | `E4041` | names | '%s' is not a known statement; did you mean '%s'? |
 | `E4042` | names | loop label '%s' is already used by an enclosing loop |
 | `E4043` | names | no enclosing loop is labeled '%s' |
+| `E4044` | names | '%s' is already declared as %s at %s:%d |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | '%s()' expects %s argument(s), got %d |
 | `E5009` | arguments | invalid base %lld for 'strconv.%s'; base must be between 2 and 36 |
@@ -384,6 +385,7 @@
 | `E5067` | arguments | callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares |
 | `E5068` | arguments | '%s' wraps integers only; got %s and %s |
 | `E5069` | usage | 'size_of()' requires a type, not a value |
+| `E5070` | usage | 'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -401,7 +403,7 @@
 | `E6015` | imports | C header '%s' could not be found for the current target |
 | `E6016` | imports | C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types |
 | `E6017` | imports | import '%s' matches both a .gray and a .grayscale file; import one by its full file name |
-| `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111) |
+| `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode scalar value (0 to 1114111, excluding the surrogates 55296 to 57343) |
 | `E7015` | stdlib | 'len()' is not supported for type '%s' |
 | `E9002` | stdlib | 'arrays.%s()' requires a numeric array, got array of '%s' |
 | `E9003` | stdlib | 'arrays.%s()' requires a function reference; use '()func_name' to pass a function |
@@ -628,4 +630,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-10-27 21:56:04 UTC*
+*Generated on 2026-11-02 04:23:06 UTC*

@@ -1,0 +1,39 @@
+/*
+ * Test: a char literal of '{', '}' or '"' inside a ${...} interpolation is a
+ * character, not interpolation or string syntax.
+ */
+
+do check(label string, got string, want string) -> i64 {
+    if got == want {
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed i64 = 0
+    mut total i64 = 0
+    mut close char = '}'
+    mut open char = '{'
+    mut quote char = '"'
+    mut text string = "{x"
+
+    total = total + 1
+    passed = passed + check("closing brace", "${close == '}'}", "true")
+    total = total + 1
+    passed = passed + check("opening brace", "${open == '{'}", "true")
+    total = total + 1
+    passed = passed + check("double quote", "${quote == '"'}", "true")
+    total = total + 1
+    passed = passed + check("cast of a brace", "${cast('}', i64)}", "125")
+    total = total + 1
+    passed = passed + check("indexed brace", "${text[0] == '{'}", "true")
+    total = total + 1
+    passed = passed + check("escaped brace", "${close == '\u{7D}'}", "true")
+    total = total + 1
+    passed = passed + check("not equal", "${close == 'x'}", "false")
+
+    println("passed: ${passed}, failed: ${total - passed}")
+    if passed != total { exit(1) }
+}

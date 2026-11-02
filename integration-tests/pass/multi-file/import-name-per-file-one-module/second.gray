@@ -1,0 +1,9 @@
+import other "./shared"
+
+do bump_second() -> i64 {
+    return other.bump()
+}
+
+do read(item other.Item) -> i64 {
+    return item.value + other.counter
+}

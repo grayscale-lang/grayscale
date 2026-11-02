@@ -1,0 +1,4 @@
+import "./lib"
+do main() {
+    println("${lib.Cal.cb(()lib.sq)}")
+}

@@ -143,6 +143,31 @@ void module_table_map_file(ModuleTable *table, const char *file,
     table->file_count++;
 }
 
+void module_table_include_file(ModuleTable *table, const char *file, const char *module_name) {
+    if (!table || !file || !module_name) return;
+    module_table_scope(table, module_name, false);
+    if (table->include_count >= table->include_capacity) {
+        table->include_capacity = GROW_NEXT_CAPACITY(table->include_capacity);
+        ARENA_GROW_TO(table->arena, table->include_files, table->include_count, table->include_capacity);
+        ARENA_GROW_TO(table->arena, table->include_modules, table->include_count, table->include_capacity);
+    }
+    table->include_files[table->include_count] = arena_copy_string(table->arena, file);
+    table->include_modules[table->include_count] = arena_copy_string(table->arena, module_name);
+    table->include_count++;
+}
+
+static void scope_add_entry(Arena *arena, ModuleScope *scope, DeclarationEntry *entry);
+
+void module_table_share_with_includes(ModuleTable *table, const char *file, DeclarationEntry *entry) {
+    if (!table || !file || !entry) return;
+    for (int i = 0; i < table->include_count; i++) {
+        if (strcmp(table->include_files[i], file) != 0) continue;
+        ModuleScope *scope = module_table_find(table, table->include_modules[i]);
+        if (!scope || module_scope_lookup(scope, entry->name)) continue;
+        scope_add_entry(table->arena, scope, entry);
+    }
+}
+
 const char *module_table_module_for_file(ModuleTable *table, const char *file) {
     if (!table) return NULL;
     if (file) {
@@ -253,6 +278,22 @@ DeclarationEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
     return index < 0 ? NULL : scope->entries[index];
 }
 
+static void scope_add_entry(Arena *arena, ModuleScope *scope, DeclarationEntry *entry) {
+    ARENA_GROW(arena, scope->entries, scope->count, scope->capacity);
+
+    int new_count = scope->count + 1;
+    if (!scope->hash || new_count * 2 > scope->hash_capacity) {
+        scope->hash_capacity = hash_target_capacity(scope->hash_capacity, new_count);
+        scope->hash = hash_allocate(arena, scope->hash_capacity);
+        for (int i = 0; i < scope->count; i++)
+            hash_place(scope->hash, scope->hash_capacity, scope->entries[i]->name, i);
+    }
+
+    scope->entries[scope->count] = entry;
+    hash_place(scope->hash, scope->hash_capacity, entry->name, scope->count);
+    scope->count++;
+}
+
 DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
                                DeclarationKind kind, const char *name,
                                AstNode *ast_node,
@@ -275,19 +316,7 @@ DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     entry->registry_index = -1;
     entry->is_external = false;
 
-    ARENA_GROW(arena, scope->entries, scope->count, scope->capacity);
-
-    int new_count = scope->count + 1;
-    if (!scope->hash || new_count * 2 > scope->hash_capacity) {
-        scope->hash_capacity = hash_target_capacity(scope->hash_capacity, new_count);
-        scope->hash = hash_allocate(arena, scope->hash_capacity);
-        for (int i = 0; i < scope->count; i++)
-            hash_place(scope->hash, scope->hash_capacity, scope->entries[i]->name, i);
-    }
-
-    scope->entries[scope->count] = entry;
-    hash_place(scope->hash, scope->hash_capacity, entry->name, scope->count);
-    scope->count++;
+    scope_add_entry(arena, scope, entry);
     node_index_add(table, ast_node, entry);
     mangled_index_add(table, entry);
     return entry;
@@ -295,26 +324,38 @@ DeclarationEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
 
 /* --- Aliases --- */
 
-void module_table_add_alias(ModuleTable *table, const char *alias,
+static bool alias_bound_in(const char *bound_file, const char *file) {
+    if (!bound_file || !file) return bound_file == file;
+    return strcmp(bound_file, file) == 0;
+}
+
+void module_table_add_alias(ModuleTable *table, const char *file, const char *alias,
                             const char *module_name) {
     if (!alias || !module_name || strcmp(alias, module_name) == 0) return;
     for (int i = 0; i < table->alias_count; i++) {
-        if (strcmp(table->alias_names[i], alias) == 0) return;
+        if (strcmp(table->alias_names[i], alias) == 0 && alias_bound_in(table->alias_files[i], file)) return;
     }
     if (table->alias_count >= table->alias_capacity) {
         table->alias_capacity = GROW_NEXT_CAPACITY(table->alias_capacity);
         ARENA_GROW_TO(table->arena, table->alias_names, table->alias_count, table->alias_capacity);
         ARENA_GROW_TO(table->arena, table->alias_modules, table->alias_count, table->alias_capacity);
+        ARENA_GROW_TO(table->arena, table->alias_files, table->alias_count, table->alias_capacity);
     }
     table->alias_names[table->alias_count] = arena_copy_string(table->arena, alias);
     table->alias_modules[table->alias_count] = arena_copy_string(table->arena, module_name);
+    table->alias_files[table->alias_count] = file ? arena_copy_string(table->arena, file) : NULL;
     table->alias_count++;
 }
 
-const char *module_table_resolve_alias(ModuleTable *table, const char *alias) {
+const char *module_table_resolve_alias(ModuleTable *table, const char *file, const char *alias) {
     if (!table || !alias) return alias;
+    /* A binding written in this file wins over one every file sees. */
     for (int i = 0; i < table->alias_count; i++) {
-        if (strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
+        if (table->alias_files[i] && file && alias_bound_in(table->alias_files[i], file) &&
+            strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
+    }
+    for (int i = 0; i < table->alias_count; i++) {
+        if (!table->alias_files[i] && strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
     }
     return alias;
 }
@@ -342,7 +383,7 @@ DeclarationEntry *module_resolve_qualified(ModuleTable *table,
      * spell. Guarding here keeps a stray empty qualifier from reaching into
      * the entry file's declarations. */
     if (table && module_or_alias && *module_or_alias && name) {
-        const char *module_name = module_table_resolve_alias(table, module_or_alias);
+        const char *module_name = module_table_resolve_alias(table, scope ? scope->file : NULL, module_or_alias);
         ModuleScope *module_scope = module_table_find(table, module_name);
         if (module_scope) {
             entry = module_scope_lookup(module_scope, name);
@@ -374,7 +415,7 @@ DeclarationEntry *module_resolve_unqualified(ModuleTable *table,
 
     DeclarationEntry *found = NULL;
     for (int i = 0; i < scope->using_count; i++) {
-        const char *module_name = module_table_resolve_alias(table, scope->using_modules[i]);
+        const char *module_name = module_table_resolve_alias(table, scope->file, scope->using_modules[i]);
         ModuleScope *module_scope = module_table_find(table, module_name);
         if (!module_scope) continue;
         DeclarationEntry *entry = module_scope_lookup(module_scope, name);

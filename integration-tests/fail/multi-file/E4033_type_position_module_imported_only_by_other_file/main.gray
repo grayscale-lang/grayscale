@@ -1,0 +1,33 @@
+// Error Test: E4033 - a module imported only by lib.gray is not in scope in
+// this file, in type annotations, struct literals and enum member expressions
+// as much as in calls. One error per position.
+// expect-error: E4033
+// expect-error-count: 10
+import "./lib"
+
+const Holder struct {
+    item c.Item
+}
+
+do take(item c.Item) -> c.Item {
+    return item
+}
+
+do run(callback func(c.Item) -> i64) -> i64 {
+    return callback(lib.make())
+}
+
+do main() {
+    mut annotated c.Item = lib.make()
+    mut items [c.Item] = {}
+    mut pointer ^c.Item = nil
+    mut literal = c.Item{value: 1}
+    mut color = c.Color.RED
+    when color {
+        is c.Color.RED { println("red") }
+        default { println("other") }
+    }
+    println(annotated.value + literal.value)
+    println(len(items))
+    println(pointer == nil)
+}

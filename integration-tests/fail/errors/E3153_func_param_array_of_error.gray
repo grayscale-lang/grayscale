@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3153 - Error container in a func type parameter
+ */
+do run(callback func(i64, [Error])) { }
+
+do main() { }

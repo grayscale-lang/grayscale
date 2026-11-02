@@ -1,0 +1,78 @@
+/*
+ * Pass Test: an implicit tagged-enum constructor with a payload takes its
+ * type from the parameter it is passed to (STANDARD 3.2.4), for user
+ * functions, named and non-first arguments, struct functions and stdlib
+ * calls.
+ */
+
+import @arrays
+
+const Shape enum {
+    Circle(f64)
+    Dot
+}
+
+const Holder struct {
+    n i64
+
+    do put(s Shape) -> i64 {
+        return 7
+    }
+}
+
+do take(s Shape) -> i64 {
+    return 1
+}
+
+do take_second(k i64, s Shape) -> i64 {
+    return k + 1
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if take(.Circle(1.0)) == 1 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] positional argument")
+        failed += 1
+    }
+
+    if take_second(1, .Circle(1.0)) == 2 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] non-first argument")
+        failed += 1
+    }
+
+    if take(s: .Circle(1.0)) == 1 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] named argument")
+        failed += 1
+    }
+
+    if Holder.put(.Circle(1.0)) == 7 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct function argument")
+        failed += 1
+    }
+
+    mut shapes [Shape] = {.Dot}
+    arrays.append(shapes, .Circle(1.0))
+    if len(shapes) == 2 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stdlib argument")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

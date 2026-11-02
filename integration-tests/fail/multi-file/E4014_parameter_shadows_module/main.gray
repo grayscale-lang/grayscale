@@ -1,0 +1,9 @@
+import "./lib"
+
+do f(lib string) -> string {
+    return lib
+}
+
+do main() {
+    println(f("a"))
+}

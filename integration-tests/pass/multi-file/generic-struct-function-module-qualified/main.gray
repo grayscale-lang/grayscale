@@ -1,0 +1,40 @@
+/*
+ * Pass Test: a generic struct function called as lib.Box.make(...) takes
+ * primitive and module type arguments, like the single-file call.
+ */
+
+import "./lib"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if lib.Box.make(i64, 1) == 9 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] primitive type argument")
+        failed += 1
+    }
+
+    if lib.Box.make(lib.Pt, 1) == 9 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module type argument")
+        failed += 1
+    }
+
+    mut box lib.Box = lib.Box{v: 1}
+    if lib.Box.inst(box, i64, 4) == 4 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] instance function through the module")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

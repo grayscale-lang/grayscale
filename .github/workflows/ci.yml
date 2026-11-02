@@ -41,6 +41,9 @@ jobs:
       - name: Run gray verify
         run: ./gray verify
 
+      - name: Check gray fmt
+        run: ./gray fmt --check ./cli/... ./scripts/... ./benchmarks/...
+
       - name: Run Grayscale unit tests (lexer + parser + typechecker)
         run: make test-unit
 

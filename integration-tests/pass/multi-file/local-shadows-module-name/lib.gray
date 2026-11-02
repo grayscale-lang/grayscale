@@ -7,6 +7,6 @@ const Pair struct {
     right i64
 }
 
-do sum(b Pair) -> i64 {
-    return b.left + b.right
+do sum(pair Pair) -> i64 {
+    return pair.left + pair.right
 }

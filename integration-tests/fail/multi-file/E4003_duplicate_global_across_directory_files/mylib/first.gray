@@ -1,0 +1,5 @@
+const LIMIT i64 = 1
+
+do first() -> i64 {
+    return LIMIT
+}

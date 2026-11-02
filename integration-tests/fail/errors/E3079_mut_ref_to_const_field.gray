@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3079 - mut ref() to a field of a const value
+ */
+const Box struct {
+    n i64
+}
+
+do main() {
+    const box Box = Box{n: 1}
+    mut r = ref(box.n)
+    r = 99
+}

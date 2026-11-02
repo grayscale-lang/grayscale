@@ -1,0 +1,2 @@
+const Color enum { RED; GREEN }
+const Item struct { value i64 }

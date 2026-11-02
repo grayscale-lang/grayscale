@@ -245,6 +245,7 @@ Escape sequences:
 - `\'` - single quote
 - `\$` - literal `$` (suppresses string interpolation, e.g. `"\${x}"` is the text `${x}`)
 - `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline)
+- `\u{H…}` - the UTF-8 encoding of a codepoint given by 1–6 hex digits (U+0000–U+10FFFF, no surrogates), the same as in a character literal (e.g., `"\u{65E5}"` is `日`)
 
 String interpolation allows embedding expressions within strings:
 
@@ -409,7 +410,7 @@ mut result bool = 10 > 5  // true
 
 #### 3.1.5 Character Type (`char`)
 
-The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `u8` (8-bit, 0–255) and from the other integer types. At the C boundary a `char` is `int32_t`.
+The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF, excluding the surrogates U+D800–U+DFFF. It is distinct from `u8` (8-bit, 0–255) and from the other integer types. At the C boundary a `char` is `int32_t`.
 
 ```gray
 mut letter char = 'A'          // U+0041
@@ -418,7 +419,7 @@ mut eacute char = '\u{E9}'     // U+00E9  é
 mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
+- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF, or a surrogate U+D800–U+DFFF, is a compile-time error for a constant argument and a runtime panic otherwise.
 - Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
 - `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `i64`.
 - `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.
@@ -2236,8 +2237,8 @@ So the names are not purely cosmetic documentation: they constrain what a `retur
 A return position can be named whatever its type is, including a `generic` parameter's name (section 7.9). The named variable is declared in the body with that type:
 
 ```gray
-do first(kind generic, arr [kind]) -> (result kind) {
-    mut result kind = arr[0]
+do first(T generic, arr [T]) -> (result T) {
+    mut result T = arr[0]
     return result
 }
 ```
@@ -2922,16 +2923,16 @@ do main() {
 A `generic` parameter is an ordinary function parameter whose argument is a type. Its name is a real name: it can be used as a type in the parameters that follow it, in the return types, and in the body.
 
 ```gray
-do identity(kind generic, x kind) -> kind {
+do identity(T generic, x T) -> T {
     return x
 }
 
-do make(kind generic) -> ^kind {
-    return new(kind)
+do make(T generic) -> ^T {
+    return new(T)
 }
 
-do first(kind generic, arr [kind]) -> (result kind) {
-    mut result kind = arr[0]
+do first(T generic, arr [T]) -> (result T) {
+    mut result T = arr[0]
     return result
 }
 
@@ -2939,10 +2940,10 @@ do pair(a_kind generic, b_kind generic, a a_kind, b b_kind) -> (a_kind, b_kind) 
     return a, b
 }
 
-mut n = identity(i64, 42)        // kind is i64, returns i64
-mut s = identity(string, "hi")   // kind is string, returns string
+mut n = identity(i64, 42)        // T is i64, returns i64
+mut s = identity(string, "hi")   // T is string, returns string
 mut p = make(Point)              // allocates a Point, returns ^Point
-mut q = make(kind: Point)        // named arguments work as for any parameter
+mut q = make(T: Point)        // named arguments work as for any parameter
 ```
 
 Type and value parameters mix freely in one signature. The type is always passed explicitly at the call site; it is never inferred from the value arguments.
@@ -2962,7 +2963,7 @@ Type and value parameters mix freely in one signature. The type is always passed
 | Array or map element type (`[generic]`) | Rejected |
 | Alias target (`alias X = generic`) | Rejected |
 
-A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(kind)`, `size_of(kind)`, `kind{...}`).
+A name declared by a `generic` parameter is valid anywhere a type is: in later parameter types, the return type (including named and tuple returns), and the body (variable annotations, `new(T)`, `size_of(T)`, `T{...}`).
 
 #### Rules
 
@@ -2981,19 +2982,19 @@ mut e = make(Nonexistent) // Error — names no type
 - **Arguments are checked against the bound types.** An argument whose parameter is typed by a `generic` name must have the type that name is bound to, and an argument for a container of it must have the matching shape:
 
 ```gray
-mut x = identity(i64, "hello")   // Error — kind is i64, argument 2 is string
+mut x = identity(i64, "hello")   // Error — T is i64, argument 2 is string
 mut y = first(i64, 5)            // Error — argument 2 is not an [i64]
 ```
 
-- **A `kind{...}` body constrains the function to structs.** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal and names the call site that bound it:
+- **A `T{...}` body constrains the function to structs.** A struct literal written against the generic name is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal and names the call site that bound it:
 
 ```gray
-do make_stack(kind generic) -> kind {
-    return kind{}          // Error when kind is bound to a non-struct
+do make_stack(T generic) -> T {
+    return T{}          // Error when T is bound to a non-struct
 }
 
 mut s = make_stack(Point)  // OK
-mut n = make_stack(i64)    // Error — kind is used as a struct literal
+mut n = make_stack(i64)    // Error — T is used as a struct literal
 ```
 
 - **`return nil` is rejected** from a function whose return type contains a `generic` name; `nil` is not a value every type argument can hold.
@@ -3004,8 +3005,8 @@ mut n = make_stack(i64)    // Error — kind is used as a struct literal
 The compiler generates one specialized function per distinct set of type arguments. A generic function that is never called generates nothing. A type argument forwarded from one generic function to another resolves to what the caller was instantiated with:
 
 ```gray
-do wrap(kind generic) -> ^kind {
-    return make(kind)      // make is specialized for whatever wrap was
+do wrap(T generic) -> ^T {
+    return make(T)      // make is specialized for whatever wrap was
 }
 ```
 
@@ -3101,7 +3102,7 @@ import "./my-utils"       // Error: 'my-utils' is not a valid identifier
 import u "./my-utils"     // OK
 ```
 
-**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
+**Collision detection:** The name an import binds is scoped to the file that writes it, so two files may use the same name for different modules, or different names for one module. If two different imports in the same file resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
 
 ```gray
 // Error: both resolve to module name "utils"
@@ -3348,6 +3349,7 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
 - **The address of a local cannot be passed to C (E3154).** A C function may retain the pointer past the enclosing Grayscale scope, leaving it dangling once the pointee is freed. The compiler rejects `addr(local)`, `raw(local)`, and `ref(local)` as an `extern.` argument, as well as a pointer to a local that was copied to another variable, stored in a struct field or array element, or passed through a helper function or struct function on its way to an `extern.` call. Allocate with `new()` or take the address of a file-scope variable instead; both are accepted. This includes out-parameters such as `modf`, `frexp`, and the end-pointer of `strtol`. The check does not cover pointers that C itself returns, or strings that C retains (see below).
 - **A string passed to a C function that keeps the pointer dangles.** A string's storage is reclaimed with its scope. `putenv`, `setbuf`, `setvbuf` (buffer argument), and `strtok` (first argument) keep the pointer, so passing them a string other than a literal or a file-scope string is a compile error (E3216); pass `to_c_string(...)` instead. A C function outside this list that keeps a `char*` is the programmer's responsibility.
+- **A C header cannot weaken Grayscale's own checks.** The generated code saves every runtime name (`gray_*`, `GRAY_*`, `Gray*`) before the `extern import` headers and restores it after them, so a header that `#undef`s or redefines a runtime macro, or turns a runtime function into a macro, has no effect on the bounds, nil, overflow, and arena checks. C library functions the generated code calls are not protected this way.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
 - **Numeric arguments narrow silently.** Integer and float literals are `i64` and `f64`. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
@@ -3634,9 +3636,9 @@ result.
 |----------|-----------|-------------|
 | `append_char` | `(s string, c char) -> string` | New string with `c` added at the end |
 | `prepend_char` | `(s string, c char) -> string` | New string with `c` added at the front |
-| `insert_char_at` | `(s string, index i64, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
-| `remove_at` | `(s string, index i64) -> string` | New string with the byte at `index` removed; panics if out of bounds |
-| `set_char_at` | `(s string, index i64, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
+| `insert_char_at` | `(s string, index i64, c char) -> string` | New string with `c` inserted at byte `index` (an index inside a character snaps back to its start); `index == len` appends; panics if `index < 0` or `index > len` |
+| `remove_at` | `(s string, index i64) -> string` | New string with the character at `index` removed (an index inside a character snaps back to its start); panics if out of bounds |
+| `set_char_at` | `(s string, index i64, c char) -> string` | New string with the character at `index` replaced by `c` (an index inside a character snaps back to its start); panics if out of bounds |
 
 #### Query Functions
 
@@ -3665,7 +3667,7 @@ result.
 | `replace` | `(s string, old string, new string) -> string` | Replace all occurrences |
 | `repeat` | `(s string, count i64) -> string` | Repeat string |
 | `reverse` | `(s string) -> string` | Reverse string |
-| `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes plus `ellipsis` (total byte length exactly `max`); panics if `max < len(ellipsis)` |
+| `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes (cut back to a character boundary) plus `ellipsis` (total byte length at most `max`; the cut snaps back to a character boundary); panics if `max < len(ellipsis)` |
 
 #### Conversion Functions
 
@@ -3964,11 +3966,11 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
+| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring; text that is not valid UTF-8 is an error |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
-| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (integers, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, a string-keyed map of primitives, or a `#json` struct or array of `#json` structs. `char` encodes as its codepoint number. |
+| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (integers, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, a string-keyed map of primitives, or a `#json` struct or array of `#json` structs. `char` encodes as its codepoint number. Each invalid UTF-8 byte in a string is written as U+FFFD. |
 | `pretty_print` | `(m map[K:V], indent i64) -> string` | Pretty-print a map as indented JSON |
-| `is_valid` | `(text string) -> bool` | Check if valid JSON |
+| `is_valid` | `(text string) -> bool` | Check if valid JSON; text that is not valid UTF-8 is not valid |
 
 `decode` is fallible: destructure the result (`mut m, err = ...` or `mut m, _ = ...`).
 
@@ -4023,7 +4025,7 @@ These functions panic (P0157) when an intermediate or final result leaves the `i
 | `remove_dir` | `(path string) -> bool` | Remove empty directory |
 | `remove_dir_all` | `(path string) -> bool` | Remove directory and all contents |
 | `walk` | `(path string) -> [string]` | Recursively list all files |
-| `glob` | `(pattern string) -> [string]` | Match files by glob pattern; returns empty array on no match |
+| `glob` | `(pattern string) -> [string]` | Match files by glob pattern; `?` and a bracket expression match one character (a codepoint), not one byte; returns empty array on no match |
 
 #### Temporary Files
 
@@ -4472,7 +4474,8 @@ Regular expression operations using POSIX extended regex syntax.
 
 `find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, `split`, and `count` are fallible: destructure the result (`mut v, err = ...` or `mut v, _ = ...`).
 
-POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`.
+
+On every platform, `.` and a bracket expression match one character (a codepoint), not one byte: `^.$` matches `é`, `^..$` does not, and `[é]` matches `é` and nothing else. An invalid UTF-8 byte in the text is one U+FFFD character: it matches `.` and a negated bracket expression, and it never makes the match fail.POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`. The classes match ASCII characters only, as in the `chars` module; `[[:alpha:]]` does not match `é`.
 
 ### 9.19 CSV Module (`@csv`)
 
@@ -4673,7 +4676,7 @@ Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf
 | `%s` | `-` | yes (maximum bytes) |
 | `%c`, `%b` | `-` | no |
 
-Any other flag or a precision where the table has none is a compile error. C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted: each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error; C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Any other flag or a precision where the table has none is a compile error. C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted: each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error; C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%s` of a string writes all of its bytes, including any after an embedded NUL. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
@@ -5121,6 +5124,8 @@ mut duplicate = copy(original)
 duplicate.age = 31  // original.age is still 30
 ```
 
+**Handle types are rejected.** `copy()` cannot be applied to a `Builder`, `Channel`, `Mutex`, `SpinLock`, `Thread`, `Database`, `Router`, `Socket`, `Listener`, or `Arena`, or to a value that holds one in a struct field, array element, or map value: a handle shares its state with every copy (E5070).
+
 **Pointer fields alias, not copy.** A pointer-typed field is deliberately left pointing at its original referent — `copy()` does not follow it and duplicate the pointee. If a struct holds a pointer into itself (a self-referential field), the copy's field still points at the *original* value, not the copy's own:
 
 ```gray
@@ -5308,6 +5313,8 @@ By default, the runtime's managed arenas (default and heap) are capped at **1 GB
 gray build main.gray --arena-limit=256MB   # restrict to 256 MB
 gray build main.gray --arena-limit=2GB     # allow up to 2 GB
 ```
+
+`grayc` rejects any `--arena-limit` value that is not a positive number of bytes up to 9223372036854775807 (an empty value, a sign, trailing characters, zero, and overflow are all errors); `gray build` also accepts the `KB`, `MB`, and `GB` suffixes.
 
 User-created arenas (via `mem.arena()`) are not subject to this limit.
 

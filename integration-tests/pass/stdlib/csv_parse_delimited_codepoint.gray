@@ -1,0 +1,40 @@
+/*
+ * Test: csv.parse_delimited uses the whole codepoint as the delimiter.
+ */
+import @csv
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut rows [[string]] = csv.parse_delimited("a§b§c\n", '§')
+    if len(rows[0]) == 3 && len(rows[0][0]) == 1 && len(rows[0][1]) == 1 && len(rows[0][2]) == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] § delimiter, cols=${len(rows[0])}")
+        failed += 1
+    }
+
+    mut other [[string]] = csv.parse_delimited("x\xe5y\n", '日')
+    if len(other[0]) == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] stray byte split, cols=${len(other[0])}")
+        failed += 1
+    }
+
+    mut wide [[string]] = csv.parse_delimited("1日2日\"3日4\"\n", '日')
+    if len(wide[0]) == 3 && wide[0][2] == "3日4" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] 日 delimiter, cols=${len(wide[0])}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

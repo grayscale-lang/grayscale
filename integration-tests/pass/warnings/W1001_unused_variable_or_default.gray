@@ -1,0 +1,7 @@
+// The declaration of a variable initialised with an or_default fallback
+// is reported as unused at the variable's own position.
+import @strconv
+
+do main() {
+    mut value = strconv.to_i64("x") or_default 1
+}

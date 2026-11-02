@@ -1,0 +1,7 @@
+/*
+ * Error Test: E3013 - field access through a pointer to a non-struct
+ */
+do main() {
+    mut p ^i64 = new(i64)
+    println(p.nope)
+}

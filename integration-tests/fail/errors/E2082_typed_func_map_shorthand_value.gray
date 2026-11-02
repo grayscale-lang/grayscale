@@ -1,0 +1,3 @@
+do main() {
+    mut fns [string:func(i64) -> i64] = {:}
+}

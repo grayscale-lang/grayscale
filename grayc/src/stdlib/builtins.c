@@ -10,6 +10,7 @@
 
 #include "builtins.h"
 #include "strconv.h"
+#include "utf8.h"
 #include "../runtime/bigint.h"
 #include "../runtime/platform_rt.h"
 #include "../util/constants.h"
@@ -40,29 +41,9 @@ static int codepoint_to_utf8(int32_t codepoint, char *output) {
 }
 
 /* Decode next UTF-8 character; returns bytes consumed (1-4).
-   Writes decoded codepoint to *cp_out (0xFFFD on invalid input). */
+   Writes decoded codepoint to *cp_out (0xFFFD per invalid byte). */
 int gray_builtin_utf8_next(const uint8_t *cursor, const uint8_t *end_cursor, int32_t *cp_out) {
-    uint8_t lead_byte = *cursor;
-    int32_t codepoint;
-    int bytes;
-    if (lead_byte < 0x80) {
-        *cp_out = lead_byte; return 1;
-    } else if ((lead_byte & 0xE0) == 0xC0) {
-        codepoint = lead_byte & 0x1F; bytes = 2;
-    } else if ((lead_byte & 0xF0) == 0xE0) {
-        codepoint = lead_byte & 0x0F; bytes = 3;
-    } else if ((lead_byte & 0xF8) == 0xF0) {
-        codepoint = lead_byte & 0x07; bytes = 4;
-    } else {
-        *cp_out = 0xFFFD; return 1;
-    }
-    if (cursor + bytes > end_cursor) { *cp_out = 0xFFFD; return 1; }
-    for (int i = 1; i < bytes; i++) {
-        if ((cursor[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
-        codepoint = (codepoint << 6) | (cursor[i] & 0x3F);
-    }
-    *cp_out = codepoint;
-    return bytes;
+    return gray_utf8_decode(cursor, end_cursor, cp_out);
 }
 
 /* Write a Unicode code point as UTF-8 to a FILE stream */

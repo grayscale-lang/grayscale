@@ -1,0 +1,6 @@
+import "./lib"
+import @arrays
+
+do main() {
+    mut p = addr(lib.count)
+}

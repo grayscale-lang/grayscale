@@ -1,0 +1,54 @@
+/*
+ * Test: json.encode writes U+FFFD for an invalid byte; json.is_valid and
+ * json.decode reject invalid UTF-8; a lone surrogate escape stays valid.
+ */
+import @json
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if json.encode("a\xffb") == "\"a\xef\xbf\xbdb\"" && len(json.encode("a\xffb")) == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] encode, len ${len(json.encode("a\xffb"))}")
+        failed += 1
+    }
+
+    if json.encode("héllo 日本\xc0\x80") == "\"héllo 日本\xef\xbf\xbd\xef\xbf\xbd\"" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] encode mixed")
+        failed += 1
+    }
+
+    if !json.is_valid("[\"\xff\"]") && json.is_valid("[\"é\"]") {
+        passed += 1
+    } otherwise {
+        println("[FAIL] is_valid")
+        failed += 1
+    }
+
+    mut _, e = json.decode("{\"k\": \"a\xffb\"}")
+    if e != nil {
+        passed += 1
+    } otherwise {
+        println("[FAIL] decode of invalid UTF-8 returned no error")
+        failed += 1
+    }
+
+    mut s, e2 = json.decode("{\"k\": \"\\ud800\"}")
+    if e2 == nil && json.is_valid("[\"\\ud800\"]") && s["k"] == "\xef\xbf\xbd" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] lone surrogate escape")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

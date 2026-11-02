@@ -1,17 +1,11 @@
-// Test: a module-level container mutated through its module qualifier from another module keeps its data across calls
+// Test: a module-level container mutated by its own module's function, called through the module qualifier keeps its data across calls
 import "./registry.gray"
-import @arrays
-
-do record(name string) {
-    registry.keys[name] = 1
-    arrays.append(registry.names, name + "!")
-}
 
 do main() {
-    record("a")
-    record("b")
+    registry.record("a")
+    registry.record("b")
     for i in range(0, 200) {
-        record("k${i}")
+        registry.record("k${i}")
     }
 
     if registry.keys["a"] == 1 && registry.keys["k100"] == 1 {

@@ -1,0 +1,5 @@
+do f(a i64) -> i64 { return a }
+do p(f i64) -> i64 { return f }
+do main() {
+    println("${p(1)}")
+}

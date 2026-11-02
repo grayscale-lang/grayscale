@@ -1,0 +1,18 @@
+// Error Test: E3001 - assigning one struct type to another is one mistake,
+// reported once whether it is a declaration or an assignment
+// expect-error: E3001
+// expect-error-count: 2
+
+const First struct {
+    value i64
+}
+
+const Second struct {
+    value i64
+}
+
+do main() {
+    mut second Second = Second{value: 1}
+    mut first First = second
+    first = second
+}

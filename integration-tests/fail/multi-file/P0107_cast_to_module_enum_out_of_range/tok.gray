@@ -1,0 +1,4 @@
+const Kind enum {
+    NUM = 10
+    PLUS = 20
+}

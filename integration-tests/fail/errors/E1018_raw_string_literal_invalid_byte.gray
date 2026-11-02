@@ -1,0 +1,8 @@
+/*
+ * Error Test: E1018 - invalid byte in a raw string literal
+ */
+
+do main() {
+    mut s string = `bad ÿ byte`
+    println(len(s))
+}

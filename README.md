@@ -15,96 +15,58 @@
 
 ---
 
-### Readable syntax
-
 ```grayscale
-do divmod(a i64, b i64) -> (i64, i64) {
-    return a / b, a % b
+import @strconv
+
+const urgentFlag u8 = 1 bit_shift_left 0
+
+const Status enum {
+    Todo
+    Doing(string)
+    Done(i64)
 }
 
-do main() {
-    const name string = "Grayscale"
-    mut total i64 = 0
-    for i in range(1, 6) {
-        total += i
-    }
-    mut quotient, remainder = divmod(total, 4)
-    if remainder == 0 {
-        println("${name}: ${total} divides evenly")
-    } or quotient > 3 {
-        println("${name}: ${total} / 4 = ${quotient} remainder ${remainder}")
-    } otherwise {
-        println("${name}: ${total} is small")
-    }
-}
-```
+const Task struct {
+    title string
+    status Status
+    flags u8
 
-### Structs and tagged enums
-
-```grayscale
-const Shape enum {
-    Circle(f64)
-    Rect(f64, f64)
-    Point
-}
-
-const Vec struct {
-    x i64
-    y i64
-
-    do scale(self Vec, factor i64) -> Vec {
-        return Vec{x: self.x * factor, y: self.y * factor}
+    do is_urgent(self Task) -> bool {
+        return (self.flags bit_and urgentFlag) != 0
     }
 }
 
-do area(shape Shape) -> f64 {
-    when shape {
-        is Shape.Circle(radius) { return 3.14159 * radius * radius }
-        is Shape.Rect(w, h) { return w * h }
-        default { return 0.0 }
+do get_first_task(T generic, items [T]) -> T {
+    return items[0]
+}
+
+do describe_status(status Status) -> string {
+    when status {
+        is Status.Todo { return "to do" }
+        is Status.Doing(who) { return "in progress (${who})" }
+        is Status.Done(minutes) { return "done in ${minutes}m" }
+        default { return "" }
     }
 }
 
 do main() {
-    mut v = Vec{x: 2, y: 3}
-    mut scaled = v.scale(factor: 5)
-    println("scaled: ${scaled.x}, ${scaled.y}")
-    println("rect: ${area(Shape.Rect(3.0, 4.0))}")
-}
-```
-
-### Explicit errors and cleanup
-
-```grayscale
-import @io
-
-do cleanup() {
-    println("cleanup ran")
-}
-
-do load(path string) -> (string, Error) {
-    ensure cleanup()
-    mut content = io.read_file(path) or_return
-    return content, nil
-}
-
-do main() {
-    mut content, err = load("missing.txt")
-    if err != nil {
-        println("could not load file")
-    } otherwise {
-        println(content)
+    mut tasks [Task] = {
+        Task{title: "Fix parser bug", status: Status.Doing("Marshall"), flags: urgentFlag},
+        Task{title: "Write docs", status: Status.Done(45), flags: 0},
+        Task{title: "Ship release", status: Status.Todo, flags: 0}
     }
-}
-```
 
-### Standard library
+    for_each task in tasks {
+        if task.is_urgent() {
+            println("! ${task.title}: ${describe_status(task.status)}")
+        } otherwise {
+            println("  ${task.title}: ${describe_status(task.status)}")
+        }
+    }
 
-```grayscale
-import @math
-
-do main() {
-    println("sqrt(144) = ${math.sqrt(144.0)}")
+    mut lead = get_first_task(Task, tasks)
+    mut estimate = strconv.to_i64("soon") or_default 30
+    println("first: ${lead.title}, estimate ${estimate}m")
 }
 ```
 
@@ -113,9 +75,9 @@ do main() {
 
 ## Why Grayscale?
 
-- **Simplicity** — Readable, opinionated syntax — bitwise and membership operators are real keywords (`bit_and`, `bit_xor`, `not_in`), not punctuation — with familiar per-file aliases (`fn`, `switch`/`case`, `elif`/`else`, `while`, `defer`) for those who prefer them. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray check`, `gray new`, and `gray watch`.
+- **Simplicity** — Readable, opinionated syntax. Bitwise and membership operators are real keywords (`bit_and`, `bit_xor`, `not_in`) rather than punctuation. Familiar keyword aliases (`fn`, `switch`/`case`, `elif`/`else`, `while`, `defer`) for those who prefer them. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray check`, `gray new`, and `gray watch`.
 - **Flexibility** — Build scripts and dev tooling, cross-platform CLI utilities, HTTP/JSON backend services, SQLite-backed apps, network daemons, and batch data processing, or learning systems programming fundamentals.
-- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` or `.grayscale` files, and C headers can all be imported.
+- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray`/`.grayscale` files, and C headers can all be imported.
 - **Safety** — An automatic scope-based arena management memory model with a compile-time [pointer checker](STANDARD.md#117-memory-safety) that proves no pointer is ever readable after its memory is reclaimed, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), wrapping arithmetic (`wrap_add()`), or C interop (`extern import`)
 ---
 
@@ -234,8 +196,15 @@ gray install v0.11.5     # pin to an exact version
 
 ---
 
+## Showcase
+
+- [GrayUtils](https://github.com/SchoolyB/GrayUtils) — a collection of useful utils written in Grayscale
+
+---
+
 ## Learn More
 
+- [Documentation site](https://grayscale-lang.github.io/grayscale-lang/)
 - [Language standard](STANDARD.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Benchmark suite](benchmarks/README.md) — `make benchmark` times real-shaped programs

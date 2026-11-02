@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3038 - void as an alias target
+ */
+alias Nothing = void
+
+do main() { }

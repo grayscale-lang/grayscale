@@ -87,7 +87,7 @@
     GRAY_ERROR("E2079", "syntax", "'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause") \
     GRAY_ERROR("E2080", "syntax", "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted") \
     GRAY_ERROR("E2081", "syntax", "'^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^'") \
-    GRAY_ERROR("E2082", "syntax", "arrays of typed func signatures are not supported; use '[func]' or '[func, N]' with '()func_name' elements instead") \
+    GRAY_ERROR("E2082", "syntax", "arrays and maps of typed func signatures are not supported; use '[func]', '[func, N]' or 'map[K:func]' with '()func_name' values instead") \
     GRAY_ERROR("E2083", "syntax", "enum variant '%s' cannot have both a payload and an explicit value") \
     GRAY_ERROR("E2084", "syntax", "blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result") \
     GRAY_ERROR("E2085", "syntax", "when statement already has a default branch; only one default is allowed") \
@@ -349,7 +349,8 @@
     GRAY_ERROR("E4040", "names", "-define: names '%s', but the program declares no such constant") \
     GRAY_ERROR("E4041", "names", "'%s' is not a known statement; did you mean '%s'?") \
     GRAY_ERROR("E4042", "names", "loop label '%s' is already used by an enclosing loop") \
-    GRAY_ERROR("E4043", "names", "no enclosing loop is labeled '%s'")
+    GRAY_ERROR("E4043", "names", "no enclosing loop is labeled '%s'") \
+    GRAY_ERROR("E4044", "names", "'%s' is already declared as %s at %s:%d")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -405,7 +406,8 @@
     GRAY_ERROR("E5066", "usage", "-define: names '%s', which is not marked #define") \
     GRAY_ERROR("E5067", "arguments", "callback '%s' passed as argument %d of C function '%s' does not match the function pointer type '%s' the imported header declares") \
     GRAY_ERROR("E5068", "arguments", "'%s' wraps integers only; got %s and %s") \
-    GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value")
+    GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value") \
+    GRAY_ERROR("E5070", "usage", "'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -429,7 +431,7 @@
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
-    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode code point (0 to 1114111)") \
+    GRAY_ERROR("E7014", "stdlib", "cannot convert %lld to char; value must be a valid Unicode scalar value (0 to 1114111, excluding the surrogates 55296 to 57343)") \
     GRAY_ERROR("E7015", "stdlib", "'len()' is not supported for type '%s'") \
     GRAY_ERROR("E9002", "stdlib", "'arrays.%s()' requires a numeric array, got array of '%s'") \
     GRAY_ERROR("E9003", "stdlib", "'arrays.%s()' requires a function reference; use '()func_name' to pass a function") \

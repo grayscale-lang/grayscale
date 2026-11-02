@@ -1,0 +1,7 @@
+import "./lib"
+
+do main() {
+    for lib in range(0, 1) {
+        println("${lib}")
+    }
+}

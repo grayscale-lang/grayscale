@@ -1,0 +1,5 @@
+import "./pkg/a.gray"
+
+do via_file() -> i64 {
+    return a.one()
+}

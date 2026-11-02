@@ -1,0 +1,6 @@
+do f(a i64) -> i64 { return a }
+do main() {
+    for f in range(0, 1) {
+        println("${f}")
+    }
+}

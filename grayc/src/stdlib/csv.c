@@ -22,7 +22,40 @@
  * (an unterminated quote, text after a closing quote, or a quote inside an
  * unquoted field) it stores the 1-based row in *bad_row and returns the rows
  * parsed so far; otherwise *bad_row is 0. */
-static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, char delim, int32_t *bad_row) {
+/* The delimiter is one whole codepoint, held as its UTF-8 bytes. */
+typedef struct {
+    char bytes[4];
+    int32_t length;
+} CsvDelimiter;
+
+static CsvDelimiter csv_delimiter_from_codepoint(int32_t codepoint) {
+    CsvDelimiter delimiter;
+    if (codepoint < 0x80) {
+        delimiter.bytes[0] = (char)codepoint; delimiter.length = 1;
+    } else if (codepoint < 0x800) {
+        delimiter.bytes[0] = (char)(0xC0 | (codepoint >> 6));
+        delimiter.bytes[1] = (char)(0x80 | (codepoint & 0x3F));
+        delimiter.length = 2;
+    } else if (codepoint < 0x10000) {
+        delimiter.bytes[0] = (char)(0xE0 | (codepoint >> 12));
+        delimiter.bytes[1] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        delimiter.bytes[2] = (char)(0x80 | (codepoint & 0x3F));
+        delimiter.length = 3;
+    } else {
+        delimiter.bytes[0] = (char)(0xF0 | (codepoint >> 18));
+        delimiter.bytes[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
+        delimiter.bytes[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        delimiter.bytes[3] = (char)(0x80 | (codepoint & 0x3F));
+        delimiter.length = 4;
+    }
+    return delimiter;
+}
+
+static bool csv_at_delimiter(const char *cursor, const char *end_cursor, CsvDelimiter delimiter) {
+    return end_cursor - cursor >= delimiter.length && memcmp(cursor, delimiter.bytes, (size_t)delimiter.length) == 0;
+}
+
+static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, CsvDelimiter delim, int32_t *bad_row) {
     *bad_row = 0;
     GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = csv_string.data;
@@ -47,7 +80,7 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
                 field_length = (int32_t)(cursor - field_start);
                 if (cursor >= end_cursor) { *bad_row = rows.len + 1; return rows; }
                 cursor++; /* skip closing quote */
-                if (cursor < end_cursor && *cursor != delim && *cursor != '\n' && *cursor != '\r') {
+                if (cursor < end_cursor && !csv_at_delimiter(cursor, end_cursor, delim) && *cursor != '\n' && *cursor != '\r') {
                     *bad_row = rows.len + 1;
                     return rows;
                 }
@@ -67,7 +100,7 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
             } else {
                 /* Unquoted field */
                 field_start = cursor;
-                while (cursor < end_cursor && *cursor != delim && *cursor != '\n' && *cursor != '\r') cursor++;
+                while (cursor < end_cursor && !csv_at_delimiter(cursor, end_cursor, delim) && *cursor != '\n' && *cursor != '\r') cursor++;
                 field_length = (int32_t)(cursor - field_start);
                 if (memchr(field_start, '"', (size_t)field_length)) { *bad_row = rows.len + 1; return rows; }
             }
@@ -75,8 +108,8 @@ static GrayArray csv_parse_delimited(GrayArena *arena, GrayString csv_string, ch
             GrayString field = gray_string_new(arena, field_start, field_length);
             GRAY_ARRAY_PUSH(arena, &row_array, &field);
 
-            if (cursor < end_cursor && *cursor == delim) {
-                cursor++;
+            if (cursor < end_cursor && csv_at_delimiter(cursor, end_cursor, delim)) {
+                cursor += delim.length;
                 if (cursor == end_cursor || *cursor == '\n' || *cursor == '\r') {
                     GrayString trailing = gray_string_new(arena, cursor, 0);
                     GRAY_ARRAY_PUSH(arena, &row_array, &trailing);
@@ -98,14 +131,14 @@ static _Noreturn void csv_malformed_quoting(int32_t row) {
 
 GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
     int32_t bad_row;
-    GrayArray rows = csv_parse_delimited(arena, csv_string, ',', &bad_row);
+    GrayArray rows = csv_parse_delimited(arena, csv_string, csv_delimiter_from_codepoint(','), &bad_row);
     if (bad_row) csv_malformed_quoting(bad_row);
     return rows;
 }
 
 GrayArray gray_csv_parse_delimited(GrayArena *arena, GrayString csv_string, int32_t delimiter) {
     int32_t bad_row;
-    GrayArray rows = csv_parse_delimited(arena, csv_string, (char)delimiter, &bad_row);
+    GrayArray rows = csv_parse_delimited(arena, csv_string, csv_delimiter_from_codepoint(delimiter), &bad_row);
     if (bad_row) csv_malformed_quoting(bad_row);
     return rows;
 }

@@ -387,7 +387,7 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *@module io
  *@group Directory Operations
  *@sig glob(pattern string) -> ([string], Error)
- *@desc Returns all file paths matching the glob pattern. Returns an empty array if there are no matches. Always use destructuring — single-variable assignment is a compile error. Glob patterns are matched relative to the working directory where the binary is executed, not the source file location.
+ *@desc Returns all file paths matching the glob pattern. Returns an empty array if there are no matches. A ? and a bracket expression each match one character (a codepoint), not one byte. Always use destructuring — single-variable assignment is a compile error. Glob patterns are matched relative to the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
  *   mut files, _ = io.glob("src/test_*.gray")

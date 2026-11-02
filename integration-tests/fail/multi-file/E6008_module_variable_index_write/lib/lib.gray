@@ -1,0 +1,3 @@
+mut list [i64] = {}
+mut registry map[string:i64] = {:}
+mut count i64 = 0

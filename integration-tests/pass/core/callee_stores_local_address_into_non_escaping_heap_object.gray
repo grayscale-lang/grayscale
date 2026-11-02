@@ -1,0 +1,33 @@
+// Storing addr(local) into a heap object through a callee is fine while the
+// object does not outlive the local: only the value read through it escapes.
+
+const Node struct {
+    v i64
+    next ^Node
+
+    do link(self ^Node, other ^Node) {
+        self^.next = other
+    }
+}
+
+do link_free(a ^Node, b ^Node) {
+    a^.next = b
+}
+
+do read_through_free() -> i64 {
+    mut heap ^Node = new(Node)
+    mut local = Node{v: 42, next: nil}
+    link_free(heap, addr(local))
+    return heap^.next^.v
+}
+
+do read_through_struct_function() -> i64 {
+    mut heap ^Node = new(Node)
+    mut local = Node{v: 7, next: nil}
+    heap.link(addr(local))
+    return heap^.next^.v
+}
+
+do main() {
+    println("${read_through_free()} ${read_through_struct_function()}")
+}

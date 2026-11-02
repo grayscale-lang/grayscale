@@ -1,0 +1,12 @@
+// expect-contains: .gray:
+/* Panic Test: P0034 - sort_by during for_each */
+import @arrays
+
+do lt(x i64, y i64) -> bool { return x < y }
+
+do main() {
+    mut a [i64] = {3, 2, 1}
+    for_each x in a {
+        arrays.sort_by(a, ()lt)
+    }
+}

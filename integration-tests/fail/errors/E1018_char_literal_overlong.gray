@@ -1,0 +1,7 @@
+/*
+ * Error Test: E1018 - overlong raw bytes in a char literal
+ */
+
+do main() {
+    mut c char = 'À€'
+}

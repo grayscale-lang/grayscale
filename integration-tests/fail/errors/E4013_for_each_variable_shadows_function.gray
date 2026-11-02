@@ -1,0 +1,7 @@
+do f(a i64) -> i64 { return a }
+do main() {
+    mut xs [i64] = {1}
+    for_each f in xs {
+        println("${f}")
+    }
+}

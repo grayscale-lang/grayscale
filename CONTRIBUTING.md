@@ -68,6 +68,12 @@ echo 'do main() { println("hello") }' > main.gray
 ./gray main.gray
 ```
 
+Then enable the git hooks once per clone, so unformatted `.gray` files are rejected at commit time:
+
+```bash
+make hooks
+```
+
 > **Iterating on the compiler?** When `./gray` runs from a source checkout, it
 > automatically prefers the locally built `grayc/grayc` binary next to it over
 > the embedded or installed compiler, so a `make -C grayc build` is picked up
@@ -80,6 +86,7 @@ echo 'do main() { println("hello") }' > main.gray
 | Command | Description |
 |---------|-------------|
 | `make build` | Build the `gray` binary (compiler embedded) |
+| `make hooks` | Enable the git pre-commit hook (`gray fmt --check` on staged `.gray` files) |
 | `make stubs` | Create empty embed stubs |
 | `make install` | Install `gray` to `/usr/local/bin` |
 | `make uninstall` | Remove `gray` from `/usr/local/bin` |
@@ -268,7 +275,7 @@ spread across more than 15 call sites.
    - `diagnostic_error_code_formatted()` — registry message template with `%s`/`%d` args
    - `diagnostic_error_message()` / `diagnostic_warning_message()` — custom message with a code
 
-3. **Regenerate `ERRORS.md`** by running `./grayc/grayc scripts/generate_errors.gray && ./generate_errors` and committing the output.
+3. **Regenerate `ERRORS.md`** by running `make generate-errors` and committing the output.
 
 4. **Add a fail test** in `integration-tests/fail/errors/` named `E####_short_description.gray` that triggers the new error and verifies the compiler rejects it.
 
@@ -459,9 +466,9 @@ For more details, see `TESTING.md`.
 
 ## Code Style
 
-### Grayscale code (`cli/`)
+### Grayscale code (`cli/`, `scripts/`, `benchmarks/`)
 
-- Run `gray fmt` before committing
+- Run `gray fmt` before committing (`make hooks` enforces it; CI checks it too)
 - Keep functions focused and readable
 
 ### C code (`grayc/src/`)

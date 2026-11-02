@@ -10,6 +10,9 @@
 
 #include "lexer.h"
 #include "../util/constants.h"
+#include "../stdlib/utf8.h"
+#include "../util/xalloc.h"
+#include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -212,15 +215,107 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
     return number_text;
 }
 
+/* Flag a string literal's source bytes [start, position) that are not valid UTF-8.
+ * An escape such as "\xff" is ASCII in the source, so it is not affected. */
+static void check_literal_utf8(Lexer *lexer, int start) {
+    if (lexer->error_code) return;
+    const uint8_t *cursor = (const uint8_t *)lexer->input + start;
+    const uint8_t *end_cursor = (const uint8_t *)lexer->input + lexer->position;
+    while (cursor < end_cursor) {
+        int32_t codepoint;
+        int length = gray_utf8_decode(cursor, end_cursor, &codepoint);
+        if (codepoint == 0xFFFD && length == 1) {
+            lexer->error_code = "E1018";
+            lexer->error_message = "malformed UTF-8 in string literal";
+            return;
+        }
+        cursor += length;
+    }
+}
+
+/* A \u{...} escape in a string literal: where it sits in the source and the
+ * codepoint it names. */
+typedef struct {
+    int begin;
+    int end;
+    int32_t codepoint;
+} UnicodeEscape;
+
+/* The literal text with each \u{...} escape rewritten as the \xNN escapes of its
+ * UTF-8 bytes, so everything downstream sees only escapes it already handles. */
+static const char *expand_unicode_escapes(Lexer *lexer, int start, UnicodeEscape *escapes, int escape_count) {
+    int length = lexer->position - start;
+    char *text = arena_allocate(lexer->arena, (size_t)length + (size_t)escape_count * 16 + 1);
+    char *write = text;
+    int copied = start;
+    for (int i = 0; i < escape_count; i++) {
+        memcpy(write, lexer->input + copied, (size_t)(escapes[i].begin - copied));
+        write += escapes[i].begin - copied;
+        uint8_t bytes[4];
+        int32_t codepoint = escapes[i].codepoint;
+        int byte_count;
+        if (codepoint < 0x80) { bytes[0] = (uint8_t)codepoint; byte_count = 1; }
+        else if (codepoint < 0x800) { bytes[0] = (uint8_t)(0xC0 | (codepoint >> 6)); bytes[1] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 2; }
+        else if (codepoint < 0x10000) { bytes[0] = (uint8_t)(0xE0 | (codepoint >> 12)); bytes[1] = (uint8_t)(0x80 | ((codepoint >> 6) & 0x3F)); bytes[2] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 3; }
+        else { bytes[0] = (uint8_t)(0xF0 | (codepoint >> 18)); bytes[1] = (uint8_t)(0x80 | ((codepoint >> 12) & 0x3F)); bytes[2] = (uint8_t)(0x80 | ((codepoint >> 6) & 0x3F)); bytes[3] = (uint8_t)(0x80 | (codepoint & 0x3F)); byte_count = 4; }
+        for (int j = 0; j < byte_count; j++) write += sprintf(write, "\\x%02x", bytes[j]);
+        copied = escapes[i].end;
+    }
+    memcpy(write, lexer->input + copied, (size_t)(lexer->position - copied));
+    write += lexer->position - copied;
+    *write = '\0';
+    return text;
+}
+
 static const char *read_string(Lexer *lexer) {
     read_character(lexer); /* skip opening " */
     int start = lexer->position;
     int brace_depth = 0;
+    UnicodeEscape *unicode_escapes = NULL;
+    int unicode_escape_count = 0, unicode_escape_capacity = 0;
 
     while (lexer->current_character != 0) {
         if (lexer->current_character == '\\') {
+            int escape_begin = lexer->position;
             read_character(lexer); /* move to escape char */
             /* Validate escape sequence */
+            if (lexer->current_character == 'u' && brace_depth == 0) {
+                /* \u{H...}: 1 to 6 hex digits, the same rules as a char literal */
+                read_character(lexer);
+                if (lexer->current_character != '{') {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "malformed '\\u' escape in string; expected '\\u{...}'";
+                    continue;
+                }
+                read_character(lexer); /* skip { */
+                int hex_digit_count = 0;
+                long codepoint = 0;
+                while (isxdigit((unsigned char)lexer->current_character)) {
+                    if (hex_digit_count < 7) codepoint = codepoint * 16 + (isdigit((unsigned char)lexer->current_character) ? lexer->current_character - '0' : tolower((unsigned char)lexer->current_character) - 'a' + 10);
+                    read_character(lexer);
+                    hex_digit_count++;
+                }
+                if (lexer->current_character != '}' || hex_digit_count < 1 || hex_digit_count > 6) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "malformed '\\u{}' escape in string; expected 1 to 6 hex digits";
+                    continue;
+                }
+                read_character(lexer); /* skip } */
+                if (codepoint > 0x10FFFF) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF";
+                } else if (codepoint >= 0xD800 && codepoint <= 0xDFFF) {
+                    lexer->error_code = "E1006";
+                    lexer->error_message = "'\\u{}' codepoint is a UTF-16 surrogate, which has no UTF-8 encoding";
+                } else {
+                    if (unicode_escape_count == unicode_escape_capacity) {
+                        unicode_escape_capacity = unicode_escape_capacity ? unicode_escape_capacity * 2 : 4;
+                        unicode_escapes = xrealloc(unicode_escapes, (size_t)unicode_escape_capacity * sizeof(UnicodeEscape));
+                    }
+                    unicode_escapes[unicode_escape_count++] = (UnicodeEscape){escape_begin, lexer->position, (int32_t)codepoint};
+                }
+                continue;
+            }
             if (lexer->current_character == 'x') {
                 /* Hex escape: \xNN; exactly two hex digits */
                 read_character(lexer);
@@ -301,7 +396,11 @@ static const char *read_string(Lexer *lexer) {
         read_character(lexer);
     }
 
-    const char *literal_text = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+    check_literal_utf8(lexer, start);
+    const char *literal_text = unicode_escape_count > 0
+        ? expand_unicode_escapes(lexer, start, unicode_escapes, unicode_escape_count)
+        : arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+    free(unicode_escapes);
     if (lexer->current_character == '"') {
         read_character(lexer); /* skip closing " */
     } else if (!lexer->error_code) {
@@ -318,6 +417,7 @@ static const char *read_raw_string(Lexer *lexer) {
         read_character(lexer);
     }
 
+    check_literal_utf8(lexer, start);
     const char *literal_text = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
     if (lexer->current_character == '`') {
         read_character(lexer); /* skip closing ` */
@@ -326,16 +426,6 @@ static const char *read_raw_string(Lexer *lexer) {
         lexer->error_message = "unclosed raw string literal";
     }
     return literal_text;
-}
-
-/* Length of the UTF-8 sequence a lead byte introduces, or 0 if it is not a
- * valid lead byte (continuation byte or 0xF8+). */
-static int utf8_sequence_length(unsigned char lead) {
-    if (lead < 0x80) return 1;
-    if ((lead & 0xE0) == 0xC0) return 2;
-    if ((lead & 0xF0) == 0xE0) return 3;
-    if ((lead & 0xF8) == 0xF0) return 4;
-    return 0;
 }
 
 static const char *read_char_literal(Lexer *lexer) {
@@ -387,21 +477,15 @@ static const char *read_char_literal(Lexer *lexer) {
     } else {
         /* One UTF-8 encoded codepoint: consume the lead byte and its
          * continuation bytes so a non-ASCII character is a single literal. */
-        int sequence_length = utf8_sequence_length((unsigned char)lexer->current_character);
-        if (sequence_length == 0) {
+        int32_t codepoint;
+        int sequence_length = gray_utf8_decode((const uint8_t *)lexer->input + lexer->position,
+                                               (const uint8_t *)lexer->input + lexer->input_length, &codepoint);
+        if (codepoint == 0xFFFD && sequence_length == 1 && (unsigned char)lexer->current_character >= 0x80) {
             lexer->error_code = "E1018";
             lexer->error_message = "malformed UTF-8 in character literal";
             read_character(lexer);
         } else {
-            read_character(lexer); /* consumed lead byte */
-            for (int i = 1; i < sequence_length && !lexer->error_code; i++) {
-                if (((unsigned char)lexer->current_character & 0xC0) != 0x80) {
-                    lexer->error_code = "E1018";
-                    lexer->error_message = "malformed UTF-8 in character literal";
-                    break;
-                }
-                read_character(lexer);
-            }
+            for (int i = 0; i < sequence_length; i++) read_character(lexer);
         }
     }
 
@@ -458,6 +542,11 @@ static const struct { const char *spelling; TokenType type; } attribute_keywords
 
 Lexer *lexer_create_sized(Arena *arena, const char *input, size_t raw_length, const char *file) {
     Lexer *lexer = arena_allocate(arena, sizeof(Lexer));
+    /* A leading UTF-8 byte order mark is not part of the source text. */
+    if (raw_length >= 3 && memcmp(input, "\xEF\xBB\xBF", 3) == 0) {
+        input += 3;
+        raw_length -= 3;
+    }
     lexer->input = input;
     if (raw_length > (size_t)INT32_MAX) raw_length = (size_t)INT32_MAX;
     lexer->input_length = (int)raw_length;
@@ -688,11 +777,10 @@ Token lexer_next_token(Lexer *lexer) {
         } else {
             char message_buffer[TYPE_NAME_MAX];
             unsigned char lead = (unsigned char)lexer->current_character;
-            int sequence_length = utf8_sequence_length(lead);
-            bool is_whole_sequence = sequence_length > 0;
-            for (int i = 1; i < sequence_length && is_whole_sequence; i++)
-                is_whole_sequence = lexer->read_position + i - 1 < lexer->input_length &&
-                    ((unsigned char)lexer->input[lexer->read_position + i - 1] & 0xC0) == 0x80;
+            int32_t codepoint;
+            int sequence_length = gray_utf8_decode((const uint8_t *)lexer->input + lexer->position,
+                                                   (const uint8_t *)lexer->input + lexer->input_length, &codepoint);
+            bool is_whole_sequence = codepoint != 0xFFFD || sequence_length > 1;
             if (!is_whole_sequence) {
                 snprintf(message_buffer, sizeof(message_buffer), "unexpected character '\\x%02x'", lead);
             } else {

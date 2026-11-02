@@ -1,0 +1,32 @@
+/*
+ * Pass Test: a struct function of an imported struct calls a private
+ * function of its own struct through self.
+ */
+
+import "./lib"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut value lib.Pub = lib.Pub{a: 1}
+    if value.outer() == 1 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private call through self")
+        failed += 1
+    }
+    if value.outer_p() == 1 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private call through self^")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -9,12 +9,15 @@
  */
 
 #include "regex.h"
+#include "utf8.h"
 #include "../runtime/platform_rt.h"
-#if GRAY_RUNTIME_WINDOWS
-#include "../runtime/regex_win.h" /* Windows ships no <regex.h> */
-#else
+#if !GRAY_RUNTIME_WINDOWS
 #include <regex.h>
+#define GRAY_REGEX_SPAN_TYPE regmatch_t
 #endif
+/* The character-aware engine: all of Windows, which ships no <regex.h>, and a
+ * POSIX system with no UTF-8 locale, where libc would match bytes. */
+#include "../runtime/regex_win.h"
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -54,6 +57,25 @@ static char *regex_c_string(GrayArena *arena, GrayString text) {
     return buffer;
 }
 
+/* The text a regex engine searches. An invalid UTF-8 byte is one U+FFFD
+ * character, but a UTF-8 locale's regexec refuses any text that holds one, so
+ * each such byte is replaced by ASCII SUB: a single character that no pattern
+ * class matches and "." does. The replacement is one byte for one byte, so
+ * every offset the engine reports is also an offset into `text`, and results are
+ * sliced from `text`, which keeps the original bytes. */
+static char *regex_text_buffer(GrayArena *arena, GrayString text) {
+    char *buffer = regex_c_string(arena, text);
+    const uint8_t *start = (const uint8_t *)buffer;
+    const uint8_t *end_cursor = start + text.len;
+    for (const uint8_t *cursor = start; cursor < end_cursor; ) {
+        int32_t codepoint;
+        int length = gray_utf8_decode(cursor, end_cursor, &codepoint);
+        if (codepoint == 0xFFFD && length == 1) buffer[cursor - start] = 0x1A;
+        cursor += length;
+    }
+    return buffer;
+}
+
 /* The platform regex engine is not thread-safe: macOS libc regexec races on
  * process-global scratch even when each thread owns its regex_t, so two regex
  * calls on different threads corrupt each other's results. Serialize every
@@ -71,101 +93,206 @@ static locale_t gray_regex_locale;
 static bool gray_regex_locale_ready;
 static locale_t gray_regex_previous_locale;
 
-static void regex_enter_utf8_locale(void) {
+/* Switch this thread to the UTF-8 locale; false when the system has none. */
+static bool regex_enter_utf8_locale(void) {
     if (!gray_regex_locale_ready) {
         gray_regex_locale = newlocale(LC_CTYPE_MASK, "C.UTF-8", (locale_t)0);
         if (!gray_regex_locale) gray_regex_locale = newlocale(LC_CTYPE_MASK, "en_US.UTF-8", (locale_t)0);
         gray_regex_locale_ready = true;
     }
-    if (gray_regex_locale) gray_regex_previous_locale = uselocale(gray_regex_locale);
+    if (!gray_regex_locale) return false;
+    gray_regex_previous_locale = uselocale(gray_regex_locale);
+    return true;
 }
 
 static void regex_leave_utf8_locale(void) {
     if (gray_regex_locale) uselocale(gray_regex_previous_locale);
 }
 #else
-static void regex_enter_utf8_locale(void) {}
+static bool regex_enter_utf8_locale(void) { return false; }
 static void regex_leave_utf8_locale(void) {}
 #endif
 
 /* The position after the UTF-8 character that starts at `cursor`. */
 static const char *regex_next_character(const char *cursor) {
-    cursor++;
-    while (((unsigned char)*cursor & 0xC0) == 0x80) cursor++;
-    return cursor;
+    size_t available = 0;
+    while (available < 4 && cursor[available]) available++;
+    int32_t codepoint;
+    return cursor + gray_utf8_decode((const uint8_t *)cursor, (const uint8_t *)cursor + available, &codepoint);
 }
 
-/* Helper: compile pattern into a null-terminated C string and regex_t.
+/* A compiled pattern: libc's when the thread has a UTF-8 locale, else the
+ * character-aware engine. */
+typedef struct {
+#if !GRAY_RUNTIME_WINDOWS
+    regex_t libc;
+    bool is_libc;
+#endif
+    GrayRegexEngine engine;
+} RegexProgram;
+
+#if !GRAY_RUNTIME_WINDOWS
+/* POSIX classes are ASCII only, but libc runs them in the UTF-8 locale and so
+ * matches non-ASCII letters too. Spell each [:class:] inside a bracket
+ * expression as its ASCII members. */
+static const char *regex_ascii_class_members(const char *name, size_t name_length) {
+    static const struct { const char *name; const char *members; } classes[] = {
+        {"alpha", "a-zA-Z"}, {"digit", "0-9"}, {"alnum", "a-zA-Z0-9"}, {"upper", "A-Z"},
+        {"lower", "a-z"}, {"space", " \t\n\v\f\r"}, {"blank", " \t"}, {"punct", "!-/:-@[-`{-~"},
+        {"print", " -~"}, {"graph", "!-~"}, {"cntrl", "\x01-\x1f\x7f"}, {"xdigit", "0-9A-Fa-f"},
+    };
+    for (size_t i = 0; i < sizeof(classes) / sizeof(classes[0]); i++) {
+        if (strlen(classes[i].name) == name_length && memcmp(classes[i].name, name, name_length) == 0)
+            return classes[i].members;
+    }
+    return NULL;
+}
+
+static char *regex_ascii_classes(GrayArena *arena, const char *pattern) {
+    if (!strstr(pattern, "[:")) return (char *)pattern;
+    /* The longest expansion is shorter than the "[:xdigit:]" it replaces plus
+     * a few bytes, so 2x is always enough. */
+    char *output = (char *)gray_arena_alloc_uninitialized(arena, strlen(pattern) * 2 + 1);
+    char *write = output;
+    const char *cursor = pattern;
+    while (*cursor) {
+        if (*cursor == '\\' && cursor[1]) { *write++ = *cursor++; *write++ = *cursor++; continue; }
+        if (*cursor != '[') { *write++ = *cursor++; continue; }
+        /* A bracket expression: copy it through, expanding its [:class:] items. */
+        *write++ = *cursor++;
+        if (*cursor == '^') *write++ = *cursor++;
+        if (*cursor == ']') *write++ = *cursor++;
+        while (*cursor && *cursor != ']') {
+            if (cursor[0] == '[' && (cursor[1] == ':' || cursor[1] == '.' || cursor[1] == '=')) {
+                char kind = cursor[1];
+                const char *close = cursor + 2;
+                while (*close && !(close[0] == kind && close[1] == ']')) close++;
+                if (!*close) break;
+                const char *members = kind == ':' ? regex_ascii_class_members(cursor + 2, (size_t)(close - cursor - 2)) : NULL;
+                if (members) {
+                    size_t length = strlen(members);
+                    memcpy(write, members, length);
+                    write += length;
+                } else {
+                    memcpy(write, cursor, (size_t)(close + 2 - cursor));
+                    write += close + 2 - cursor;
+                }
+                cursor = close + 2;
+                continue;
+            }
+            *write++ = *cursor++;
+        }
+        if (*cursor == ']') *write++ = *cursor++;
+    }
+    *write = '\0';
+    return output;
+}
+#endif
+
+/* Helper: compile pattern into a null-terminated C string and a program.
  * Returns 0 on success (with gray_regex_lock held — release it with
  * regex_session_end), non-zero on error (lock not held). */
-static int compile_pattern(GrayString pattern, regex_t *regex, int flags) {
+static int compile_pattern(GrayString pattern, RegexProgram *regex, bool is_without_groups) {
+    (void)is_without_groups;
     char *pattern_buffer = regex_c_string(gray_default_arena, pattern);
     pthread_mutex_lock(&gray_regex_lock);
     if (pattern_has_unsupported_escape(pattern_buffer)) {
         pthread_mutex_unlock(&gray_regex_lock);
-        return REG_BADPAT;
+        return 1;
     }
-    regex_enter_utf8_locale();
-    int result_code = regcomp(regex, pattern_buffer, flags | REG_EXTENDED);
-    if (result_code != 0) {
-        regex_leave_utf8_locale();
-        pthread_mutex_unlock(&gray_regex_lock);
+#if !GRAY_RUNTIME_WINDOWS
+    regex->is_libc = regex_enter_utf8_locale();
+    if (regex->is_libc) {
+        int result_code = regcomp(&regex->libc, regex_ascii_classes(gray_default_arena, pattern_buffer),
+                                  REG_EXTENDED | (is_without_groups ? REG_NOSUB : 0));
+        if (result_code != 0) {
+            regex_leave_utf8_locale();
+            pthread_mutex_unlock(&gray_regex_lock);
+        }
+        return result_code;
     }
+#endif
+    int result_code = gray_regex_engine_compile(&regex->engine, pattern_buffer);
+    if (result_code != 0) pthread_mutex_unlock(&gray_regex_lock);
     return result_code;
 }
 
 /* Pairs with the lock compile_pattern took: free the compiled pattern and
  * release the regex engine for other threads. */
-static void regex_session_end(regex_t *regex) {
-    regfree(regex);
-    regex_leave_utf8_locale();
+static void regex_session_end(RegexProgram *regex) {
+#if !GRAY_RUNTIME_WINDOWS
+    if (regex->is_libc) {
+        regfree(&regex->libc);
+        regex_leave_utf8_locale();
+        pthread_mutex_unlock(&gray_regex_lock);
+        return;
+    }
+#endif
+    gray_regex_engine_release(&regex->engine);
     pthread_mutex_unlock(&gray_regex_lock);
 }
 
+/* Search text for a match, filling spans[0..nmatch). On a search that starts
+ * past the beginning of the text, ^ must not match there. */
+static bool regex_execute(const RegexProgram *regex, const char *text, size_t nmatch, GrayRegexSpan *spans,
+                          bool is_after_start) {
+#if !GRAY_RUNTIME_WINDOWS
+    if (regex->is_libc) return regexec(&regex->libc, text, nmatch, spans, is_after_start ? REG_NOTBOL : 0) == 0;
+#endif
+    return gray_regex_engine_execute(&regex->engine, text, nmatch, spans, is_after_start) == 0;
+}
+
+static size_t regex_group_count(const RegexProgram *regex) {
+#if !GRAY_RUNTIME_WINDOWS
+    if (regex->is_libc) return regex->libc.re_nsub;
+#endif
+    return regex->engine.group_count;
+}
+
 bool gray_regex_is_valid(GrayString pattern) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, REG_EXTENDED | REG_NOSUB) != 0) return false;
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, true) != 0) return false;
     regex_session_end(&regex);
     return true;
 }
 
 bool gray_regex_match(GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, REG_NOSUB) != 0) return false;
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, true) != 0) return false;
 
-    char *text_buffer = regex_c_string(gray_default_arena, text);
+    char *text_buffer = regex_text_buffer(gray_default_arena, text);
 
-    int result = regexec(&regex, text_buffer, 0, NULL, 0);
+    bool result = regex_execute(&regex, text_buffer, 0, NULL, false);
     regex_session_end(&regex);
-    return result == 0;
+    return result;
 }
 
 /* Internal helpers that operate on a pre-compiled regex_t.
  * Caller owns the regex_t lifetime (compile_pattern + regex_session_end). */
 
-static GrayString regex_find_compiled(GrayArena *arena, regex_t *regex, GrayString text) {
-    char *text_buffer = regex_c_string(arena, text);
+static GrayString regex_find_compiled(GrayArena *arena, RegexProgram *regex, GrayString text) {
+    char *text_buffer = regex_text_buffer(arena, text);
 
-    regmatch_t match;
-    if (regexec(regex, text_buffer, 1, &match, 0) != 0)
+    GrayRegexSpan match;
+    if (!regex_execute(regex, text_buffer, 1, &match, false))
         return (GrayString){"", 0};
 
-    return gray_string_new(arena, text_buffer + match.rm_so, (int32_t)(match.rm_eo - match.rm_so));
+    return gray_string_new(arena, text.data + match.rm_so, (int32_t)(match.rm_eo - match.rm_so));
 }
 
-static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *regex, GrayString text) {
+static GrayArray regex_find_all_compiled(GrayArena *arena, RegexProgram *regex, GrayString text) {
     GrayArray array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
 
-    char *text_buffer = regex_c_string(arena, text);
+    char *text_buffer = regex_text_buffer(arena, text);
 
     const char *cursor = text_buffer;
-    regmatch_t match;
+    GrayRegexSpan match;
 
     /* REG_NOTBOL past the first attempt: cursor[0] is no longer the string
      * start, so `^` must not re-anchor there on each advance. */
-    while (regexec(regex, cursor, 1, &match, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
+    while (regex_execute(regex, cursor, 1, &match, cursor != text_buffer)) {
         int32_t match_length = (int32_t)(match.rm_eo - match.rm_so);
-        GrayString subject = gray_string_new(arena, cursor + match.rm_so, match_length);
+        GrayString subject = gray_string_new(arena, text.data + (cursor - text_buffer) + match.rm_so, match_length);
         GRAY_ARRAY_PUSH(arena, &array, &subject);
 
         cursor += match.rm_eo;
@@ -180,8 +307,8 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *regex, GrayS
     return array;
 }
 
-static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayString text, GrayString replacement) {
-    char *text_buffer = regex_c_string(arena, text);
+static GrayString regex_replace_compiled(GrayArena *arena, RegexProgram *regex, GrayString text, GrayString replacement) {
+    char *text_buffer = regex_text_buffer(arena, text);
 
     int replacement_length = (int)replacement.len;
 
@@ -189,9 +316,9 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
     size_t out_size = 0;
     int match_count = 0;
     const char *cursor = text_buffer;
-    regmatch_t match;
+    GrayRegexSpan match;
 
-    while (regexec(regex, cursor, 1, &match, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
+    while (regex_execute(regex, cursor, 1, &match, cursor != text_buffer)) {
         out_size += (size_t)match.rm_so;
         out_size += (size_t)replacement_length;
         cursor += match.rm_eo;
@@ -213,9 +340,9 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
     int position = 0;
     cursor = text_buffer;
 
-    while (regexec(regex, cursor, 1, &match, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
+    while (regex_execute(regex, cursor, 1, &match, cursor != text_buffer)) {
         int prefix_length = (int)match.rm_so;
-        memcpy(result + position, cursor, (size_t)prefix_length);
+        memcpy(result + position, text.data + (cursor - text_buffer), (size_t)prefix_length);
         position += prefix_length;
 
         memcpy(result + position, replacement.data, (size_t)replacement_length);
@@ -225,7 +352,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
         if (match.rm_so == match.rm_eo) {
             if (*cursor) {
                 const char *next_character = regex_next_character(cursor);
-                memcpy(result + position, cursor, (size_t)(next_character - cursor));
+                memcpy(result + position, text.data + (cursor - text_buffer), (size_t)(next_character - cursor));
                 position += (int)(next_character - cursor);
                 cursor = next_character;
             } else break;
@@ -233,23 +360,23 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *regex, GrayS
     }
 
     int remaining = (int)strlen(cursor);
-    memcpy(result + position, cursor, (size_t)remaining);
+    memcpy(result + position, text.data + (cursor - text_buffer), (size_t)remaining);
     position += remaining;
     result[position] = '\0';
 
     return (GrayString){ result, (int32_t)position };
 }
 
-static GrayArray regex_split_compiled(GrayArena *arena, regex_t *regex, GrayString text) {
+static GrayArray regex_split_compiled(GrayArena *arena, RegexProgram *regex, GrayString text) {
     GrayArray array = gray_array_new(arena, sizeof(GrayString), 8, GRAY_ELEM_STRING);
 
-    char *text_buffer = regex_c_string(arena, text);
+    char *text_buffer = regex_text_buffer(arena, text);
 
     const char *piece_start = text_buffer;  /* start of the field being accumulated */
     const char *cursor = text_buffer;       /* scan position for the next separator */
-    regmatch_t match;
+    GrayRegexSpan match;
 
-    while (regexec(regex, cursor, 1, &match, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
+    while (regex_execute(regex, cursor, 1, &match, cursor != text_buffer)) {
         /* A zero-width match is not a separator — you can't split on nothing.
          * Step past one character so the scan makes progress; that character
          * stays part of the current field. */
@@ -261,7 +388,7 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *regex, GrayStri
         }
 
         int32_t piece_length = (int32_t)(cursor + match.rm_so - piece_start);
-        GrayString piece = gray_string_new(arena, piece_start, piece_length);
+        GrayString piece = gray_string_new(arena, text.data + (piece_start - text_buffer), piece_length);
         GRAY_ARRAY_PUSH(arena, &array, &piece);
 
         cursor += match.rm_eo;
@@ -269,7 +396,7 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *regex, GrayStri
     }
 
     int32_t remaining = (int32_t)strlen(piece_start);
-    GrayString last = gray_string_new(arena, piece_start, remaining);
+    GrayString last = gray_string_new(arena, text.data + (piece_start - text_buffer), remaining);
     GRAY_ARRAY_PUSH(arena, &array, &last);
 
     return array;
@@ -277,21 +404,21 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *regex, GrayStri
 
 GrayResult_i64 gray_regex_count_result(GrayArena *arena, GrayString pattern, GrayString text) {
     GrayResult_i64 result;
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0) {
         result.v0 = 0;
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
         return result;
     }
 
-    char *text_buffer = regex_c_string(gray_default_arena, text);
+    char *text_buffer = regex_text_buffer(gray_default_arena, text);
 
     const char *cursor = text_buffer;
-    regmatch_t match;
+    GrayRegexSpan match;
     int64_t count = 0;
 
-    while (regexec(&regex, cursor, 1, &match, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
+    while (regex_execute(&regex, cursor, 1, &match, cursor != text_buffer)) {
         count++;
         cursor += match.rm_eo;
         if (match.rm_so == match.rm_eo) {
@@ -326,7 +453,7 @@ GrayString gray_regex_escape(GrayArena *arena, GrayString string) {
  * becomes an empty string. */
 
 static GrayArray regex_groups_of_match(GrayArena *arena, const char *base,
-                                      const regmatch_t *pmatch, size_t ngroups) {
+                                      const GrayRegexSpan *pmatch, size_t ngroups) {
     GrayArray array = gray_array_new(arena, sizeof(GrayString), (int32_t)ngroups, GRAY_ELEM_STRING);
     for (size_t group_index = 0; group_index < ngroups; group_index++) {
         GrayString text;
@@ -342,40 +469,40 @@ static GrayArray regex_groups_of_match(GrayArena *arena, const char *base,
 }
 
 GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0)
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0)
         return gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
 
-    /* One regmatch_t per group (plus [0] for the whole match), sized to the
+    /* One GrayRegexSpan per group (plus [0] for the whole match), sized to the
      * compiled pattern — a fixed cap silently dropped groups past it. */
-    size_t ngroups = regex.re_nsub + 1;
-    char *text_buffer = regex_c_string(arena, text);
+    size_t ngroups = regex_group_count(&regex) + 1;
+    char *text_buffer = regex_text_buffer(arena, text);
 
-    regmatch_t *pmatch = gray_arena_alloc(arena, ngroups * sizeof(regmatch_t));
+    GrayRegexSpan *pmatch = gray_arena_alloc(arena, ngroups * sizeof(GrayRegexSpan));
     GrayArray array;
-    if (regexec(&regex, text_buffer, ngroups, pmatch, 0) != 0) {
+    if (!regex_execute(&regex, text_buffer, ngroups, pmatch, false)) {
         array = gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
     } else {
-        array = regex_groups_of_match(arena, text_buffer, pmatch, ngroups);
+        array = regex_groups_of_match(arena, text.data, pmatch, ngroups);
     }
     regex_session_end(&regex);
     return array;
 }
 
 GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0)
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0)
         return gray_array_new(arena, sizeof(GrayArray), 0, GRAY_ELEM_ARRAY);
 
-    size_t ngroups = regex.re_nsub + 1;
-    char *text_buffer = regex_c_string(arena, text);
+    size_t ngroups = regex_group_count(&regex) + 1;
+    char *text_buffer = regex_text_buffer(arena, text);
 
     GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 8, GRAY_ELEM_ARRAY);
     const char *cursor = text_buffer;
-    regmatch_t *pmatch = gray_arena_alloc(arena, ngroups * sizeof(regmatch_t));
+    GrayRegexSpan *pmatch = gray_arena_alloc(arena, ngroups * sizeof(GrayRegexSpan));
 
-    while (regexec(&regex, cursor, ngroups, pmatch, cursor == text_buffer ? 0 : REG_NOTBOL) == 0) {
-        GrayArray inner = regex_groups_of_match(arena, cursor, pmatch, ngroups);
+    while (regex_execute(&regex, cursor, ngroups, pmatch, cursor != text_buffer)) {
+        GrayArray inner = regex_groups_of_match(arena, text.data + (cursor - text_buffer), pmatch, ngroups);
         GRAY_ARRAY_PUSH(arena, &outer, &inner);
 
         cursor += (int)pmatch[0].rm_eo;
@@ -392,8 +519,8 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
 
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text) {
     GrayResult_string result;
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0) {
         result.v0 = (GrayString){"", 0};
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
@@ -407,8 +534,8 @@ GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, G
 
 GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern, GrayString text) {
     GrayResult_array result;
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0) {
         result.v0 = gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
@@ -448,8 +575,8 @@ GrayResult_array gray_regex_find_all_groups_result(GrayArena *arena, GrayString 
 
 GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement) {
     GrayResult_string result;
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0) {
         result.v0 = text;
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
@@ -463,8 +590,8 @@ GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern
 
 GrayResult_array gray_regex_split_result(GrayArena *arena, GrayString pattern, GrayString text) {
     GrayResult_array result;
-    regex_t regex;
-    if (compile_pattern(pattern, &regex, 0) != 0) {
+    RegexProgram regex;
+    if (compile_pattern(pattern, &regex, false) != 0) {
         result.v0 = gray_array_new(arena, sizeof(GrayString), 0, GRAY_ELEM_STRING);
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));

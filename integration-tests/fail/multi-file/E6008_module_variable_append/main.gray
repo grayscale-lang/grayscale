@@ -1,0 +1,6 @@
+import "./lib"
+import @arrays
+
+do main() {
+    arrays.append(lib.list, 1)
+}

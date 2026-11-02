@@ -1,0 +1,17 @@
+/*
+ * Error Test: E5025 - assigning to a field, element or entry of a call result
+ * Expected: "cannot assign to this expression" error
+ */
+
+const Holder struct {
+    value i64
+    items [i64]
+}
+
+do make_holder() -> Holder {
+    return Holder{value: 1, items: {1, 2}}
+}
+
+do main() {
+    make_holder().value = 5
+}

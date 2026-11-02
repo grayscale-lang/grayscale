@@ -11,6 +11,7 @@
 #include "strings.h"
 #include "builtins.h" /* gray_builtin_char_to_utf8 */
 #include "ascii.h"    /* branchless ASCII case + classification */
+#include "utf8.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,7 +150,7 @@ GrayString gray_strings_truncate(GrayArena *arena, GrayString string, int64_t ma
             (long long)maximum, (int)ellipsis.len);
     }
     if (string.len <= maximum) return string;
-    int32_t head = (int32_t)(maximum - ellipsis.len);
+    int32_t head = gray_utf8_char_start((const uint8_t *)string.data, string.len, (int32_t)(maximum - ellipsis.len));
     int32_t new_length = head + ellipsis.len;
     char *buffer = gray_arena_alloc_uninitialized(arena, (size_t)new_length + 1);
     memcpy(buffer, string.data, (size_t)head);
@@ -319,9 +320,15 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString string, int64_t start
 }
 
 bool gray_strings_contains_any(GrayString string, GrayString chars) {
-    for (int32_t i = 0; i < string.len; i++) {
-        for (int32_t j = 0; j < chars.len; j++) {
-            if (string.data[i] == chars.data[j]) return true;
+    const uint8_t *string_end = (const uint8_t *)string.data + string.len;
+    const uint8_t *chars_end = (const uint8_t *)chars.data + chars.len;
+    for (const uint8_t *cursor = (const uint8_t *)string.data; cursor < string_end; ) {
+        int32_t codepoint;
+        cursor += gray_builtin_utf8_next(cursor, string_end, &codepoint);
+        for (const uint8_t *chars_cursor = (const uint8_t *)chars.data; chars_cursor < chars_end; ) {
+            int32_t candidate;
+            chars_cursor += gray_builtin_utf8_next(chars_cursor, chars_end, &candidate);
+            if (candidate == codepoint) return true;
         }
     }
     return false;
@@ -453,16 +460,23 @@ GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
     return gray_string_new(arena, buffer, position);
 }
 
-char gray_strings_char_at(GrayString string, int64_t index) {
+int32_t gray_strings_char_at(GrayString string, int64_t index) {
     if (index < 0 || index >= string.len) {
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
                       (long long)index, (int)string.len);
     }
-    return string.data[index];
+    return (unsigned char)string.data[index];
+}
+
+/* The byte length of the character that starts at `position` (1 for an invalid byte). */
+static int32_t strings_char_length(GrayString string, int32_t position) {
+    int32_t codepoint;
+    return (int32_t)gray_builtin_utf8_next((const uint8_t *)string.data + position,
+                                           (const uint8_t *)string.data + string.len, &codepoint);
 }
 
 /* Build a new string: bytes [0,cut) of str, then ins, then bytes [cut+drop,str.len) of str.
-   `drop` is 0 for insertions and 1 for a replacement. */
+   `drop` is 0 for insertions and the removed character's byte length for a replacement. */
 static GrayString strings_splice(GrayArena *arena, GrayString string, int32_t cut_position,
                                  int32_t drop, GrayString insertion) {
     int32_t tail = string.len - cut_position - drop;
@@ -488,7 +502,8 @@ GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString string, int6
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
                       (long long)index, (int)string.len);
     }
-    return strings_splice(arena, string, (int32_t)index, 0, gray_builtin_char_to_utf8(arena, codepoint));
+    int32_t cut_position = gray_utf8_char_start((const uint8_t *)string.data, string.len, (int32_t)index);
+    return strings_splice(arena, string, cut_position, 0, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
 GrayString gray_strings_remove_at(GrayArena *arena, GrayString string, int64_t index) {
@@ -496,7 +511,8 @@ GrayString gray_strings_remove_at(GrayArena *arena, GrayString string, int64_t i
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
                       (long long)index, (int)string.len);
     }
-    return strings_splice(arena, string, (int32_t)index, 1, gray_string_lit(""));
+    int32_t cut_position = gray_utf8_char_start((const uint8_t *)string.data, string.len, (int32_t)index);
+    return strings_splice(arena, string, cut_position, strings_char_length(string, cut_position), gray_string_lit(""));
 }
 
 GrayString gray_strings_set_char_at(GrayArena *arena, GrayString string, int64_t index, int32_t codepoint) {
@@ -504,7 +520,9 @@ GrayString gray_strings_set_char_at(GrayArena *arena, GrayString string, int64_t
         gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
                       (long long)index, (int)string.len);
     }
-    return strings_splice(arena, string, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, codepoint));
+    int32_t cut_position = gray_utf8_char_start((const uint8_t *)string.data, string.len, (int32_t)index);
+    return strings_splice(arena, string, cut_position, strings_char_length(string, cut_position),
+                          gray_builtin_char_to_utf8(arena, codepoint));
 }
 
 /* --- Builder --- */
