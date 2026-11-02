@@ -15,7 +15,7 @@ unsafe do main() {
         println("  [FAIL] addr(fixed[i]): ${p^}")
     }
 
-    mut r = ref(fixed[2])
+    const r = ref(fixed[2])
     if r == 30 {
         println("  [PASS] ref(fixed[i])")
     } else {

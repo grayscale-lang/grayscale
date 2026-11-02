@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3005 - assignment through a const ref
+ */
+const Box struct {
+    n i64
+}
+
+do main() {
+    mut box Box = Box{n: 1}
+    const r = ref(box)
+    r.n = 5
+}

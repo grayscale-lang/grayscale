@@ -4334,6 +4334,17 @@ static bool report_write_to_module_variable(TypeChecker *checker, AstNode *repor
     return true;
 }
 
+/* A write through this symbol changes a constant. A const pointer is not
+ * itself written through (its pointee is), but a const `ref()` binding is the
+ * referent itself, so a write through it changes the source; only a referent
+ * that is itself a pointer keeps the pointer exemption. */
+static bool symbol_is_const_write_target(const Symbol *symbol) {
+    if (symbol->is_mutable) return false;
+    if (!symbol->type || symbol->type->kind != TYPE_KIND_POINTER) return true;
+    if (!symbol->is_reference) return false;
+    return !(symbol->type->element_type && symbol->type->element_type[0] == '^');
+}
+
 /* E5007: a mutating array or map function whose container is reached through
  * an immutable binding: a constant, a by-value parameter, or a qualified
  * module constant, directly (`arrays.append(xs, v)`) or through a field or
@@ -13163,7 +13174,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
                     Symbol *symbol = target_root_module_reference(checker, node->data.postfix.left)
                         ? target_root_symbol(checker, node->data.postfix.left)
                         : scope_lookup(checker->current_scope, root);
-                    if (symbol && !symbol->is_mutable && !(symbol->type && symbol->type->kind == TYPE_KIND_POINTER))
+                    if (symbol && symbol_is_const_write_target(symbol))
                         NODE_ERROR_FORMATTED(checker, node, "E3005", root);
                 }
                 report_write_to_module_variable(checker, node, node->data.postfix.left);
@@ -15450,6 +15461,20 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                             NODE_ERROR_FORMATTED(checker, node, "E3079",
                                 source_argument->data.label.value, node->data.variable_declaration.name);
                         }
+                    } else if (source_argument->kind == NODE_MEMBER_EXPRESSION ||
+                               source_argument->kind == NODE_INDEX_EXPRESSION) {
+                        /* A field or element of a const value is as immutable
+                         * as the value; one reached through a pointer is the
+                         * pointee's, which only a pointer to a const variable
+                         * makes immutable. */
+                        if (!report_write_through_const_pointer(checker, node, source_argument)) {
+                            Symbol *root_symbol = target_root_symbol(checker, source_argument);
+                            if (root_symbol && !root_symbol->is_mutable &&
+                                !(root_symbol->type && root_symbol->type->kind == TYPE_KIND_POINTER)) {
+                                NODE_ERROR_FORMATTED(checker, node, "E3079",
+                                    target_root_display(checker, source_argument), node->data.variable_declaration.name);
+                            }
+                        }
                     }
                 }
             }
@@ -16014,7 +16039,7 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             Symbol *symbol = target_root_symbol(checker, target);
             /* p.field on a pointer parameter auto-derefs to p^.field — the
              * pointer itself is not being modified, so don't flag it. */
-            if (symbol && !symbol->is_mutable && !(symbol->type && symbol->type->kind == TYPE_KIND_POINTER))
+            if (symbol && symbol_is_const_write_target(symbol))
                 const_name = root;
         }
     }
