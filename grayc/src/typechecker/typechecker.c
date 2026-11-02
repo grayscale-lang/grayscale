@@ -5338,11 +5338,46 @@ static bool reject_private_qualified_type(TypeChecker *checker, AstNode *report_
  * container element type maps to it, so [Error] / map[string:Error] leak
  * a C type error from the constructor. `in_container` tracks whether the
  * recursion has passed through an array or map spelling. */
+static bool error_type_in_container(const char *written, bool in_container);
+
+/* The same check over each parameter and return type of a written
+ * `func(...) -> ...` type; a bare Error there is fine, a container of it is not. */
+static bool error_type_in_func_signature(const char *written) {
+    const char *cursor = written + 5;
+    const char *piece_start = cursor;
+    int depth = 1;
+    for (; *cursor && depth > 0; cursor++) {
+        if (*cursor == '(' || *cursor == '[') depth++;
+        else if (*cursor == ')' || *cursor == ']') depth--;
+        bool at_separator = (*cursor == ',' && depth == 1) || (*cursor == ')' && depth == 0);
+        if (!at_separator) continue;
+        char piece[MESSAGE_BUFFER_SIZE];
+        size_t length = (size_t)(cursor - piece_start);
+        if (length >= sizeof(piece)) length = sizeof(piece) - 1;
+        memcpy(piece, piece_start, length);
+        piece[length] = '\0';
+        char *trimmed = piece;
+        while (*trimmed == ' ') trimmed++;
+        if (error_type_in_container(trimmed, false)) return true;
+        piece_start = cursor + 1;
+    }
+    const char *arrow = strstr(cursor, "->");
+    if (!arrow) return false;
+    arrow += 2;
+    while (*arrow == ' ') arrow++;
+    if (*arrow != '(') return error_type_in_container(arrow, false);
+    /* A multi-value return: check each value as a signature piece. */
+    char returns[MESSAGE_BUFFER_SIZE];
+    snprintf(returns, sizeof(returns), "func%s", arrow);
+    return error_type_in_func_signature(returns);
+}
+
 static bool error_type_in_container(const char *written, bool in_container) {
     if (!written || !*written) return false;
     if (in_container &&
         (strcmp(written, "Error") == 0 || strcmp(written, "error") == 0))
         return true;
+    if (strncmp(written, "func(", 5) == 0) return error_type_in_func_signature(written);
     bool is_array_or_map = written[0] == '[' || strncmp(written, "map[", 4) == 0;
     char parts[2][MESSAGE_BUFFER_SIZE];
     int part_count = 0;
@@ -9569,6 +9604,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
              * sizes whatever it is bound to in each instantiation. */
             if (generic_bindings_find(&checker->generics, written) < 0) {
                 reject_private_type(checker, argument, written);
+                reject_error_in_container(checker, argument, written);
                 /* A container spelling types as TYPE_KIND_ARRAY or TYPE_KIND_MAP whatever
                  * its parts name, so the check has to look at every leaf. */
                 char leaf[MESSAGE_BUFFER_SIZE];
@@ -13508,6 +13544,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             break;
         }
         reject_private_type(checker, node, new_type);
+        reject_error_in_container(checker, node, new_type);
         /* Resolve the name as written, then aliases — the same order a type
          * annotation goes through, so `new(mod.T)` and `^mod.T` agree. */
         new_type = checker_resolve_type_name(checker, new_type);
@@ -18887,6 +18924,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
                 char leaf[MESSAGE_BUFFER_SIZE];
                 const char *undefined = undefined_type_leaf(checker, variant->payload_types[payload_index], leaf, sizeof(leaf));
                 if (undefined) typechecker_error_undefined_type(checker, node, unqualified_display_name(undefined));
+                reject_error_in_container(checker, node, variant->payload_types[payload_index]);
             }
         }
         break;
@@ -18898,6 +18936,7 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         }
         warn_if_type_name_deprecated(checker, node,
             checker_resolve_type_name(checker, node->data.alias_declaration.target_type), NULL);
+        reject_error_in_container(checker, node, node->data.alias_declaration.target_type);
         break;
 
     case NODE_WHEN_STATEMENT:

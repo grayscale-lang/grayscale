@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3153 - Error container in an alias target
+ */
+alias Errs = [Error]
+
+do main() { }

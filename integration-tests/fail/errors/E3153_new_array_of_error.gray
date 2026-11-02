@@ -1,0 +1,6 @@
+/*
+ * Error Test: E3153 - Error as the element type in new()
+ */
+do main() {
+    mut p = new([Error])
+}
