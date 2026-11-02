@@ -1,0 +1,14 @@
+const Mode enum { FAST; SLOW }
+const Inner struct { a i64; s string }
+const FStruct struct { inner Inner; n i64 }
+const FEnum struct { mode Mode; n i64 }
+const FArray struct { list [Inner]; n i64 }
+const FMap struct { mp map[string:Inner]; n i64 }
+const FNest struct { f FStruct; n i64 }
+
+do structs() -> [FStruct] { return {FStruct{inner: Inner{a: 1, s: "x"}, n: 2}} }
+do enums() -> [FEnum] { return {FEnum{mode: Mode.SLOW, n: 2}} }
+do array_fields() -> [FArray] { return {FArray{list: {Inner{a: 3, s: "y"}}, n: 2}} }
+do map_fields() -> [FMap] { return {FMap{mp: {"k": Inner{a: 5, s: "m"}}, n: 1}} }
+do nests() -> [FNest] { return {FNest{f: FStruct{inner: Inner{a: 1, s: "x"}, n: 2}, n: 3}} }
+do inners() -> [Inner] { return {Inner{a: 1, s: "x"}} }

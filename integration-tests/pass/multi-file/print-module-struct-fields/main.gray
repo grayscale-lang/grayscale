@@ -1,0 +1,34 @@
+import "./lib"
+
+const Mine struct { inner lib.Inner; k i64 }
+
+do check(label string, actual string, expected string, passed ^i64, failed ^i64) {
+    if actual == expected {
+        println("  [PASS] ${label}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${label}: ${actual}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    check("struct field", "${lib.structs()}", "{FStruct{inner: Inner{a: 1, s: \"x\"}, n: 2}}", addr(passed), addr(failed))
+    check("enum field", "${lib.enums()}", "{FEnum{mode: 1, n: 2}}", addr(passed), addr(failed))
+    check("array field", "${lib.array_fields()}", "{FArray{list: {Inner{a: 3, s: \"y\"}}, n: 2}}", addr(passed), addr(failed))
+    check("map field", "${lib.map_fields()}", "{FMap{mp: {\"k\": Inner{a: 5, s: \"m\"}}, n: 1}}", addr(passed), addr(failed))
+    check("nested module struct", "${lib.nests()}", "{FNest{f: FStruct{inner: Inner{a: 1, s: \"x\"}, n: 2}, n: 3}}", addr(passed), addr(failed))
+    check("type name", "${lib.inners()}", "{Inner{a: 1, s: \"x\"}}", addr(passed), addr(failed))
+    mut mine [Mine] = {Mine{inner: lib.Inner{a: 1, s: "x"}, k: 3}}
+    check("local struct holding a module struct", "${mine}", "{Mine{inner: Inner{a: 1, s: \"x\"}, k: 3}}", addr(passed), addr(failed))
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

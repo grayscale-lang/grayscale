@@ -6166,6 +6166,9 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
                 display_name = codegen->enum_declarations[enum_index]->data.enum_declaration.original_name;
             }
         }
+        /* A module declaration is keyed by its mangled name; print the name it was declared with. */
+        char display_buffer[TYPE_NAME_MAX];
+        display_name = codegen_written_type_name(codegen, display_name, display_buffer, sizeof(display_buffer));
 
         /* Cycle detection: if already printing this struct type, emit a
          * placeholder to avoid infinite recursion on circular references. */
@@ -6201,7 +6204,13 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
 
                 char field_expression[MESSAGE_BUFFER_SIZE];
                 snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, sanitize_name(field->name));
-                GrayType *field_graytype = type_from_name(field->type_name);
+                /* The field's type is written in the declaring module's spelling. */
+                const char *saved_file = codegen->current_file;
+                const char *saved_module = codegen->current_module;
+                codegen_enter_node(codegen, struct_declaration);
+                GrayType *field_graytype = type_from_name(codegen_resolve_type(codegen, field->type_name));
+                codegen->current_file = saved_file;
+                codegen->current_module = saved_module;
                 emit_value_print(codegen, field_expression, field_graytype, stream, true);
             }
         } else if (struct_name && strcmp(struct_name, "SourceLocation") == 0) {
