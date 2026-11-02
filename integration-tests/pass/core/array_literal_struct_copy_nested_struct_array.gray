@@ -1,0 +1,28 @@
+const Inner struct { name string }
+const Outer struct { id i64; list [Inner] }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut o = Outer{id: 7, list: {Inner{name: "a"}, Inner{name: "b"}}}
+    mut p = Outer{id: 8, list: {Inner{name: "c"}}}
+
+    mut one [Outer] = {o}
+    if len(one[0].list) == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut two [Outer] = {o, p}
+    if two[0].id == 7 && two[1].id == 8 && len(two[1].list) == 1 && two[1].list[0].name == "c" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

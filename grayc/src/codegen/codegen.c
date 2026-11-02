@@ -2869,6 +2869,11 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    /* c_type can point into a shared buffer that emitting an element's deep
+     * copy overwrites; keep the element type stable for the trailing sizeof. */
+    char element_c_type_copy[MESSAGE_BUFFER_SIZE];
+    snprintf(element_c_type_copy, sizeof(element_c_type_copy), "%s", c_type);
+    c_type = element_c_type_copy;
     emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){", c_type, count);
     for (int i = 0; i < count; i++) {
         if (i > 0) emit(codegen, ", ");
