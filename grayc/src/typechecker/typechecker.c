@@ -3138,6 +3138,8 @@ typedef enum {
      * an argument is checked as that type. EXPECTED_ARGUMENT_NUMBER takes any number. */
     EXPECTED_ARGUMENT_STRING, EXPECTED_ARGUMENT_I64, EXPECTED_ARGUMENT_U64, EXPECTED_ARGUMENT_F64, EXPECTED_ARGUMENT_BOOL, EXPECTED_ARGUMENT_ARRAY, EXPECTED_ARGUMENT_MAP, EXPECTED_ARGUMENT_ANY, EXPECTED_ARGUMENT_NUMBER, EXPECTED_ARGUMENT_CHAR, EXPECTED_ARGUMENT_CHANNEL,
     EXPECTED_ARGUMENT_BUILDER, EXPECTED_ARGUMENT_UUID, EXPECTED_ARGUMENT_U8_ARRAY, EXPECTED_ARGUMENT_I64_POINTER,
+    /* An array whose element type is fixed: [string], [char], [[string]], [map[string:string]]. */
+    EXPECTED_ARGUMENT_STRING_ARRAY, EXPECTED_ARGUMENT_CHAR_ARRAY, EXPECTED_ARGUMENT_STRING_GRID, EXPECTED_ARGUMENT_STRING_MAP_ARRAY,
     /* A number the function reads as an f64: any number is accepted and is
      * converted to f64. */
     EXPECTED_ARGUMENT_F64_NUMBER,
@@ -3162,6 +3164,17 @@ typedef enum {
      * it out of value resolution — see argument_is_type_position(). */
     EXPECTED_ARGUMENT_TYPE
 } ExpectedArgumentKind;
+
+/* The element type of an array parameter whose element type is fixed. */
+static const char *fixed_array_element_spelling(ExpectedArgumentKind expected) {
+    switch (expected) {
+    case EXPECTED_ARGUMENT_STRING_ARRAY: return "string";
+    case EXPECTED_ARGUMENT_CHAR_ARRAY: return "char";
+    case EXPECTED_ARGUMENT_STRING_GRID: return "[string]";
+    case EXPECTED_ARGUMENT_STRING_MAP_ARRAY: return "map[string:string]";
+    default: return NULL;
+    }
+}
 
 static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actual) {
     if (!actual || actual->kind == TYPE_KIND_UNKNOWN) return true; /* can't validate */
@@ -3199,6 +3212,12 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_DATABASE:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Database") == 0;
     case EXPECTED_ARGUMENT_ROUTER:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Router") == 0;
     case EXPECTED_ARGUMENT_POINTER:  return actual->kind == TYPE_KIND_POINTER;
+    case EXPECTED_ARGUMENT_STRING_ARRAY:
+    case EXPECTED_ARGUMENT_CHAR_ARRAY:
+    case EXPECTED_ARGUMENT_STRING_GRID:
+    case EXPECTED_ARGUMENT_STRING_MAP_ARRAY:
+        return actual->kind == TYPE_KIND_ARRAY && actual->element_type &&
+               strcmp(actual->element_type, fixed_array_element_spelling(expected)) == 0;
     case EXPECTED_ARGUMENT_U8_ARRAY: return actual->kind == TYPE_KIND_ARRAY && actual->element_type &&
                              strcmp(actual->element_type, "u8") == 0;
     /* The atomic operations read and write exactly 8 bytes as an int64. */
@@ -3236,6 +3255,10 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_BUILDER: return "Builder";
     case EXPECTED_ARGUMENT_UUID:    return "UUID";
     case EXPECTED_ARGUMENT_U8_ARRAY: return "[u8]";
+    case EXPECTED_ARGUMENT_STRING_ARRAY: return "[string]";
+    case EXPECTED_ARGUMENT_CHAR_ARRAY: return "[char]";
+    case EXPECTED_ARGUMENT_STRING_GRID: return "[[string]]";
+    case EXPECTED_ARGUMENT_STRING_MAP_ARRAY: return "[map[string:string]]";
     case EXPECTED_ARGUMENT_MUTEX:    return "Mutex";
     case EXPECTED_ARGUMENT_THREAD:   return "Thread";
     case EXPECTED_ARGUMENT_SPINLOCK: return "SpinLock";
@@ -3420,7 +3443,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"path", "absolute_path", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"path", "file_extension", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"path", "is_absolute", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"path", "join_parts", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
+    {"path", "join_parts", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING_ARRAY}}, "string"},
     {"path", "normalize_path", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"path", "relative_path", 2, 2, true,  FALLIBLE_TYPE_STRING, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"path", "split_dir_file", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
@@ -3459,17 +3482,17 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"crypto", "sha512",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"crypto", "totp",       3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_I64}}, "string"},
     /* csv */
-    {"csv", "column",     2, 2, false, FALLIBLE_TYPE_NONE,                2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_STRING}}, "[string]"},
+    {"csv", "column",     2, 2, false, FALLIBLE_TYPE_NONE,                2, {{0, EXPECTED_ARGUMENT_STRING_GRID}, {1, EXPECTED_ARGUMENT_STRING}}, "[string]"},
     {"csv", "detect_delimiter", 1, 1, false, FALLIBLE_TYPE_NONE,          1, {{0, EXPECTED_ARGUMENT_STRING}}, "char"},
     {"csv", "encode",     1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
-    {"csv", "filter_rows", 2, 2, false, FALLIBLE_TYPE_NONE,               1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "[[string]]"},
-    {"csv", "from_maps",  1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "[[string]]"},
-    {"csv", "headers",    1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "[string]"},
+    {"csv", "filter_rows", 2, 2, false, FALLIBLE_TYPE_NONE,               1, {{0, EXPECTED_ARGUMENT_STRING_GRID}}, "[[string]]"},
+    {"csv", "from_maps",  1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_STRING_MAP_ARRAY}}, "[[string]]"},
+    {"csv", "headers",    1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_STRING_GRID}}, "[string]"},
     {"csv", "parse",      1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_STRING}}, "[[string]]"},
     {"csv", "parse_delimited", 2, 2, false, FALLIBLE_TYPE_NONE,           2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_CHAR}}, "[[string]]"},
-    {"csv", "select",     2, 2, false, FALLIBLE_TYPE_NONE,                2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_ARRAY}}, "[[string]]"},
-    {"csv", "sort_by_column", 2, 2, false, FALLIBLE_TYPE_NONE,            2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_STRING}}, "[[string]]"},
-    {"csv", "to_maps",    1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
+    {"csv", "select",     2, 2, false, FALLIBLE_TYPE_NONE,                2, {{0, EXPECTED_ARGUMENT_STRING_GRID}, {1, EXPECTED_ARGUMENT_STRING_ARRAY}}, "[[string]]"},
+    {"csv", "sort_by_column", 2, 2, false, FALLIBLE_TYPE_NONE,            2, {{0, EXPECTED_ARGUMENT_STRING_GRID}, {1, EXPECTED_ARGUMENT_STRING}}, "[[string]]"},
+    {"csv", "to_maps",    1, 1, false, FALLIBLE_TYPE_NONE,                1, {{0, EXPECTED_ARGUMENT_STRING_GRID}}, "[map[string:string]]"},
     /* encoding */
     {"encoding", "base64_decode", 1, 1, true,  FALLIBLE_TYPE_STRING, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"encoding", "base64_encode", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
@@ -3635,7 +3658,7 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"os", "current_dir", 0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"string"},
     {"os", "current_os",  0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"Platform"},
     {"os", "environ",     0, 0, false, FALLIBLE_TYPE_NONE, 0, {{0}},"[string]"},
-    {"os", "exec",        2, 2, true,  FALLIBLE_TYPE_STRUCT_EXEC_RESULT, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_ARRAY}}, "ExecResult"},
+    {"os", "exec",        2, 2, true,  FALLIBLE_TYPE_STRUCT_EXEC_RESULT, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING_ARRAY}}, "ExecResult"},
     {"os", "executable_path", 0, 0, true, FALLIBLE_TYPE_STRING, 0, {{0}}, "string"},
     {"os", "find_executable", 1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"os", "get_env",     1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
@@ -3698,10 +3721,10 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     /* sqlite */
     {"sqlite", "close",        1, 1,  false, FALLIBLE_TYPE_NONE,            1, {{0, EXPECTED_ARGUMENT_DATABASE}}, "void"},
     {"sqlite", "exec",         2, 2,  true,  FALLIBLE_TYPE_BOOL,            2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "bool"},
+    {"sqlite", "exec_params",  3, 3,  true,  FALLIBLE_TYPE_BOOL,            3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FALLIBLE_TYPE_STRUCT_DATABASE,  1, {{0, EXPECTED_ARGUMENT_STRING}}, "Database"},
     {"sqlite", "query",        2, 2,  true,  FALLIBLE_TYPE_ARRAY_MAP,       2, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}}, "[map[string:string]]"},
-    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_ARRAY}}, "[map[string:string]]"},
+    {"sqlite", "query_params", 3, 3,  true,  FALLIBLE_TYPE_ARRAY_MAP,       3, {{0, EXPECTED_ARGUMENT_DATABASE}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_i64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_I64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
     {"strconv", "format_u64", 2, 2, false, FALLIBLE_TYPE_NONE,  2, {{0, EXPECTED_ARGUMENT_U64}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
@@ -3736,11 +3759,11 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"strings", "count",         2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"strings", "ends_with",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
     {"strings", "equal_fold",    2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"strings", "from_chars",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_ARRAY}}, "string"},
+    {"strings", "from_chars",    1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_CHAR_ARRAY}}, "string"},
     {"strings", "index_of",      2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"strings", "insert_char_at", 3, 3, false, FALLIBLE_TYPE_NONE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}, {2, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"strings", "is_empty",      1, 1, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "bool"},
-    {"strings", "join",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_ARRAY}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
+    {"strings", "join",          2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING_ARRAY}, {1, EXPECTED_ARGUMENT_STRING}}, "string"},
     {"strings", "last_index_of", 2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "i64"},
     {"strings", "prepend_char",  2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_CHAR}}, "string"},
     {"strings", "remove_at",     2, 2, false, FALLIBLE_TYPE_NONE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_I64}}, "string"},
@@ -4127,6 +4150,7 @@ static void typechecker_check_stdlib_argument_types(TypeChecker *checker, const 
                 else if (kind == EXPECTED_ARGUMENT_U64) slot = &TYPE_U64;
                 else if (kind == EXPECTED_ARGUMENT_F64 || kind == EXPECTED_ARGUMENT_F64_NUMBER) slot = &TYPE_F64;
                 else if (kind == EXPECTED_ARGUMENT_U8_ARRAY) slot = type_array("u8");
+                else if (fixed_array_element_spelling(kind)) slot = type_array(fixed_array_element_spelling(kind));
                 else if (kind == EXPECTED_ARGUMENT_ELEMENT_OF_FIRST) slot = array_element_type(checker, stdlib_first_argument_type(checker, node));
                 else if (kind == EXPECTED_ARGUMENT_SAME_AS_FIRST) slot = stdlib_first_argument_type(checker, node);
                 else if (kind == EXPECTED_ARGUMENT_KEY_OF_FIRST) slot = map_key_type(checker, stdlib_first_argument_type(checker, node));
