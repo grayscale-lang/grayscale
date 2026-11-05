@@ -18,10 +18,16 @@
 #include <time.h>
 #include <string.h>
 #include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <ctype.h>
 
 #define SECONDS_PER_DAY 86400
 #define SECONDS_PER_HOUR 3600
 #define SECONDS_PER_MINUTE 60
+/* Longest text a single format directive expands to: "%s" becomes up to 20 characters. */
+#define MAX_EXPANSION_PER_DIRECTIVE 20
 
 #if defined(_WIN32)
 /* mingw-w64 implements strptime in libmingwex (linked by default) but never
@@ -97,7 +103,34 @@ GrayString gray_time_format(GrayArena *arena, GrayString format, int64_t timesta
     time_validate_text(format);
     char buffer[MESSAGE_BUFFER_SIZE];
     struct tm *time_parts = get_time_parts(timestamp);
-    int length = (int)strftime(buffer, sizeof(buffer), format.data, time_parts);
+    /* strftime computes %s with mktime and %z from the host timezone; this
+     * module is UTC, so both are substituted here. */
+    char *expanded = malloc((size_t)format.len * MAX_EXPANSION_PER_DIRECTIVE + 1);
+    if (!expanded) gray_panic_code("P0140", "time: out of memory formatting a timestamp");
+    size_t used = 0;
+    for (int64_t index = 0; index < format.len; index++) {
+        char current = format.data[index];
+        if (current != '%' || index + 1 >= format.len) {
+            expanded[used++] = current;
+            continue;
+        }
+        char directive = format.data[index + 1];
+        if (directive == 's') {
+            used += (size_t)snprintf(expanded + used, MAX_EXPANSION_PER_DIRECTIVE + 1, "%lld", (long long)timestamp);
+            index++;
+        } else if (directive == 'z') {
+            memcpy(expanded + used, "+0000", 5);
+            used += 5;
+            index++;
+        } else {
+            expanded[used++] = current;
+            expanded[used++] = directive;
+            index++;
+        }
+    }
+    expanded[used] = '\0';
+    int length = (int)strftime(buffer, sizeof(buffer), expanded, time_parts);
+    free(expanded);
     return gray_string_new(arena, buffer, length);
 }
 
@@ -126,15 +159,95 @@ static bool time_parse_to_timestamp(GrayString text, GrayString layout, int64_t 
     time_validate_text(layout);
     struct tm time_parts;
     memset(&time_parts, 0, sizeof(time_parts));
-    char *end_cursor = strptime(text.data, layout.data, &time_parts);
-    if (end_cursor == NULL || *end_cursor != '\0') return false;
+    /* strptime applies the host timezone to %s and %z (and differs between
+     * libcs), so those two directives are parsed here and every other
+     * stretch of the layout is handed to strptime. */
+    char *text_copy = malloc((size_t)text.len + 1);
+    char *layout_copy = malloc((size_t)layout.len + 1);
+    if (!text_copy || !layout_copy) {
+        free(text_copy);
+        free(layout_copy);
+        gray_panic_code("P0140", "time: out of memory parsing a timestamp");
+    }
+    memcpy(text_copy, text.data, (size_t)text.len);
+    text_copy[text.len] = '\0';
+    memcpy(layout_copy, layout.data, (size_t)layout.len);
+    layout_copy[layout.len] = '\0';
+
+    bool matched = true;
+    bool has_epoch = false;
+    int64_t epoch = 0;
+    int64_t offset_seconds = 0;
+    char *text_cursor = text_copy;
+    char *chunk_start = layout_copy;
+    char *layout_cursor = layout_copy;
+    while (matched) {
+        bool at_end = *layout_cursor == '\0';
+        char directive = 0;
+        if (!at_end && *layout_cursor == '%' && layout_cursor[1] != '\0') {
+            directive = layout_cursor[1];
+            if ((directive == 'E' || directive == 'O') && layout_cursor[2] != '\0') {
+                layout_cursor += 3;
+                continue;
+            }
+        }
+        if (!at_end && directive != 's' && directive != 'z') {
+            layout_cursor += directive ? 2 : 1;
+            continue;
+        }
+        char saved = *layout_cursor;
+        *layout_cursor = '\0';
+        text_cursor = strptime(text_cursor, chunk_start, &time_parts);
+        *layout_cursor = saved;
+        if (text_cursor == NULL) { matched = false; break; }
+        if (at_end) break;
+        if (directive == 's') {
+            char *digits_end;
+            errno = 0;
+            long long value = strtoll(text_cursor, &digits_end, 10);
+            if (digits_end == text_cursor || errno == ERANGE || isspace((unsigned char)*text_cursor)) { matched = false; break; }
+            epoch = (int64_t)value;
+            has_epoch = true;
+            text_cursor = digits_end;
+        } else {
+            if (*text_cursor == 'Z') {
+                text_cursor++;
+            } else {
+                int sign = *text_cursor == '-' ? -1 : 1;
+                if (*text_cursor != '+' && *text_cursor != '-') { matched = false; break; }
+                text_cursor++;
+                if (!isdigit((unsigned char)text_cursor[0]) || !isdigit((unsigned char)text_cursor[1])) { matched = false; break; }
+                int hours = (text_cursor[0] - '0') * 10 + (text_cursor[1] - '0');
+                int minutes = 0;
+                text_cursor += 2;
+                if (*text_cursor == ':') text_cursor++;
+                if (isdigit((unsigned char)text_cursor[0]) && isdigit((unsigned char)text_cursor[1])) {
+                    minutes = (text_cursor[0] - '0') * 10 + (text_cursor[1] - '0');
+                    text_cursor += 2;
+                }
+                if (hours > 23 || minutes > 59) { matched = false; break; }
+                offset_seconds = sign * (hours * SECONDS_PER_HOUR + minutes * SECONDS_PER_MINUTE);
+            }
+        }
+        layout_cursor += 2;
+        chunk_start = layout_cursor;
+    }
+    bool full_match = matched && text_cursor != NULL && *text_cursor == '\0';
+    free(text_copy);
+    free(layout_copy);
+    if (!full_match) return false;
+
+    if (has_epoch) {
+        *output = epoch;
+        return true;
+    }
 
     int64_t year = time_parts.tm_year + 1900;
     int month = time_parts.tm_mon + 1;
     if (month < 1 || month > 12) return false;
     if (time_parts.tm_mday < 1 || time_parts.tm_mday > gray_time_days_in_month(year, month)) return false;
 
-    *output = (int64_t)gray_timegm(&time_parts);
+    *output = (int64_t)gray_timegm(&time_parts) - offset_seconds;
     return true;
 }
 

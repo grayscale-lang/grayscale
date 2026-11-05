@@ -1,0 +1,47 @@
+/*
+ * time_format_parse_utc_directives.gray
+ * time.format and time.parse with %s and %z are UTC, independent of the host
+ * timezone.
+ */
+
+import @time
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    ts = 1709190123
+    formatted = time.format("%s %z", ts)
+    if formatted == "1709190123 +0000" {
+        println("  [PASS] format %s %z")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format %s %z: ${formatted}")
+        failed += 1
+    }
+
+    epoch, epoch_err = time.parse("1709190123", "%s")
+    if epoch_err == nil && epoch == 1709190123 {
+        println("  [PASS] parse %s")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse %s: ${epoch}")
+        failed += 1
+    }
+
+    offset, offset_err = time.parse("2024-02-29 01:02:03 +0900", "%Y-%m-%d %H:%M:%S %z")
+    if offset_err == nil && offset == 1709136123 {
+        println("  [PASS] parse %z")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse %z: ${offset}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
