@@ -25,9 +25,9 @@ do after(line string, tag string) -> string {
     return strings.trim(strings.slice(line, start, len(line)))
 }
 
-// escape_quotes escapes the double quotes in s for a double-quoted string literal.
+// escape_quotes escapes the backslashes and double quotes in s for a double-quoted string literal.
 do escape_quotes(s string) -> string {
-    return strings.replace(s, "\"", "\\\"")
+    return strings.replace(strings.replace(s, "\\", "\\\\"), "\"", "\\\"")
 }
 
 // parse_man_blocks returns every /*@man ... */ block found in lines.
@@ -77,7 +77,7 @@ do parse_man_blocks(lines [string]) -> [ManBlock] {
             } or text == " *" {
                 text = ""
             }
-            text = escape_quotes(strings.replace(text, "\\", "\\\\"))
+            text = escape_quotes(text)
             if current.example == "" {
                 current.example = text
             } otherwise {
