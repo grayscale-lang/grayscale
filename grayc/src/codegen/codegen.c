@@ -8596,6 +8596,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *functi
             else if (prepend_element_type->kind == TYPE_KIND_MAP) prepend_c_element_type = "GrayMap";
             else if (prepend_element_type->kind == TYPE_KIND_STRUCT) prepend_c_element_type = gray_type_to_c_codegen(codegen, prepend_element_type_name);
             else if (prepend_element_type->kind == TYPE_KIND_ENUM) prepend_c_element_type = gray_type_to_c_codegen(codegen, prepend_element_type_name);
+            else if (prepend_element_type->kind == TYPE_KIND_FUNCTION) prepend_c_element_type = "void *";
+            else if (prepend_element_type->kind == TYPE_KIND_POINTER) prepend_c_element_type = gray_type_to_c_codegen(codegen, prepend_element_type_name);
             else if (prepend_element_type->kind == TYPE_KIND_SIGNED_INTEGER || prepend_element_type->kind == TYPE_KIND_UNSIGNED_INTEGER)
                 prepend_c_element_type = gray_type_to_c_codegen(codegen, prepend_element_type_name);
             /* [f32] elements are stored packed as 4-byte float. */
