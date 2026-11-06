@@ -3245,8 +3245,10 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_DATABASE:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Database") == 0;
     case EXPECTED_ARGUMENT_ROUTER:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Router") == 0;
     case EXPECTED_ARGUMENT_POINTER:  return actual->kind == TYPE_KIND_POINTER;
-    case EXPECTED_ARGUMENT_STRING_MAP: return actual->kind == TYPE_KIND_MAP && actual->key_type && actual->value_type &&
-                             strcmp(actual->key_type, "string") == 0 && strcmp(actual->value_type, "string") == 0;
+    /* An empty map literal `{:}` carries no key or value type yet. */
+    case EXPECTED_ARGUMENT_STRING_MAP: return actual->kind == TYPE_KIND_MAP &&
+                             (!actual->key_type || strcmp(actual->key_type, "string") == 0) &&
+                             (!actual->value_type || strcmp(actual->value_type, "string") == 0);
     case EXPECTED_ARGUMENT_STRING_ARRAY:
     case EXPECTED_ARGUMENT_CHAR_ARRAY:
     case EXPECTED_ARGUMENT_STRING_GRID:
