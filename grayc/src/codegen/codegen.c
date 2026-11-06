@@ -8407,6 +8407,7 @@ static void emit_escape_staged_value(CodeGen *codegen, AstNode *value_argument, 
  * copied values must be allocated there, not in the function's own arena,
  * which is destroyed on return. */
 static bool array_argument_in_heap(CodeGen *codegen, AstNode *array_argument) {
+    if (place_is_module_storage(codegen, array_argument)) return true;
     AstNode *pointer = NULL;
     if (array_argument->kind == NODE_MEMBER_EXPRESSION) {
         pointer = array_argument->data.member.object;
