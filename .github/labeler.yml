@@ -2,21 +2,31 @@
 # Used by .github/workflows/auto-label.yml
 
 # Compiler components
+self-host:
+  - changed-files:
+      - any-glob-to-any-file: "selfhost/**"
+
 grayc:
   - changed-files:
       - any-glob-to-any-file: "grayc/**"
 
 lexer:
   - changed-files:
-      - any-glob-to-any-file: "grayc/src/lexer/**"
+      - any-glob-to-any-file:
+          - "grayc/src/lexer/**"
+          - "selfhost/lexer/**"
 
 parser:
   - changed-files:
-      - any-glob-to-any-file: "grayc/src/parser/**"
+      - any-glob-to-any-file:
+          - "grayc/src/parser/**"
+          - "selfhost/parser/**"
 
 typechecker:
   - changed-files:
-      - any-glob-to-any-file: "grayc/src/typechecker/**"
+      - any-glob-to-any-file:
+          - "grayc/src/typechecker/**"
+          - "selfhost/typechecker/**"
 
 stdlib:
   - changed-files:
