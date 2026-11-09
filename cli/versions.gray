@@ -6,6 +6,13 @@ import @arrays
 import @strconv
 
 const RELEASE_TAG_PREFIX string = "grayscale-"
+const EXPERIMENTAL_TAG_PREFIX string = "experimental-"
+
+// is_release_tag reports whether tag names a Grayscale release: a numbered
+// grayscale-v* release or an experimental-* build.
+do is_release_tag(tag string) -> bool {
+    return strings.starts_with(tag, RELEASE_TAG_PREFIX) || strings.starts_with(tag, EXPERIMENTAL_TAG_PREFIX)
+}
 
 // VersionInfo holds the derived pieces of the version string baked in at
 // build time.
@@ -129,6 +136,8 @@ do version_info(version string) -> VersionInfo {
         info.channel = "dev"
     } or info.commit != "" {
         info.channel = "dev"
+    } or strings.starts_with(info.display, EXPERIMENTAL_TAG_PREFIX) {
+        info.channel = "experimental"
     } or semver.pre != "" {
         info.channel = "pre-release"
     } otherwise {
@@ -259,10 +268,23 @@ do compare_semver(first string, second string) -> i64 {
     return compare_pre_identifiers(left.pre, right.pre)
 }
 
+// compare_release_versions orders two release tags. Experimental builds carry a
+// date and build number rather than a SemVer, so any tag that differs from the
+// other counts as newer; two numbered releases compare by SemVer.
+do compare_release_versions(first string, second string) -> i64 {
+    if strings.starts_with(first, EXPERIMENTAL_TAG_PREFIX) || strings.starts_with(second, EXPERIMENTAL_TAG_PREFIX) {
+        if first == second {
+            return 0
+        }
+        return 1
+    }
+    return compare_semver(first, second)
+}
+
 // is_newer_version reports whether remote is higher than local by SemVer
 // precedence, pre-release labels included.
 do is_newer_version(local string, remote string) -> bool {
-    return compare_semver(remote, local) > 0
+    return compare_release_versions(remote, local) > 0
 }
 
 // is_version_in_range reports whether from_version < version <= to_version.

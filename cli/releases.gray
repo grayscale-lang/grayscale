@@ -143,14 +143,14 @@ do fetch_latest_release(timeout_seconds i64) -> (Release, Error) {
         return none, error(.InvalidInput, "invalid JSON from GitHub")
     }
     release Release = json.parse(body)
-    if !strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+    if !versions.is_release_tag(release.tag_name) {
         return none, error(.InvalidInput, "latest release ${strconv.quote(release.tag_name)} is not a Grayscale release")
     }
     return release, nil
 }
 
 // fetch_all_releases fetches the release list, keeping only Grayscale-era
-// releases (grayscale-v* tags) so legacy releases are left out of version
+// releases (grayscale-v* and experimental-* tags) so legacy releases are left out of version
 // discovery.
 do fetch_all_releases(timeout_seconds i64) -> ([Release], Error) {
     body, get_err = http_get(RELEASES_URL, timeout_seconds)
@@ -163,11 +163,20 @@ do fetch_all_releases(timeout_seconds i64) -> ([Release], Error) {
     all [Release] = json.parse(body)
     mut filtered [Release] = {}
     for_each release in all {
-        if strings.starts_with(release.tag_name, versions.RELEASE_TAG_PREFIX) {
+        if versions.is_release_tag(release.tag_name) {
             arrays.append(filtered, release)
         }
     }
     return filtered, nil
+}
+
+// pick_newest is the most recently published release of any kind. GitHub lists
+// releases newest first, so it is the first one.
+do pick_newest(releases [Release]) -> (Release, bool) {
+    if len(releases) == 0 {
+        return Release{tag_name: "", body: "", prerelease: false, assets: {}}, false
+    }
+    return releases[0], true
 }
 
 // pick_latest_stable is the highest-versioned release that is not a pre-release.
@@ -299,7 +308,7 @@ do check_for_update(version string) {
     }
 
     state UpdateState = read_update_state()
-    cached_is_usable bool = state.latest_version != "" && strings.starts_with(state.latest_version, versions.RELEASE_TAG_PREFIX)
+    cached_is_usable bool = state.latest_version != "" && versions.is_release_tag(state.latest_version)
     if cached_is_usable && !should_check_for_update() {
         announce_update(version, state.latest_version)
         return

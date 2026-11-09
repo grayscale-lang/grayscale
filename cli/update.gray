@@ -303,10 +303,10 @@ do platform_asset_url(release releases.Release) -> (string, string) {
     return name, ""
 }
 
-// print_update_status prints the Installed, Latest stable and Latest
-// pre-release block in the column layout of gray version, with a yellow arrow
-// on whichever channel line is newer than the installed build.
-do print_update_status(version_info versions.VersionInfo, latest_stable string, latest_pre string) {
+// print_update_status prints the Installed, Latest release (when it is an
+// experimental build), Latest stable and Latest pre-release block in the column
+// layout of gray version, with a yellow arrow on whichever channel line is newer than the installed build.
+do print_update_status(version_info versions.VersionInfo, latest_stable string, latest_pre string, latest_newest string) {
     mut channel_note string = ""
     if version_info.channel == "pre-release" {
         channel_note = "  (pre-release)"
@@ -314,11 +314,25 @@ do print_update_status(version_info versions.VersionInfo, latest_stable string, 
         channel_note = "  (dev build)"
     } or version_info.channel == "stable" {
         channel_note = "  (stable)"
+    } or version_info.channel == "experimental" {
+        channel_note = "  (experimental)"
     }
     println("${BOLD}Installed:${RESET}           ${version_info.display}${channel_note}")
 
+    if strings.starts_with(latest_newest, versions.EXPERIMENTAL_TAG_PREFIX) {
+        mut note string = ""
+        if versions.compare_release_versions(latest_newest, version.VERSION) > 0 {
+            note = "  ${YELLOW}← update available${RESET}"
+        } otherwise {
+            note = "  ${YELLOW}← up to date${RESET}"
+        }
+        println("Latest release:      ${latest_newest}${note}")
+    }
     if latest_stable != "" {
-        comparison i64 = versions.compare_semver(latest_stable, version.VERSION)
+        mut comparison i64 = -1
+        if version_info.channel != "experimental" {
+            comparison = versions.compare_semver(latest_stable, version.VERSION)
+        }
         mut note string = ""
         if comparison > 0 {
             note = "  ${YELLOW}← update available${RESET}"
@@ -328,7 +342,10 @@ do print_update_status(version_info versions.VersionInfo, latest_stable string, 
         println("Latest stable:       ${latest_stable}${note}")
     }
     if latest_pre != "" {
-        comparison i64 = versions.compare_semver(latest_pre, version.VERSION)
+        mut comparison i64 = -1
+        if version_info.channel != "experimental" {
+            comparison = versions.compare_semver(latest_pre, version.VERSION)
+        }
         mut note string = ""
         if comparison > 0 {
             note = "  ${YELLOW}← run 'gray update --pre'${RESET}"
@@ -388,6 +405,7 @@ do run_update(confirm bool, url string, pre bool) -> i64 {
 
     latest_stable, has_stable = releases.pick_latest_stable(all_releases)
     latest_pre, has_pre = releases.pick_latest_prerelease(all_releases)
+    latest_newest, has_newest = releases.pick_newest(all_releases)
     mut latest_stable_tag string = ""
     mut latest_pre_tag string = ""
     if has_stable {
@@ -398,7 +416,7 @@ do run_update(confirm bool, url string, pre bool) -> i64 {
     }
 
     version_info versions.VersionInfo = versions.version_info(version.VERSION)
-    print_update_status(version_info, latest_stable_tag, latest_pre_tag)
+    print_update_status(version_info, latest_stable_tag, latest_pre_tag, latest_newest.tag_name)
 
     // Cache the latest stable so the startup check can skip a network hop.
     if latest_stable_tag != "" {
@@ -418,7 +436,7 @@ do run_update(confirm bool, url string, pre bool) -> i64 {
     }
 
     // Resolve the target for the channel being advanced.
-    mut target releases.Release = latest_stable
+    mut target releases.Release = latest_newest
     if pre {
         target = latest_pre
         if !has_pre {
@@ -426,23 +444,23 @@ do run_update(confirm bool, url string, pre bool) -> i64 {
             return 0
         }
     } otherwise {
-        if !has_stable {
-            println("\nNo stable releases are currently published.")
+        if !has_newest {
+            println("\nNo releases are currently published.")
             return 0
         }
     }
 
-    comparison i64 = versions.compare_semver(target.tag_name, version.VERSION)
+    comparison i64 = versions.compare_release_versions(target.tag_name, version.VERSION)
     if comparison == 0 {
         if pre {
             println("\nYou're on the latest pre-release.")
         } otherwise {
-            println("\nYou're on the latest stable release.")
+            println("\nYou're on the latest release.")
         }
         return 0
     }
     if comparison < 0 {
-        mut label string = "stable"
+        mut label string = "release"
         if pre {
             label = "pre-release"
         }
@@ -452,6 +470,8 @@ do run_update(confirm bool, url string, pre bool) -> i64 {
 
     if pre {
         println("\n${YELLOW}Installing pre-release ${target.tag_name} — may contain breaking changes, not recommended for production.${RESET}")
+    } or strings.starts_with(target.tag_name, versions.EXPERIMENTAL_TAG_PREFIX) {
+        println("\nUpdating from ${version.VERSION} -> ${target.tag_name}")
     } otherwise {
         in_range [releases.Release] = releases.releases_in_range(all_releases, version.VERSION, target.tag_name)
         print(releases.format_changelog(in_range, version.VERSION, target.tag_name))
