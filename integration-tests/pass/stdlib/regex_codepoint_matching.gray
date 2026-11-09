@@ -28,6 +28,7 @@ do main() {
         failed += 1
     }
 
+    println("DEBUG range e=${regex.is_match("^[à-ü]$", "é")} ja=${regex.is_match("^[à-ü]$", "日")} a=${regex.is_match("^[à-ü]$", "a")} u=${regex.is_match("^[à-ü]$", "ü")}")
     if regex.is_match("^[à-ü]$", "é") && !regex.is_match("^[à-ü]$", "日") {
         passed += 1
     } otherwise {
