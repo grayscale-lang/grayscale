@@ -1,0 +1,185 @@
+/*
+ * gen_stdlib_sigs.gray:  Regenerates the table in typechecker/stdlib_sigs.gray
+ * from stdlib_function_metadata[] in grayc/src/typechecker/typechecker.c. Only
+ * the rows of the table are rewritten.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings, @arrays
+import "./common"
+
+const SOURCE string = "grayc/src/typechecker/typechecker.c"
+const TARGET string = "selfhost/typechecker/stdlib_sigs.gray"
+
+// The Grayscale spelling of each FALLIBLE_TYPE_* the C table names.
+fn success_type(name string) -> string {
+    when name {
+        is "NONE" { return "" }
+        is "BOOL" { return "bool" }
+        is "I64" { return "i64" }
+        is "U64" { return "u64" }
+        is "F64" { return "f64" }
+        is "STRING" { return "string" }
+        is "ARRAY_STRING" { return "[string]" }
+        is "NESTED_ARRAY_STRING" { return "[[string]]" }
+        is "ARRAY_U8" { return "[u8]" }
+        is "ARRAY_MAP" { return "[map[string:string]]" }
+        is "STRUCT_DATABASE" { return "Database" }
+        is "STRUCT_SOCKET" { return "Socket" }
+        is "STRUCT_LISTENER" { return "Listener" }
+        is "STRUCT_HTTP_RESPONSE" { return "HttpResponse" }
+        is "STRUCT_EXEC_RESULT" { return "ExecResult" }
+        is "STRUCT_FILE_INFO" { return "FileInfo" }
+        is "STRUCT_MAP" { return "map[string:string]" }
+        is "ARRAY_F64" { return "[f64]" }
+        is "I64_PAIR" { return "i64" }
+        default {
+            eprintln("unknown FALLIBLE_TYPE_${name}")
+            exit(1)
+            return ""
+        }
+    }
+}
+
+// `text` without its /* ... */ comments.
+fn strip_comments(text string) -> string {
+    mut out string = ""
+    mut position i64 = 0
+    as_long_as position < len(text) {
+        rest string = strings.slice(text, position, len(text))
+        open_at = strings.index_of(rest, "/*")
+        if open_at < 0 {
+            out = "${out}${rest}"
+            break
+        }
+        out = "${out}${strings.slice(rest, 0, open_at)}"
+        close_at = strings.index_of(strings.slice(rest, open_at, len(rest)), "*/")
+        if close_at < 0 { break }
+        position = position + open_at + close_at + 2
+    }
+    return out
+}
+
+// The text of each top-level `{ ... }` group in `text`, without its braces.
+fn top_level_groups(text string) -> [string] {
+    mut groups [string] = {}
+    mut depth i64 = 0
+    mut current string = ""
+    mut in_string bool = false
+    for position in range(0, len(text)) {
+        character char = strings.char_at(text, position)
+        if character == '"' { in_string = !in_string }
+        if !in_string && character == '{' {
+            depth = depth + 1
+            if depth == 1 {
+                current = ""
+                continue
+            }
+        }
+        if !in_string && character == '}' {
+            depth = depth - 1
+            if depth == 0 {
+                arrays.append(groups, current)
+                continue
+            }
+        }
+        if depth >= 1 { current = "${current}${strings.slice(text, position, position + 1)}" }
+    }
+    return groups
+}
+
+// `text` split at the commas that are outside braces and string literals, each part trimmed.
+fn split_fields(text string) -> [string] {
+    mut columns [string] = {}
+    mut depth i64 = 0
+    mut in_string bool = false
+    mut current string = ""
+    for position in range(0, len(text)) {
+        character char = strings.char_at(text, position)
+        if character == '"' { in_string = !in_string }
+        if !in_string && character == '{' { depth = depth + 1 }
+        if !in_string && character == '}' { depth = depth - 1 }
+        if !in_string && depth == 0 && character == ',' {
+            arrays.append(columns, strings.trim(current))
+            current = ""
+            continue
+        }
+        current = "${current}${strings.slice(text, position, position + 1)}"
+    }
+    arrays.append(columns, strings.trim(current))
+    return columns
+}
+
+fn unquote(text string) -> string {
+    if len(text) >= 2 && strings.char_at(text, 0) == '"' { return strings.slice(text, 1, len(text) - 1) }
+    return text
+}
+
+// A return type is a backtick string when it holds a `$`, which would otherwise interpolate.
+fn quote_type(text string) -> string {
+    if strings.contains(text, "$") { return "`${text}`" }
+    return "\"${text}\""
+}
+
+fn row_of(entry string) -> string {
+    columns = split_fields(entry)
+    if len(columns) != 9 {
+        eprintln("unexpected metadata entry: ${entry}")
+        exit(1)
+    }
+    module_name = unquote(columns[0])
+    function_name = unquote(columns[1])
+    // columns[5] is FALLIBLE_TYPE_*; columns[7] the {{index, EXPECTED_ARGUMENT_*}, ...} list
+    fallible_name = strings.remove_prefix(columns[5], "FALLIBLE_TYPE_")
+    mut return_type string = ""
+    if columns[8] != "NULL" { return_type = unquote(columns[8]) }
+    mut indexes [string] = {}
+    mut kinds [string] = {}
+    outer = top_level_groups(columns[7])
+    mut pairs [string] = {}
+    if len(outer) > 0 { pairs = top_level_groups(outer[0]) }
+    for_each pair in pairs {
+        parts = split_fields(pair)
+        // a function with no arguments is written {{0}}
+        if len(parts) < 2 { continue }
+        arrays.append(indexes, parts[0])
+        arrays.append(kinds, "\"${strings.remove_prefix(parts[1], "EXPECTED_ARGUMENT_")}\"")
+    }
+    expected_count = columns[6]
+    if "${len(indexes)}" != expected_count {
+        eprintln("${module_name}.${function_name}: ${expected_count} arguments declared, ${len(indexes)} listed")
+        exit(1)
+    }
+    return "        StdlibSig{module: \"${module_name}\", name: \"${function_name}\", min_args: ${columns[2]}, max_args: ${columns[3]}, fallible: ${columns[4]}, success_type: \"${success_type(fallible_name)}\", return_type: ${quote_type(return_type)}, argument_indexes: {${strings.join(indexes, ", ")}}, argument_kinds: {${strings.join(kinds, ", ")}}}"
+}
+
+fn main() {
+    source = common.read_text(SOURCE)
+    marker string = "stdlib_function_metadata[] = {"
+    start_at = strings.index_of(source, marker)
+    if start_at < 0 {
+        eprintln("cannot find ${marker} in ${SOURCE}; run from the repository root")
+        exit(1)
+    }
+    after = strings.slice(source, start_at + len(marker), len(source))
+    end_at = strings.index_of(after, "\n};")
+    table_text = strip_comments(strings.slice(after, 0, end_at))
+    mut rows [string] = {}
+    for_each entry in top_level_groups(table_text) { arrays.append(rows, row_of(entry)) }
+
+    target = common.read_text(TARGET)
+    opening string = "    sigs [StdlibSig] = {\n"
+    open_at = strings.index_of(target, opening)
+    close_at = strings.index_of(target, "\n    }\n    return sigs")
+    if open_at < 0 || close_at < 0 {
+        eprintln("cannot find the table in ${TARGET}")
+        exit(1)
+    }
+    updated string = "${strings.slice(target, 0, open_at + len(opening))}${strings.join(rows, ",\n")}${strings.slice(target, close_at, len(target))}"
+    common.write_text(TARGET, updated)
+    println("${len(rows)} entries")
+}

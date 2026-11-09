@@ -1,0 +1,798 @@
+/*
+ * ast.gray:  Abstract syntax tree node definitions for the self-hosted
+ * compiler. Defines NodeKind enum, supporting types, per-variant data structs,
+ * and AstNode.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @arrays, @maps, @strings, @encoding
+import "../lexer/token"
+
+// Compiler-generated synthetic variable prefixes
+const SYNTH_PREFIX string = "_gray_"
+const SYNTH_TMP string = "_gray_tmp"
+const SYNTH_OR string = "_gray_or"
+// or_panic / or_default temporaries: SYNTH_OR is their prefix, so every or_return
+// check also covers them.
+const SYNTH_OR_PANIC string = "_gray_or_panic"
+const SYNTH_OR_DEFAULT string = "_gray_or_default"
+// The member naming the trailing Error slot of an or_return temporary
+const OR_RETURN_ERROR_SLOT string = "verr"
+
+const NodeKind enum {
+    // Expressions
+    LABEL,
+    INT_VALUE,
+    FLOAT_VALUE,
+    STRING_VALUE,
+    INTERPOLATED_STRING,
+    CHAR_VALUE,
+    BOOL_VALUE,
+    NIL_VALUE,
+    ARRAY_VALUE,
+    MAP_VALUE,
+    STRUCT_VALUE,
+    PREFIX_EXPR,
+    INFIX_EXPR,
+    POSTFIX_EXPR,
+    CALL_EXPR,
+    INDEX_EXPR,
+    MEMBER_EXPR,
+    NEW_EXPR,
+    RANGE_EXPR,
+    CAST_EXPR,
+    FUNC_REF,
+    IMPLICIT_ENUM,
+    WHEN_PATTERN,
+
+    // Statements
+    VAR_DECL,
+    ASSIGN_STMT,
+    RETURN_STMT,
+    ENSURE_STMT,
+    EXPR_STMT,
+    BLOCK_STMT,
+    IF_STMT,
+    WHEN_STMT,
+    FOR_STMT,
+    FOR_EACH_STMT,
+    WHILE_STMT,
+    LOOP_STMT,
+    BREAK_STMT,
+    CONTINUE_STMT,
+    FUNC_DECL,
+    IMPORT_STMT,
+    USING_STMT,
+    STRUCT_DECL,
+    ENUM_DECL,
+    ALIAS_DECL,
+    MODULE_DECL,
+    PROGRAM
+}
+
+// --- Supporting types ---
+
+const Param struct {
+    name string
+    type_name string
+    is_mutable bool
+    is_type_param bool
+    type_from_default bool
+    default_value ^AstNode
+}
+
+const StructField struct {
+    name string
+    type_name string
+    default_value ^AstNode
+    json_tag string
+}
+
+const StructFunc struct {
+    func_decl ^AstNode
+    is_private bool
+}
+
+const EnumVal struct {
+    name string
+    value ^AstNode
+    payload_types [string]
+}
+
+const ImportItem struct {
+    import_alias string
+    mod_name string
+    source_path string
+    is_stdlib bool
+    is_c_import bool
+    source_dir string
+    // where the header-path string literal sits, for diagnostics (C imports
+    // only); not a Token, which cannot be the zero value of a field here
+    // because it holds a cross-module enum
+    tok_line i64
+    tok_col i64
+}
+
+const WhenCase struct {
+    values [^AstNode]
+    body ^AstNode
+    is_range bool
+    // the `is`/`case` keyword as written
+    keyword_token token.Token
+}
+
+// --- Per-variant data structs ---
+// Each AstNode has exactly one of these populated, matching its kind.
+// Grayscale arrays carry their own length, so no separate count fields needed.
+
+// Expression data
+
+const LabelData struct {
+    value string
+    // The name resolves to a file-scope variable declared in the entry module;
+    // codegen gives such a global a prefix so it cannot collide with a libc name
+    is_file_global_reference bool
+    // The name resolves to a local, parameter, loop variable or pattern binding,
+    // which hides a same-named member a `using` brings in
+    is_local_reference bool
+    // The stdlib module whose constant this bare name is, reached through `using`
+    stdlib_constant_module string
+    // A `module.name` reference the resolver rewrote to this mangled label: the module
+    // as written and the member name, kept for the checker's module-variable rules
+    qualifier string
+    qualified_member string
+    // The name as the program wrote it, for a bare name the resolver rewrote to a mangled one
+    written_name string
+}
+
+const IntValueData struct {
+    value i64
+    literal string
+    overflow bool
+    overflow_u64 bool
+}
+
+const FloatValueData struct {
+    value f64
+}
+
+const StringValueData struct {
+    value string
+    is_raw bool
+}
+
+const InterpStringData struct {
+    parts [^AstNode]
+}
+
+const CharValueData struct {
+    value char
+}
+
+const BoolValueData struct {
+    value bool
+}
+
+const ArrayValueData struct {
+    elements [^AstNode]
+}
+
+const MapValueData struct {
+    keys [^AstNode]
+    values [^AstNode]
+}
+
+const StructValueData struct {
+    name string
+    field_names [string]
+    field_values [^AstNode]
+    wildcard_binding string
+    // An error was already reported for this literal: a return value is resolved
+    // twice, and one bad literal is one error
+    was_type_parameter_rejected bool
+}
+
+const PrefixData struct {
+    op token.TokenKind
+    right ^AstNode
+}
+
+const InfixData struct {
+    left ^AstNode
+    op token.TokenKind
+    right ^AstNode
+}
+
+const PostfixData struct {
+    left ^AstNode
+    op token.TokenKind
+}
+
+// The shape of a call: what it calls, its receiver and its arguments. A generic
+// function's body is checked once per instantiation, and each may rewrite the
+// call differently.
+const CallForm struct {
+    function ^AstNode
+    object ^AstNode
+    object_label string
+    arguments [^AstNode]
+    ignored_receiver ^AstNode
+}
+
+const CallData struct {
+    function ^AstNode
+    args [^AstNode]
+    arg_names [string]
+    // Arguments in the order written, kept when named arguments are reordered
+    // into parameter order
+    written_arguments [^AstNode]
+    // The receiver of `recv.f(args)` when `f` takes no self: it binds to nothing
+    // but is still evaluated, before the call
+    ignored_receiver ^AstNode
+    // How each instantiation of the enclosing generic function dispatched this
+    // call, keyed by that instantiation's bindings
+    instantiation_keys [string]
+    instantiation_forms [CallForm]
+}
+
+const IndexData struct {
+    left ^AstNode
+    index_expr ^AstNode
+}
+
+const MemberData struct {
+    object ^AstNode
+    member string
+}
+
+const NewExprData struct {
+    type_name string
+}
+
+const RangeData struct {
+    start_expr ^AstNode
+    end_expr ^AstNode
+    step ^AstNode
+}
+
+const CastData struct {
+    value ^AstNode
+    target_type string
+    is_array bool
+    element_type string
+}
+
+const FuncRefData struct {
+    function ^AstNode
+}
+
+const ImplicitEnumData struct {
+    variant string
+    resolved_enum string
+}
+
+const WhenPatternData struct {
+    variant string
+    enum_name string
+    bindings [string]
+    is_implicit bool
+}
+
+// Statement data
+
+const VarDeclData struct {
+    name string
+    original_name string
+    type_name string
+    value ^AstNode
+    is_mutable bool
+    is_private bool
+    is_synthetic bool
+    // Written `name type` with no mut or const.
+    is_bare bool
+    // Top-level const marked #define: -define: may override its value.
+    is_define bool
+    // File-scope multi-name declaration: the names declared before this one on
+    // the same line. The initializer cannot see them.
+    earlier_group_names [string]
+    // Synthetic temporary for one value of a value list, never a destructured call
+    holds_single_value bool
+    // `mut xs = place` where `xs` is stored back to `place` before anything else
+    // can observe either: codegen shares the array instead of copying it
+    elides_copy bool
+    // The initializer reads a variable of the declared name from an enclosing
+    // scope, so codegen evaluates it into a temporary first
+    shadows_own_initializer bool
+}
+
+const AssignData struct {
+    target ^AstNode
+    op token.TokenKind
+    value ^AstNode
+    is_decl bool
+}
+
+const ReturnData struct {
+    values [^AstNode]
+}
+
+const EnsureData struct {
+    expr ^AstNode
+}
+
+const ExprStmtData struct {
+    expr ^AstNode
+}
+
+const BlockData struct {
+    stmts [^AstNode]
+    // `unsafe { ... }`: opens a scope that permits unsafe primitives
+    is_unsafe bool
+}
+
+const IfData struct {
+    condition ^AstNode
+    consequence ^AstNode
+    alternative ^AstNode
+    else_token token.Token
+}
+
+const WhenStmtData struct {
+    value ^AstNode
+    cases [WhenCase]
+    default_body ^AstNode
+    is_strict bool
+}
+
+const ForData struct {
+    var_name string
+    var_type string
+    iterable ^AstNode
+    body ^AstNode
+}
+
+const ForEachData struct {
+    index_name string
+    var_name string
+    collection ^AstNode
+    body ^AstNode
+}
+
+const WhileData struct {
+    condition ^AstNode
+    body ^AstNode
+}
+
+const LoopData struct {
+    body ^AstNode
+}
+
+const FuncDeclData struct {
+    name string
+    original_name string
+    params [Param]
+    return_types [string]
+    return_names [string]
+    body ^AstNode
+    is_private bool
+    is_discard bool
+    is_test bool
+    is_deprecated bool
+    deprecated_message string
+    instantiations [string]
+    // `Type.func` for a struct function; "" otherwise
+    runtime_name string
+    // Passed to a C function as a callback, so a thread C created may run it
+    is_c_callback bool
+    // Codegen's memo of function_uses_watermark: 0 not yet decided, 1 eligible,
+    // 2 not eligible
+    watermark_state i64
+}
+
+const ImportData struct {
+    items [ImportItem]
+    auto_use bool
+}
+
+const UsingData struct {
+    modules [string]
+}
+
+const StructDeclData struct {
+    name string
+    original_name string
+    struct_fields [StructField]
+    funcs [StructFunc]
+    is_json bool
+    is_deprecated bool
+    deprecated_message string
+    is_generic bool
+    instantiations [string]
+    is_private bool
+}
+
+const EnumDeclData struct {
+    name string
+    original_name string
+    values [EnumVal]
+    is_flags bool
+    is_error_code bool
+    is_deprecated bool
+    deprecated_message string
+    is_tagged bool
+    is_private bool
+}
+
+const AliasDeclData struct {
+    name string
+    target_type string
+    is_private bool
+    // `distinct alias`: a new type, not interchangeable with its target.
+    is_distinct bool
+}
+
+// The loop a `break` or `continue` leaves; "" when unlabeled.
+const LoopJumpData struct {
+    label string
+}
+
+const ModuleDeclData struct {
+    name string
+}
+
+const ProgramData struct {
+    module_decl ^AstNode
+    using_stmts [^AstNode]
+    stmts [^AstNode]
+}
+
+// --- AstNode ---
+// Tagged union via kind discriminant + one populated data pointer.
+
+const AstNode struct {
+    kind NodeKind
+    tok token.Token
+    // The expression's type as the typechecker resolved it (display spelling),
+    // read by codegen.
+    resolved_type string
+    // A number literal expression took its type from a slot; `resolved_type`
+    // is that type. `folded_literal` is its value as decimal text, when constant.
+    is_literal_typed bool
+    folded_literal string
+    // The declaration this node refers to, once the typechecker has resolved it
+    // (its registry name); "" on nodes that name no declaration
+    resolved_declaration string
+    // Set on a value stored into a fixed-size [T,N] struct field: N when the
+    // value's length cannot be proven at compile time, checked at runtime
+    runtime_fixed_length i64
+    // N when a value with fewer than N elements is stored into a fixed-size
+    // [T,N] field: codegen zero-fills the stored array up to N
+    zero_fill_length i64
+    // The wide integer type (i128, u128, i256, u256) a value is implicitly
+    // widened to, or the floating-point type a wide integer is stored into
+    widen_to string
+    // A value embedded in a struct, array or map literal whose root is a
+    // constant or a by-value parameter: codegen copies it into the literal
+    copies_into_literal bool
+
+    // Expression data (one populated per node based on kind)
+    label ^LabelData
+    int_value ^IntValueData
+    float_value ^FloatValueData
+    string_value ^StringValueData
+    interp_string ^InterpStringData
+    char_value ^CharValueData
+    bool_value ^BoolValueData
+    array_value ^ArrayValueData
+    map_value ^MapValueData
+    struct_value ^StructValueData
+    prefix ^PrefixData
+    infix ^InfixData
+    postfix ^PostfixData
+    call ^CallData
+    index_data ^IndexData
+    member ^MemberData
+    new_expr ^NewExprData
+    range_expr ^RangeData
+    cast_data ^CastData
+    func_ref ^FuncRefData
+    implicit_enum ^ImplicitEnumData
+    when_pattern ^WhenPatternData
+
+    // Statement data
+    var_decl ^VarDeclData
+    assign ^AssignData
+    return_stmt ^ReturnData
+    ensure_stmt ^EnsureData
+    expr_stmt ^ExprStmtData
+    block ^BlockData
+    if_stmt ^IfData
+    when_stmt ^WhenStmtData
+    for_stmt ^ForData
+    for_each_stmt ^ForEachData
+    while_stmt ^WhileData
+    loop_stmt ^LoopData
+    func_decl ^FuncDeclData
+    import_stmt ^ImportData
+    using_stmt ^UsingData
+    struct_decl ^StructDeclData
+    enum_decl ^EnumDeclData
+    alias_decl ^AliasDeclData
+    module_decl ^ModuleDeclData
+    loop_jump ^LoopJumpData
+    // The label written before a loop (`outer: for ...`); "" otherwise.
+    loop_label string
+    program ^ProgramData
+}
+
+// Allocate a new AstNode on the heap with the given kind and token.
+fn ast_alloc(kind NodeKind, current_token token.Token) -> ^AstNode {
+    node = new(AstNode)
+    node^.kind = kind
+    node^.tok = current_token
+    return node
+}
+
+// --- Generic bindings ---
+//
+// A generic function's `generic` parameters name types. GenericBindings pairs
+// each such name with the type it is bound to; an empty type means unbound.
+// An instantiation is spelled as its bound types joined by GENERIC_BINDING_SEPARATOR
+// ("Point;[i64]"), which no type spelling contains.
+const GENERIC_BINDING_SEPARATOR string = ";"
+
+const GenericBindings struct {
+    names [string]
+    types [string]
+}
+
+fn func_has_generic_params(function_data ^FuncDeclData) -> bool {
+    params_local = function_data^.params
+    for_each param in params_local {
+        if param.is_type_param { return true }
+    }
+    return false
+}
+
+// The bindings of `function_data`'s type parameters, bound to the types spelled in
+// `binding_text` (joined by GENERIC_BINDING_SEPARATOR), or unbound when
+// `binding_text` is empty.
+fn generic_bindings_init(function_data ^FuncDeclData, binding_text string) -> GenericBindings {
+    mut bindings GenericBindings = GenericBindings{}
+    mut names [string] = {}
+    mut bound_types [string] = {}
+    mut remaining = binding_text
+    params_local = function_data^.params
+    for_each param in params_local {
+        if !param.is_type_param { continue }
+        arrays.append(names, param.name)
+        mut type_text = ""
+        if remaining != "" {
+            separator_index = strings.index_of(remaining, GENERIC_BINDING_SEPARATOR)
+            if separator_index >= 0 {
+                type_text = strings.slice(remaining, 0, separator_index)
+                remaining = strings.slice(remaining, separator_index + 1, len(remaining))
+            } otherwise {
+                type_text = remaining
+                remaining = ""
+            }
+        }
+        arrays.append(bound_types, type_text)
+    }
+    bindings.names = names
+    bindings.types = bound_types
+    return bindings
+}
+
+fn generic_bindings_join(bindings GenericBindings) -> string {
+    return strings.join(bindings.types, GENERIC_BINDING_SEPARATOR)
+}
+
+fn generic_bindings_find(bindings GenericBindings, name string) -> i64 {
+    for i in range(0, len(bindings.names)) {
+        if bindings.names[i] == name { return i }
+    }
+    return -1
+}
+
+fn is_type_identifier_char(character char) -> bool {
+    return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '_'
+}
+
+// `type_text` with every bound type parameter replaced by its type. An
+// unbound parameter becomes the placeholder "?name", which is replaced the same
+// way once it is bound. Names that follow or precede a '.' are members, not
+// type parameters.
+fn generic_bindings_substitute(bindings GenericBindings, type_text string) -> string {
+    if len(bindings.names) == 0 { return type_text }
+    mut output [string] = {}
+    n = len(type_text)
+    mut cursor i64 = 0
+    for cursor < n {
+        character = strings.char_at(type_text, cursor)
+        is_placeholder = character == '?' && cursor + 1 < n && is_type_identifier_char(strings.char_at(type_text, cursor + 1))
+        if !is_placeholder && !is_type_identifier_char(character) {
+            arrays.append(output, strings.slice(type_text, cursor, cursor + 1))
+            cursor += 1
+            continue
+        }
+        token_start = cursor
+        if is_placeholder { cursor += 1 }
+        word_start = cursor
+        for cursor < n && is_type_identifier_char(strings.char_at(type_text, cursor)) {
+            cursor += 1
+        }
+        word = strings.slice(type_text, word_start, cursor)
+        is_member = (token_start > 0 && strings.char_at(type_text, token_start - 1) == '.') || (cursor < n && strings.char_at(type_text, cursor) == '.')
+        mut index i64 = -1
+        if !is_member { index = generic_bindings_find(bindings, word) }
+        mut bound = ""
+        if index >= 0 { bound = bindings.types[index] }
+        if bound != "" {
+            arrays.append(output, bound)
+        } otherwise {
+            if index >= 0 && !is_placeholder { arrays.append(output, "?") }
+            arrays.append(output, strings.slice(type_text, token_start, cursor))
+        }
+    }
+    return strings.join(output, "")
+}
+
+// --- Node rewrites ---
+
+// Turns a node into a label spelled `value`. The label's reference flags are
+// cleared.
+fn ast_convert_to_label(node ^AstNode, value string) {
+    label_data = new(LabelData)
+    label_data^.value = value
+    node^.kind = NodeKind.LABEL
+    node^.label = label_data
+}
+
+// Reads a call's current shape into a CallForm.
+fn ast_call_form_capture(call ^AstNode) -> CallForm {
+    mut form CallForm = CallForm{}
+    form.function = call^.call^.function
+    if form.function != nil && form.function^.kind == NodeKind.MEMBER_EXPR { form.object = form.function^.member^.object }
+    if form.object != nil && form.object^.kind == NodeKind.LABEL { form.object_label = form.object^.label^.value }
+    form.arguments = call^.call^.args
+    form.ignored_receiver = call^.call^.ignored_receiver
+    return form
+}
+
+// Makes a call take a shape.
+fn ast_call_form_apply(call ^AstNode, form CallForm) {
+    call^.call^.function = form.function
+    if form.object != nil {
+        form.function^.member^.object = form.object
+        if form.object_label != "" { form.object^.label^.value = form.object_label }
+    }
+    call^.call^.args = form.arguments
+    call^.call^.ignored_receiver = form.ignored_receiver
+}
+
+// --- Member-expression shape ---
+
+// The bare name a member expression is written against — "mod" in mod.f(),
+// "Type" in Type.VARIANT, "v" in v.field — or "" when the object is not a plain name.
+fn ast_member_qualifier(node ^AstNode) -> string {
+    if node == nil || node^.kind != NodeKind.MEMBER_EXPR { return "" }
+    object = node^.member^.object
+    if object == nil || object^.kind != NodeKind.LABEL { return "" }
+    return object^.label^.value
+}
+
+// Like ast_member_qualifier, but sees through an explicit deref: `p^.f` is written against `p`.
+fn ast_member_base_qualifier(node ^AstNode) -> string {
+    bare string = ast_member_qualifier(node)
+    if bare != "" { return bare }
+    if node == nil || node^.kind != NodeKind.MEMBER_EXPR { return "" }
+    object = node^.member^.object
+    if object == nil || object^.kind != NodeKind.POSTFIX_EXPR || object^.postfix^.op != token.TokenKind.CARET { return "" }
+    left = object^.postfix^.left
+    if left == nil || left^.kind != NodeKind.LABEL { return "" }
+    return left^.label^.value
+}
+
+// The halves of a nested qualified spelling — mod.Type.member: (qualifier, type, ok).
+fn ast_member_chain(node ^AstNode) -> (string, string, bool) {
+    if node == nil || node^.kind != NodeKind.MEMBER_EXPR { return "", "", false }
+    object = node^.member^.object
+    qualifier string = ast_member_qualifier(object)
+    if qualifier == "" { return "", "", false }
+    return qualifier, object^.member^.member, true
+}
+
+// --- String literal decoding ---
+
+// The byte values of the control characters an escape names.
+const BELL_BYTE u8 = 7
+const BACKSPACE_BYTE u8 = 8
+const TAB_BYTE u8 = 9
+const NEWLINE_BYTE u8 = 10
+const VERTICAL_TAB_BYTE u8 = 11
+const FORM_FEED_BYTE u8 = 12
+const CARRIAGE_RETURN_BYTE u8 = 13
+// The base of hexadecimal digits, the value of the digit 'a', and the digits a \x escape takes.
+const HEX_BASE i64 = 16
+const HEX_LETTER_OFFSET i64 = 10
+const HEX_ESCAPE_DIGITS i64 = 2
+// The characters of a backslash escape: the backslash and the escape character.
+const ESCAPE_LENGTH i64 = 2
+// The number of distinct byte values.
+const BYTE_VALUE_COUNT i64 = 256
+
+fn hex_digit_value(character char) -> i64 {
+    if character >= '0' && character <= '9' { return cast(character, i64) - cast('0', i64) }
+    if character >= 'a' && character <= 'f' { return cast(character, i64) - cast('a', i64) + HEX_LETTER_OFFSET }
+    return cast(character, i64) - cast('A', i64) + HEX_LETTER_OFFSET
+}
+
+fn is_hex_digit(character char) -> bool {
+    return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')
+}
+
+// The characters a string literal stands for: its source text with escapes
+// decoded (a raw string is returned as written).
+fn ast_string_decode(data ^StringValueData) -> string {
+    if data^.is_raw { return data^.value }
+    text string = data^.value
+    n i64 = len(text)
+    // Bytes, not characters: \xFF is the byte 255, and a byte of a multi-byte
+    // character passes through untouched
+    mut decoded [u8] = {}
+    mut cursor i64 = 0
+    for cursor < n {
+        character char = strings.char_at(text, cursor)
+        if character != '\\' || cursor + 1 >= n {
+            arrays.append(decoded, text_byte(character))
+            cursor += 1
+            continue
+        }
+        escape char = strings.char_at(text, cursor + 1)
+        cursor += ESCAPE_LENGTH
+        when escape {
+            is 'n' { arrays.append(decoded, NEWLINE_BYTE) }
+            is 't' { arrays.append(decoded, TAB_BYTE) }
+            is 'r' { arrays.append(decoded, CARRIAGE_RETURN_BYTE) }
+            is '0' { arrays.append(decoded, cast(0, u8)) }
+            is 'a' { arrays.append(decoded, BELL_BYTE) }
+            is 'b' { arrays.append(decoded, BACKSPACE_BYTE) }
+            is 'f' { arrays.append(decoded, FORM_FEED_BYTE) }
+            is 'v' { arrays.append(decoded, VERTICAL_TAB_BYTE) }
+            is 'x' {
+                // The lexer admits exactly two hex digits
+                mut value i64 = 0
+                mut digit i64 = 0
+                for digit < HEX_ESCAPE_DIGITS && cursor < n && is_hex_digit(strings.char_at(text, cursor)) {
+                    value = value * HEX_BASE + hex_digit_value(strings.char_at(text, cursor))
+                    cursor += 1
+                    digit += 1
+                }
+                arrays.append(decoded, cast(value, u8))
+            }
+            default { arrays.append(decoded, text_byte(escape)) }
+        }
+    }
+    return encoding.to_string(decoded)
+}
+
+// The byte a character read from a string stands for.
+fn text_byte(character char) -> u8 {
+    value i64 = cast(character, i64)
+    if value < 0 { value = value + BYTE_VALUE_COUNT }
+    return cast(value, u8)
+}
+
+// Every identifier the generated C spells as written (locals, parameters, fields). The C headers
+// define macros under names like SIGTERM or BUFSIZ, so codegen undefines each after the includes.
+// Each name maps to its first-spelled position (the order of the `#undef` lines).
+mut emitted_identifiers [string:i64] = {:}
+
+fn note_emitted_identifier(name string) {
+    if !maps.contains_key(emitted_identifiers, name) { emitted_identifiers[name] = len(emitted_identifiers) }
+}

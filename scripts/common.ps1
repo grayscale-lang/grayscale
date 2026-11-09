@@ -86,7 +86,7 @@ function Resolve-GrayCC {
     Write-Host '    choco install mingw'
     Write-Host '    (or install MSYS2 and add C:\msys64\ucrt64\bin to PATH)'
     Write-Host ''
-    Write-Host 'Already installed? Pass it explicitly:  make build CC=C:\path\to\gcc.exe'
+    Write-Host 'Already installed? Pass it explicitly:  make grayc build CC=C:\path\to\gcc.exe'
     Write-Host ''
     exit 1
 }

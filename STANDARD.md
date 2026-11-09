@@ -47,6 +47,8 @@ Grayscale is a programming language for software that's simple to write and safe
 
 Grayscale source files must be encoded in UTF-8. However, identifiers are restricted to ASCII characters.
 
+A leading UTF-8 byte order mark (BOM) is skipped. Malformed UTF-8 inside a string literal is a compile-time error (`E1018`).
+
 ### 2.2 Line Terminators
 
 Line terminators are the ASCII line feed character (LF, U+000A) or the ASCII carriage return character (CR, U+000D) optionally followed by a line feed.
@@ -244,7 +246,7 @@ Escape sequences:
 - `\"` - double quote
 - `\'` - single quote
 - `\$` - literal `$` (suppresses string interpolation, e.g. `"\${x}"` is the text `${x}`)
-- `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline)
+- `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline). In a character literal `\xNN` is instead the codepoint U+00NN (see 2.7.5)
 - `\u{H…}` - the UTF-8 encoding of a codepoint given by 1–6 hex digits (U+0000–U+10FFFF, no surrogates), the same as in a character literal (e.g., `"\u{65E5}"` is `日`)
 
 String interpolation allows embedding expressions within strings:
@@ -378,7 +380,7 @@ No explicit cast is needed. The promotion is lossless for values within the floa
 
 #### 3.1.3 String Type (`string`)
 
-The `string` type represents a UTF-8 encoded byte sequence. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint; the byte is typed `char` and holds the raw byte value. `len()` returns the byte length, not the character count.
+The `string` type represents a UTF-8 encoded byte sequence. A string literal must be well-formed UTF-8 (`E1018` otherwise). Every stdlib function that decodes UTF-8 uses one strict decoder: overlong forms, surrogates (U+D800–U+DFFF) and values above U+10FFFF are invalid, and each invalid byte decodes as one U+FFFD and consumes exactly one byte. String indexing (`str[i]`) returns the byte at byte position `i`, not a Unicode codepoint; the byte is typed `char` and holds the raw byte value. `len()` returns the byte length, not the character count.
 
 For ASCII strings, one byte equals one character, so indexing works as expected:
 
@@ -419,7 +421,7 @@ mut eacute char = '\u{E9}'     // U+00E9  é
 mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF, or a surrogate U+D800–U+DFFF, is a compile-time error for a constant argument and a runtime panic otherwise.
+- `cast(c, i64)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF, or a surrogate U+D800–U+DFFF, is a compile-time error (`E7014`) for a constant argument and a runtime panic (`P0019`) otherwise. `cast(n, char)` follows the same rule.
 - Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
 - `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `i64`.
 - `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.
@@ -3606,25 +3608,27 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 
 ### 9.3 Strings Module (`@strings`)
 
+Positions and lengths count bytes. Characters are codepoints. Case and character classes are ASCII. Display columns exist only in `chars.width`.
+
 #### Case Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `to_upper` | `(s string) -> string` | Convert to uppercase |
-| `to_lower` | `(s string) -> string` | Convert to lowercase |
-| `to_title` | `(s string) -> string` | Capitalize the first letter of each whitespace-separated word, lowercase the rest |
+| `to_upper` | `(s string) -> string` | Convert to uppercase (ASCII only: `to_upper("héllo")` is `"HéLLO"`) |
+| `to_lower` | `(s string) -> string` | Convert to lowercase (ASCII only) |
+| `to_title` | `(s string) -> string` | Capitalize the first letter of each whitespace-separated word, lowercase the rest (ASCII only) |
 | `to_snake_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and hyphens to snake_case; acronym runs stay together (`HTTPServer` → `http_server`) |
 | `to_camel_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to camelCase |
 | `to_kebab_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and underscores to kebab-case (same word boundaries as `to_snake_case`) |
 | `to_pascal_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to PascalCase (like `to_camel_case`, but the first word is capitalized too) |
 | `to_screaming_snake_case` | `(s string) -> string` | `to_snake_case` followed by `to_upper` (`SCREAMING_SNAKE_CASE`) |
-| `capitalize` | `(s string) -> string` | Uppercase the first character, leave the rest untouched; `""` returns `""` |
+| `capitalize` | `(s string) -> string` | Uppercase the first character, leave the rest untouched; `""` returns `""` (ASCII only) |
 
 #### Access Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `char_at` | `(s string, index i64) -> char` | Character at byte index; panics if out of bounds |
+| `char_at` | `(s string, index i64) -> char` | Character at byte index; panics if out of bounds. A byte of 128 or more is returned as a raw byte, not decoded: `char_at("héllo", 1)` is `Ã` (U+00C3), not `é`. Use `to_char` for the codepoint at a codepoint index |
 
 #### Editing Functions
 
@@ -3648,11 +3652,11 @@ result.
 | `contains` | `(s string, sub string) -> bool` | Check if contains substring |
 | `starts_with` | `(s string, prefix string) -> bool` | Check prefix |
 | `ends_with` | `(s string, suffix string) -> bool` | Check suffix |
-| `index_of` | `(s string, sub string) -> i64` | First index of substring |
-| `last_index_of` | `(s string, sub string) -> i64` | Last index of substring (-1 if not found) |
+| `index_of` | `(s string, sub string) -> i64` | First byte index of substring (`index_of("日本語", "語")` is `6`) |
+| `last_index_of` | `(s string, sub string) -> i64` | Last byte index of substring (-1 if not found) |
 | `count` | `(s string, sub string) -> i64` | Count occurrences |
-| `contains_any` | `(s string, chars string) -> bool` | True if any single character from `chars` appears in `s`; false when `chars` is empty |
-| `equal_fold` | `(a string, b string) -> bool` | Case-insensitive equality (ASCII) |
+| `contains_any` | `(s string, chars string) -> bool` | True if any single codepoint from `chars` appears in `s` (compared by codepoint); false when `chars` is empty |
+| `equal_fold` | `(a string, b string) -> bool` | Case-insensitive equality (ASCII only) |
 | `compare` | `(a string, b string) -> i64` | Bytewise comparison; -1 if `a` sorts first, 1 if `b` does, 0 if equal |
 
 #### Transformation Functions
@@ -3666,7 +3670,7 @@ result.
 | `remove_suffix` | `(s string, suffix string) -> string` | Remove suffix if present, otherwise return unchanged |
 | `replace` | `(s string, old string, new string) -> string` | Replace all occurrences |
 | `repeat` | `(s string, count i64) -> string` | Repeat string |
-| `reverse` | `(s string) -> string` | Reverse string |
+| `reverse` | `(s string) -> string` | Reverse string by codepoint |
 | `truncate` | `(s string, max i64, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes (cut back to a character boundary) plus `ellipsis` (total byte length at most `max`; the cut snaps back to a character boundary); panics if `max < len(ellipsis)` |
 
 #### Conversion Functions
@@ -3677,9 +3681,9 @@ result.
 | `split_whitespace` | `(s string) -> [string]` | Split on runs of whitespace, discarding empty pieces |
 | `split_n` | `(s string, sep string, n i64) -> [string]` | Split into at most `n` pieces; the last holds the unsplit remainder. Empty array when `n <= 0` |
 | `join` | `(arr [string], sep string) -> string` | Join array |
-| `slice` | `(s string, start i64, end i64) -> string` | Extract substring |
-| `to_chars` | `(s string) -> [char]` | Convert string to char array |
-| `from_chars` | `(chars [char]) -> string` | Convert char array to string |
+| `slice` | `(s string, start i64, end i64) -> string` | Extract substring; `start` and `end` are byte offsets |
+| `to_chars` | `(s string) -> [char]` | Convert string to char array, one `char` per codepoint |
+| `from_chars` | `(chars [char]) -> string` | Convert char array to string, UTF-8 encoding each codepoint |
 
 #### Builder
 
@@ -4484,7 +4488,7 @@ Reading and writing CSV (Comma-Separated Values) data.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `parse` | `(csv_string string) -> [[string]]` | Parse CSV string to 2D array; panics (P0148) on malformed quoting: an unterminated quote, text after a closing quote, or a quote inside an unquoted field |
-| `parse_delimited` | `(csv_string string, delimiter char) -> [[string]]` | Like `parse`, but fields split on `delimiter` (e.g. `'\t'`, `';'`); RFC 4180 quoting still applies |
+| `parse_delimited` | `(csv_string string, delimiter char) -> [[string]]` | Like `parse`, but fields split on `delimiter` (e.g. `'\t'`, `';'`; a multi-byte delimiter splits on the whole codepoint); RFC 4180 quoting still applies |
 | `detect_delimiter` | `(sample string) -> char` | Most frequent of `,` `;` `\t` `\|` on the first line of `sample`, defaulting to `,` |
 | `encode` | `(data [[string]]) -> string` | Encode 2D array to CSV string; a field containing `,`, `"`, CR, or LF is quoted per RFC 4180 with embedded `"` doubled |
 | `headers` | `(data [[string]]) -> [string]` | Extract header row from parsed CSV data |
@@ -4665,7 +4669,7 @@ Format strings use C-style `%` specifiers:
 | `%o` | any integer | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf conventions, limited to the ones each conversion gives a meaning to:
+Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow C printf conventions, except that `%s` width and precision count codepoints (see below), limited to the ones each conversion gives a meaning to:
 
 | Conversion | Flags | Precision |
 |------------|-------|-----------|
@@ -4673,10 +4677,10 @@ Width, precision, and flags (`-`, `+`, space, `0`, `#`) follow standard C printf
 | `%u` | `-` `0` | yes |
 | `%x`, `%X`, `%o` | `-` `0` `#` | yes |
 | `%f`, `%e`, `%E`, `%g`, `%G` | `-` `+` space `0` `#` | yes |
-| `%s` | `-` | yes (maximum bytes) |
+| `%s` | `-` | yes (maximum codepoints) |
 | `%c`, `%b` | `-` | no |
 
-Any other flag or a precision where the table has none is a compile error. C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted: each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error; C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%s` of a string writes all of its bytes, including any after an embedded NUL. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Any other flag or a precision where the table has none is a compile error. C length modifiers (`h`, `hh`, `l`, `ll`, `L`) are not accepted: each value is formatted at the width of its type, so `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `i64`/`u64` types. A width or precision above 2147483647 is a compile error; C's printf cannot represent it. Escapes in the format string are decoded before directives are read, so `"\x25d"` is a `%d` directive, and a `\0` writes a NUL byte rather than ending the format string. `%s` of a string writes all of its bytes, including any after an embedded NUL. A `%s` width pads to that many codepoints and a precision keeps at most that many codepoints, never splitting a character: `fmt("%.2s", "日本語")` is `"日本"`. `fmt` never uses display columns; a wide character counts as one. `%c` prints a `char` (or an integer codepoint) as UTF-8, so `'é'` prints as `é`, and its width counts characters (`%3c` pads `'é'` to three characters, like `'a'`); an integer that is not a Unicode scalar value (negative, a surrogate U+D800–U+DFFF, or above U+10FFFF) prints U+FFFD. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint element only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
@@ -4694,9 +4698,9 @@ fmt.printfln("%d-%02d-%02d", parts)           // "2026-09-28"
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `pad_left` | `(s string, width i64, ch char) -> string` | Pad string on the left to `width` with `ch` |
-| `pad_right` | `(s string, width i64, ch char) -> string` | Pad string on the right to `width` with `ch` |
-| `center` | `(s string, width i64, ch char) -> string` | Center string within `width`, padding both sides with `ch` |
+| `pad_left` | `(s string, width i64, ch char) -> string` | Pad string on the left to `width` codepoints with `ch` |
+| `pad_right` | `(s string, width i64, ch char) -> string` | Pad string on the right to `width` codepoints with `ch` |
+| `center` | `(s string, width i64, ch char) -> string` | Center string within `width` codepoints, padding both sides with `ch` |
 
 #### Number Formatting
 
@@ -5438,7 +5442,7 @@ gray build main.gray -o app --cc /usr/local/bin/clang
 `GRAY_CC` and `CC` are different settings. `GRAY_CC` chooses the compiler `gray` uses to compile `.gray` programs. When building Grayscale from source, `CC` chooses the compiler `make` uses to build `grayc` and the runtime, and `gray` falls back to `$CC` only when `$GRAY_CC` is unset.
 
 ```bash
-CC=clang GRAY_CC=gcc make build   # grayc and the runtime built with clang
+CC=clang GRAY_CC=gcc make selfhost build   # grayc and the runtime built with clang
 ```
 
 `make help` lists every make target. `make help TARGET=<name>` prints what one target does, the variables it reads and an example. `TARGET` is a variable because make rejects `--` options before the Makefile is read and accepts only one goal. An unknown name fails with an `Unknown target` error, and `TARGET=` on any target other than `help` is ignored.

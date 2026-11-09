@@ -4,13 +4,96 @@ on:
   push:
     branches:
       - main
+      - selfhost
   pull_request:
     branches:
       - main
 
 jobs:
   test:
-    name: Build and Test
+    name: Build and Test (self-hosted)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download gray
+        uses: ./.github/actions/download-gray
+
+      - name: Build
+        run: make selfhost build
+
+      - name: Check diagnostic error codes
+        run: make selfhost check-error-codes
+
+      - name: Run gray verify
+        run: ./gray verify
+
+      - name: Check gray fmt
+        run: ./gray fmt --check ./selfhost/... ./cli/... ./scripts/... ./benchmarks/...
+
+      - name: Run Grayscale integration tests
+        run: make selfhost test-integration
+
+      - name: Check for stray binaries
+        run: make selfhost check-stray-binaries
+
+  tinycc:
+    name: Integration tests (TinyCC, self-hosted)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install TinyCC
+        run: sudo apt-get update && sudo apt-get install -y tcc
+
+      - name: Download gray
+        uses: ./.github/actions/download-gray
+
+      - name: Build
+        run: make selfhost build
+
+      - name: Run Grayscale integration tests with TinyCC
+        env:
+          GRAY_CC: tcc
+        run: make selfhost test-integration
+
+  clang:
+    name: Build and Test (Clang, Linux, self-hosted)
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Clang
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Toolchain versions
+        run: clang --version
+
+      - name: Download gray
+        uses: ./.github/actions/download-gray
+
+      - name: Build
+        run: make selfhost build
+
+      - name: Run Grayscale integration tests
+        run: make selfhost test-integration
+
+  # The C compiler (grayc/) still ships until it is removed; its own unit,
+  # end-to-end and sanitizer suites run here.
+  grayc:
+    name: grayc tests
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -30,89 +113,25 @@ jobs:
           key: c-objects-${{ runner.os }}-${{ hashFiles('grayc/src/**/*.c', 'grayc/src/**/*.h') }}
 
       - name: Build
-        run: make build
-
-      - name: Check diagnostic error codes
-        run: |
-          ./grayc/grayc scripts/check_error_codes.gray
-          ./check_error_codes
-          rm -f ./check_error_codes
-
-      - name: Run gray verify
-        run: ./gray verify
-
-      - name: Check gray fmt
-        run: ./gray fmt --check ./cli/... ./scripts/... ./benchmarks/...
+        run: make grayc build
 
       - name: Run Grayscale unit tests (lexer + parser + typechecker)
-        run: make test-unit
+        run: make grayc test-unit
 
       - name: Run Grayscale end-to-end tests
-        run: make test-e2e
+        run: make grayc test-e2e
 
       - name: Run Grayscale integration tests
-        run: make test-integration
-
-      - name: Check for stray binaries
-        run: |
-          ./grayc/grayc scripts/check_stray_binaries.gray -o "$RUNNER_TEMP/check_stray_binaries"
-          "$RUNNER_TEMP/check_stray_binaries"
+        run: make grayc test-integration
 
       - name: Run Grayscale UBSan tests
-        run: make test-ubsan
+        run: make grayc test-ubsan
 
       - name: Run Grayscale ASan tests (Linux only)
         if: runner.os == 'Linux'
         env:
           ASAN_OPTIONS: detect_leaks=0
-        run: make test-asan
-
-  tinycc:
-    name: Integration tests (TinyCC)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install TinyCC
-        run: sudo apt-get update && sudo apt-get install -y tcc
-
-      - name: Build
-        run: make build
-
-      - name: Run Grayscale integration tests with TinyCC
-        env:
-          GRAY_CC: tcc
-        run: make test-integration
-
-  clang:
-    name: Build and Test (Clang, Linux)
-    runs-on: ubuntu-latest
-    env:
-      CC: clang
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Clang
-        run: sudo apt-get update && sudo apt-get install -y clang
-
-      - name: Toolchain versions
-        run: clang --version
-
-      - name: Build
-        run: make build
-
-      - name: Run Grayscale unit tests (lexer + parser + typechecker)
-        run: make test-unit
-
-      - name: Run Grayscale end-to-end tests
-        run: make test-e2e
-
-      - name: Run Grayscale integration tests
-        run: make test-integration
+        run: make grayc test-asan
 
   # Windows is a separate job rather than a matrix entry: the steps above run
   # bash scripts and sanitizers that have no Windows equivalent.
@@ -139,14 +158,14 @@ jobs:
       # PowerShell scripts are what a machine with no POSIX shell uses.
       - name: Build with make
         shell: bash
-        run: make build
+        run: make grayc build
 
       - name: Test with make
         shell: bash
         run: |
-          make test-unit
-          make test-e2e
-          make test-integration
+          make grayc test-unit
+          make grayc test-e2e
+          make grayc test-integration
 
       - name: Test with scripts/test.ps1
         run: .\scripts\test.ps1

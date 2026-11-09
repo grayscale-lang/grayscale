@@ -1,0 +1,177 @@
+/*
+ * defines.gray:  The -define: override pass. Each override is validated against
+ * its constant's declared type and replaces the constant's initializer after
+ * import resolution and before type checking.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strconv, @strings, @arrays
+import "../ast/ast"
+import "../lexer/lexer"
+import "../lexer/token"
+import "../parser/parser"
+import "../typechecker/folding"
+import "../util/error_registry"
+
+// The most digits an integer override may have; more cannot fit any integer type.
+const MAX_INTEGER_DIGITS i64 = 80
+// The characters a floating-point override may be spelled with.
+const FLOAT_LITERAL_CHARACTERS string = "0123456789+-.eE"
+// The largest finite values of f64 and f32.
+const F64_MAX f64 = 1.7976931348623157e308
+const F32_MAX f64 = 3.4028234663852886e38
+
+// True for "i8".."i256" and "u8".."u256".
+fn is_integer_type_name(type_name string) -> bool {
+    return folding.integer_type_bits(type_name) > 0
+}
+
+// Validates `text` as a base-10 integer of the type `type_name` and returns its
+// normalized expression text ("-12", "7"), or "" when it is malformed or out of
+// range.
+fn normalize_integer(text string, type_name string) -> string {
+    mut is_negative bool = false
+    mut start i64 = 0
+    if len(text) > 0 && (strings.char_at(text, 0) == '-' || strings.char_at(text, 0) == '+') {
+        is_negative = strings.char_at(text, 0) == '-'
+        start = 1
+    }
+    if start >= len(text) { return "" }
+    for position in range(start, len(text)) {
+        digit char = strings.char_at(text, position)
+        if digit < '0' || digit > '9' { return "" }
+    }
+    mut magnitude string = strings.slice(text, start, len(text))
+    as_long_as len(magnitude) > 1 && strings.char_at(magnitude, 0) == '0' {
+        magnitude = strings.slice(magnitude, 1, len(magnitude))
+    }
+    if len(magnitude) >= MAX_INTEGER_DIGITS { return "" }
+    is_zero bool = magnitude == "0"
+    is_signed bool = strings.char_at(type_name, 0) == 'i'
+    if is_negative && !is_zero && !is_signed { return "" }
+    minimum_text, maximum_text = folding.integer_type_range(type_name)
+    mut limit string = maximum_text
+    if is_negative && !is_zero { limit = strings.slice(minimum_text, 1, len(minimum_text)) }
+    if len(magnitude) > len(limit) { return "" }
+    if len(magnitude) == len(limit) && strings.compare(magnitude, limit) > 0 { return "" }
+    if is_negative && !is_zero { return "-${magnitude}" }
+    return magnitude
+}
+
+// The initializer of `const D i64 = <expression_text>`, parsed with the real
+// parser so literals are built exactly as source-written ones are; nil when it
+// does not parse.
+fn parse_initializer(input_file string, expression_text string) -> ^ast.AstNode {
+    source string = "const D i64 = ${expression_text}\n"
+    parse_state = parser.parser_create(lexer.lexer_create(source, input_file), input_file)
+    scratch = parser.parse_program(parse_state)
+    if len(parse_state^.errors) > 0 || len(scratch^.program^.stmts) != 1 { return nil }
+    return scratch^.program^.stmts[0]^.var_decl^.value
+}
+
+// The literal node for `text` as a value of `type_name`, or nil when `text` is
+// not a valid value of that type. `site` is the node being replaced.
+fn build_initializer(input_file string, type_name string, text string, site ^ast.AstNode) -> ^ast.AstNode {
+    if is_integer_type_name(type_name) {
+        normalized string = normalize_integer(text, type_name)
+        if normalized == "" {
+            mut none ^ast.AstNode = nil
+            return none
+        }
+        return parse_initializer(input_file, normalized)
+    }
+    if type_name == "f32" || type_name == "f64" {
+        mut none_float ^ast.AstNode = nil
+        if len(text) == 0 { return none_float }
+        for_each character in text {
+            if !strings.contains(FLOAT_LITERAL_CHARACTERS, "${character}") { return none_float }
+        }
+        parsed, parse_error = strconv.to_f64(text)
+        if parse_error != nil { return none_float }
+        magnitude f64 = parsed
+        if magnitude < 0.0 { magnitude = -magnitude }
+        if magnitude != magnitude || magnitude > F64_MAX { return none_float }
+        if type_name == "f32" && magnitude > F32_MAX { return none_float }
+        node = ast.ast_alloc(ast.NodeKind.FLOAT_VALUE, site^.tok)
+        float_data = new(ast.FloatValueData)
+        float_data^.value = parsed
+        node^.float_value = float_data
+        return node
+    }
+    if type_name == "bool" {
+        mut none_bool ^ast.AstNode = nil
+        if text != "true" && text != "false" { return none_bool }
+        node = ast.ast_alloc(ast.NodeKind.BOOL_VALUE, site^.tok)
+        bool_data = new(ast.BoolValueData)
+        bool_data^.value = text == "true"
+        node^.bool_value = bool_data
+        return node
+    }
+    if type_name == "char" {
+        mut none_char ^ast.AstNode = nil
+        if char_count(text) != 1 { return none_char }
+        node = ast.ast_alloc(ast.NodeKind.CHAR_VALUE, site^.tok)
+        char_data = new(ast.CharValueData)
+        for_each character in text { char_data^.value = character }
+        node^.char_value = char_data
+        return node
+    }
+    raw_token token.Token = token.make_token(token.TokenKind.RAW_STRING, text, site^.tok.line, site^.tok.col)
+    node = ast.ast_alloc(ast.NodeKind.STRING_VALUE, raw_token)
+    string_data = new(ast.StringValueData)
+    string_data^.value = text
+    string_data^.is_raw = true
+    node^.string_value = string_data
+    return node
+}
+
+// The name a constant was declared with: merged imports carry a module-mangled
+// `name` and keep the source spelling in `original_name`.
+fn declared_name(declaration ^ast.AstNode) -> string {
+    if declaration^.var_decl^.original_name != "" { return declaration^.var_decl^.original_name }
+    return declaration^.var_decl^.name
+}
+
+// Applies each "NAME=VALUE" in `overrides` to every #define constant named
+// `NAME` in `program` (the entry file and every merged import). A name that is
+// not declared, a constant without #define, or a value that
+// does not parse as the constant's type is returned as an error; the
+// caller stops on errors before type checking.
+fn defines_apply(program ^ast.AstNode, input_file string, overrides [string]) -> [parser.ParseError] {
+    mut errors [parser.ParseError] = {}
+    for_each override_text in overrides {
+        separator i64 = strings.index_of(override_text, "=")
+        if separator < 0 { continue }
+        name string = strings.slice(override_text, 0, separator)
+        text string = strings.slice(override_text, separator + 1, len(override_text))
+
+        mut first_declaration ^ast.AstNode = nil
+        mut has_define bool = false
+        for_each declaration in program^.program^.stmts {
+            if declaration == nil || declaration^.kind != ast.NodeKind.VAR_DECL || declaration^.var_decl^.is_mutable || declared_name(declaration) != name { continue }
+            if first_declaration == nil { first_declaration = declaration }
+            if !declaration^.var_decl^.is_define { continue }
+            has_define = true
+
+            type_name string = declaration^.var_decl^.type_name
+            mut site ^ast.AstNode = declaration
+            if declaration^.var_decl^.value != nil { site = declaration^.var_decl^.value }
+            replacement = build_initializer(input_file, type_name, text, site)
+            if replacement == nil {
+                arrays.append(errors, parser.ParseError{code: "E3214", message: error_registry.registry_message_formatted("E3214", {name, text, type_name}), line: declaration^.tok.line, col: declaration^.tok.col, file: declaration^.tok.file})
+                continue
+            }
+            declaration^.var_decl^.value = replacement
+        }
+        if first_declaration == nil {
+            arrays.append(errors, parser.ParseError{code: "E4040", message: error_registry.registry_message_formatted("E4040", {name}), line: 0, col: 0, file: input_file})
+        } or !has_define {
+            arrays.append(errors, parser.ParseError{code: "E5066", message: error_registry.registry_message_formatted("E5066", {name}), line: first_declaration^.tok.line, col: first_declaration^.tok.col, file: first_declaration^.tok.file})
+        }
+    }
+    return errors
+}

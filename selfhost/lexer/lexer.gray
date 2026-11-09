@@ -1,0 +1,992 @@
+/*
+ * lexer.gray:  Lexical analysis for Grayscale source code. Scans input
+ * character-by-character to produce a stream of tokens.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings, @arrays, @fmt
+import "./token"
+
+// The attribute directives, and the opener of an attribute list.
+const STRICT_DIRECTIVE string = "#strict"
+const FLAGS_DIRECTIVE string = "#flags"
+const DOC_DIRECTIVE string = "#doc"
+const JSON_DIRECTIVE string = "#json"
+const DISCARD_DIRECTIVE string = "#discard"
+const DEPRECATED_DIRECTIVE string = "#deprecated"
+const ERROR_CODE_DIRECTIVE string = "#error_code"
+const TEST_DIRECTIVE string = "#test"
+const DEFINE_DIRECTIVE string = "#define"
+const ATTRIBUTE_LIST_OPENER string = "#["
+// The length of a UTF-8 byte order mark.
+const BYTE_ORDER_MARK_LENGTH i64 = 3
+// The length of a "0x", "0o" or "0b" prefix, and of the keyword "in".
+const RADIX_PREFIX_LENGTH i64 = 2
+const IN_KEYWORD_LENGTH i64 = 2
+// The value added to a hex letter's offset from 'a' or 'A'.
+const HEX_LETTER_OFFSET i64 = 10
+const HEX_BASE i64 = 16
+// The hex digits of a \x escape, and the most a \u{} escape takes.
+const HEX_ESCAPE_DIGITS i64 = 2
+const MAX_UNICODE_ESCAPE_DIGITS i64 = 6
+// The number of distinct byte values.
+const BYTE_VALUE_COUNT i64 = 256
+// Unicode: the highest codepoint, the UTF-16 surrogates, and what stands for an undecodable byte.
+const MAX_CODEPOINT i64 = 1114111
+const SURROGATE_MIN i64 = 55296
+const SURROGATE_MAX i64 = 57343
+const REPLACEMENT_CODEPOINT i64 = 65533
+// UTF-8: the bytes below ASCII_LIMIT stand alone; a continuation byte is 10xxxxxx.
+const ASCII_LIMIT i64 = 128
+const CONTINUATION_TAG i64 = 128
+const CONTINUATION_MAX i64 = 191
+const CONTINUATION_RADIX i64 = 64
+const CONTINUATION_TAG_QUOTIENT i64 = 2
+// Valid lead bytes of two, three and four byte sequences, and what each leaves of the codepoint.
+const TWO_BYTE_LEAD_MIN i64 = 194
+const TWO_BYTE_LEAD_MAX i64 = 223
+const THREE_BYTE_LEAD_MIN i64 = 224
+const THREE_BYTE_LEAD_MAX i64 = 239
+const FOUR_BYTE_LEAD_MIN i64 = 240
+const FOUR_BYTE_LEAD_MAX i64 = 244
+const TWO_BYTE_PAYLOAD_RADIX i64 = 32
+const THREE_BYTE_PAYLOAD_RADIX i64 = 16
+const FOUR_BYTE_PAYLOAD_RADIX i64 = 8
+// The bytes a lead byte may start with before it is certain to be overlong or too large.
+const THREE_BYTE_SECOND_MIN i64 = 160
+const SURROGATE_LEAD_BYTE i64 = 237
+const SURROGATE_LEAD_SECOND_MAX i64 = 159
+const FOUR_BYTE_SECOND_MIN i64 = 144
+const FOUR_BYTE_LAST_SECOND_MAX i64 = 143
+// The bit patterns that start a sequence, and the codepoints each length reaches.
+const TWO_BYTE_PATTERN_MIN i64 = 192
+const FOUR_BYTE_PATTERN_LIMIT i64 = 248
+const TWO_BYTE_CODEPOINT_LIMIT i64 = 2048
+const THREE_BYTE_CODEPOINT_LIMIT i64 = 65536
+const TWO_BYTE_SEQUENCE_LENGTH i64 = 2
+const THREE_BYTE_SEQUENCE_LENGTH i64 = 3
+const FOUR_BYTE_SEQUENCE_LENGTH i64 = 4
+
+const Lexer struct {
+    src string = ""
+    src_len i64 = 0
+    pos i64 = 0
+    read_pos i64 = 0
+    ch char = '\0'
+    line i64 = 1
+    col i64 = 0
+    file string = ""
+    error_code string = ""
+    error_msg string = ""
+    unterminated_string bool = false
+}
+
+fn lexer_create(source string, file string) -> ^Lexer {
+    lexer = new(Lexer)
+    // A leading UTF-8 byte order mark is not part of the source text
+    mut text string = source
+    if len(source) >= BYTE_ORDER_MARK_LENGTH && strings.char_at(source, 0) == '\xEF' && strings.char_at(source, 1) == '\xBB' && strings.char_at(source, 2) == '\xBF' {
+        text = strings.slice(source, BYTE_ORDER_MARK_LENGTH, len(source))
+    }
+    lexer^.src = text
+    lexer^.src_len = len(text)
+    lexer^.pos = 0
+    lexer^.read_pos = 0
+    lexer^.ch = '\0'
+    lexer^.line = 1
+    lexer^.col = 0
+    lexer^.file = file
+    read_char(lexer)
+    return lexer
+}
+
+fn read_char(lexer ^Lexer) {
+    if lexer^.read_pos >= lexer^.src_len {
+        lexer^.ch = '\0'
+    } otherwise {
+        lexer^.ch = strings.char_at(lexer^.src, lexer^.read_pos)
+    }
+    lexer^.pos = lexer^.read_pos
+    lexer^.read_pos = lexer^.read_pos + 1
+    lexer^.col = lexer^.col + 1
+    if lexer^.ch == '\n' {
+        lexer^.line = lexer^.line + 1
+        lexer^.col = 0
+    }
+}
+
+fn peek_char(lexer ^Lexer) -> char {
+    if lexer^.read_pos >= lexer^.src_len {
+        return '\0'
+    }
+    return strings.char_at(lexer^.src, lexer^.read_pos)
+}
+
+fn is_alpha(character char) -> bool {
+    return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z')
+}
+
+fn is_digit(character char) -> bool {
+    return character >= '0' && character <= '9'
+}
+
+fn is_xdigit(character char) -> bool {
+    return is_digit(character) || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')
+}
+
+// --- Whitespace and comment skipping ---
+
+fn skip_whitespace(lexer ^Lexer) {
+    as_long_as lexer^.ch == ' ' || lexer^.ch == '\t' || lexer^.ch == '\r' || lexer^.ch == '\n' {
+        read_char(lexer)
+    }
+}
+
+fn skip_line_comment(lexer ^Lexer) {
+    as_long_as lexer^.ch != '\n' && lexer^.ch != '\0' {
+        read_char(lexer)
+    }
+}
+
+fn skip_block_comment(lexer ^Lexer) {
+    read_char(lexer)
+    as_long_as lexer^.ch != '\0' {
+        if lexer^.ch == '*' && peek_char(lexer) == '/' {
+            read_char(lexer)
+            read_char(lexer)
+            return
+        }
+        read_char(lexer)
+    }
+    lexer^.error_code = "E1003"
+    lexer^.error_msg = "unclosed multi-line comment"
+}
+
+fn skip_whitespace_and_comments(lexer ^Lexer) {
+    loop {
+        skip_whitespace(lexer)
+        if lexer^.ch == '/' && peek_char(lexer) == '/' {
+            read_char(lexer)
+            read_char(lexer)
+            skip_line_comment(lexer)
+        } or lexer^.ch == '/' && peek_char(lexer) == '*' {
+            read_char(lexer)
+            skip_block_comment(lexer)
+        } otherwise {
+            break
+        }
+    }
+}
+
+// --- Literal reading ---
+
+fn read_identifier(lexer ^Lexer) -> string {
+    start i64 = lexer^.pos
+    as_long_as is_alpha(lexer^.ch) || lexer^.ch == '_' || is_digit(lexer^.ch) {
+        read_char(lexer)
+    }
+    ident_len i64 = lexer^.pos - start
+    if ident_len > token.MAX_IDENT_LEN {
+        lexer^.error_code = "E1024"
+        lexer^.error_msg = "identifier exceeds the maximum length of ${token.MAX_IDENT_LEN} characters"
+    }
+    return strings.slice(lexer^.src, start, lexer^.pos)
+}
+
+fn read_number(lexer ^Lexer) -> (string, token.TokenKind) {
+    start i64 = lexer^.pos
+    kind token.TokenKind = token.TokenKind.INT
+
+    // Check for 0x, 0o, 0b prefixes
+    if lexer^.ch == '0' {
+        next char = peek_char(lexer)
+        if next == 'x' || next == 'X' {
+            read_char(lexer)
+            read_char(lexer)
+            dstart i64 = lexer^.pos
+            as_long_as is_xdigit(lexer^.ch) || lexer^.ch == '_' {
+                read_char(lexer)
+            }
+            if lexer^.pos == dstart {
+                lexer^.error_code = "E1010"
+                lexer^.error_msg = "invalid number format: '0x' must be followed by hex digits (0-9, a-f)"
+            }
+            return strings.slice(lexer^.src, start, lexer^.pos), kind
+        }
+        if next == 'o' || next == 'O' {
+            read_char(lexer)
+            read_char(lexer)
+            dstart i64 = lexer^.pos
+            as_long_as lexer^.ch >= '0' && lexer^.ch <= '7' || lexer^.ch == '_' {
+                read_char(lexer)
+            }
+            if lexer^.pos == dstart {
+                lexer^.error_code = "E1010"
+                lexer^.error_msg = "invalid number format: '0o' must be followed by octal digits (0-7)"
+            }
+            return strings.slice(lexer^.src, start, lexer^.pos), kind
+        }
+        if next == 'b' || next == 'B' {
+            read_char(lexer)
+            read_char(lexer)
+            dstart i64 = lexer^.pos
+            as_long_as lexer^.ch == '0' || lexer^.ch == '1' || lexer^.ch == '_' {
+                read_char(lexer)
+            }
+            if lexer^.pos == dstart {
+                lexer^.error_code = "E1010"
+                lexer^.error_msg = "invalid number format: '0b' must be followed by binary digits (0-1)"
+            }
+            return strings.slice(lexer^.src, start, lexer^.pos), kind
+        }
+    }
+
+    // Decimal digits
+    as_long_as is_digit(lexer^.ch) || lexer^.ch == '_' {
+        read_char(lexer)
+    }
+
+    // Check for decimal point
+    if lexer^.ch == '.' {
+        next char = peek_char(lexer)
+        if is_digit(next) || next == '_' || next == '\0' || next == '\n' || next == ' ' || next == ')' || next == '}' || next == ',' || next == ';' {
+            kind = token.TokenKind.FLOAT
+            read_char(lexer)
+            as_long_as is_digit(lexer^.ch) || lexer^.ch == '_' {
+                read_char(lexer)
+            }
+        }
+    }
+
+    // Exponent: 1e9, 1.5e-3, 2E+10. Only consumed when exponent digits follow.
+    if lexer^.ch == 'e' || lexer^.ch == 'E' {
+        exp_next char = peek_char(lexer)
+        has_exp_sign = exp_next == '+' || exp_next == '-'
+        mut after_sign = exp_next
+        if has_exp_sign && lexer^.read_pos + 1 < lexer^.src_len { after_sign = strings.char_at(lexer^.src, lexer^.read_pos + 1) }
+        if is_digit(after_sign) {
+            kind = token.TokenKind.FLOAT
+            read_char(lexer)
+            if has_exp_sign { read_char(lexer) }
+            as_long_as is_digit(lexer^.ch) || lexer^.ch == '_' {
+                read_char(lexer)
+            }
+        }
+    }
+
+    num string = strings.slice(lexer^.src, start, lexer^.pos)
+
+    // Validate number format
+    if len(num) > 0 && lexer^.error_code == "" {
+        s string = num
+        // Skip 0x/0o/0b prefix for validation
+        if len(s) >= RADIX_PREFIX_LENGTH {
+            prefix_ch char = strings.char_at(s, 1)
+            if strings.char_at(s, 0) == '0' && (prefix_ch == 'x' || prefix_ch == 'X' || prefix_ch == 'o' || prefix_ch == 'O' || prefix_ch == 'b' || prefix_ch == 'B') {
+                s = strings.slice(s, RADIX_PREFIX_LENGTH, len(s))
+            }
+        }
+        slen i64 = len(s)
+        if slen > 0 {
+            // Trailing underscore
+            if strings.char_at(s, slen - 1) == '_' {
+                lexer^.error_code = "E1013"
+                lexer^.error_msg = "number cannot end with underscore"
+            }
+            // Consecutive underscores
+            for i in range(0, slen - 1) {
+                if strings.char_at(s, i) == '_' && strings.char_at(s, i + 1) == '_' {
+                    lexer^.error_code = "E1011"
+                    lexer^.error_msg = "number cannot have consecutive underscores"
+                    break
+                }
+            }
+            // Underscore adjacent to decimal point
+            for i in range(0, slen) {
+                if strings.char_at(s, i) == '.' {
+                    if i > 0 && strings.char_at(s, i - 1) == '_' {
+                        lexer^.error_code = "E1014"
+                        lexer^.error_msg = "underscore cannot appear before decimal point"
+                    }
+                    if i + 1 < slen && strings.char_at(s, i + 1) == '_' {
+                        lexer^.error_code = "E1015"
+                        lexer^.error_msg = "underscore cannot appear after decimal point"
+                    }
+                    // Trailing decimal
+                    if i + 1 >= slen || (!is_digit(strings.char_at(s, i + 1)) && strings.char_at(s, i + 1) != '_') {
+                        lexer^.error_code = "E1016"
+                        lexer^.error_msg = "number cannot end with decimal point"
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    return num, kind
+}
+
+fn hex_value(character char) -> i64 {
+    if character >= '0' && character <= '9' { return cast(character, i64) - cast('0', i64) }
+    if character >= 'a' && character <= 'f' { return cast(character, i64) - cast('a', i64) + HEX_LETTER_OFFSET }
+    return cast(character, i64) - cast('A', i64) + HEX_LETTER_OFFSET
+}
+
+// The strict UTF-8 decoder shared with the runtime (stdlib/utf8.h): only well-formed
+// sequences decode; an invalid byte is U+FFFD and consumes exactly one byte.
+// Returns (codepoint, bytes consumed) for the sequence at `position`.
+fn utf8_decode_at(lexer ^Lexer, position i64) -> (i64, i64) {
+    if position >= lexer^.src_len { return 0, 1 }
+    lead i64 = byte_value(strings.char_at(lexer^.src, position))
+    if lead < ASCII_LIMIT { return lead, 1 }
+    mut codepoint i64 = 0
+    mut sequence_bytes i64 = 0
+    mut second_min i64 = CONTINUATION_TAG
+    mut second_max i64 = CONTINUATION_MAX
+    if lead >= TWO_BYTE_LEAD_MIN && lead <= TWO_BYTE_LEAD_MAX {
+        codepoint = lead % TWO_BYTE_PAYLOAD_RADIX
+        sequence_bytes = TWO_BYTE_SEQUENCE_LENGTH
+    } or lead >= THREE_BYTE_LEAD_MIN && lead <= THREE_BYTE_LEAD_MAX {
+        codepoint = lead % THREE_BYTE_PAYLOAD_RADIX
+        sequence_bytes = THREE_BYTE_SEQUENCE_LENGTH
+        if lead == THREE_BYTE_LEAD_MIN { second_min = THREE_BYTE_SECOND_MIN }
+        if lead == SURROGATE_LEAD_BYTE { second_max = SURROGATE_LEAD_SECOND_MAX }
+    } or lead >= FOUR_BYTE_LEAD_MIN && lead <= FOUR_BYTE_LEAD_MAX {
+        codepoint = lead % FOUR_BYTE_PAYLOAD_RADIX
+        sequence_bytes = FOUR_BYTE_SEQUENCE_LENGTH
+        if lead == FOUR_BYTE_LEAD_MIN { second_min = FOUR_BYTE_SECOND_MIN }
+        if lead == FOUR_BYTE_LEAD_MAX { second_max = FOUR_BYTE_LAST_SECOND_MAX }
+    } otherwise {
+        return REPLACEMENT_CODEPOINT, 1
+    }
+    if lexer^.src_len - position < sequence_bytes { return REPLACEMENT_CODEPOINT, 1 }
+    second i64 = byte_value(strings.char_at(lexer^.src, position + 1))
+    if second < second_min || second > second_max { return REPLACEMENT_CODEPOINT, 1 }
+    codepoint = codepoint * CONTINUATION_RADIX + second % CONTINUATION_RADIX
+    for index in range(TWO_BYTE_SEQUENCE_LENGTH, sequence_bytes) {
+        continuation i64 = byte_value(strings.char_at(lexer^.src, position + index))
+        if continuation / CONTINUATION_RADIX != CONTINUATION_TAG_QUOTIENT { return REPLACEMENT_CODEPOINT, 1 }
+        codepoint = codepoint * CONTINUATION_RADIX + continuation % CONTINUATION_RADIX
+    }
+    return codepoint, sequence_bytes
+}
+
+// An error when the string literal's source bytes [start, pos) are not valid UTF-8.
+fn check_literal_utf8(lexer ^Lexer, start i64) {
+    if lexer^.error_code != "" { return }
+    mut cursor i64 = start
+    as_long_as cursor < lexer^.pos {
+        codepoint i64, length i64 = utf8_decode_at(lexer, cursor)
+        if codepoint == REPLACEMENT_CODEPOINT && length == 1 {
+            lexer^.error_code = "E1018"
+            lexer^.error_msg = "malformed UTF-8 in string literal"
+            return
+        }
+        cursor = cursor + length
+    }
+}
+
+// A \u{...} escape in a string literal: where it sits in the source and the codepoint it names.
+const UnicodeEscape struct {
+    begin     i64
+    end       i64
+    codepoint i64
+}
+
+// The literal text with each \u{...} escape rewritten as the \xNN escapes of its UTF-8 bytes.
+fn expand_unicode_escapes(lexer ^Lexer, start i64, escapes [UnicodeEscape]) -> string {
+    mut pieces [string] = {}
+    mut copied i64 = start
+    for_each escape in escapes {
+        arrays.append(pieces, strings.slice(lexer^.src, copied, escape.begin))
+        codepoint i64 = escape.codepoint
+        mut utf8_bytes [i64] = {}
+        if codepoint < ASCII_LIMIT {
+            arrays.append(utf8_bytes, codepoint)
+        } or codepoint < TWO_BYTE_CODEPOINT_LIMIT {
+            arrays.append(utf8_bytes, TWO_BYTE_PATTERN_MIN + codepoint / CONTINUATION_RADIX)
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint % CONTINUATION_RADIX)
+        } or codepoint < THREE_BYTE_CODEPOINT_LIMIT {
+            arrays.append(utf8_bytes, THREE_BYTE_LEAD_MIN + codepoint / (CONTINUATION_RADIX * CONTINUATION_RADIX))
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint / CONTINUATION_RADIX % CONTINUATION_RADIX)
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint % CONTINUATION_RADIX)
+        } otherwise {
+            arrays.append(utf8_bytes, FOUR_BYTE_LEAD_MIN + codepoint / (CONTINUATION_RADIX * CONTINUATION_RADIX * CONTINUATION_RADIX))
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint / (CONTINUATION_RADIX * CONTINUATION_RADIX) % CONTINUATION_RADIX)
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint / CONTINUATION_RADIX % CONTINUATION_RADIX)
+            arrays.append(utf8_bytes, CONTINUATION_TAG + codepoint % CONTINUATION_RADIX)
+        }
+        for_each utf8_byte in utf8_bytes { arrays.append(pieces, fmt.sprintf("\\x%02x", {utf8_byte})) }
+        copied = escape.end
+    }
+    arrays.append(pieces, strings.slice(lexer^.src, copied, lexer^.pos))
+    return strings.join(pieces, "")
+}
+
+fn read_string(lexer ^Lexer) -> string {
+    read_char(lexer)
+    start i64 = lexer^.pos
+    brace_depth i64 = 0
+    mut unicode_escapes [UnicodeEscape] = {}
+
+    as_long_as lexer^.ch != '\0' {
+        if lexer^.ch == '\\' {
+            read_char(lexer)
+            escape_begin i64 = lexer^.pos - 1
+            if lexer^.ch == 'u' && brace_depth == 0 {
+                // \u{H...}: 1 to 6 hex digits, the same rules as a char literal
+                read_char(lexer)
+                if lexer^.ch != '{' {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "malformed '\\u' escape in string; expected '\\u{...}'"
+                    continue
+                }
+                read_char(lexer)
+                mut hex_digit_count i64 = 0
+                mut escape_codepoint i64 = 0
+                as_long_as is_xdigit(lexer^.ch) {
+                    if hex_digit_count <= MAX_UNICODE_ESCAPE_DIGITS { escape_codepoint = escape_codepoint * HEX_BASE + hex_value(lexer^.ch) }
+                    read_char(lexer)
+                    hex_digit_count = hex_digit_count + 1
+                }
+                if lexer^.ch != '}' || hex_digit_count < 1 || hex_digit_count > MAX_UNICODE_ESCAPE_DIGITS {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "malformed '\\u{}' escape in string; expected 1 to ${MAX_UNICODE_ESCAPE_DIGITS} hex digits"
+                    continue
+                }
+                read_char(lexer)
+                if escape_codepoint > MAX_CODEPOINT {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF"
+                } or escape_codepoint >= SURROGATE_MIN && escape_codepoint <= SURROGATE_MAX {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "'\\u{}' codepoint is a UTF-16 surrogate, which has no UTF-8 encoding"
+                } otherwise {
+                    arrays.append(unicode_escapes, UnicodeEscape{begin: escape_begin, end: lexer^.pos, codepoint: escape_codepoint})
+                }
+                continue
+            }
+            if lexer^.ch == 'x' {
+                // Hex escape: \xNN
+                read_char(lexer)
+                if !is_xdigit(lexer^.ch) {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "invalid hex escape sequence; \\x must be followed by exactly two hex digits"
+                    continue
+                }
+                read_char(lexer)
+                if !is_xdigit(lexer^.ch) {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "invalid hex escape sequence; \\x must be followed by exactly two hex digits"
+                    continue
+                }
+                read_char(lexer)
+                continue
+            } or lexer^.ch != 'n' && lexer^.ch != 't' && lexer^.ch != 'r' && lexer^.ch != '\\' && lexer^.ch != '"' && lexer^.ch != '\'' && lexer^.ch != '0' && lexer^.ch != 'a' && lexer^.ch != 'b' && lexer^.ch != 'f' && lexer^.ch != 'v' && lexer^.ch != '$' && lexer^.ch != '\0' {
+                lexer^.error_code = "E1006"
+                lexer^.error_msg = "invalid escape sequence in string"
+            }
+            read_char(lexer)
+            continue
+        }
+        if lexer^.ch == '$' && peek_char(lexer) == '{' {
+            brace_depth = brace_depth + 1
+            read_char(lexer)
+            read_char(lexer)
+            continue
+        }
+        // Inside interpolation: skip nested strings
+        if lexer^.ch == '"' && brace_depth > 0 {
+            read_char(lexer)
+            as_long_as lexer^.ch != '\0' && lexer^.ch != '"' {
+                if lexer^.ch == '\\' && peek_char(lexer) != '\0' {
+                    read_char(lexer)
+                }
+                read_char(lexer)
+            }
+            if lexer^.ch == '"' {
+                read_char(lexer)
+            }
+            continue
+        }
+        // Likewise a nested char literal: its escapes are not string escapes,
+        // and a `\u{...}` brace is not counted.
+        if lexer^.ch == '\'' && brace_depth > 0 {
+            read_char(lexer)
+            as_long_as lexer^.ch != '\0' && lexer^.ch != '\'' {
+                if lexer^.ch == '\\' && peek_char(lexer) != '\0' {
+                    read_char(lexer)
+                }
+                read_char(lexer)
+            }
+            if lexer^.ch == '\'' {
+                read_char(lexer)
+            }
+            continue
+        }
+        if lexer^.ch == '{' && brace_depth > 0 {
+            brace_depth = brace_depth + 1
+            read_char(lexer)
+            continue
+        }
+        if lexer^.ch == '}' && brace_depth > 0 {
+            brace_depth = brace_depth - 1
+            read_char(lexer)
+            continue
+        }
+        if lexer^.ch == '"' && brace_depth == 0 {
+            break
+        }
+        if lexer^.ch == '\n' && brace_depth == 0 {
+            lexer^.error_code = "E1023"
+            lexer^.error_msg = "string literals cannot span multiple lines; use a raw string with backticks for multi-line text"
+            break
+        }
+        read_char(lexer)
+    }
+
+    check_literal_utf8(lexer, start)
+    mut str string = ""
+    if len(unicode_escapes) > 0 {
+        str = expand_unicode_escapes(lexer, start, unicode_escapes)
+    } otherwise {
+        str = strings.slice(lexer^.src, start, lexer^.pos)
+    }
+    if lexer^.ch == '"' {
+        read_char(lexer)
+    } or lexer^.error_code == "" {
+        lexer^.unterminated_string = true
+    }
+    return str
+}
+
+fn read_raw_string(lexer ^Lexer) -> string {
+    read_char(lexer)
+    start i64 = lexer^.pos
+
+    as_long_as lexer^.ch != '`' && lexer^.ch != '\0' {
+        read_char(lexer)
+    }
+
+    check_literal_utf8(lexer, start)
+    str string = strings.slice(lexer^.src, start, lexer^.pos)
+    if lexer^.ch == '`' {
+        read_char(lexer)
+    } otherwise {
+        lexer^.error_code = "E1017"
+        lexer^.error_msg = "unclosed raw string literal"
+    }
+    return str
+}
+
+// The unsigned value of a source byte (char_at yields the C char, negative
+// from 0x80 up).
+fn byte_value(character char) -> i64 {
+    value i64 = cast(character, i64)
+    if value < 0 { return value + BYTE_VALUE_COUNT }
+    return value
+}
+
+// Length of the UTF-8 sequence a lead byte introduces, or 0 if it is not a
+// valid lead byte (a continuation byte or 0xF8 and above).
+fn utf8_sequence_length(lead i64) -> i64 {
+    if lead < ASCII_LIMIT { return 1 }
+    if lead >= TWO_BYTE_PATTERN_MIN && lead < THREE_BYTE_LEAD_MIN { return TWO_BYTE_SEQUENCE_LENGTH }
+    if lead >= THREE_BYTE_LEAD_MIN && lead < FOUR_BYTE_LEAD_MIN { return THREE_BYTE_SEQUENCE_LENGTH }
+    if lead >= FOUR_BYTE_LEAD_MIN && lead < FOUR_BYTE_PATTERN_LIMIT { return FOUR_BYTE_SEQUENCE_LENGTH }
+    return 0
+}
+
+fn read_char_literal(lexer ^Lexer) -> string {
+    read_char(lexer)
+    start i64 = lexer^.pos
+
+    if lexer^.ch == '\'' {
+        // empty literal ''
+        lexer^.error_code = "E1018"
+        lexer^.error_msg = "char literal must contain exactly one codepoint; use a string for multiple characters"
+    } or lexer^.ch == '\\' {
+        read_char(lexer)
+        if lexer^.ch == 'x' {
+            // \xNN: exactly two hex digits
+            read_char(lexer)
+            for _ in range(0, HEX_ESCAPE_DIGITS) {
+                if !is_xdigit(lexer^.ch) {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "malformed '\\x' escape in character literal; expected exactly two hex digits"
+                    break
+                }
+                read_char(lexer)
+            }
+        } or lexer^.ch == 'u' {
+            // \u{H...}: 1 to 6 hex digits
+            read_char(lexer)
+            if lexer^.ch != '{' {
+                lexer^.error_code = "E1006"
+                lexer^.error_msg = "malformed '\\u' escape in character literal; expected '\\u{...}'"
+            } otherwise {
+                read_char(lexer)
+                mut hex_digit_count i64 = 0
+                as_long_as is_xdigit(lexer^.ch) {
+                    read_char(lexer)
+                    hex_digit_count = hex_digit_count + 1
+                }
+                if lexer^.ch != '}' || hex_digit_count < 1 || hex_digit_count > MAX_UNICODE_ESCAPE_DIGITS {
+                    lexer^.error_code = "E1006"
+                    lexer^.error_msg = "malformed '\\u{}' escape in character literal; expected 1 to ${MAX_UNICODE_ESCAPE_DIGITS} hex digits"
+                } otherwise {
+                    read_char(lexer)
+                }
+            }
+        } or lexer^.ch != 'n' && lexer^.ch != 't' && lexer^.ch != 'r' && lexer^.ch != '\\' && lexer^.ch != '\'' && lexer^.ch != '"' && lexer^.ch != '0' && lexer^.ch != '\0' {
+            lexer^.error_code = "E1007"
+            lexer^.error_msg = "invalid escape sequence in character literal"
+            read_char(lexer)
+        } otherwise {
+            read_char(lexer) // skip the simple escaped char
+        }
+    } otherwise {
+        // One UTF-8 encoded codepoint: consume the lead byte and its continuation bytes
+        char_codepoint i64, sequence_length i64 = utf8_decode_at(lexer, lexer^.pos)
+        if char_codepoint == REPLACEMENT_CODEPOINT && sequence_length == 1 && byte_value(lexer^.ch) >= ASCII_LIMIT {
+            lexer^.error_code = "E1018"
+            lexer^.error_msg = "malformed UTF-8 in character literal"
+            read_char(lexer)
+        } otherwise {
+            for _ in range(0, sequence_length) { read_char(lexer) }
+        }
+    }
+
+    // Anything but the closing quote now means more than one codepoint, unless
+    // the line or input ended first (an unterminated literal).
+    if lexer^.ch != '\'' && lexer^.ch != '\0' && lexer^.ch != '\n' && lexer^.error_code == "" {
+        as_long_as lexer^.ch != '\'' && lexer^.ch != '\0' && lexer^.ch != '\n' {
+            read_char(lexer)
+        }
+        if lexer^.ch == '\'' {
+            lexer^.error_code = "E1018"
+            lexer^.error_msg = "char literal must contain exactly one codepoint; use a string for multiple characters"
+        }
+    }
+
+    str string = strings.slice(lexer^.src, start, lexer^.pos)
+    if lexer^.ch == '\'' {
+        read_char(lexer)
+    } or lexer^.error_code == "" {
+        lexer^.error_code = "E1005"
+        lexer^.error_msg = "unclosed character literal"
+    }
+    return str
+}
+
+fn check_upcoming(lexer ^Lexer, s string, length i64) -> bool {
+    if lexer^.pos + length > lexer^.src_len {
+        return false
+    }
+    return strings.slice(lexer^.src, lexer^.pos, lexer^.pos + length) == s
+}
+
+// --- Main tokenizer ---
+
+fn next_token(lexer ^Lexer) -> token.Token {
+    lexer^.error_code = ""
+    pre_skip_pos i64 = lexer^.pos
+    skip_whitespace_and_comments(lexer)
+    had_leading_gap bool = lexer^.pos != pre_skip_pos
+
+    // Check for errors from comment skipping
+    if lexer^.error_code != "" {
+        current_token token.Token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, lexer^.line, lexer^.col)
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    line i64 = lexer^.line
+    col i64 = lexer^.col
+
+    // A NUL inside the input is an error; one at the end is the end of the file
+    if lexer^.ch == '\0' && lexer^.pos < lexer^.src_len {
+        lexer^.error_code = "E1026"
+        lexer^.error_msg = "NUL byte in source file"
+        nul_tok token.Token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        read_char(lexer)
+        nul_tok.file = lexer^.file
+        nul_tok.preceded_by_ws = had_leading_gap
+        return nul_tok
+    }
+
+    // EOF
+    if lexer^.ch == '\0' {
+        current_token token.Token = token.make_token(token.TokenKind.EOF, "", line, col)
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    current_token token.Token = token.make_token(token.TokenKind.ILLEGAL, "", line, col)
+
+    // Identifiers and numbers (handled first, return early)
+    if is_alpha(lexer^.ch) || lexer^.ch == '_' {
+        literal string = read_identifier(lexer)
+        if lexer^.error_code != "" {
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } otherwise {
+            current_token = token.make_token(token.lookup_keyword(literal), literal, line, col)
+        }
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    if is_digit(lexer^.ch) {
+        literal string, kind token.TokenKind = read_number(lexer)
+        if lexer^.error_code != "" {
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } otherwise {
+            current_token = token.make_token(kind, literal, line, col)
+        }
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    // String literals
+    if lexer^.ch == '"' {
+        lexer^.unterminated_string = false
+        literal string = read_string(lexer)
+        if lexer^.unterminated_string {
+            lexer^.error_code = "E1021"
+            lexer^.error_msg = "string literal was never closed; add a closing double quote"
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } or lexer^.error_code != "" {
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.STRING, literal, line, col)
+        }
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    // Raw string literals
+    if lexer^.ch == '`' {
+        literal string = read_raw_string(lexer)
+        if lexer^.error_code != "" {
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.RAW_STRING, literal, line, col)
+        }
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    // Char literals
+    if lexer^.ch == '\'' {
+        lexer^.error_code = ""
+        literal string = read_char_literal(lexer)
+        if lexer^.error_code != "" {
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.CHAR, literal, line, col)
+        }
+        current_token.file = lexer^.file
+        current_token.preceded_by_ws = had_leading_gap
+        return current_token
+    }
+
+    // Operators and delimiters
+    if lexer^.ch == '=' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.EQ, "==", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.ASSIGN, "=", line, col)
+        }
+    } or lexer^.ch == '+' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.PLUS_ASSIGN, "+=", line, col)
+        } or peek_char(lexer) == '+' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.INCREMENT, "++", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.PLUS, "+", line, col)
+        }
+    } or lexer^.ch == '-' {
+        if peek_char(lexer) == '>' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.ARROW, "->", line, col)
+        } or peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.MINUS_ASSIGN, "-=", line, col)
+        } or peek_char(lexer) == '-' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.DECREMENT, "--", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.MINUS, "-", line, col)
+        }
+    } or lexer^.ch == '!' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.NOT_EQ, "!=", line, col)
+        } or peek_char(lexer) == 'i' && lexer^.read_pos + 1 < lexer^.src_len && strings.char_at(lexer^.src, lexer^.read_pos + 1) == 'n' && (lexer^.read_pos + IN_KEYWORD_LENGTH >= lexer^.src_len || !(is_alpha(strings.char_at(lexer^.src, lexer^.read_pos + IN_KEYWORD_LENGTH)) || is_digit(strings.char_at(lexer^.src, lexer^.read_pos + IN_KEYWORD_LENGTH)) || strings.char_at(lexer^.src, lexer^.read_pos + IN_KEYWORD_LENGTH) == '_')) {
+            read_char(lexer)
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.NOT_IN, "!in", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.BANG, "!", line, col)
+        }
+    } or lexer^.ch == '*' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.ASTERISK_ASSIGN, "*=", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.ASTERISK, "*", line, col)
+        }
+    } or lexer^.ch == '/' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.SLASH_ASSIGN, "/=", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.SLASH, "/", line, col)
+        }
+    } or lexer^.ch == '%' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.PERCENT_ASSIGN, "%=", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.PERCENT, "%", line, col)
+        }
+    } or lexer^.ch == '<' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.LT_EQ, "<=", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.LT, "<", line, col)
+        }
+    } or lexer^.ch == '>' {
+        if peek_char(lexer) == '=' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.GT_EQ, ">=", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.GT, ">", line, col)
+        }
+    } or lexer^.ch == '&' {
+        if peek_char(lexer) == '&' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.AND, "&&", line, col)
+        } otherwise {
+            current_token = token.make_token(token.TokenKind.AMPERSAND, "&", line, col)
+        }
+    } or lexer^.ch == '|' {
+        if peek_char(lexer) == '|' {
+            read_char(lexer)
+            current_token = token.make_token(token.TokenKind.OR, "||", line, col)
+        } otherwise {
+            lexer^.error_code = "E1020"
+            lexer^.error_msg = "unexpected character '|'; use '||' for logical OR"
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        }
+    } or lexer^.ch == '?' {
+        lexer^.error_code = "E1025"
+        lexer^.error_msg = "this symbol is not part of the language; declare a type parameter with 'generic' (e.g. 'do identity(kind generic, x kind) -> kind')"
+        current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+    } or lexer^.ch == ',' {
+        current_token = token.make_token(token.TokenKind.COMMA, ",", line, col)
+    } or lexer^.ch == ':' {
+        current_token = token.make_token(token.TokenKind.COLON, ":", line, col)
+    } or lexer^.ch == ';' {
+        current_token = token.make_token(token.TokenKind.SEMICOLON, ";", line, col)
+    } or lexer^.ch == '(' {
+        current_token = token.make_token(token.TokenKind.LPAREN, "(", line, col)
+    } or lexer^.ch == ')' {
+        current_token = token.make_token(token.TokenKind.RPAREN, ")", line, col)
+    } or lexer^.ch == '{' {
+        current_token = token.make_token(token.TokenKind.LBRACE, "{", line, col)
+    } or lexer^.ch == '}' {
+        current_token = token.make_token(token.TokenKind.RBRACE, "}", line, col)
+    } or lexer^.ch == '[' {
+        current_token = token.make_token(token.TokenKind.LBRACKET, "[", line, col)
+    } or lexer^.ch == ']' {
+        current_token = token.make_token(token.TokenKind.RBRACKET, "]", line, col)
+    } or lexer^.ch == '.' {
+        current_token = token.make_token(token.TokenKind.DOT, ".", line, col)
+    } or lexer^.ch == '@' {
+        current_token = token.make_token(token.TokenKind.AT, "@", line, col)
+    } or lexer^.ch == '^' {
+        current_token = token.make_token(token.TokenKind.CARET, "^", line, col)
+    } or lexer^.ch == '#' {
+        if check_upcoming(lexer, STRICT_DIRECTIVE, len(STRICT_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.STRICT, STRICT_DIRECTIVE, line, col)
+            for _ in range(0, len(STRICT_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, FLAGS_DIRECTIVE, len(FLAGS_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.FLAGS, FLAGS_DIRECTIVE, line, col)
+            for _ in range(0, len(FLAGS_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, DOC_DIRECTIVE, len(DOC_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.DOC, DOC_DIRECTIVE, line, col)
+            for _ in range(0, len(DOC_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, JSON_DIRECTIVE, len(JSON_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.JSON_ATTR, JSON_DIRECTIVE, line, col)
+            for _ in range(0, len(JSON_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, DISCARD_DIRECTIVE, len(DISCARD_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.DISCARD, DISCARD_DIRECTIVE, line, col)
+            for _ in range(0, len(DISCARD_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, DEPRECATED_DIRECTIVE, len(DEPRECATED_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.DEPRECATED, DEPRECATED_DIRECTIVE, line, col)
+            for _ in range(0, len(DEPRECATED_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, ERROR_CODE_DIRECTIVE, len(ERROR_CODE_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.ERROR_CODE_ATTR, ERROR_CODE_DIRECTIVE, line, col)
+            for _ in range(0, len(ERROR_CODE_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, TEST_DIRECTIVE, len(TEST_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.TEST, TEST_DIRECTIVE, line, col)
+            for _ in range(0, len(TEST_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, DEFINE_DIRECTIVE, len(DEFINE_DIRECTIVE)) {
+            current_token = token.make_token(token.TokenKind.DEFINE, DEFINE_DIRECTIVE, line, col)
+            for _ in range(0, len(DEFINE_DIRECTIVE) - 1) { read_char(lexer) }
+        } or check_upcoming(lexer, ATTRIBUTE_LIST_OPENER, len(ATTRIBUTE_LIST_OPENER)) {
+            current_token = token.make_token(token.TokenKind.HASH_LBRACKET, ATTRIBUTE_LIST_OPENER, line, col)
+            read_char(lexer)
+        } otherwise {
+            lexer^.error_code = "E1019"
+            lexer^.error_msg = "unexpected character '#'; use '//' for comments, '#strict', '#flags', '#json', '#doc', '#discard', '#deprecated', '#test', '#error_code' for attributes, or '#[...]' for a single-line attribute list"
+            current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+        }
+    } otherwise {
+        lexer^.error_code = "E1022"
+        lead i64 = byte_value(lexer^.ch)
+        unexpected_codepoint i64, sequence_length i64 = utf8_decode_at(lexer, lexer^.pos)
+        is_whole_sequence bool = unexpected_codepoint != REPLACEMENT_CODEPOINT || sequence_length > 1
+        if !is_whole_sequence {
+            lexer^.error_msg = fmt.sprintf("unexpected character '\\x%02x'", {lead})
+        } otherwise {
+            lexer^.error_msg = fmt.sprintf("unexpected character '%s'", {strings.slice(lexer^.src, lexer^.pos, lexer^.pos + sequence_length)})
+            for _ in range(1, sequence_length) { read_char(lexer) }
+        }
+        current_token = token.make_token(token.TokenKind.ILLEGAL, lexer^.error_msg, line, col)
+    }
+
+    read_char(lexer)
+    current_token.file = lexer^.file
+    current_token.preceded_by_ws = had_leading_gap
+    return current_token
+}
+
+// Tokenize an entire input string into an array of tokens
+fn tokenize(source string, file string) -> [token.Token] {
+    lexer = lexer_create(source, file)
+    tokens [token.Token] = {}
+    loop {
+        current_token token.Token = next_token(lexer)
+        arrays.append(tokens, current_token)
+        if current_token.kind == token.TokenKind.EOF {
+            break
+        }
+    }
+    return tokens
+}

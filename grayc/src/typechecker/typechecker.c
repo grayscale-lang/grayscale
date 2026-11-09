@@ -3171,6 +3171,8 @@ typedef enum {
     EXPECTED_ARGUMENT_BUILDER, EXPECTED_ARGUMENT_UUID, EXPECTED_ARGUMENT_U8_ARRAY, EXPECTED_ARGUMENT_I64_POINTER,
     /* An array whose element type is fixed: [string], [char], [[string]], [map[string:string]]. */
     EXPECTED_ARGUMENT_STRING_ARRAY, EXPECTED_ARGUMENT_CHAR_ARRAY, EXPECTED_ARGUMENT_STRING_GRID, EXPECTED_ARGUMENT_STRING_MAP_ARRAY,
+    /* A map whose key and value types are both string: map[string:string]. */
+    EXPECTED_ARGUMENT_STRING_MAP,
     /* A number the function reads as an f64: any number is accepted and is
      * converted to f64. */
     EXPECTED_ARGUMENT_F64_NUMBER,
@@ -3243,6 +3245,10 @@ static bool argument_kind_matches(ExpectedArgumentKind expected, GrayType *actua
     case EXPECTED_ARGUMENT_DATABASE:   return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Database") == 0;
     case EXPECTED_ARGUMENT_ROUTER:     return actual->kind == TYPE_KIND_STRUCT && actual->name && strcmp(actual->name, "Router") == 0;
     case EXPECTED_ARGUMENT_POINTER:  return actual->kind == TYPE_KIND_POINTER;
+    /* An empty map literal `{:}` carries no key or value type yet. */
+    case EXPECTED_ARGUMENT_STRING_MAP: return actual->kind == TYPE_KIND_MAP &&
+                             (!actual->key_type || strcmp(actual->key_type, "string") == 0) &&
+                             (!actual->value_type || strcmp(actual->value_type, "string") == 0);
     case EXPECTED_ARGUMENT_STRING_ARRAY:
     case EXPECTED_ARGUMENT_CHAR_ARRAY:
     case EXPECTED_ARGUMENT_STRING_GRID:
@@ -3290,6 +3296,7 @@ static const char *expected_kind_name(ExpectedArgumentKind kind) {
     case EXPECTED_ARGUMENT_CHAR_ARRAY: return "[char]";
     case EXPECTED_ARGUMENT_STRING_GRID: return "[[string]]";
     case EXPECTED_ARGUMENT_STRING_MAP_ARRAY: return "[map[string:string]]";
+    case EXPECTED_ARGUMENT_STRING_MAP: return "map[string:string]";
     case EXPECTED_ARGUMENT_MUTEX:    return "Mutex";
     case EXPECTED_ARGUMENT_THREAD:   return "Thread";
     case EXPECTED_ARGUMENT_SPINLOCK: return "SpinLock";
@@ -3550,12 +3557,12 @@ static const StdlibFunctionMetadata stdlib_function_metadata[] = {
     {"fmt", "printfln",      2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "void"},
     {"fmt", "sprintf",       2, 2, false, FALLIBLE_TYPE_NONE, 1, {{0, EXPECTED_ARGUMENT_STRING}}, "string"},
     /* http */
-    {"http", "delete", 1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
-    {"http", "get",    1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
-    {"http", "head",   1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
-    {"http", "patch",  2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
-    {"http", "post",   2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
-    {"http", "put",    2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_MAP}}, "HttpResponse"},
+    {"http", "delete", 1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
+    {"http", "get",    1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
+    {"http", "head",   1, 2, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
+    {"http", "patch",  2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
+    {"http", "post",   2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
+    {"http", "put",    2, 3, true, FALLIBLE_TYPE_STRUCT_HTTP_RESPONSE, 3, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}, {2, EXPECTED_ARGUMENT_STRING_MAP}}, "HttpResponse"},
     /* io */
     {"io", "append_bytes",   2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_U8_ARRAY}}, "bool"},
     {"io", "append_file",    2, 2, true,  FALLIBLE_TYPE_BOOL,         2, {{0, EXPECTED_ARGUMENT_STRING}, {1, EXPECTED_ARGUMENT_STRING}}, "bool"},
@@ -7604,6 +7611,9 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
                             } else if (callback_function_signature->return_count < 1) {
                                 NODE_ERROR_FORMATTED(checker, callback_argument, "E9004",
                                     member_function_name, "map callback must return a value");
+                            } else if (callback_function_signature->return_count > 1) {
+                                NODE_ERROR_FORMATTED(checker, callback_argument, "E9004",
+                                    member_function_name, "map callback must return a single value");
                             } else if (element_type_name && callback_function_signature->parameter_types[0] &&
                                        strcmp(type_name(callback_function_signature->parameter_types[0]), element_type_name) != 0) {
                                 char *message = typechecker_format(checker,
@@ -8188,8 +8198,10 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                        callback_argument->data.function_reference.function->kind == NODE_LABEL) {
                 FunctionSignature *callback_function_signature = find_function(checker,
                     callback_argument->data.function_reference.function->data.label.value);
-                if (callback_function_signature && (callback_function_signature->parameter_count != 1 || callback_function_signature->return_count < 1 ||
-                              callback_function_signature->return_types[0]->kind != TYPE_KIND_BOOL)) {
+                if (callback_function_signature && (callback_function_signature->parameter_count != 1 || callback_function_signature->return_count != 1 ||
+                              callback_function_signature->return_types[0]->kind != TYPE_KIND_BOOL ||
+                              !callback_function_signature->parameter_types[0] ||
+                              strcmp(type_name(callback_function_signature->parameter_types[0]), "[string]") != 0)) {
                     NODE_ERROR(checker, callback_argument, "E5061");
                 }
             }

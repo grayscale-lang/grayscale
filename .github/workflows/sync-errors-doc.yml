@@ -23,7 +23,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build grayc
-        run: make build
+        run: make grayc build
 
       - name: Generate ERRORS.md from error_codes.h
         run: |

@@ -99,11 +99,13 @@ do main() {
 
 Download the latest release for your platform from the [Releases page](https://github.com/grayscale-lang/grayscale/releases). No dependencies required.
 
+For now, releases are experimental builds named `experimental-YYYYMMDD-build#`: the UTC date of the merge into `main`, then a build number that counts up from 1 within that date.
+
 ### Build from source
 
-Requires a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both. `GRAY_CC` is the compiler `gray` uses for `.gray` programs; `CC` is the compiler `make` uses to build `grayc` and the runtime, and `gray` falls back to it only when `GRAY_CC` is unset (`CC=clang GRAY_CC=gcc make build`).
+Requires a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both. `GRAY_CC` is the compiler `gray` uses for `.gray` programs; `CC` is the compiler `make` uses to build the runtime library, and `gray` falls back to it only when `GRAY_CC` is unset (`CC=clang GRAY_CC=gcc make selfhost build`).
 
-Run `make help` to list the make targets, or `make help TARGET=build` to see what one target does and which variables it reads.
+Targets that need a compiler take its name first: `make selfhost <target>` uses the compiler written in Grayscale, which is the one to use. Run `make help` to list the make targets, or `make help TARGET=build` to see what one target does and which variables it reads.
 
 | Compiler | macOS | Linux | Windows |
 |---|---|---|---|
@@ -116,9 +118,11 @@ On macOS, `cc` and `gcc` are both Apple Clang unless GCC is installed separately
 ```bash
 git clone https://github.com/grayscale-lang/grayscale.git
 cd grayscale
-make build
-make install
+make selfhost build
+make selfhost install
 ```
+
+The compiler is written in Grayscale, so building it needs a `gray` that is already installed. Download a release from the [Releases page](https://github.com/grayscale-lang/grayscale/releases) first, and either put `gray` on your `PATH` or in the repository root, or pass `GRAY=/path/to/gray` to `make`.
 
 `make install`, `gray update`, and `gray install` also install tab completion
 for your shell (bash, zsh, fish, or PowerShell) when its completion directory
@@ -133,11 +137,10 @@ Grayscale builds on Windows with [MinGW-w64](https://www.mingw-w64.org/).
 winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
 git clone https://github.com/grayscale-lang/grayscale.git
 cd grayscale
-make build
+make grayc build
 ```
 
-`make build`, `make test`, and `make clean` work the same as on macOS and
-Linux. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
+There is no Windows release yet, so there is no `gray` to build the compiler with, and Windows builds the C compiler: use `make grayc build` and `make grayc test`. `make clean` is unchanged. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
 The compiler finds MinGW in its default install locations automatically —
 it does not need to be on `PATH`.
 
@@ -207,7 +210,7 @@ gray install v0.11.5     # pin to an exact version
 - [Documentation site](https://grayscale-lang.github.io/grayscale-lang/)
 - [Language standard](STANDARD.md)
 - [Contributing guide](CONTRIBUTING.md)
-- [Benchmark suite](benchmarks/README.md) — `make benchmark` times real-shaped programs
+- [Benchmark suite](benchmarks/README.md) — `make selfhost benchmark` times real-shaped programs
 
 ## Tooling
 - [The Grayscale Language Server Protocol](https://github.com/grayscale-lang/grayls)

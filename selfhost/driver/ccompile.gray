@@ -1,0 +1,502 @@
+/*
+ * ccompile.gray:  The C compiler step of the driver: runtime directory lookup,
+ * the per-user cache, the runtime archive for compilers that cannot link the
+ * prebuilt one, the TinyCC __auto_type lowering, and the compile command.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @io, @os, @strings, @arrays, @chars
+
+// The permissions of the per-user cache directory.
+const PRIVATE_DIRECTORY_MODE string = "700"
+// The base of hexadecimal digits, and how many a u64 has.
+const HEX_BASE u64 = 16
+const U64_NIBBLE_COUNT i64 = 16
+// The 64-bit FNV-1a offset basis and prime, and the modulus 2^64 that keeps the product in 64 bits.
+const FNV_OFFSET_BASIS u64 = 14695981039346656037
+const FNV_PRIME u128 = 1099511628211
+const U64_MODULUS u128 = 18446744073709551616
+// The number of distinct byte values.
+const BYTE_VALUE_COUNT i64 = 256
+// The most runtime source files compiled into one archive.
+const MAX_ARCHIVE_OBJECTS i64 = 48
+// The character codes of vertical tab and form feed.
+const VERTICAL_TAB_CODE i64 = 11
+const FORM_FEED_CODE i64 = 12
+// The characters of a backslash escape, and of a comment delimiter ("/*", "*/", "//").
+const ESCAPE_LENGTH i64 = 2
+const COMMENT_DELIMITER_LENGTH i64 = 2
+// The lengths of the "struct" and "__auto_type" keywords.
+const STRUCT_KEYWORD_LENGTH i64 = 6
+const AUTO_TYPE_KEYWORD_LENGTH i64 = 11
+
+// Every runtime and stdlib .c file, relative to the runtime directory (RT_SRC in grayc/Makefile).
+fn runtime_sources() -> [string] {
+    return {"runtime/runtime.c", "runtime/array.c", "runtime/map.c", "runtime/test.c", "runtime/atomic_builtin.c"}
+}
+
+fn stdlib_sources() -> [string] {
+    return {"stdlib/arrays.c", "stdlib/binary.c", "stdlib/builtins.c", "stdlib/chars.c", "stdlib/channels.c", "stdlib/crypto.c", "stdlib/csv.c", "stdlib/encoding.c", "stdlib/fmt.c", "stdlib/http.c", "stdlib/io.c", "stdlib/json.c", "stdlib/maps.c", "stdlib/math.c", "stdlib/mem.c", "stdlib/net.c", "stdlib/os.c", "stdlib/random.c", "stdlib/regex.c", "stdlib/server.c", "stdlib/sqlite.c", "stdlib/strings.c", "stdlib/sync.c", "stdlib/atomic.c", "stdlib/threads.c", "stdlib/runtime_mod.c", "stdlib/time.c", "stdlib/uuid.c", "stdlib/strconv.c", "stdlib/path.c", "vendor/sqlite3.c"}
+}
+
+// --- Commands and paths ---
+
+// A compiler command split into words, the way a shell would: `zig cc -target x86_64-linux-gnu`
+// arrives as four words.
+fn split_command(command string) -> [string] {
+    mut words [string] = {}
+    mut word_start i64 = -1
+    for position in range(0, len(command)) {
+        separator = strings.char_at(command, position)
+        if separator == ' ' || separator == '\t' {
+            if word_start >= 0 {
+                arrays.append(words, strings.slice(command, word_start, position))
+                word_start = -1
+            }
+        } or word_start < 0 {
+            word_start = position
+        }
+    }
+    if word_start >= 0 { arrays.append(words, strings.slice(command, word_start, len(command))) }
+    return words
+}
+
+// The words that start a compiler: one word for a detected compiler (its path may hold spaces), the
+// split command for a --cc value.
+fn compiler_words(c_compiler string, is_command bool) -> [string] {
+    if is_command { return split_command(c_compiler) }
+    return {c_compiler}
+}
+
+fn directory_of(file_path string) -> string {
+    separator_at = strings.last_index_of(file_path, "/")
+    if separator_at < 0 { return "." }
+    if separator_at == 0 { return "/" }
+    return strings.slice(file_path, 0, separator_at)
+}
+
+fn join_path(directory string, name string) -> string {
+    if strings.ends_with(directory, "/") { return "${directory}${name}" }
+    return "${directory}/${name}"
+}
+
+// The directory holding runtime/runtime.h, or "". Searched in order: GRAY_RUNTIME; the binary's
+// own installed layout (../lib/grayc) and development layout (src); the project root above the
+// working directory; /usr/local/lib/grayc.
+fn find_runtime_directory() -> string {
+    environment_value = os.get_env("GRAY_RUNTIME")
+    if environment_value != "" && io.file_exists(environment_value) && io.file_exists(join_path(environment_value, "runtime/runtime.h")) {
+        return environment_value
+    }
+    self_path, self_error = os.executable_path()
+    if self_error == nil {
+        self_directory = directory_of(self_path)
+        if io.file_exists(join_path(self_directory, "../lib/grayc/runtime/runtime.h")) { return join_path(self_directory, "../lib/grayc") }
+        if io.file_exists(join_path(self_directory, "src/runtime/runtime.h")) { return join_path(self_directory, "src") }
+    }
+    mut directory string = os.current_dir()
+    as_long_as directory != "" {
+        if io.file_exists(join_path(directory, "grayc/src/runtime/runtime.h")) { return join_path(directory, "grayc/src") }
+        if directory == "/" { break }
+        separator_at = strings.last_index_of(directory, "/")
+        if separator_at < 0 { break }
+        if separator_at == 0 { directory = "/" } otherwise { directory = strings.slice(directory, 0, separator_at) }
+    }
+    if io.file_exists("/usr/local/lib/grayc/runtime/runtime.h") { return "/usr/local/lib/grayc" }
+    return ""
+}
+
+// The per-user 0700 directory under the system temp directory, or "" when it cannot be made.
+fn private_cache_directory() -> string {
+    mut temp_root string = os.get_env("TMPDIR")
+    if temp_root == "" { temp_root = "/tmp" }
+    as_long_as len(temp_root) > 1 && strings.ends_with(temp_root, "/") { temp_root = strings.slice(temp_root, 0, len(temp_root) - 1) }
+    identity, identity_error = os.exec("id", {"-u"})
+    if identity_error != nil { return "" }
+    directory string = "${temp_root}/gray-${strings.trim(identity.stdout)}"
+    if !io.is_directory(directory) {
+        mut _, _ = os.exec("mkdir", {"-m", PRIVATE_DIRECTORY_MODE, directory})
+    }
+    if !io.is_directory(directory) { return "" }
+    return directory
+}
+
+mut temporary_counter i64 = 0
+
+// A fresh path under the private cache directory, carrying the process id and a counter; "" when
+// the directory cannot be made.
+fn temporary_path(prefix string, suffix string) -> string {
+    directory = private_cache_directory()
+    if directory == "" { return "" }
+    name string = "${prefix}${os.pid()}-${temporary_counter}${suffix}"
+    temporary_counter = temporary_counter + 1
+    return join_path(directory, name)
+}
+
+// --- Compiler identity ---
+
+// The first line of `<compiler> --version`, or "".
+fn c_compiler_banner(c_compiler string, is_command bool) -> string {
+    words = compiler_words(c_compiler, is_command)
+    if len(words) == 0 { return "" }
+    result, exec_error = os.exec(words[0], version_arguments(words))
+    if exec_error != nil || result.exit_code != 0 { return "" }
+    lines = strings.split(result.stdout, "\n")
+    if len(lines) == 0 { return "" }
+    return lines[0]
+}
+
+// GCC runs array-heavy loops about 25% faster at -O3 than at -O2 and Clang does not, so GCC gets
+// -O3 by default. Asks the compiler itself, since on macOS /usr/bin/gcc is Clang.
+fn banner_is_gcc(banner string) -> bool {
+    if banner == "" || strings.contains(banner, "clang") { return false }
+    return strings.contains(banner, "gcc") || strings.contains(banner, "GCC") || strings.starts_with(banner, "cc (")
+}
+
+fn is_tinycc(c_compiler string) -> bool {
+    mut command_name = c_compiler
+    for position in range(0, len(c_compiler)) {
+        separator = strings.char_at(c_compiler, position)
+        if separator == '/' || separator == '\\' { command_name = strings.slice(c_compiler, position + 1, len(c_compiler)) }
+    }
+    return command_name == "tcc" || command_name == "tcc.exe"
+}
+
+// libgrayrt.a is built by the system Clang. On macOS a different compiler (Homebrew GCC) lays out
+// thread-local variables differently and cannot link it.
+fn cannot_link_archive(c_compiler string, is_command bool) -> bool {
+    if os.current_os() != os.MAC_OS { return false }
+    if is_tinycc(c_compiler) { return false }
+    banner = c_compiler_banner(c_compiler, is_command)
+    return banner != "" && !strings.contains(banner, "clang")
+}
+
+// --- The runtime archive for a compiler that cannot link the prebuilt one ---
+
+fn hex_digits(value u64) -> string {
+    digits string = "0123456789abcdef"
+    mut text string = ""
+    mut remaining u64 = value
+    for nibble_index in range(0, U64_NIBBLE_COUNT) {
+        nibble = cast(remaining % HEX_BASE, i64)
+        text = "${strings.slice(digits, nibble, nibble + 1)}${text}"
+        remaining = remaining / HEX_BASE
+    }
+    return text
+}
+
+// FNV-1a over the key parts, so the archive name is stable.
+fn archive_key(key_parts [string]) -> u64 {
+    mut key u64 = FNV_OFFSET_BASIS
+    for_each part in key_parts {
+        for position in range(0, len(part)) {
+            byte_value = cast(strings.char_at(part, position), i64)
+            if byte_value < 0 { byte_value = byte_value + BYTE_VALUE_COUNT }
+            mixed u64 = key bit_xor cast(byte_value, u64)
+            key = cast((cast(mixed, u128) * FNV_PRIME) % U64_MODULUS, u64)
+        }
+    }
+    return key
+}
+
+fn newer_than(directory string, archive_modified i64) -> bool {
+    entries, list_error = io.list_dir(directory)
+    if list_error != nil { return false }
+    for_each entry in entries {
+        info, stat_error = io.stat(join_path(directory, entry))
+        if stat_error == nil && info.mod_time > archive_modified { return true }
+    }
+    return false
+}
+
+// Builds libgrayrt.a once with `c_compiler` into the private cache directory, keyed by the full
+// command, its banner and the runtime directory, and rebuilds when a runtime or stdlib file is
+// newer. SQLite stays out of the archive. Returns the archive path and whether it is usable.
+const RuntimeArchive struct {
+    archive_file string
+    is_usable bool
+}
+
+fn ensure_runtime_archive(c_compiler string, is_command bool, runtime_directory string) -> RuntimeArchive {
+    banner = c_compiler_banner(c_compiler, is_command)
+    command_word_end = strings.index_of(c_compiler, " ")
+    mut command_word string = c_compiler
+    if command_word_end >= 0 { command_word = strings.slice(c_compiler, 0, command_word_end) }
+    command_name = strings.slice(command_word, strings.last_index_of(command_word, "/") + 1, len(command_word))
+    uses_zig_archiver = is_command && (command_name == "zig" || command_name == "zig.exe")
+    uses_tinycc_archiver = is_tinycc(c_compiler)
+    gcc_compiler = banner_is_gcc(banner)
+    mut archiver_part string = ""
+    if uses_zig_archiver { archiver_part = "zig-ar" } or uses_tinycc_archiver { archiver_part = "tcc-ar" }
+    mut optimization_part string = ""
+    if gcc_compiler { optimization_part = "-O3" }
+    key = archive_key({c_compiler, banner, runtime_directory, archiver_part, optimization_part})
+    cache_directory = private_cache_directory()
+    if cache_directory == "" { return RuntimeArchive{archive_file: "", is_usable: false} }
+    archive_path string = join_path(cache_directory, "gray-runtime-${hex_digits(key)}.a")
+
+    if io.file_exists(archive_path) {
+        archive_info, archive_error = io.stat(archive_path)
+        if archive_error == nil {
+            if !newer_than(join_path(runtime_directory, "runtime"), archive_info.mod_time) && !newer_than(join_path(runtime_directory, "stdlib"), archive_info.mod_time) {
+                return RuntimeArchive{archive_file: archive_path, is_usable: true}
+            }
+        }
+    }
+
+    temporary_archive = temporary_path("gray_rt_", ".a")
+    if temporary_archive == "" { return RuntimeArchive{archive_file: "", is_usable: false} }
+    mut archiver_words [string] = {"ar"}
+    if uses_zig_archiver { archiver_words = {command_word, "ar"} } or uses_tinycc_archiver { archiver_words = {c_compiler, "-ar"} }
+    mut archiver_arguments [string] = arrays.slice(archiver_words, 1, len(archiver_words))
+    arrays.append(archiver_arguments, "rcs")
+    arrays.append(archiver_arguments, temporary_archive)
+
+    mut objects [string] = {}
+    mut is_built bool = true
+    sources = arrays.concat(runtime_sources(), stdlib_sources())
+    for_each source in sources {
+        if !is_built { break }
+        if strings.contains(source, "sqlite") { continue }
+        object_path = temporary_path("gray_rt_", ".o")
+        if object_path == "" || len(objects) >= MAX_ARCHIVE_OBJECTS {
+            is_built = false
+            break
+        }
+        words = compiler_words(c_compiler, is_command)
+        mut compile_arguments [string] = arrays.slice(words, 1, len(words))
+        optimization string = "-O2"
+        if gcc_compiler { optimization = "-O3" }
+        for_each flag in {"-c", "-std=c11", "-D_POSIX_C_SOURCE=200809L", "-D_DARWIN_C_SOURCE", optimization, "-w", "-ffunction-sections", "-fdata-sections", "-I", runtime_directory, "-o", object_path, join_path(runtime_directory, source)} {
+            arrays.append(compile_arguments, flag)
+        }
+        compile_result, compile_error = os.exec(words[0], compile_arguments)
+        is_built = compile_error == nil && compile_result.exit_code == 0
+        arrays.append(archiver_arguments, object_path)
+        arrays.append(objects, object_path)
+    }
+    if is_built {
+        archive_result, archive_exec_error = os.exec(archiver_words[0], archiver_arguments)
+        is_built = archive_exec_error == nil && archive_result.exit_code == 0
+    }
+    // Moved into place so a concurrent compile never reads a partial archive
+    if is_built {
+        moved, move_error = io.move_file(temporary_archive, archive_path)
+        is_built = move_error == nil && moved
+    }
+    for_each object in objects { remove_file(object) }
+    if !is_built { remove_file(temporary_archive) }
+    return RuntimeArchive{archive_file: archive_path, is_usable: is_built}
+}
+
+// --- TinyCC lowering of __auto_type ---
+
+fn char_at_or_end(text string, position i64) -> char {
+    if position < 0 || position >= len(text) { return cast(0, char) }
+    return strings.char_at(text, position)
+}
+
+fn is_space_character(character char) -> bool {
+    return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == cast(VERTICAL_TAB_CODE, char) || character == cast(FORM_FEED_CODE, char)
+}
+
+fn is_identifier_character(character char) -> bool {
+    return character == '_' || chars.is_alnum(character)
+}
+
+// Index one past the C string or character literal starting at `start`.
+fn skip_c_literal(text string, start i64) -> i64 {
+    quote = char_at_or_end(text, start)
+    mut position i64 = start + 1
+    as_long_as char_at_or_end(text, position) != cast(0, char) && char_at_or_end(text, position) != quote {
+        if char_at_or_end(text, position) == '\\' && char_at_or_end(text, position + 1) != cast(0, char) { position = position + ESCAPE_LENGTH } otherwise { position = position + 1 }
+    }
+    if char_at_or_end(text, position) != cast(0, char) { return position + 1 }
+    return position
+}
+
+// Index one past the comment starting at `start`, or `start` if none does.
+fn skip_c_comment(text string, start i64) -> i64 {
+    if char_at_or_end(text, start) != '/' { return start }
+    mut position i64 = start + COMMENT_DELIMITER_LENGTH
+    if char_at_or_end(text, start + 1) == '/' {
+        as_long_as char_at_or_end(text, position) != cast(0, char) && char_at_or_end(text, position) != '\n' { position = position + 1 }
+        return position
+    }
+    if char_at_or_end(text, start + 1) != '*' { return start }
+    as_long_as char_at_or_end(text, position) != cast(0, char) && !(char_at_or_end(text, position) == '*' && char_at_or_end(text, position + 1) == '/') { position = position + 1 }
+    if char_at_or_end(text, position) != cast(0, char) { return position + COMMENT_DELIMITER_LENGTH }
+    return position
+}
+
+fn skip_literal_or_comment(text string, position i64) -> i64 {
+    current = char_at_or_end(text, position)
+    if current == '"' || current == '\'' { return skip_c_literal(text, position) }
+    return skip_c_comment(text, position)
+}
+
+mut next_anonymous_struct i64 = 0
+
+// TinyCC treats every textual `struct { ... }` as a new type; each outermost anonymous struct of
+// `text` becomes a typedef name and its definition is returned in the typedef text.
+fn hoist_anonymous_structs(text string) -> (string, string) {
+    mut rewritten [string] = {}
+    mut typedefs string = ""
+    length = len(text)
+    mut position i64 = 0
+    mut copied_from i64 = 0
+    as_long_as position < length {
+        literal_end = skip_literal_or_comment(text, position)
+        if literal_end > position {
+            position = literal_end
+            continue
+        }
+        mut brace i64 = position + STRUCT_KEYWORD_LENGTH
+        as_long_as brace < length && is_space_character(char_at_or_end(text, brace)) { brace = brace + 1 }
+        at_anonymous_struct = position + STRUCT_KEYWORD_LENGTH <= length && strings.slice(text, position, position + STRUCT_KEYWORD_LENGTH) == "struct" && (position == 0 || !is_identifier_character(char_at_or_end(text, position - 1))) && brace < length && char_at_or_end(text, brace) == '{'
+        if !at_anonymous_struct {
+            position = position + 1
+            continue
+        }
+        mut body_end i64 = brace
+        mut depth i64 = 0
+        as_long_as body_end < length {
+            skipped = skip_literal_or_comment(text, body_end)
+            if skipped > body_end {
+                body_end = skipped
+                continue
+            }
+            if char_at_or_end(text, body_end) == '{' { depth = depth + 1 }
+            if char_at_or_end(text, body_end) == '}' {
+                depth = depth - 1
+                if depth == 0 {
+                    body_end = body_end + 1
+                    break
+                }
+            }
+            body_end = body_end + 1
+        }
+        arrays.append(rewritten, strings.slice(text, copied_from, position))
+        typedefs = "${typedefs}typedef ${strings.slice(text, position, body_end)} gray_tcc_anonymous_${next_anonymous_struct}; "
+        arrays.append(rewritten, "gray_tcc_anonymous_${next_anonymous_struct}")
+        next_anonymous_struct = next_anonymous_struct + 1
+        position = body_end
+        copied_from = body_end
+    }
+    arrays.append(rewritten, strings.slice(text, copied_from, length))
+    return strings.join(rewritten, ""), typedefs
+}
+
+// The last character of `output` that is not white space, or NUL when there is none.
+fn last_significant_character(output [string]) -> char {
+    mut piece_index i64 = len(output) - 1
+    as_long_as piece_index >= 0 {
+        piece = output[piece_index]
+        mut position i64 = len(piece) - 1
+        as_long_as position >= 0 {
+            character = strings.char_at(piece, position)
+            if !is_space_character(character) { return character }
+            position = position - 1
+        }
+        piece_index = piece_index - 1
+    }
+    return cast(0, char)
+}
+
+// TinyCC has no __auto_type. `__auto_type name = init;` becomes `__typeof__(init) name = init;`;
+// a bare identifier goes through a conditional, which decays a function to a pointer.
+fn lower_auto_type_range(text string, begin i64, end i64, &output [string]) {
+    keyword string = "__auto_type"
+    keyword_length i64 = AUTO_TYPE_KEYWORD_LENGTH
+    mut position i64 = begin
+    mut copied_from i64 = begin
+    as_long_as position < end {
+        literal_end = skip_literal_or_comment(text, position)
+        if literal_end > position {
+            position = literal_end
+            continue
+        }
+        at_keyword = position + keyword_length <= len(text) && strings.slice(text, position, position + keyword_length) == keyword && (position == 0 || !is_identifier_character(char_at_or_end(text, position - 1))) && !is_identifier_character(char_at_or_end(text, position + keyword_length))
+        if !at_keyword {
+            position = position + 1
+            continue
+        }
+        mut name_begin i64 = position + keyword_length
+        as_long_as is_space_character(char_at_or_end(text, name_begin)) { name_begin = name_begin + 1 }
+        mut name_end i64 = name_begin
+        as_long_as is_identifier_character(char_at_or_end(text, name_end)) { name_end = name_end + 1 }
+        mut initializer_begin i64 = name_end
+        as_long_as is_space_character(char_at_or_end(text, initializer_begin)) { initializer_begin = initializer_begin + 1 }
+        if name_end == name_begin || char_at_or_end(text, initializer_begin) != '=' {
+            position = position + 1
+            continue
+        }
+        arrays.append(output, strings.slice(text, copied_from, position))
+        initializer_begin = initializer_begin + 1
+        mut initializer_end i64 = initializer_begin
+        mut depth i64 = 0
+        as_long_as initializer_end < end && !(depth == 0 && char_at_or_end(text, initializer_end) == ';') {
+            skipped = skip_literal_or_comment(text, initializer_end)
+            if skipped > initializer_end {
+                initializer_end = skipped
+                continue
+            }
+            scanned = char_at_or_end(text, initializer_end)
+            if scanned == '(' || scanned == '[' || scanned == '{' { depth = depth + 1 }
+            if scanned == ')' || scanned == ']' || scanned == '}' { depth = depth - 1 }
+            initializer_end = initializer_end + 1
+        }
+        // The typedefs go in front of the declaration, so only where a statement can start
+        mut initializer string = strings.slice(text, initializer_begin, initializer_end)
+        hoisted_initializer, typedefs = hoist_anonymous_structs(initializer)
+        before = last_significant_character(output)
+        can_hoist = len(typedefs) > 0 && (len(output) == 0 || before == cast(0, char) || before == ';' || before == '{' || before == '}')
+        if can_hoist {
+            arrays.append(output, typedefs)
+            initializer = hoisted_initializer
+        }
+        initializer_length = len(initializer)
+        mut identifier_begin i64 = 0
+        as_long_as identifier_begin < initializer_length && is_space_character(strings.char_at(initializer, identifier_begin)) { identifier_begin = identifier_begin + 1 }
+        mut identifier_end i64 = identifier_begin
+        as_long_as identifier_end < initializer_length && is_identifier_character(strings.char_at(initializer, identifier_end)) { identifier_end = identifier_end + 1 }
+        mut trailing_end i64 = identifier_end
+        as_long_as trailing_end < initializer_length && is_space_character(strings.char_at(initializer, trailing_end)) { trailing_end = trailing_end + 1 }
+        is_bare_identifier = identifier_end > identifier_begin && trailing_end == initializer_length
+        if is_bare_identifier { arrays.append(output, "__typeof__(1 ? (") } otherwise { arrays.append(output, "__typeof__(") }
+        lower_auto_type_range(initializer, 0, initializer_length, output)
+        if is_bare_identifier {
+            arrays.append(output, ") : (")
+            lower_auto_type_range(initializer, 0, initializer_length, output)
+            arrays.append(output, ")")
+        }
+        arrays.append(output, ") ")
+        arrays.append(output, strings.slice(text, name_begin, name_end))
+        arrays.append(output, " =")
+        lower_auto_type_range(initializer, 0, initializer_length, output)
+        position = initializer_end
+        copied_from = initializer_end
+    }
+    arrays.append(output, strings.slice(text, copied_from, end))
+}
+
+fn lower_auto_type(text string) -> string {
+    mut output [string] = {}
+    lower_auto_type_range(text, 0, len(text), output)
+    return strings.join(output, "")
+}
+
+fn remove_file(file_path string) {
+    mut _, _ = io.delete_file(file_path)
+}
+
+// The arguments after the command word, then --version.
+fn version_arguments(words [string]) -> [string] {
+    mut arguments [string] = arrays.slice(words, 1, len(words))
+    arrays.append(arguments, "--version")
+    return arguments
+}

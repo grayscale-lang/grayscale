@@ -7,7 +7,7 @@ if [ -x ./gray ]; then
 elif command -v gray >/dev/null 2>&1; then
   gray_bin=gray
 else
-  echo "pre-commit: gray binary not found; run 'make build' first" >&2
+  echo "pre-commit: gray binary not found; run 'make selfhost build' first" >&2
   exit 1
 fi
 

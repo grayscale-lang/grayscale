@@ -3,7 +3,7 @@
 Real-shaped Grayscale programs, timed end to end. Run with:
 
 ```
-make benchmark
+make selfhost benchmark
 ```
 
 This builds `gray`, generates input fixtures, compiles and runs each workload,

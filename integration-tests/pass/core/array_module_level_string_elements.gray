@@ -1,0 +1,74 @@
+/*
+ * array_module_level_string_elements.gray
+ * arrays.append, prepend and insert_at onto a module-level [string] copy the
+ * element out of the calling function's arena.
+ */
+
+import @arrays
+
+mut appended [string] = {}
+mut prepended [string] = {}
+mut inserted [string] = {}
+
+do make(i i64) -> string {
+    mut s string = ""
+    for k in range(0, 5) { s = "${s}n${i}_" }
+    return s
+}
+
+do store(name string) {
+    arrays.append(appended, name)
+    arrays.prepend(prepended, name)
+    arrays.insert_at(inserted, 0, name)
+}
+
+do work(i i64) {
+    name string = make(i)
+    store(name)
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    for i in range(0, 30) { work(i) }
+
+    mut append_ok bool = len(appended) == 30
+    mut prepend_ok bool = len(prepended) == 30
+    mut insert_ok bool = len(inserted) == 30
+    for i in range(0, 30) {
+        expected = make(i)
+        if appended[i] != expected { append_ok = false }
+        if prepended[29 - i] != expected { prepend_ok = false }
+        if inserted[29 - i] != expected { insert_ok = false }
+    }
+
+    if append_ok {
+        println("  [PASS] append")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] append")
+        failed += 1
+    }
+    if prepend_ok {
+        println("  [PASS] prepend")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] prepend")
+        failed += 1
+    }
+    if insert_ok {
+        println("  [PASS] insert_at")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] insert_at")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

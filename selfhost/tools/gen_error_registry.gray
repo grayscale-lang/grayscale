@@ -1,0 +1,106 @@
+/*
+ * gen_error_registry.gray:  Regenerates the message table in
+ * util/error_registry.gray from grayc/src/util/error_codes.h. Only the table is
+ * rewritten; the functions around it are kept. Run from the repository root.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings
+import @arrays
+import "./common"
+
+const HEADER string = "grayc/src/util/error_codes.h"
+const REGISTRY string = "selfhost/util/error_registry.gray"
+
+// One `GRAY_ERROR("code", "category", "message")` or GRAY_WARNING entry: the code and the
+// message text exactly as written in the C string (escapes kept).
+const Entry struct {
+    code string
+    message string
+}
+
+// The text of the C string literal that starts at `start` (the opening quote), and the
+// index just past its closing quote.
+fn read_literal(text string, start i64) -> (string, i64) {
+    mut position i64 = start + 1
+    mut body string = ""
+    as_long_as position < len(text) {
+        character char = strings.char_at(text, position)
+        if character == '\\' && position + 1 < len(text) {
+            body = "${body}${strings.slice(text, position, position + 2)}"
+            position = position + 2
+            continue
+        }
+        if character == '"' { return body, position + 1 }
+        body = "${body}${strings.slice(text, position, position + 1)}"
+        position = position + 1
+    }
+    return body, position
+}
+
+// Skips spaces, tabs, newlines and the `\` line continuations between arguments.
+fn skip_gap(text string, start i64) -> i64 {
+    mut position i64 = start
+    as_long_as position < len(text) {
+        character char = strings.char_at(text, position)
+        if character == ' ' || character == '\t' || character == '\n' || character == '\\' || character == ',' { position = position + 1 } otherwise { break }
+    }
+    return position
+}
+
+fn entries_of(text string) -> [Entry] {
+    mut found [Entry] = {}
+    mut position i64 = 0
+    as_long_as position < len(text) {
+        rest string = strings.slice(text, position, len(text))
+        error_at i64 = strings.index_of(rest, "GRAY_ERROR(\"")
+        warning_at i64 = strings.index_of(rest, "GRAY_WARNING(\"")
+        mut at i64 = error_at
+        mut opener i64 = len("GRAY_ERROR(")
+        if error_at < 0 || (warning_at >= 0 && warning_at < error_at) {
+            at = warning_at
+            opener = len("GRAY_WARNING(")
+        }
+        if at < 0 { break }
+        code, after_code = read_literal(text, position + at + opener)
+        _, after_category = read_literal(text, skip_gap(text, after_code))
+        message, after_message = read_literal(text, skip_gap(text, after_category))
+        // The code must be one letter followed by four digits
+        if len(code) >= 2 && strings.char_at(code, 0) >= 'A' && strings.char_at(code, 0) <= 'Z' {
+            arrays.append(found, Entry{code: code, message: message})
+        }
+        position = after_message
+    }
+    return found
+}
+
+fn main() {
+    header = common.read_text(HEADER)
+    if header == "" {
+        eprintln("cannot read ${HEADER}; run from the repository root")
+        exit(1)
+    }
+    found = entries_of(header)
+    mut rows [string] = {}
+    for_each entry in found {
+        rows_message string = strings.replace(entry.message, "$", "\\$")
+        arrays.append(rows, "        \"${entry.code}\": \"${rows_message}\"")
+    }
+    table string = strings.join(rows, ",\n")
+
+    registry = common.read_text(REGISTRY)
+    opening string = "    registry map[string:string] = {\n"
+    open_at = strings.index_of(registry, opening)
+    close_at = strings.index_of(registry, "\n    }\n    return registry")
+    if open_at < 0 || close_at < 0 {
+        eprintln("cannot find the registry table in ${REGISTRY}")
+        exit(1)
+    }
+    updated string = "${strings.slice(registry, 0, open_at + len(opening))}${table}${strings.slice(registry, close_at, len(registry))}"
+    common.write_text(REGISTRY, updated)
+    println("${len(found)} entries")
+}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - http header map must be map[string:string]
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @http
+
+do main() {
+    mut headers map[string:bool] = {"k": true}
+    mut response, err = http.get("http://127.0.0.1:1/", headers)
+    println("${response.status} ${err != nil}")
+}

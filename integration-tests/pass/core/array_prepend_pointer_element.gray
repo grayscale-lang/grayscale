@@ -1,0 +1,35 @@
+/*
+ * array_prepend_pointer_element.gray
+ * arrays.prepend on a pointer-element array must stage the value as a pointer.
+ */
+
+import @arrays
+
+const Node struct { value i64 }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut items [^Node] = {}
+    first = new(Node)
+    first^.value = 1
+    second = new(Node)
+    second^.value = 2
+    arrays.prepend(items, first)
+    arrays.prepend(items, second)
+    if len(items) == 2 && items[0]^.value == 2 && items[1]^.value == 1 {
+        println("  [PASS] [^Node] prepend")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [^Node] prepend")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

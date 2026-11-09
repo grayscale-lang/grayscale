@@ -1,0 +1,57 @@
+/*
+ * suggest.gray:  "did you mean?" helpers for misspelled names.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @arrays
+import @strings
+
+// A suggestion must be closer than this many edits.
+const SUGGESTION_DISTANCE_LIMIT i64 = 3
+
+// The Levenshtein distance between two strings.
+fn edit_distance(left string, right string) -> i64 {
+    left_length i64 = len(left)
+    right_length i64 = len(right)
+    if left_length == 0 { return right_length }
+    if right_length == 0 { return left_length }
+    mut distance_row [i64] = {}
+    for column in range(0, right_length + 1) { arrays.append(distance_row, column) }
+    for row in range(1, left_length + 1) {
+        mut previous_diagonal i64 = distance_row[0]
+        distance_row[0] = row
+        for column in range(1, right_length + 1) {
+            mut cost i64 = 1
+            if strings.char_at(left, row - 1) == strings.char_at(right, column - 1) { cost = 0 }
+            deletion i64 = distance_row[column] + 1
+            insertion i64 = distance_row[column - 1] + 1
+            substitution i64 = previous_diagonal + cost
+            previous_diagonal = distance_row[column]
+            mut best i64 = deletion
+            if insertion < best { best = insertion }
+            if substitution < best { best = substitution }
+            distance_row[column] = best
+        }
+    }
+    return distance_row[right_length]
+}
+
+// The statement keyword or builtin call a misspelled statement name was
+// probably meant to be, or "".
+fn suggest_statement_name(name string) -> string {
+    statement_names [string] = {"return", "break", "continue", "defer", "ensure", "println", "print", "eprintln", "eprint", "panic", "assert"}
+    mut best = ""
+    mut best_distance i64 = SUGGESTION_DISTANCE_LIMIT
+    for_each statement_name in statement_names {
+        distance i64 = edit_distance(name, statement_name)
+        if distance > 0 && distance < best_distance {
+            best_distance = distance
+            best = statement_name
+        }
+    }
+    return best
+}

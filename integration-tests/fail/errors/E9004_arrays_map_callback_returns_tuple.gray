@@ -1,0 +1,16 @@
+/*
+ * Error Test: E9004 - arrays.map callback must return a single value
+ */
+// expect-error: E9004
+// expect-error-count: 1
+
+import @arrays
+
+do two_values(value i64) -> (i64, i64) {
+    return value * 10, value * 100
+}
+
+do main() {
+    mut mapped = arrays.map({3, 1, 2}, ()two_values)
+    println("${mapped}")
+}
