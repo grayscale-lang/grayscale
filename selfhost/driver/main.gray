@@ -771,19 +771,19 @@ fn directory_declarations(files [string]) -> [string:bool] {
                 is ast.NodeKind.VAR_DECL { names[declaration^.var_decl^.name] = true }
                 is ast.NodeKind.ALIAS_DECL { names[declaration^.alias_decl^.name] = true }
                 is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-                   ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-                   ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-                   ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-                   ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-                   ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-                   ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-                   ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-                   ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-                   ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT,
-                   ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-                   ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-                   ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
-                   ast.NodeKind.PROGRAM {}
+                ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+                ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+                ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+                ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+                ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+                ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+                ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+                ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+                ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT,
+                ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
+                ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+                ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
+                ast.NodeKind.PROGRAM {}
             }
         }
     }
@@ -899,19 +899,19 @@ fn auto_use_decls(program ^ast.AstNode, file_path string) -> [string:string] {
                         is ast.NodeKind.VAR_DECL { declared_name = declaration^.var_decl^.name }
                         is ast.NodeKind.ALIAS_DECL { declared_name = declaration^.alias_decl^.name }
                         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-                           ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING,
-                           ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
-                           ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE,
-                           ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR,
-                           ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-                           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-                           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-                           ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT,
-                           ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-                           ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT,
-                           ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT,
-                           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-                           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+                        ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING,
+                        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
+                        ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE,
+                        ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR,
+                        ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+                        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+                        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+                        ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT,
+                        ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
+                        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT,
+                        ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT,
+                        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+                        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
                     }
                     if declared_name == "" { continue }
                     // Two modules providing one name leave the pick to import order
@@ -1008,18 +1008,18 @@ fn prefix_file_statements(&merged [^ast.AstNode], imp_program ^ast.AstNode, mod_
                 }
             }
             is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-               ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-               ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-               ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-               ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-               ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-               ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-               ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-               ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-               ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-               ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-               ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.USING_STMT,
-               ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {
+            ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+            ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+            ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+            ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+            ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+            ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+            ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.USING_STMT,
+            ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {
                 // Skip module/using statements from imported files
             }
         }

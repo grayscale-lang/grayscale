@@ -2841,12 +2841,12 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
         is ast.NodeKind.CALL_EXPR { result = resolve_call_expr(checker, node) }
         is ast.NodeKind.IMPLICIT_ENUM { result = resolve_implicit_enum(checker, node) }
         is ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-           ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-           ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-           ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-           ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-           ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-           ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+        ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+        ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
+        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
+        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 
     if !checker^.suppress_type_writes { node^.resolved_type = types.type_display_name(result) }
@@ -6244,15 +6244,15 @@ fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, paramet
         is ast.NodeKind.ENSURE_STMT { arrays.append(children, node^.ensure_stmt^.expr) }
         is ast.NodeKind.RETURN_STMT { children = node^.return_stmt^.values }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-           ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-           ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
+        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
+        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
     for_each child in children {
         found_in_child = body_mutates_array_parameter(checker, child, parameter_name)
@@ -6911,16 +6911,16 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
         is ast.NodeKind.WHILE_STMT { premark_loop_body(checker, node^.while_stmt^.body, body) }
         is ast.NodeKind.LOOP_STMT { premark_loop_body(checker, node^.loop_stmt^.body, body) }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-           ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.RETURN_STMT,
-           ast.NodeKind.ENSURE_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-           ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-           ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.RETURN_STMT,
+        ast.NodeKind.ENSURE_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -6979,15 +6979,15 @@ fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
         is ast.NodeKind.WHILE_STMT { premark_function_destroys(checker, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { premark_function_destroys(checker, node^.loop_stmt^.body) }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-           ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-           ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
+        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
+        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -7141,15 +7141,15 @@ fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
             for_each value in node^.return_stmt^.values { mem_walk(checker, signature, value) }
         }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-           ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-           ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
+        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
+        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -7173,18 +7173,18 @@ fn return_expression_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^as
         is ast.NodeKind.ARRAY_VALUE { buried_parts = node^.array_value^.elements }
         is ast.NodeKind.MAP_VALUE { buried_parts = node^.map_value^.values }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-           ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-           ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-           ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-           ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-           ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
+        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
+        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
+        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
     if node^.kind == ast.NodeKind.STRUCT_VALUE || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE {
         mut field_bits i64 = 0
@@ -7267,16 +7267,16 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
         is ast.NodeKind.WHILE_STMT { arrays.append(children, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { arrays.append(children, node^.loop_stmt^.body) }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-           ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-           ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-           ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
+        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
+        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
     for_each child in children {
         child_direct, child_field = return_statement_mem_bits(checker, signature, child)
@@ -8971,18 +8971,18 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
             is ast.NodeKind.CHAR_VALUE { suggested = "char" }
             is ast.NodeKind.BOOL_VALUE { suggested = "bool" }
             is ast.NodeKind.LABEL, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-               ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-               ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-               ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-               ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-               ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-               ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-               ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-               ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-               ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-               ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-               ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-               ast.NodeKind.PROGRAM {}
+            ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+            ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+            ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
+            ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
+            ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
+            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
+            ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
+            ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
+            ast.NodeKind.PROGRAM {}
         }
         add_diagnostic(checker, "E3131", error_registry.registry_message_formatted("E3131", {display, suggested}), file, line, col)
     }
@@ -9626,16 +9626,16 @@ fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, nod
         is ast.NodeKind.WHILE_STMT { bits = return_statement_parameter_bits(checker, signature, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { bits = return_statement_parameter_bits(checker, signature, node^.loop_stmt^.body) }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-           ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-           ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-           ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
+        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
+        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
     return bits
 }
@@ -9920,15 +9920,15 @@ fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node
             }
         }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-           ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-           ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-           ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-           ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
+        ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
+        ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -10968,17 +10968,17 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
             check_no_nested_ensure(checker, node^.when_stmt^.default_body, true)
         }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-           ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BREAK_STMT,
-           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-           ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
+        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BREAK_STMT,
+        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
+        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -12132,13 +12132,13 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
             checker^.current_scope = outer_scope
         }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -12485,15 +12485,15 @@ fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^
             }
         }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.NEW_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-           ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-           ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-           ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-           ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-           ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.NEW_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
+        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
+        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
+        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
+        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
     }
 }
 
@@ -12568,15 +12568,15 @@ fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, 
         }
         is ast.NodeKind.EXPR_STMT { check_alias_expression(checker, node^.expr_stmt^.expr, state, file) }
         is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-           ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-           ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-           ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-           ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-           ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-           ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-           ast.NodeKind.USING_STMT, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-           ast.NodeKind.PROGRAM {}
+        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
+        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
+        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
+        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
+        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
+        ast.NodeKind.USING_STMT, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
+        ast.NodeKind.PROGRAM {}
     }
 }
 
