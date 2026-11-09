@@ -1,0 +1,122 @@
+name: Release
+
+# Every merge into main publishes experimental-YYYYMMDD-build#, where YYYYMMDD
+# is the UTC date and # counts up from 1 within that date. Run it by hand on
+# any branch to build the binaries without publishing.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Two merges close together must not pick the same build number.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Pick release tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Next experimental tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          date_part=$(date -u +%Y%m%d)
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/experimental-$date_part-build" --jq '.[].ref' \
+            | sed -E 's|.*-build([0-9]+)$|\1|' | sort -n | tail -n 1)
+          tag="experimental-$date_part-build$(( ${last:-0} + 1 ))"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $tag"
+
+  build:
+    name: Build ${{ matrix.asset }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: linux-amd64
+            want: x86-64
+          # Native arm64 runner: the runtime library is compiled with the host
+          # toolchain, so building this on an x86-64 runner ships the wrong CPU.
+          - os: ubuntu-24.04-arm
+            asset: linux-arm64
+            want: aarch64
+          - os: macos-latest
+            asset: darwin-arm64
+            want: arm64
+          # macos-latest is arm64; macos-15-intel is the Intel image.
+          - os: macos-15-intel
+            asset: darwin-amd64
+            want: x86_64
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download gray
+        uses: ./.github/actions/download-gray
+
+      - name: Build gray (self-hosted compiler embedded)
+        run: make selfhost build VERSION="$RELEASE_TAG"
+
+      # A wrong-architecture compiler still packages cleanly; the failure only
+      # shows up as an exec-format error on a user's machine.
+      - name: Verify embedded compiler architecture
+        run: |
+          got=$(file -b cli/runtime/grayc)
+          echo "embedded compiler: $got"
+          case "$got" in
+            *"${{ matrix.want }}"*) echo "matches expected architecture" ;;
+            *) echo "::error::embedded compiler is not ${{ matrix.want }}: $got"; exit 1 ;;
+          esac
+
+      - name: Package
+        run: |
+          mkdir -p staging dist
+          cp gray staging/
+          tar czf "dist/gray-${{ matrix.asset }}.tar.gz" -C staging .
+          # gray update refuses an archive without a matching .sha256 asset.
+          (cd dist && if command -v sha256sum >/dev/null; then sha256sum "gray-${{ matrix.asset }}.tar.gz"; else shasum -a 256 "gray-${{ matrix.asset }}.tar.gz"; fi) > "dist/gray-${{ matrix.asset }}.tar.gz.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gray-${{ matrix.asset }}
+          path: dist/*
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        run: |
+          gh release create "$RELEASE_TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG" \
+            --prerelease \
+            --generate-notes
