@@ -23,5 +23,5 @@ runs:
           *) echo "::error::no released gray for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
         esac
         gh release download "$RELEASE_TAG_DOWNLOAD" --repo "$GITHUB_REPOSITORY" --pattern "$asset.tar.gz" --dir "$RUNNER_TEMP"
-        tar -xzf "$RUNNER_TEMP/$asset.tar.gz" -C "$GITHUB_WORKSPACE" gray
+        tar -xzf "$RUNNER_TEMP/$asset.tar.gz" -C "$GITHUB_WORKSPACE" ./gray
         ./gray version
