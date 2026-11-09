@@ -5442,7 +5442,7 @@ gray build main.gray -o app --cc /usr/local/bin/clang
 `GRAY_CC` and `CC` are different settings. `GRAY_CC` chooses the compiler `gray` uses to compile `.gray` programs. When building Grayscale from source, `CC` chooses the compiler `make` uses to build `grayc` and the runtime, and `gray` falls back to `$CC` only when `$GRAY_CC` is unset.
 
 ```bash
-CC=clang GRAY_CC=gcc make build   # grayc and the runtime built with clang
+CC=clang GRAY_CC=gcc make selfhost build   # grayc and the runtime built with clang
 ```
 
 `make help` lists every make target. `make help TARGET=<name>` prints what one target does, the variables it reads and an example. `TARGET` is a variable because make rejects `--` options before the Makefile is read and accepts only one goal. An unknown name fails with an `Unknown target` error, and `TARGET=` on any target other than `help` is ignored.

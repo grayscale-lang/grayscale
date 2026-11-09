@@ -32,6 +32,9 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 
 - **C compiler** (gcc or clang)
 - Git
+- **An installed `gray`.** The compiler is written in Grayscale, so building it needs a `gray` that already works. Download a release from the [Releases page](https://github.com/grayscale-lang/grayscale/releases) and put it on your `PATH` or in the repository root. To use one somewhere else, pass `GRAY=/path/to/gray` to `make`.
+
+Grayscale has two languages to contribute in: the compiler and the `gray` CLI are written in **Grayscale** (`selfhost/`, `cli/`), and the runtime and standard library that every compiled program links against are written in **C** (`grayc/src/runtime/`, `grayc/src/stdlib/`).
 
 ### Fork and Clone the Repository
 
@@ -61,7 +64,7 @@ Grayscale builds with `make` on all three platforms. Start with
 
 ```bash
 # Build the binary
-make build
+make selfhost build
 
 # Verify it works — write a quick test file and run it
 echo 'do main() { println("hello") }' > main.gray
@@ -83,24 +86,25 @@ make hooks
 
 #### Makefile Commands
 
+Most targets take the compiler first: `make selfhost <target>` uses the compiler written in Grayscale, which is the one to use. A bare `make build` or `make test` stops and tells you so. `make help` lists every target, and `make help TARGET=build` explains one.
+
 | Command | Description |
 |---------|-------------|
-| `make build` | Build the `gray` binary (compiler embedded) |
+| `make selfhost build` | Build the `gray` binary (compiler embedded) |
 | `make hooks` | Enable the git pre-commit hook (`gray fmt --check` on staged `.gray` files) |
 | `make stubs` | Create empty embed stubs |
-| `make install` | Install `gray` to `/usr/local/bin` |
+| `make selfhost install` | Install `gray` to `/usr/local/bin` |
 | `make uninstall` | Remove `gray` from `/usr/local/bin` |
 | `make clean` | Remove built binaries |
-| `make leaks` | Check compiler for memory leaks (macOS: `leaks`, Linux: `valgrind`) |
-| `make benchmark` | Run the real-workload benchmark suite (POSIX only); see `benchmarks/README.md` |
-| `make test` | Run the full test suite (unit + e2e + integration) |
-| `make test-unit` | C unit tests (lexer, parser, typechecker) |
-| `make test-e2e` | End-to-end codegen tests |
-| `make test-integration` | Integration tests (pass + fail) |
-| `make test-ubsan` | UBSan sanitizer tests |
-| `make test-asan` | ASan+UBSan sanitizer tests (Linux recommended) |
+| `make selfhost benchmark` | Run the real-workload benchmark suite (POSIX only); see `benchmarks/README.md` |
+| `make selfhost test` | Run the integration test suite (pass + fail) |
+| `make selfhost test-integration` | The same suite, on its own |
+| `make selfhost generate-errors` | Regenerate `ERRORS.md` |
+| `make selfhost check-error-codes` | Check that every error code is registered and emitted |
 
-All test targets can be run from the repo root — no need to `cd` into subdirectories.
+These targets test the older C compiler in `grayc/` and are only available as `make grayc <target>`: `test-unit`, `test-e2e`, `test-ubsan`, `test-asan`, and `leaks`. `make grayc build` builds that compiler instead of the self-hosted one.
+
+All targets can be run from the repo root — no need to `cd` into subdirectories.
 
 ### Windows
 
@@ -122,13 +126,16 @@ fails with exit 1 and no diagnostic at all.)
 #### Build and test
 
 Use `make`, the same as every other platform. It needs a POSIX shell, which
-MSYS2 and Git Bash both provide.
+MSYS2 and Git Bash both provide. There is no Windows release yet, so there is
+no `gray` to build the compiler with, and Windows builds the C compiler in
+`grayc/` instead:
 
 ```bash
-make build       # grayc.exe + gray.exe
-make install     # install to %USERPROFILE%\.gray\bin (prints PATH instructions)
-make test-unit   # C unit suites
-make test-e2e    # end-to-end codegen tests
+make grayc build             # grayc.exe + gray.exe
+make grayc install           # install to %USERPROFILE%\.gray\bin (prints PATH instructions)
+make grayc test-unit         # C unit suites
+make grayc test-e2e          # end-to-end codegen tests
+make grayc test-integration  # integration tests
 make clean
 ```
 
@@ -195,18 +202,22 @@ Source Code → Lexer → Parser → Type Checker → Code Gen → C Compiler �
   (.gray)    tokens    AST     validated AST    .c file    cc/gcc       native
 ```
 
-All compiler stages live in `grayc/src/`:
+The compiler is written in Grayscale and lives in `selfhost/`:
 
-1. **Lexer** (`grayc/src/lexer/`) — Reads source text and produces tokens.
-2. **Parser** (`grayc/src/parser/`) — Turns tokens into an Abstract Syntax Tree (AST).
-3. **Type Checker** (`grayc/src/typechecker/`) — Walks the AST and validates types, catches errors before compilation.
-4. **Code Generator** (`grayc/src/codegen/`) — Translates the AST into C source code.
-5. **Runtime** (`grayc/src/runtime/`) — Core types (strings, arrays, maps, arenas) linked into every binary.
-6. **Stdlib** (`grayc/src/stdlib/`) — Standard library modules compiled into `libgrayrt.a`.
+1. **Lexer** (`selfhost/lexer/`) — Reads source text and produces tokens.
+2. **Parser** (`selfhost/parser/`) — Turns tokens into an Abstract Syntax Tree (AST, defined in `selfhost/ast/`).
+3. **Type Checker** (`selfhost/typechecker/`) — Walks the AST and validates types, catches errors before compilation.
+4. **Code Generator** (`selfhost/codegen/`) — Translates the AST into C source code.
+5. **Driver** (`selfhost/driver/`) — The command line, import resolution, diagnostic rendering, and the call to the C compiler.
 
-The `gray` CLI (`cli/`) is written in Grayscale and compiled by `grayc`. It invokes the compiler and provides watch mode, doc generation, and self-update.
+Two C libraries are linked into every compiled program, and they stay in `grayc/src/`:
 
-**What this means in practice:** If you're adding a new language feature, you'll touch the C compiler stages (lexer → parser → typechecker → codegen). If you're adding a stdlib function, you add it to `grayc/src/stdlib/` and wire it into the codegen. If you're improving developer tooling (watch, etc.), you work in the Grayscale code under `cli/`.
+6. **Runtime** (`grayc/src/runtime/`) — Core types (strings, arrays, maps, arenas).
+7. **Stdlib** (`grayc/src/stdlib/`) — Standard library modules compiled into `libgrayrt.a`.
+
+The `gray` CLI (`cli/`) is also written in Grayscale. It invokes the compiler and provides watch mode, doc generation, and self-update.
+
+**What this means in practice:** If you're adding a language feature, you work in Grayscale under `selfhost/` (lexer → parser → typechecker → codegen). If you're adding a stdlib function, you write it in C under `grayc/src/stdlib/` and register it in the compiler. If you're improving developer tooling (watch, etc.), you work in the Grayscale code under `cli/`.
 
 ---
 
@@ -215,10 +226,10 @@ The `gray` CLI (`cli/`) is written in Grayscale and compiled by `grayc`. It invo
 The fastest way to iterate on a change:
 
 ```bash
-# 1. Edit a file (e.g., grayc/src/stdlib/strings.c)
+# 1. Edit a file (e.g., selfhost/typechecker/typechecker.gray or grayc/src/stdlib/strings.c)
 
 # 2. Rebuild
-make build
+make selfhost build
 
 # 3. Test with a quick .gray file (.grayscale works too)
 touch main.gray
@@ -243,7 +254,7 @@ type, all of the following are **required** before your PR is ready:
 - [ ] **Codegen** — `grayc/src/codegen/codegen.c` emits the C call
 - [ ] **`STANDARD.md`** — add it to the module's table in the language spec
 - [ ] Run `./grayc/grayc scripts/generate_man_data.gray && ./generate_man_data` and commit the regenerated `cli/man_data.gray`
-- [ ] `make build` compiles clean with zero warnings
+- [ ] `make selfhost build` compiles clean with zero warnings
 
 The typechecker and codegen internals move around; don't work from a list of
 symbol names. Find an existing function in the same module, grep for every place
@@ -275,7 +286,7 @@ spread across more than 15 call sites.
    - `diagnostic_error_code_formatted()` — registry message template with `%s`/`%d` args
    - `diagnostic_error_message()` / `diagnostic_warning_message()` — custom message with a code
 
-3. **Regenerate `ERRORS.md`** by running `make generate-errors` and committing the output.
+3. **Regenerate `ERRORS.md`** by running `make selfhost generate-errors` and committing the output.
 
 4. **Add a fail test** in `integration-tests/fail/errors/` named `E####_short_description.gray` that triggers the new error and verifies the compiler rejects it.
 
@@ -327,8 +338,15 @@ grayscale/
 │   ├── update.gray           # `gray update` and `gray install`
 │   ├── man.gray              # `gray man`; man_data.gray is generated, lang_man.gray is hand-written
 │   └── info.gray             # `gray version` and `gray report`
-├── grayc/                    # Grayscale compiler (C)
-│   ├── Makefile              # Compiler build (the root Makefile delegates here)
+├── selfhost/                 # The Grayscale compiler, written in Grayscale
+│   ├── lexer/, ast/, parser/ # Tokens, AST, parsing
+│   ├── typechecker/          # Static type checking
+│   ├── codegen/              # Code generation (AST → C)
+│   ├── driver/               # Command line, imports, diagnostics, C compiler call
+│   ├── util/                 # Error registry and "did you mean" suggestions
+│   └── tools/                # Fixed-point check, generators for the stdlib and error tables
+├── grayc/                    # The C compiler, plus the runtime and stdlib in C
+│   ├── Makefile              # Runtime library build (and the C compiler, for make grayc)
 │   ├── src/main.c            # Compiler entry point — drives the pipeline
 │   ├── src/lexer/            # Tokenization
 │   ├── src/parser/           # Parsing (tokens → AST) and import resolution
@@ -347,8 +365,8 @@ grayscale/
 ├── STANDARD.md               # Language specification
 ├── ERRORS.md                 # Generated diagnostic registry (from error_codes.h)
 ├── TESTING.md                # Test layout and conventions
-├── CHANGELOG.md              # Generated by release-please
-├── Makefile                  # Top-level build (builds both gray + grayc)
+├── CHANGELOG.md              # Changelog (no longer generated; releases are named experimental-YYYYMMDD-build#)
+├── Makefile                  # Top-level build; the first word picks the compiler (make selfhost build)
 └── LICENSE
 ```
 
@@ -378,19 +396,21 @@ grayscale/
 The simplest way to run everything:
 
 ```bash
-make test
+make selfhost test
 ```
 
-This builds the compiler, then runs unit tests, e2e tests, and integration tests in sequence.
+This builds the compiler, then runs the integration suite (pass + fail `.gray` programs) with it.
 
-### Individual Suites
+### The C compiler's suites
+
+The older C compiler in `grayc/` has its own suites, run with `make grayc`:
 
 ```bash
-make test-unit        # C unit tests (lexer, parser, typechecker)
-make test-e2e         # End-to-end codegen tests
-make test-integration # Integration tests (pass + fail .gray programs)
-make test-ubsan       # UBSan sanitizer tests
-make test-asan        # ASan+UBSan tests (Linux recommended)
+make grayc test-unit        # C unit tests (lexer, parser, typechecker)
+make grayc test-e2e         # End-to-end codegen tests
+make grayc test-ubsan       # UBSan sanitizer tests
+make grayc test-asan        # ASan+UBSan tests (Linux recommended)
+make grayc test             # All of the above plus integration
 ```
 
 All targets run from the repo root.
@@ -403,11 +423,11 @@ New features and bug fixes should include tests. The type of test depends on wha
 
 ### Unit Tests (C)
 
-For compiler internals:
+For the C compiler and the C runtime (`grayc/`):
 
 ```bash
-make test-unit          # lexer, parser, typechecker, util tests
-make test-e2e           # full compilation pipeline tests
+make grayc test-unit    # lexer, parser, typechecker, util tests
+make grayc test-e2e     # full compilation pipeline tests
 ```
 
 ### Integration Tests (Grayscale)
@@ -466,7 +486,7 @@ For more details, see `TESTING.md`.
 
 ## Code Style
 
-### Grayscale code (`cli/`, `scripts/`, `benchmarks/`)
+### Grayscale code (`selfhost/`, `cli/`, `scripts/`, `benchmarks/`)
 
 - Run `gray fmt` before committing (`make hooks` enforces it; CI checks it too)
 - Keep functions focused and readable
@@ -508,10 +528,11 @@ type(scope): short description
 
 | Scope | Area |
 |-------|------|
-| `lexer` | Tokenization (`grayc/src/lexer/`) |
-| `parser` | Parsing / AST construction (`grayc/src/parser/`) |
-| `typechecker` | Static type checking (`grayc/src/typechecker/`) |
-| `codegen` | C code generation (`grayc/src/codegen/`) |
+| `lexer` | Tokenization (`selfhost/lexer/`) |
+| `parser` | Parsing / AST construction (`selfhost/parser/`) |
+| `typechecker` | Static type checking (`selfhost/typechecker/`) |
+| `codegen` | C code generation (`selfhost/codegen/`) |
+| `driver` | Command line, imports, diagnostics (`selfhost/driver/`) |
 | `runtime` | Runtime library (`grayc/src/runtime/`) |
 | `stdlib` | Standard library (`grayc/src/stdlib/`) — optionally nested, e.g. `stdlib/strings` |
 | `cli` | The `gray` CLI (`cli/`) |
@@ -528,7 +549,7 @@ fix(typechecker): prevent false positive on nested struct init
 test(integration): add 7 core language integration tests
 docs(stdlib): add doc comments to math module
 feat(stdlib/strings): add 12 new string utility functions
-chore(ci): add workflow_dispatch trigger to release-please
+chore(ci): add workflow_dispatch trigger to the release workflow
 ```
 
 Keep the description short (under ~72 characters), lowercase, no period at the end.
@@ -568,7 +589,7 @@ Keep the description short (under ~72 characters), lowercase, no period at the e
 
 - Keep changes focused and small when possible
 - Include a clear description of what changed and why
-- Make sure all tests pass (`make test`)
+- Make sure all tests pass (`make selfhost test`)
 - Include unit and/or integration tests for new features and bug fixes
 
 ---

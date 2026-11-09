@@ -5,8 +5,10 @@
 To run the full test suite, use:
 
 ```bash
-make test
+make grayc test
 ```
+
+Every `make` target takes the compiler first. `make grayc <target>` tests the C compiler (`grayc/`); `make selfhost <target>` tests the compiler written in Grayscale (`selfhost/`). `test-unit`, `test-e2e`, `test-ubsan` and `test-asan` exercise the C compiler only, so they work only with `grayc`. Run `make help` for the full list.
 
 ---
 
@@ -35,8 +37,8 @@ E2E tests (`grayc/tests/test_codegen.c`) compile Grayscale programs, run them, a
 
 ```bash
 # From repo root
-make test-unit        # unit tests (lexer + parser + typechecker + module_table + util + runtime + panics + stdlib)
-make test-e2e         # e2e codegen tests
+make grayc test-unit   # unit tests (lexer + parser + typechecker + module_table + util + runtime + panics + stdlib)
+make grayc test-e2e    # e2e codegen tests
 
 # Individual test suites (from grayc/)
 ./grayc/tests/test_lexer
@@ -68,7 +70,8 @@ Integration tests compile and run `.gray` programs end-to-end through the full c
 **Running:**
 
 ```bash
-make test-integration
+make grayc test-integration
+make selfhost test-integration
 
 # Run the runner directly
 ./grayc/grayc scripts/run_tests.gray && ./run_tests
@@ -80,26 +83,26 @@ ASan (AddressSanitizer) and UBSan (Undefined Behavior Sanitizer) builds catch me
 
 ```bash
 # UBSan — runs on all platforms
-make test-ubsan
+make grayc test-ubsan
 
 # ASan + UBSan — Linux recommended
-make test-asan
+make grayc test-asan
 ```
 
 ### Testing with a Specific Compiler
 
 Two environment variables choose the compiler, and they apply to different suites:
 
-- `GRAY_CC` is the compiler that builds user programs. It applies to `make test-integration` and `make test-e2e`.
-- `CC` is the compiler that builds `grayc` itself. It applies to `make test-unit` and the sanitizer suites.
+- `GRAY_CC` is the compiler that builds user programs. It applies to `make grayc test-integration`, `make selfhost test-integration` and `make grayc test-e2e`.
+- `CC` is the compiler that builds `grayc` itself. It applies to `make grayc test-unit` and the sanitizer suites.
 
 ```bash
-GRAY_CC=gcc-11 make test-integration
-GRAY_CC=clang  make test-e2e
-GRAY_CC=tcc    make test-integration
+GRAY_CC=gcc-11 make grayc test-integration
+GRAY_CC=clang  make grayc test-e2e
+GRAY_CC=tcc    make selfhost test-integration
 
-CC=gcc-11 make test-unit
-CC=clang  make test-ubsan
+CC=gcc-11 make grayc test-unit
+CC=clang  make grayc test-ubsan
 ```
 
 Run `make clean` when you switch compilers. Object files built by one compiler do not link with another's, and `make` does not rebuild them when `CC` changes.
@@ -123,7 +126,7 @@ list; advisories are informational and do not fail it.
 ## Running Everything
 
 ```bash
-make test
+make grayc test
 ```
 
 This builds the compiler, then runs unit tests, e2e tests, and integration tests in sequence.
@@ -151,9 +154,9 @@ touches `grayc/src/vendor/**` or the check script.
 ## Windows
 
 ```bash
-make test-unit             # C unit suites
-make test-e2e              # end-to-end codegen tests
-make test-integration      # integration tests (runs via scripts/run_tests.ps1)
+make grayc test-unit       # C unit suites
+make grayc test-e2e        # end-to-end codegen tests
+make grayc test-integration # integration tests (runs via scripts/run_tests.ps1)
 ```
 
 Or, with no POSIX shell:
