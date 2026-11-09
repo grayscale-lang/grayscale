@@ -85,7 +85,7 @@ do main() {
         arrays.append(out, "# Grayscale Error Code Reference")
         arrays.append(out, "")
         arrays.append(out, "> Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.")
-        arrays.append(out, "> Run `make generate-errors` to regenerate.")
+        arrays.append(out, "> Run `make grayc generate-errors` to regenerate.")
         arrays.append(out, "")
         arrays.append(out, "**Total: ${total} codes** (${error_count} errors, ${warning_count} warnings, ${panic_count} panics)")
         arrays.append(out, "")
