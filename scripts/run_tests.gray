@@ -360,6 +360,7 @@ do run_pass_test(tally ^Tally, runner Runner, label string, entry string, define
     if !succeeded {
         fail(tally, label, "(execution error)")
     } or strings.contains(output, "SOME TESTS FAILED") {
+        println(output)
         fail(tally, label, "(assertions failed)")
     } otherwise {
         pass(tally, label)
