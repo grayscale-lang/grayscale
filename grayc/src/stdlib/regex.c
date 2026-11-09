@@ -189,6 +189,24 @@ static char *regex_ascii_classes(GrayArena *arena, const char *pattern) {
 }
 #endif
 
+#if !GRAY_RUNTIME_WINDOWS
+/* True when a bracket expression holds a range with a non-ASCII endpoint.
+ * libc orders those by the locale's collation, which on some systems matches
+ * nothing, so the character-aware engine runs them by codepoint. */
+static bool regex_has_non_ascii_range(const char *pattern) {
+    bool in_bracket = false;
+    for (const char *cursor = pattern; *cursor; cursor++) {
+        if (*cursor == '\\' && cursor[1]) { cursor++; continue; }
+        if (*cursor == '[') in_bracket = true;
+        else if (*cursor == ']') in_bracket = false;
+        else if (in_bracket && *cursor == '-' && cursor > pattern &&
+                 (((unsigned char)cursor[-1] & 0x80) || ((unsigned char)cursor[1] & 0x80)))
+            return true;
+    }
+    return false;
+}
+#endif
+
 /* Helper: compile pattern into a null-terminated C string and a program.
  * Returns 0 on success (with gray_regex_lock held — release it with
  * regex_session_end), non-zero on error (lock not held). */
@@ -201,7 +219,7 @@ static int compile_pattern(GrayString pattern, RegexProgram *regex, bool is_with
         return 1;
     }
 #if !GRAY_RUNTIME_WINDOWS
-    regex->is_libc = regex_enter_utf8_locale();
+    regex->is_libc = !regex_has_non_ascii_range(pattern_buffer) && regex_enter_utf8_locale();
     if (regex->is_libc) {
         int result_code = regcomp(&regex->libc, regex_ascii_classes(gray_default_arena, pattern_buffer),
                                   REG_EXTENDED | (is_without_groups ? REG_NOSUB : 0));
