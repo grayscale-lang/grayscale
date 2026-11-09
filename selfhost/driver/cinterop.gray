@@ -12,6 +12,7 @@
 import @io, @os, @strings, @fmt, @arrays, @path, @maps
 import "../typechecker/types"
 import "./diagnostics"
+import "./ccompile"
 import "../typechecker/typechecker"
 import "../util/error_registry"
 
@@ -23,6 +24,8 @@ const DUMP_QUOTE_PREFIX_LENGTH i64 = 2
 const MAX_TYPE_TEXT_LENGTH i64 = 128
 const MAX_SIGNATURE_TEXT_LENGTH i64 = 512
 const MAX_FUNCTION_POINTER_TEXT_LENGTH i64 = 256
+// The most typedef names classified in one probe.
+const TYPEDEF_PROBE_LIMIT i64 = 64
 // The number of top-level groups in a signature that also holds a GCC part.
 const GROUP_COUNT_WITH_GCC_PART i64 = 2
 // The length of "(*)", which marks a function pointer type.
@@ -860,12 +863,151 @@ fn extern_probe_body(sites [typechecker.ExternCallSite]) -> string {
     return "${body}}\n"
 }
 
+// Copies `name`'s prototype out of a gcc `-aux-info` listing (one line per declaration, such
+// as "/* file:1:NC */ extern int putc (int, FILE *);") spelled as clang's AST dump spells the
+// function's type: the name dropped, leaving "int (int, FILE *)". The last declaration wins.
+fn find_auxiliary_info_signature(auxiliary_info string, name string) -> (bool, string) {
+    storage_prefixes [string] = {"extern ", "static ", "inline "}
+    mut found bool = false
+    mut signature string = ""
+    for_each line in strings.split(auxiliary_info, "\n") {
+        comment_end i64 = strings.index_of(line, "*/ ")
+        if comment_end < 0 { continue }
+        mut declaration string = strings.slice(line, comment_end + 3, len(line))
+        mut more bool = true
+        as_long_as more {
+            more = false
+            for_each prefix in storage_prefixes {
+                if strings.starts_with(declaration, prefix) {
+                    declaration = strings.slice(declaration, len(prefix), len(declaration))
+                    more = true
+                }
+            }
+        }
+        if len(declaration) == 0 || strings.char_at(declaration, len(declaration) - 1) != ';' { continue }
+        declaration = strings.slice(declaration, 0, len(declaration) - 1)
+        mut search_from i64 = 0
+        as_long_as search_from < len(declaration) {
+            relative i64 = strings.index_of(strings.slice(declaration, search_from, len(declaration)), name)
+            if relative < 0 { break }
+            position i64 = search_from + relative
+            after i64 = position + len(name)
+            search_from = after
+            if position > 0 && is_identifier_char(strings.char_at(declaration, position - 1)) { continue }
+            if after + 1 >= len(declaration) { continue }
+            if strings.char_at(declaration, after) != ' ' || strings.char_at(declaration, after + 1) != '(' { continue }
+            signature = "${strings.slice(declaration, 0, position)}${strings.slice(declaration, after + 1, len(declaration))}"
+            found = true
+            break
+        }
+    }
+    return found, signature
+}
+
+// Whether `text` is a bare identifier classify_c_return could not place, a typedef name
+// still to be resolved and not yet in `names`.
+fn is_new_typedef_name(names [string], type_class i64, text string) -> bool {
+    if type_class != CLASS_UNKNOWN || text == "" || len(names) >= TYPEDEF_PROBE_LIMIT { return false }
+    for position in range(0, len(text)) {
+        if !is_identifier_char(strings.char_at(text, position)) { return false }
+    }
+    for_each name in names {
+        if name == text { return false }
+    }
+    return true
+}
+
+// gcc has no AST dump, so this builds a stand-in that find_c_function_signature reads
+// unchanged: a "FunctionDecl name 'type'" line per called function from gcc's `-aux-info`
+// prototypes, and a "TypedefDecl name 'type'" line per typedef name those types mention.
+// aux-info leaves typedefs unresolved, so each is classified by asking the compiler which
+// `__builtin_classify_type` value it has: the one _Static_assert that fails names it. "" when
+// the compiler has no -aux-info.
+fn synthesize_gcc_ast_dump(compiler string, includes string, sites [typechecker.ExternCallSite]) -> string {
+    auxiliary_base, temp_error = io.temp_file()
+    if temp_error != nil { return "" }
+    auxiliary_path string = "${auxiliary_base}.txt"
+    exit_code, _ = run_syntax_probe(compiler, includes, {"-aux-info", auxiliary_path})
+    mut auxiliary_info string = ""
+    if exit_code == 0 {
+        text, read_error = io.read_file(auxiliary_path)
+        if read_error == nil { auxiliary_info = text }
+    }
+    remove_file(auxiliary_path)
+    remove_file(auxiliary_base)
+    if auxiliary_info == "" { return "" }
+
+    mut dump string = ""
+    mut typedef_names [string] = {}
+    mut seen_functions [string] = {}
+    for_each site in sites {
+        mut already_seen bool = false
+        for_each seen in seen_functions {
+            if seen == site.function_name { already_seen = true }
+        }
+        if already_seen { continue }
+        arrays.append(seen_functions, site.function_name)
+        has_signature, signature = find_auxiliary_info_signature(auxiliary_info, site.function_name)
+        if !has_signature { continue }
+        dump = "${dump}FunctionDecl ${site.function_name} '${signature}'\n"
+
+        is_parsed, parsed = count_c_parameters(signature)
+        if !is_parsed { continue }
+        if is_new_typedef_name(typedef_names, parsed.return_class, parsed.return_text) { arrays.append(typedef_names, parsed.return_text) }
+        for index in range(0, parsed.parameter_count) {
+            if is_new_typedef_name(typedef_names, parsed.parameter_class[index], parsed.parameter_text[index]) {
+                arrays.append(typedef_names, parsed.parameter_text[index])
+            }
+            // A pointer to a typedef ("FILE *") needs the typedef classified too
+            if parsed.parameter_class[index] != CLASS_POINTER { continue }
+            has_pointee, pointee = split_c_pointee(parsed.parameter_text[index])
+            if !has_pointee { continue }
+            pointee_name, _ = strip_c_pointee_qualifiers(pointee)
+            if is_new_typedef_name(typedef_names, classify_c_return(pointee_name), pointee_name) { arrays.append(typedef_names, pointee_name) }
+        }
+    }
+
+    if len(typedef_names) > 0 {
+        class_numbers [i64] = {0, 1, 3, 4, 5, 8, 12, 13}
+        class_spellings [string] = {"void", "long", "int", "_Bool", "void *", "double", "struct probed", "union probed"}
+        mut probe string = includes
+        for name_index in range(0, len(typedef_names)) {
+            for class_index in range(0, len(class_numbers)) {
+                probe = "${probe}_Static_assert(__builtin_classify_type(*(${typedef_names[name_index]} *)0) != ${class_numbers[class_index]}, \"gray_td_${name_index}_${class_index}_\");\n"
+            }
+        }
+        _, error_text = run_syntax_probe(compiler, probe, {})
+        for name_index in range(0, len(typedef_names)) {
+            for class_index in range(0, len(class_numbers)) {
+                if strings.contains(error_text, "gray_td_${name_index}_${class_index}_") {
+                    dump = "${dump}TypedefDecl ${typedef_names[name_index]} '${class_spellings[class_index]}'\n"
+                    break
+                }
+            }
+        }
+    }
+    return dump
+}
+
 // Validates every extern.NAME use the typechecker recorded against the real C headers, using
 // the target compiler as the source of truth: existence, argument count,
 // argument kinds, callbacks and the asserted result type. Fails
 // open wherever the compiler cannot say.
-fn validate_c_extern_signatures(compiler string, checker ^typechecker.TypeChecker, entry_file string) -> [diagnostics.Diagnostic] {
+fn validate_c_extern_signatures(target_compiler string, checker ^typechecker.TypeChecker, entry_file string) -> [diagnostics.Diagnostic] {
     mut found [diagnostics.Diagnostic] = {}
+    // TinyCC has no AST dump or -aux-info to read a C signature from, so ask a compiler that
+    // has them. They only parse the headers, so the compiler that builds the program need not
+    // be the one that answers.
+    mut compiler string = target_compiler
+    if ccompile.is_tinycc(target_compiler) {
+        introspection_compilers [string] = {"cc", "gcc", "clang"}
+        for_each candidate in introspection_compilers {
+            if c_compiler_runs(candidate) {
+                compiler = candidate
+                break
+            }
+        }
+    }
     conflicts = report_c_header_conflicts(compiler)
     if len(conflicts) > 0 { return conflicts }
 
@@ -885,7 +1027,8 @@ fn validate_c_extern_signatures(compiler string, checker ^typechecker.TypeChecke
         }
     }
 
-    dump string = capture_clang_ast_dump(compiler, includes)
+    mut dump string = capture_clang_ast_dump(compiler, includes)
+    if dump == "" { dump = synthesize_gcc_ast_dump(compiler, includes, sites) }
     if dump == "" { return found }
     index_ast_dump(dump)
 
