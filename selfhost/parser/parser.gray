@@ -1,0 +1,3935 @@
+/*
+ * parser.gray:  Recursive descent parser for Grayscale. Transforms the token
+ * stream from the lexer into an abstract syntax tree using Pratt parsing for
+ * expressions and precedence-based operator handling.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings, @arrays, @fmt, @strconv
+import "../ast/ast"
+import "../lexer/lexer"
+import "../lexer/token"
+import "../util/suggest"
+import "../typechecker/reserved"
+import "../util/error_registry"
+
+// --- Constants ---
+
+// The longest message and help text kept for a diagnostic, and the longest formatted message.
+const MESSAGE_BUFFER_LENGTH i64 = 256
+const FORMATTED_MESSAGE_BUFFER_LENGTH i64 = 1024
+// The deepest nesting of types.
+const MAX_TYPE_NESTING i64 = 64
+// The bases of integer literals.
+const DECIMAL_BASE i64 = 10
+const HEX_BASE i64 = 16
+const OCTAL_BASE i64 = 8
+const BINARY_BASE i64 = 2
+// The length of a "0x", "0o" or "0b" prefix.
+const RADIX_PREFIX_LENGTH i64 = 2
+// The largest u64, and the largest i64 and the magnitude of the smallest, as u64.
+const U64_MAX u64 = 18446744073709551615
+const I64_MAX_MAGNITUDE u64 = 9223372036854775807
+const I64_MIN_MAGNITUDE u64 = 9223372036854775808
+// The characters of a backslash escape, and of the "${" that opens an interpolation.
+const ESCAPE_LENGTH i64 = 2
+const INTERPOLATION_OPENER_LENGTH i64 = 2
+// The longest interpolation expression, in bytes.
+const MAX_INTERPOLATION_LENGTH i64 = 65536
+// The value added to a hex letter's offset from 'a' or 'A'.
+const HEX_LETTER_OFFSET i64 = 10
+// The number of distinct byte values.
+const BYTE_VALUE_COUNT i64 = 256
+// The control characters a char literal escape names.
+const NEWLINE_CODEPOINT i64 = 10
+const TAB_CODEPOINT i64 = 9
+const CARRIAGE_RETURN_CODEPOINT i64 = 13
+// The length of the "\\x" and "\\u{" prefixes of a char literal escape.
+const HEX_ESCAPE_PREFIX_LENGTH i64 = 2
+const UNICODE_ESCAPE_PREFIX_LENGTH i64 = 3
+// The highest codepoint, and the range of UTF-16 surrogates.
+const MAX_CODEPOINT i64 = 1114111
+const SURROGATE_MIN i64 = 55296
+const SURROGATE_MAX i64 = 57343
+// UTF-8: lead byte ranges, the tag of a continuation byte, and the value of one continuation byte's place.
+const ASCII_LIMIT i64 = 128
+const TWO_BYTE_LEAD_MIN i64 = 192
+const THREE_BYTE_LEAD_MIN i64 = 224
+const FOUR_BYTE_LEAD_MIN i64 = 240
+const CONTINUATION_TAG i64 = 128
+const CONTINUATION_RADIX i64 = 64
+const TWO_BYTE_SEQUENCE_LENGTH i64 = 2
+const THREE_BYTE_SEQUENCE_LENGTH i64 = 3
+const FOUR_BYTE_SEQUENCE_LENGTH i64 = 4
+// The brackets of an array type name, and the shortest such name ("[T]").
+const ARRAY_BRACKETS_LENGTH i64 = 2
+const MIN_ARRAY_TYPE_NAME_LENGTH i64 = 3
+// The length of a header file extension (".h", ".character").
+const HEADER_EXTENSION_LENGTH i64 = 2
+
+const MAX_PARSE_DEPTH i64 = 256
+
+// Operator precedence levels (integer constants for < comparison)
+const PREC_LOWEST i64 = 0
+const PREC_OR i64 = 1
+const PREC_AND i64 = 2
+const PREC_EQUALS i64 = 3
+const PREC_BITWISE i64 = 4
+const PREC_LESSGREATER i64 = 5
+const PREC_MEMBERSHIP i64 = 6
+const PREC_SHIFT i64 = 7
+const PREC_SUM i64 = 8
+const PREC_PRODUCT i64 = 9
+const PREC_PREFIX i64 = 10
+const PREC_CALL i64 = 11
+const PREC_INDEX i64 = 12
+const PREC_POSTFIX i64 = 13
+
+// One id for every or_return temporary and one for every multi-variable
+// temporary, across all the parsers of a run, so the spellings never collide
+mut or_return_temporary_id i64 = 0
+mut multi_variable_counter i64 = 0
+
+// The most errors a run reports
+const MAX_ERRORS_DISPLAYED i64 = 20
+
+// --- Types ---
+
+const ParseError struct {
+    code string
+    message string
+    help string
+    line i64
+    col i64
+    // 0 when the error marks a single column
+    end_col i64
+    // The file the error was found in
+    file string
+}
+
+const Parser struct {
+    lex ^lexer.Lexer
+    cur_token token.Token
+    peek_token token.Token
+    file string
+    depth i64
+    no_struct_literal bool
+    in_interp bool
+    current_func ^ast.AstNode
+    errors [ParseError]
+    type_nesting i64
+    seen_attribute_mask i64
+}
+
+const ParserSnapshot struct {
+    lex_pos i64
+    lex_read_pos i64
+    lex_ch char
+    lex_line i64
+    lex_col i64
+    cur_tok token.Token
+    peek_tok token.Token
+}
+
+// --- Constructor ---
+
+fn parser_create(source_lexer ^lexer.Lexer, file string) -> ^Parser {
+    parser = new(Parser)
+    parser^.lex = source_lexer
+    parser^.file = file
+    parser^.depth = 0
+    parser^.no_struct_literal = false
+    parser^.in_interp = false
+    parser^.errors = {}
+    parser^.type_nesting = 0
+    parser^.seen_attribute_mask = 0
+    // Read two tokens to fill cur and peek
+    advance(parser)
+    advance(parser)
+    return parser
+}
+
+// --- Helpers ---
+
+fn advance(parser ^Parser) {
+    // Force deep-copy literals when moving between pointer-accessed fields
+    // to work around an arena inheritance bug
+    prev token.Token = parser^.peek_token
+    prev.literal = fmt.sprintf("%s", {prev.literal})
+    parser^.cur_token = prev
+    next_tok token.Token = lexer.next_token(parser^.lex)
+    next_tok.literal = fmt.sprintf("%s", {next_tok.literal})
+    parser^.peek_token = next_tok
+    if parser^.peek_token.kind == token.TokenKind.ILLEGAL && parser^.lex^.error_code != "" {
+        add_error(parser, parser^.lex^.error_code, parser^.lex^.error_msg, parser^.peek_token.line, parser^.peek_token.col)
+        parser^.lex^.error_code = ""
+    }
+}
+
+fn add_error(parser ^Parser, code string, message string, line i64, col i64) {
+    add_error_help(parser, code, message, "", line, col)
+}
+
+// The text as a C buffer of `size` bytes would hold it: cut to size - 1 bytes.
+fn clip_to_buffer(text string, size i64) -> string {
+    if len(text) < size { return text }
+    return strings.slice(text, 0, size - 1)
+}
+
+// A message or help text built into a fixed buffer of MESSAGE_BUFFER_LENGTH bytes.
+fn add_error_help(parser ^Parser, code string, message string, help string, line i64, col i64) {
+    add_error_sized(parser, code, clip_to_buffer(message, MESSAGE_BUFFER_LENGTH), clip_to_buffer(help, MESSAGE_BUFFER_LENGTH), line, col)
+}
+
+fn add_error_sized(parser ^Parser, code string, message string, help string, line i64, col i64) {
+    // Errors past the twentieth are dropped
+    if len(parser^.errors) >= MAX_ERRORS_DISPLAYED { return }
+    mut errs [ParseError] = parser^.errors
+    arrays.append(errs, ParseError{code: code, message: message, help: help, line: line, col: col, file: parser^.file})
+    parser^.errors = errs
+}
+
+// Reports registry error `code` with a help line, at an explicit position.
+fn report_help_at(parser ^Parser, code string, help string, line i64, col i64) {
+    add_error_sized(parser, code, error_registry.registry_message(code), clip_to_buffer(help, MESSAGE_BUFFER_LENGTH), line, col)
+}
+
+// Reports a formatted registry error at an explicit position.
+fn report_at_formatted(parser ^Parser, code string, arguments [string], line i64, col i64) {
+    add_error_sized(parser, code, clip_to_buffer(error_registry.registry_message_formatted(code, arguments), FORMATTED_MESSAGE_BUFFER_LENGTH), "", line, col)
+}
+
+// Reports registry error `code` at the current token.
+fn report(parser ^Parser, code string) {
+    add_error_sized(parser, code, error_registry.registry_message(code), "", parser^.cur_token.line, parser^.cur_token.col)
+}
+
+// Reports registry error `code` at an explicit position.
+fn report_at(parser ^Parser, code string, line i64, col i64) {
+    add_error_sized(parser, code, error_registry.registry_message(code), "", line, col)
+}
+
+// Reports registry error `code` (a message with %s / %data slots) at the current token.
+fn report_formatted(parser ^Parser, code string, arguments [string]) {
+    add_error_sized(parser, code, clip_to_buffer(error_registry.registry_message_formatted(code, arguments), FORMATTED_MESSAGE_BUFFER_LENGTH), "", parser^.cur_token.line, parser^.cur_token.col)
+}
+
+fn cur_is(parser ^Parser, kind token.TokenKind) -> bool {
+    return parser^.cur_token.kind == kind
+}
+
+fn peek_is(parser ^Parser, kind token.TokenKind) -> bool {
+    return parser^.peek_token.kind == kind
+}
+
+#[discard]
+fn expect_peek(parser ^Parser, kind token.TokenKind) -> bool {
+    if peek_is(parser, kind) {
+        advance(parser)
+        return true
+    }
+    // The error points at the current token, where the expected one should have been
+    add_error(parser, "E2001", fmt.sprintf("expected '%s', got '%s'", {token.token_kind_name(kind), token.token_display_name(parser^.peek_token)}), parser^.cur_token.line, parser^.cur_token.col)
+    return false
+}
+
+// A reserved word. `_` is excluded: it is the blank identifier and is valid in
+// binding positions.
+fn is_keyword_token(kind token.TokenKind) -> bool {
+    return kind != token.TokenKind.BLANK && token.kind_is_keyword(kind)
+}
+
+// A reserved keyword written where `what` (e.g. "a variable name") is
+// expected. Reports at `current_token` and synchronizes; true when it was a keyword.
+#[discard]
+fn reject_keyword_as_name(parser ^Parser, current_token token.Token, what string) -> bool {
+    if !is_keyword_token(current_token.kind) { return false }
+    add_error(parser, "E4027", fmt.sprintf("'%s' is a reserved keyword and cannot be used as %s", {current_token.literal, what}), current_token.line, current_token.col)
+    synchronize(parser)
+    return true
+}
+
+fn synchronize(parser ^Parser) {
+    error_line i64 = parser^.cur_token.line
+    as_long_as !cur_is(parser, token.TokenKind.EOF) && parser^.cur_token.line == error_line {
+        advance(parser)
+    }
+    as_long_as !cur_is(parser, token.TokenKind.EOF) {
+        when parser^.cur_token.kind {
+            is token.TokenKind.DO, token.TokenKind.MUT, token.TokenKind.CONST,
+            token.TokenKind.RETURN, token.TokenKind.IF, token.TokenKind.FOR,
+            token.TokenKind.FOR_EACH, token.TokenKind.AS_LONG_AS, token.TokenKind.LOOP,
+            token.TokenKind.WHEN, token.TokenKind.IMPORT, token.TokenKind.USING,
+            token.TokenKind.BREAK, token.TokenKind.CONTINUE, token.TokenKind.ALIAS, token.TokenKind.DISTINCT,
+            token.TokenKind.RBRACE, token.TokenKind.IDENT {
+                return
+            }
+            default { advance(parser) }
+        }
+    }
+}
+
+fn get_token_precedence(kind token.TokenKind) -> i64 {
+    when kind {
+        is token.TokenKind.OR { return PREC_OR }
+        is token.TokenKind.AND { return PREC_AND }
+        is token.TokenKind.EQ, token.TokenKind.NOT_EQ { return PREC_EQUALS }
+        is token.TokenKind.BIT_AND, token.TokenKind.BIT_OR, token.TokenKind.BIT_XOR { return PREC_BITWISE }
+        is token.TokenKind.LT, token.TokenKind.GT, token.TokenKind.LT_EQ, token.TokenKind.GT_EQ { return PREC_LESSGREATER }
+        is token.TokenKind.IN, token.TokenKind.NOT_IN { return PREC_MEMBERSHIP }
+        is token.TokenKind.BIT_SHIFT_LEFT, token.TokenKind.BIT_SHIFT_RIGHT { return PREC_SHIFT }
+        is token.TokenKind.PLUS, token.TokenKind.MINUS { return PREC_SUM }
+        is token.TokenKind.ASTERISK, token.TokenKind.SLASH, token.TokenKind.PERCENT { return PREC_PRODUCT }
+        is token.TokenKind.LPAREN { return PREC_CALL }
+        is token.TokenKind.LBRACKET, token.TokenKind.DOT { return PREC_INDEX }
+        is token.TokenKind.INCREMENT, token.TokenKind.DECREMENT, token.TokenKind.CARET { return PREC_POSTFIX }
+        default { return PREC_LOWEST }
+    }
+}
+
+fn is_assignment_op(kind token.TokenKind) -> bool {
+    return kind == token.TokenKind.ASSIGN || kind == token.TokenKind.PLUS_ASSIGN ||
+           kind == token.TokenKind.MINUS_ASSIGN || kind == token.TokenKind.ASTERISK_ASSIGN ||
+           kind == token.TokenKind.SLASH_ASSIGN || kind == token.TokenKind.PERCENT_ASSIGN
+}
+
+fn is_type_name(name string) -> bool {
+    return name == "f32" || name == "f64" ||
+           name == "string" || name == "bool" || name == "char" ||
+           name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
+           name == "u8" || name == "u16" || name == "u32" || name == "u64" ||
+           name == "i128" || name == "u128" || name == "i256" || name == "u256" ||
+           (len(name) > 0 && strings.char_at(name, 0) >= 'A' && strings.char_at(name, 0) <= 'Z')
+}
+
+// --- Snapshot ---
+
+fn save_snapshot(parser ^Parser) -> ParserSnapshot {
+    return ParserSnapshot{
+        lex_pos: parser^.lex^.pos,
+        lex_read_pos: parser^.lex^.read_pos,
+        lex_ch: parser^.lex^.ch,
+        lex_line: parser^.lex^.line,
+        lex_col: parser^.lex^.col,
+        cur_tok: parser^.cur_token,
+        peek_tok: parser^.peek_token
+    }
+}
+
+fn restore_snapshot(parser ^Parser, snap ParserSnapshot) {
+    parser^.lex^.pos = snap.lex_pos
+    parser^.lex^.read_pos = snap.lex_read_pos
+    parser^.lex^.ch = snap.lex_ch
+    parser^.lex^.line = snap.lex_line
+    parser^.lex^.col = snap.lex_col
+    parser^.cur_token = snap.cur_tok
+    parser^.peek_token = snap.peek_tok
+}
+
+// --- Type parsing ---
+
+// What a type parser returns after reporting a diagnostic. An empty string is a
+// type too: the spelling of an end-of-file token.
+const TYPE_FAILED string = "\x01failed"
+
+// A type for an AST slot that tolerates having none.
+fn type_or_empty(spelling string) -> string {
+    if spelling == TYPE_FAILED { return "" }
+    return spelling
+}
+
+// `generic` declares a type parameter and is only valid as the type of a
+// function parameter. Anywhere else a type is written it is reported here, and
+// the keyword is read as the type's name so parsing carries on.
+#[discard]
+fn reject_generic_type(parser ^Parser) -> string {
+    report(parser, "E2096")
+    return "generic"
+}
+
+// A type name: simple (i64, Person) or qualified (models.Task). The qualifier
+// stays attached as written; it is resolved against the symbol table later.
+fn read_type_name(parser ^Parser) -> string {
+    if cur_is(parser, token.TokenKind.GENERIC) {
+        return reject_generic_type(parser)
+    }
+    name string = parser^.cur_token.literal
+    if peek_is(parser, token.TokenKind.DOT) {
+        advance(parser)
+        advance(parser)
+        return fmt.sprintf("%s.%s", {name, parser^.cur_token.literal})
+    }
+    return name
+}
+
+// The body of a bracketed type, from its element (or key) type through its
+// closing ']': "[T]", "[T,N]", or "map[K:V]" for the shorthand.
+fn reject_typed_func_element(parser ^Parser) -> bool {
+    if !(cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "func" && peek_is(parser, token.TokenKind.LPAREN)) { return false }
+    report(parser, "E2082")
+    return true
+}
+
+fn parse_bracketed_type(parser ^Parser) -> string {
+    if reject_typed_func_element(parser) { return TYPE_FAILED }
+    element_type string = parse_complex_type(parser)
+    if element_type == TYPE_FAILED { return TYPE_FAILED }
+    if peek_is(parser, token.TokenKind.COLON) {
+        // Map shorthand: [K:V] is spelled map[K:V]
+        advance(parser)
+        advance(parser)
+        if reject_typed_func_element(parser) { return TYPE_FAILED }
+        value_type string = parse_complex_type(parser)
+        if value_type == TYPE_FAILED { return TYPE_FAILED }
+        if !expect_peek(parser, token.TokenKind.RBRACKET) { return TYPE_FAILED }
+        return fmt.sprintf("map[%s:%s]", {element_type, value_type})
+    }
+    if peek_is(parser, token.TokenKind.COMMA) {
+        // Fixed-size array: [i64, 3] or [i64, SIZE]
+        advance(parser)
+        advance(parser)
+        if !cur_is(parser, token.TokenKind.INT) && !cur_is(parser, token.TokenKind.IDENT) {
+            report(parser, "E2025")
+        }
+        size_text string = parser^.cur_token.literal
+        if !expect_peek(parser, token.TokenKind.RBRACKET) { return TYPE_FAILED }
+        return fmt.sprintf("[%s,%s]", {element_type, size_text})
+    }
+    // Dynamic array: [i64]
+    if !expect_peek(parser, token.TokenKind.RBRACKET) { return TYPE_FAILED }
+    return fmt.sprintf("[%s]", {element_type})
+}
+
+// One level deeper in a type; false (with an error reported) past 64 levels.
+fn enter_type_nesting(parser ^Parser) -> bool {
+    parser^.type_nesting = parser^.type_nesting + 1
+    if parser^.type_nesting > MAX_TYPE_NESTING {
+        add_error(parser, "E2001", "type nesting is too deep; maximum depth is ${MAX_TYPE_NESTING}", parser^.cur_token.line, parser^.cur_token.col)
+        parser^.type_nesting = parser^.type_nesting - 1
+        return false
+    }
+    return true
+}
+
+// Parses a type annotation. The parser is on the first token of the type and
+// ends on its last token. Returns "" after reporting a diagnostic. `[T]` and
+// `^T` count their own nesting; `map[K:V]` and `func(...)` nest through here.
+fn parse_complex_type(parser ^Parser) -> string {
+    nests_through_wrapper bool = cur_is(parser, token.TokenKind.IDENT) && ((parser^.cur_token.literal == "map" && peek_is(parser, token.TokenKind.LBRACKET)) || parser^.cur_token.literal == "func")
+    if !nests_through_wrapper { return parse_complex_type_unbounded(parser) }
+    if !enter_type_nesting(parser) { return TYPE_FAILED }
+    parsed_type string = parse_complex_type_unbounded(parser)
+    parser^.type_nesting = parser^.type_nesting - 1
+    return parsed_type
+}
+
+fn parse_complex_type_unbounded(parser ^Parser) -> string {
+    if cur_is(parser, token.TokenKind.GENERIC) {
+        return reject_generic_type(parser)
+    }
+    if cur_is(parser, token.TokenKind.LBRACKET) {
+        if !enter_type_nesting(parser) { return TYPE_FAILED }
+        advance(parser)
+        built string = parse_bracketed_type(parser)
+        parser^.type_nesting = parser^.type_nesting - 1
+        return built
+    }
+    if cur_is(parser, token.TokenKind.CARET) {
+        if !enter_type_nesting(parser) { return TYPE_FAILED }
+        advance(parser)
+        pointee string = parse_complex_type(parser)
+        parser^.type_nesting = parser^.type_nesting - 1
+        if pointee == TYPE_FAILED { return TYPE_FAILED }
+        return fmt.sprintf("^%s", {pointee})
+    }
+    if cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "map" && peek_is(parser, token.TokenKind.LBRACKET) {
+        advance(parser)
+        advance(parser)
+        key_type string = read_type_name(parser)
+        if !expect_peek(parser, token.TokenKind.COLON) { return TYPE_FAILED }
+        advance(parser)
+        if reject_typed_func_element(parser) { return TYPE_FAILED }
+        value_type string = parse_complex_type(parser)
+        if value_type == TYPE_FAILED { return TYPE_FAILED }
+        if !expect_peek(parser, token.TokenKind.RBRACKET) { return TYPE_FAILED }
+        return fmt.sprintf("map[%s:%s]", {key_type, value_type})
+    }
+    if cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "func" {
+        return parse_func_type(parser)
+    }
+    return read_type_name(parser)
+}
+
+// A typed function reference, func(P1, &P2) -> R or -> (R1, R2), spelled
+// "func(p1,&p2)->r" with no spaces. A bare `func` is the untyped reference.
+fn parse_func_type(parser ^Parser) -> string {
+    if !peek_is(parser, token.TokenKind.LPAREN) { return "func" }
+    advance(parser)
+    mut params string = ""
+    if !peek_is(parser, token.TokenKind.RPAREN) {
+        advance(parser)
+        mut first_param bool = true
+        loop {
+            mut is_mutable_param bool = false
+            if cur_is(parser, token.TokenKind.AMPERSAND) {
+                is_mutable_param = true
+                advance(parser)
+            }
+            param_type string = parse_complex_type(parser)
+            if param_type == TYPE_FAILED { return TYPE_FAILED }
+            if !first_param { params = "${params}," }
+            if is_mutable_param { params = "${params}&" }
+            params = "${params}${param_type}"
+            first_param = false
+            if !peek_is(parser, token.TokenKind.COMMA) { break }
+            advance(parser)
+            advance(parser)
+        }
+    }
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return TYPE_FAILED }
+    if !peek_is(parser, token.TokenKind.ARROW) { return fmt.sprintf("func(%s)", {params}) }
+    advance(parser)
+    advance(parser) // first return type or (
+    if cur_is(parser, token.TokenKind.LPAREN) {
+        mut returns string = "("
+        advance(parser)
+        mut first_return bool = true
+        loop {
+            return_type string = parse_complex_type(parser)
+            if return_type == TYPE_FAILED { return TYPE_FAILED }
+            if return_type == "void" {
+                report(parser, "E3068")
+                return TYPE_FAILED
+            }
+            if !first_return { returns = "${returns}," }
+            returns = "${returns}${return_type}"
+            first_return = false
+            if !peek_is(parser, token.TokenKind.COMMA) { break }
+            advance(parser)
+            advance(parser)
+        }
+        if !expect_peek(parser, token.TokenKind.RPAREN) { return TYPE_FAILED }
+        return fmt.sprintf("func(%s)->%s)", {params, returns})
+    }
+    return_type string = parse_complex_type(parser)
+    if return_type == TYPE_FAILED { return TYPE_FAILED }
+    if return_type == "void" {
+        report(parser, "E3068")
+        return TYPE_FAILED
+    }
+    return fmt.sprintf("func(%s)->%s", {params, return_type})
+}
+
+// --- Expression parsing: individual parsers ---
+
+fn parse_identifier(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.LABEL, parser^.cur_token)
+    data = new(ast.LabelData)
+    data^.value = parser^.cur_token.literal
+    node^.label = data
+    return node
+}
+
+// The decimal spelling of the digits of a hex/octal/binary literal (base prefix
+// already stripped, '_' separators allowed), at any width. The wide integer
+// types parse their literals from decimal text only.
+fn radix_digits_to_decimal(digits string, base i64) -> string {
+    // little-endian decimal digits
+    mut decimal [i64] = {0}
+    for i in range(0, len(digits)) {
+        character char = strings.char_at(digits, i)
+        if character == '_' { continue }
+        mut carry i64 = hex_digit_value(character)
+        for j in range(0, len(decimal)) {
+            product i64 = decimal[j] * base + carry
+            decimal[j] = product % DECIMAL_BASE
+            carry = product / DECIMAL_BASE
+        }
+        as_long_as carry > 0 {
+            arrays.append(decimal, carry % DECIMAL_BASE)
+            carry = carry / DECIMAL_BASE
+        }
+    }
+    mut text string = ""
+    mut index i64 = len(decimal) - 1
+    as_long_as index >= 0 {
+        text = "${text}${decimal[index]}"
+        index = index - 1
+    }
+    return text
+}
+
+fn parse_int_literal(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.INT_VALUE, parser^.cur_token)
+    data = new(ast.IntValueData)
+    text string = parser^.cur_token.literal
+    mut base i64 = DECIMAL_BASE
+    mut digits string = text
+    if len(text) >= RADIX_PREFIX_LENGTH && strings.char_at(text, 0) == '0' {
+        prefix char = strings.char_at(text, 1)
+        if prefix == 'x' || prefix == 'X' { base = HEX_BASE }
+        if prefix == 'o' || prefix == 'O' { base = OCTAL_BASE }
+        if prefix == 'b' || prefix == 'B' { base = BINARY_BASE }
+        if base != DECIMAL_BASE { digits = strings.slice(text, RADIX_PREFIX_LENGTH, len(text)) }
+    }
+    // Accumulated as a u64 so its full range is representable and overflow is
+    // detected the same way for every base.
+    mut magnitude u64 = 0
+    mut is_above_u64_maximum bool = false
+    maximum u64 = U64_MAX
+    for i in range(0, len(digits)) {
+        character char = strings.char_at(digits, i)
+        if character == '_' { continue }
+        digit_value u64 = cast(hex_digit_value(character), u64)
+        if magnitude > (maximum - digit_value) / cast(base, u64) { is_above_u64_maximum = true }
+        // The value keeps the low 64 bits once the literal overflows
+        unsafe {
+            magnitude = wrap_add(wrap_mult(magnitude, cast(base, u64)), digit_value)
+        }
+    }
+    // the same bits read as an i64
+    if magnitude > I64_MAX_MAGNITUDE {
+        data^.value = cast(magnitude - I64_MIN_MAGNITUDE, i64) - cast(I64_MAX_MAGNITUDE, i64) - 1
+    } otherwise {
+        data^.value = cast(magnitude, i64)
+    }
+    data^.literal = text
+    if base != DECIMAL_BASE { data^.literal = radix_digits_to_decimal(digits, base) }
+    data^.overflow = is_above_u64_maximum || magnitude > I64_MAX_MAGNITUDE
+    data^.overflow_u64 = is_above_u64_maximum
+    node^.int_value = data
+    return node
+}
+
+fn parse_float_literal(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.FLOAT_VALUE, parser^.cur_token)
+    data = new(ast.FloatValueData)
+    lit string = strings.replace(parser^.cur_token.literal, "_", "")
+    parsed_fval f64, parse_err = strconv.to_f64(lit)
+    data^.value = parsed_fval
+    // A decimal literal has no spelling for infinity, so a failed parse can only
+    // mean the value saturated past the largest f64. Underflow to zero (a
+    // negative exponent) is IEEE-conformant, not an error.
+    if parse_err != nil && !strings.contains(lit, "e-") && !strings.contains(lit, "E-") {
+        report(parser, "E3138")
+        data^.value = 0.0
+    }
+    node^.float_value = data
+    return node
+}
+
+fn string_has_interpolation(s string) -> bool {
+    slen i64 = len(s)
+    mut i i64 = 0
+    as_long_as i < slen {
+        character char = strings.char_at(s, i)
+        if character == '$' && i + 1 < slen && strings.char_at(s, i + 1) == '{' {
+            return true
+        }
+        if character == '\\' {
+            i = i + ESCAPE_LENGTH
+            continue
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fn parse_interpolated_string(parser ^Parser, raw_text string) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.INTERPOLATED_STRING, parser^.cur_token)
+    id = new(ast.InterpStringData)
+    mut parts [^ast.AstNode] = {}
+
+    slen i64 = len(raw_text)
+    mut i i64 = 0
+    mut seg_start i64 = 0
+
+    as_long_as i < slen {
+        character char = strings.char_at(raw_text, i)
+        if character == '\\' && i + 1 < slen {
+            i = i + ESCAPE_LENGTH
+            continue
+        }
+        if character == '$' && i + 1 < slen && strings.char_at(raw_text, i + 1) == '{' {
+            // Emit text segment before ${
+            if i > seg_start {
+                text_node = ast.ast_alloc(ast.NodeKind.STRING_VALUE, parser^.cur_token)
+                td = new(ast.StringValueData)
+                td^.value = strings.slice(raw_text, seg_start, i)
+                text_node^.string_value = td
+                arrays.append(parts, text_node)
+            }
+            // Find the matching } and parse the expression inside
+            i = i + INTERPOLATION_OPENER_LENGTH
+            expr_start i64 = i
+            mut brace_depth i64 = 1
+            as_long_as i < slen && brace_depth > 0 {
+                inner_character char = strings.char_at(raw_text, i)
+                // nested string literals: their braces are not counted
+                if inner_character == '"' {
+                    i = i + 1
+                    as_long_as i < slen && strings.char_at(raw_text, i) != '"' {
+                        if strings.char_at(raw_text, i) == '\\' && i + 1 < slen {
+                            i = i + 1
+                        }
+                        i = i + 1
+                    }
+                    if i < slen { i = i + 1 }
+                    continue
+                }
+                // nested char literals: '}', '{' and '"' are characters, not interpolation syntax
+                if inner_character == '\'' {
+                    i = i + 1
+                    as_long_as i < slen && strings.char_at(raw_text, i) != '\'' {
+                        if strings.char_at(raw_text, i) == '\\' && i + 1 < slen {
+                            i = i + 1
+                        }
+                        i = i + 1
+                    }
+                    if i < slen { i = i + 1 }
+                    continue
+                }
+                if inner_character == '{' { brace_depth = brace_depth + 1 }
+                or inner_character == '}' { brace_depth = brace_depth - 1 }
+                if brace_depth > 0 { i = i + 1 }
+            }
+            // An unbounded interpolation expression is refused
+            if i - expr_start > MAX_INTERPOLATION_LENGTH {
+                add_error(parser, "E2001", "string interpolation expression is too large (max 64KB)", parser^.cur_token.line, parser^.cur_token.col)
+                return nil
+            }
+            expr_text string = strings.slice(raw_text, expr_start, i)
+            if len(strings.trim(expr_text)) == 0 {
+                // '${}' would otherwise report a misleading position from the sub-parser
+                report(parser, "E2071")
+            } otherwise {
+                expr_lex = lexer.lexer_create(expr_text, parser^.file)
+                // Offset the sub-lexer to the real source position of this
+                // expression so diagnostics point at the right line and column
+                mut line_offset i64 = 0
+                mut column_from_newline i64 = 0
+                for k in range(0, expr_start) {
+                    if strings.char_at(raw_text, k) == '\n' {
+                        line_offset = line_offset + 1
+                        column_from_newline = 0
+                    } otherwise {
+                        column_from_newline = column_from_newline + 1
+                    }
+                }
+                expr_lex^.line = parser^.cur_token.line + line_offset
+                if line_offset > 0 {
+                    expr_lex^.col = column_from_newline + 1
+                } otherwise {
+                    expr_lex^.col = parser^.cur_token.col + 1 + expr_start
+                }
+                expr_p = parser_create(expr_lex, parser^.file)
+                expr_p^.in_interp = true
+                expr = parse_expression(expr_p, PREC_LOWEST)
+                // The sub-parser's errors come first, in the order they were found
+                for_each sub_error in expr_p^.errors {
+                    add_error_help(parser, sub_error.code, sub_error.message, sub_error.help, sub_error.line, sub_error.col)
+                }
+                // The sub-parser must consume the whole ${...} body: Grayscale
+                // has no format-spec syntax, so anything left over is an error.
+                if expr != nil && expr_p^.peek_token.kind != token.TokenKind.EOF && expr_p^.peek_token.kind != token.TokenKind.ILLEGAL {
+                    add_error(parser, "E2002", fmt.sprintf("unexpected token '%s' in interpolation expression", {token.token_display_name(expr_p^.peek_token)}), expr_p^.peek_token.line, expr_p^.peek_token.col)
+                }
+                if expr != nil {
+                    arrays.append(parts, expr)
+                }
+            }
+            if i < slen { i = i + 1 }
+            seg_start = i
+        } otherwise {
+            i = i + 1
+        }
+    }
+
+    // Remaining text segment
+    if i > seg_start {
+        text_node = ast.ast_alloc(ast.NodeKind.STRING_VALUE, parser^.cur_token)
+        td = new(ast.StringValueData)
+        td^.value = strings.slice(raw_text, seg_start, i)
+        text_node^.string_value = td
+        arrays.append(parts, text_node)
+    }
+
+    id^.parts = parts
+    node^.interp_string = id
+    return node
+}
+
+fn parse_string_literal(parser ^Parser) -> ^ast.AstNode {
+    raw_lit string = parser^.cur_token.literal
+    is_raw bool = parser^.cur_token.kind == token.TokenKind.RAW_STRING
+    if !is_raw && string_has_interpolation(raw_lit) {
+        return parse_interpolated_string(parser, raw_lit)
+    }
+    if !is_raw {
+        // A bare $identifier where ${identifier} was meant
+        mut i i64 = 0
+        as_long_as i < len(raw_lit) {
+            character char = strings.char_at(raw_lit, i)
+            if character == '\\' {
+                i = i + ESCAPE_LENGTH
+                continue
+            }
+            if character == '$' && i + 1 < len(raw_lit) && strings.char_at(raw_lit, i + 1) != '{' {
+                next char = strings.char_at(raw_lit, i + 1)
+                if lexer.is_alpha(next) || next == '_' {
+                    report(parser, "E2057")
+                    break
+                }
+            }
+            i = i + 1
+        }
+    }
+    node = ast.ast_alloc(ast.NodeKind.STRING_VALUE, parser^.cur_token)
+    data = new(ast.StringValueData)
+    data^.value = raw_lit
+    data^.is_raw = is_raw
+    node^.string_value = data
+    return node
+}
+
+fn parse_bool_literal(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.BOOL_VALUE, parser^.cur_token)
+    data = new(ast.BoolValueData)
+    data^.value = parser^.cur_token.kind == token.TokenKind.TRUE
+    node^.bool_value = data
+    return node
+}
+
+fn parse_nil_literal(parser ^Parser) -> ^ast.AstNode {
+    return ast.ast_alloc(ast.NodeKind.NIL_VALUE, parser^.cur_token)
+}
+
+// The value of one hex digit, or -1.
+fn hex_digit_value(character char) -> i64 {
+    if character >= '0' && character <= '9' { return cast(character, i64) - cast('0', i64) }
+    if character >= 'a' && character <= 'f' { return cast(character, i64) - cast('a', i64) + HEX_LETTER_OFFSET }
+    if character >= 'A' && character <= 'F' { return cast(character, i64) - cast('A', i64) + HEX_LETTER_OFFSET }
+    return -1
+}
+
+// The unsigned value of a source byte (char_at yields the C char, negative
+// from 0x80 up).
+fn source_byte(text string, index i64) -> i64 {
+    value i64 = cast(strings.char_at(text, index), i64)
+    if value < 0 { return value + BYTE_VALUE_COUNT }
+    return value
+}
+
+// Decodes the text between the quotes of a char literal (already validated by
+// the lexer) into one Unicode codepoint: an escape sequence or the UTF-8
+// encoded character. A `\u{}` escape outside U+0000..U+10FFFF or naming a
+// UTF-16 surrogate reports an error.
+fn decode_char_literal(parser ^Parser, text string) -> i64 {
+    if len(text) == 0 { return 0 }
+    if strings.char_at(text, 0) == '\\' && len(text) >= TWO_BYTE_SEQUENCE_LENGTH {
+        esc char = strings.char_at(text, 1)
+        if esc == 'n' { return NEWLINE_CODEPOINT }
+        if esc == 't' { return TAB_CODEPOINT }
+        if esc == 'r' { return CARRIAGE_RETURN_CODEPOINT }
+        if esc == '0' { return 0 }
+        if esc == 'x' {
+            // \xNN is the codepoint U+00NN, not a raw byte
+            mut value i64 = 0
+            for i in range(HEX_ESCAPE_PREFIX_LENGTH, len(text)) { value = value * HEX_BASE + hex_digit_value(strings.char_at(text, i)) }
+            return value
+        }
+        if esc == 'u' {
+            mut codepoint i64 = 0
+            for i in range(UNICODE_ESCAPE_PREFIX_LENGTH, len(text) - 1) { codepoint = codepoint * HEX_BASE + hex_digit_value(strings.char_at(text, i)) }
+            if codepoint > MAX_CODEPOINT {
+                add_error(parser, "E1006", "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF", parser^.cur_token.line, parser^.cur_token.col)
+                return 0
+            }
+            if codepoint >= SURROGATE_MIN && codepoint <= SURROGATE_MAX {
+                add_error(parser, "E1006", "'\\u{}' codepoint U+D800 to U+DFFF is a UTF-16 surrogate, not a character", parser^.cur_token.line, parser^.cur_token.col)
+                return 0
+            }
+            return codepoint
+        }
+        return source_byte(text, 1)
+    }
+    lead i64 = source_byte(text, 0)
+    if lead < ASCII_LIMIT { return lead }
+    if lead >= TWO_BYTE_LEAD_MIN && lead < THREE_BYTE_LEAD_MIN && len(text) >= TWO_BYTE_SEQUENCE_LENGTH { return (lead - TWO_BYTE_LEAD_MIN) * CONTINUATION_RADIX + (source_byte(text, 1) - CONTINUATION_TAG) }
+    if lead >= THREE_BYTE_LEAD_MIN && lead < FOUR_BYTE_LEAD_MIN && len(text) >= THREE_BYTE_SEQUENCE_LENGTH {
+        return (lead - THREE_BYTE_LEAD_MIN) * CONTINUATION_RADIX * CONTINUATION_RADIX + (source_byte(text, 1) - CONTINUATION_TAG) * CONTINUATION_RADIX + (source_byte(text, 2) - CONTINUATION_TAG)
+    }
+    if len(text) >= FOUR_BYTE_SEQUENCE_LENGTH {
+        return (lead - FOUR_BYTE_LEAD_MIN) * CONTINUATION_RADIX * CONTINUATION_RADIX * CONTINUATION_RADIX + (source_byte(text, 1) - CONTINUATION_TAG) * CONTINUATION_RADIX * CONTINUATION_RADIX + (source_byte(text, 2) - CONTINUATION_TAG) * CONTINUATION_RADIX + (source_byte(text, 3) - CONTINUATION_TAG)
+    }
+    return lead
+}
+
+fn parse_char_literal(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.CHAR_VALUE, parser^.cur_token)
+    data = new(ast.CharValueData)
+    data^.value = char(decode_char_literal(parser, parser^.cur_token.literal))
+    node^.char_value = data
+    return node
+}
+
+fn parse_prefix_expression(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.PREFIX_EXPR, parser^.cur_token)
+    data = new(ast.PrefixData)
+    data^.op = parser^.cur_token.kind
+    advance(parser)
+    data^.right = parse_expression(parser, PREC_PREFIX)
+    node^.prefix = data
+    return node
+}
+
+fn parse_grouped_expression(parser ^Parser) -> ^ast.AstNode {
+    // Check for function reference: ()func_name
+    if peek_is(parser, token.TokenKind.RPAREN) {
+        ref_tok token.Token = parser^.cur_token
+        advance(parser)
+        advance(parser)
+        if parser^.cur_token.kind != token.TokenKind.IDENT {
+            return nil
+        }
+        func_expr = ast.ast_alloc(ast.NodeKind.LABEL, parser^.cur_token)
+        label_data = new(ast.LabelData)
+        label_data^.value = parser^.cur_token.literal
+        func_expr^.label = label_data
+        as_long_as peek_is(parser, token.TokenKind.DOT) {
+            advance(parser)
+            advance(parser)
+            member = ast.ast_alloc(ast.NodeKind.MEMBER_EXPR, parser^.cur_token)
+            md = new(ast.MemberData)
+            md^.object = func_expr
+            md^.member = parser^.cur_token.literal
+            member^.member = md
+            func_expr = member
+        }
+        ref_node = ast.ast_alloc(ast.NodeKind.FUNC_REF, ref_tok)
+        frd = new(ast.FuncRefData)
+        frd^.function = func_expr
+        ref_node^.func_ref = frd
+        return ref_node
+    }
+    advance(parser)
+    expr = parse_expression(parser, PREC_LOWEST)
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    return expr
+}
+
+fn parse_struct_literal(parser ^Parser, name string) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.STRUCT_VALUE, parser^.cur_token)
+    data = new(ast.StructValueData)
+    data^.name = name
+    mut field_names_arr [string] = {}
+    mut field_values_arr [^ast.AstNode] = {}
+
+    advance(parser)
+    as_long_as !cur_is(parser, token.TokenKind.RBRACE) && !cur_is(parser, token.TokenKind.EOF) {
+        arrays.append(field_names_arr, parser^.cur_token.literal)
+        if !expect_peek(parser, token.TokenKind.COLON) { return nil }
+        advance(parser)
+        arrays.append(field_values_arr, parse_expression(parser, PREC_LOWEST))
+        if peek_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+        }
+        advance(parser)
+    }
+
+    data^.field_names = field_names_arr
+    data^.field_values = field_values_arr
+    node^.struct_value = data
+    return node
+}
+
+fn parse_array_or_map_literal(parser ^Parser) -> ^ast.AstNode {
+    brace_tok token.Token = parser^.cur_token
+    advance(parser)
+
+    // Empty: {}
+    if cur_is(parser, token.TokenKind.RBRACE) {
+        node = ast.ast_alloc(ast.NodeKind.ARRAY_VALUE, brace_tok)
+        data = new(ast.ArrayValueData)
+        data^.elements = {}
+        node^.array_value = data
+        return node
+    }
+
+    // Empty map: {:}
+    if cur_is(parser, token.TokenKind.COLON) && peek_is(parser, token.TokenKind.RBRACE) {
+        advance(parser)
+        node = ast.ast_alloc(ast.NodeKind.MAP_VALUE, brace_tok)
+        data = new(ast.MapValueData)
+        data^.keys = {}
+        data^.values = {}
+        node^.map_value = data
+        return node
+    }
+
+    // Leading comma check
+    if cur_is(parser, token.TokenKind.COMMA) {
+        report(parser, "E2017")
+        advance(parser)
+    }
+
+    // Parse first expression
+    first = parse_expression(parser, PREC_LOWEST)
+
+    if peek_is(parser, token.TokenKind.COLON) {
+        // Map literal
+        node = ast.ast_alloc(ast.NodeKind.MAP_VALUE, brace_tok)
+        data = new(ast.MapValueData)
+        mut keys [^ast.AstNode] = {}
+        mut vals [^ast.AstNode] = {}
+        arrays.append(keys, first)
+        advance(parser)
+        advance(parser)
+        arrays.append(vals, parse_expression(parser, PREC_LOWEST))
+
+        as_long_as peek_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+            advance(parser)
+            if cur_is(parser, token.TokenKind.RBRACE) { break }
+            arrays.append(keys, parse_expression(parser, PREC_LOWEST))
+            if !expect_peek(parser, token.TokenKind.COLON) { return nil }
+            advance(parser)
+            arrays.append(vals, parse_expression(parser, PREC_LOWEST))
+        }
+        if peek_is(parser, token.TokenKind.RBRACE) { advance(parser) }
+        data^.keys = keys
+        data^.values = vals
+        node^.map_value = data
+        return node
+    }
+
+    // Array literal
+    node = ast.ast_alloc(ast.NodeKind.ARRAY_VALUE, brace_tok)
+    data = new(ast.ArrayValueData)
+    mut elems [^ast.AstNode] = {}
+    arrays.append(elems, first)
+
+    as_long_as peek_is(parser, token.TokenKind.COMMA) {
+        advance(parser)
+        advance(parser)
+        if cur_is(parser, token.TokenKind.RBRACE) {
+            report(parser, "E2017")
+            break
+        }
+        arrays.append(elems, parse_expression(parser, PREC_LOWEST))
+    }
+    if peek_is(parser, token.TokenKind.RBRACE) { advance(parser) }
+    data^.elements = elems
+    node^.array_value = data
+    return node
+}
+
+// The element type of an array spelling, or "" when the spelling is not an
+// array. "[i64]" is "i64" and "[i64,3]" is "i64"; nesting is respected, so
+// "[[i64,3]]" is "[i64,3]".
+fn array_element_type_of(type_name string) -> string {
+    if len(type_name) < MIN_ARRAY_TYPE_NAME_LENGTH || strings.char_at(type_name, 0) != '[' || strings.char_at(type_name, len(type_name) - 1) != ']' { return "" }
+    mut element_length i64 = len(type_name) - ARRAY_BRACKETS_LENGTH
+    mut depth i64 = 0
+    for i in range(0, element_length) {
+        character char = strings.char_at(type_name, 1 + i)
+        if character == '[' {
+            depth = depth + 1
+        } or character == ']' {
+            depth = depth - 1
+        } or character == ',' && depth == 0 {
+            element_length = i
+            break
+        }
+    }
+    return strings.slice(type_name, 1, 1 + element_length)
+}
+
+fn parse_cast_expression(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.CAST_EXPR, parser^.cur_token)
+    data = new(ast.CastData)
+    data^.is_array = false
+    data^.element_type = ""
+    if !expect_peek(parser, token.TokenKind.LPAREN) { return nil }
+    advance(parser)
+    data^.value = parse_expression(parser, PREC_LOWEST)
+    if !expect_peek(parser, token.TokenKind.COMMA) { return nil }
+    advance(parser)
+    // The target is an ordinary type annotation, so it goes through the shared
+    // type parser rather than a hand-rolled subset.
+    target string = parse_complex_type(parser)
+    if target == TYPE_FAILED { return nil }
+    data^.target_type = target
+    element string = array_element_type_of(target)
+    if element != "" {
+        data^.is_array = true
+        data^.element_type = element
+    }
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    node^.cast_data = data
+    return node
+}
+
+fn parse_new_expression(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.NEW_EXPR, parser^.cur_token)
+    data = new(ast.NewExprData)
+    if !expect_peek(parser, token.TokenKind.LPAREN) { return nil }
+    advance(parser)
+    data^.type_name = type_or_empty(parse_complex_type(parser))
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    node^.new_expr = data
+    return node
+}
+
+fn parse_range_expression(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.RANGE_EXPR, parser^.cur_token)
+    data = new(ast.RangeData)
+    if !expect_peek(parser, token.TokenKind.LPAREN) { return nil }
+    advance(parser)
+    first = parse_expression(parser, PREC_LOWEST)
+    if peek_is(parser, token.TokenKind.COMMA) {
+        data^.start_expr = first
+        advance(parser)
+        advance(parser)
+        data^.end_expr = parse_expression(parser, PREC_LOWEST)
+        if peek_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+            advance(parser)
+            data^.step = parse_expression(parser, PREC_LOWEST)
+        }
+    } otherwise {
+        data^.end_expr = first
+    }
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    node^.range_expr = data
+    return node
+}
+
+// --- Expression parsing: prefix dispatcher ---
+
+fn parse_prefix(parser ^Parser) -> ^ast.AstNode {
+    when parser^.cur_token.kind {
+        is token.TokenKind.IDENT, token.TokenKind.EXTERN {
+            // Check for module-qualified struct literal: mod.Name{...}
+            if peek_is(parser, token.TokenKind.DOT) {
+                mod_name string = parser^.cur_token.literal
+                if len(mod_name) > 0 && strings.char_at(mod_name, 0) >= 'a' && strings.char_at(mod_name, 0) <= 'z' {
+                    snap = save_snapshot(parser)
+                    advance(parser)
+                    advance(parser)
+                    if parser^.cur_token.kind == token.TokenKind.IDENT && peek_is(parser, token.TokenKind.LBRACE) && !parser^.no_struct_literal {
+                        qualified string = fmt.sprintf("%s.%s", {mod_name, parser^.cur_token.literal})
+                        advance(parser)
+                        return parse_struct_literal(parser, qualified)
+                    }
+                    restore_snapshot(parser, snap)
+                }
+            }
+            // Struct literal: Name{...}. The name's casing has nothing to do with
+            // it; no_struct_literal is what keeps `if x {` from being read as one.
+            if peek_is(parser, token.TokenKind.LBRACE) && !parser^.no_struct_literal {
+                name string = parser^.cur_token.literal
+                advance(parser)
+                return parse_struct_literal(parser, name)
+            }
+            return parse_identifier(parser)
+        }
+        is token.TokenKind.GENERIC {
+            // A type position written as an expression, e.g. size_of(generic)
+            reject_generic_type(parser)
+            return parse_identifier(parser)
+        }
+        is token.TokenKind.INT { return parse_int_literal(parser) }
+        is token.TokenKind.FLOAT { return parse_float_literal(parser) }
+        is token.TokenKind.STRING, token.TokenKind.RAW_STRING { return parse_string_literal(parser) }
+        is token.TokenKind.TRUE, token.TokenKind.FALSE { return parse_bool_literal(parser) }
+        is token.TokenKind.NIL { return parse_nil_literal(parser) }
+        is token.TokenKind.CHAR { return parse_char_literal(parser) }
+        is token.TokenKind.MINUS, token.TokenKind.BANG, token.TokenKind.BIT_NOT {
+            return parse_prefix_expression(parser)
+        }
+        is token.TokenKind.AMPERSAND {
+            report(parser, "E2072")
+            return parse_prefix_expression(parser)
+        }
+        is token.TokenKind.DOT {
+            // .VARIANT — implicit enum selector
+            dot_tok token.Token = parser^.cur_token
+            advance(parser)
+            if parser^.cur_token.kind != token.TokenKind.IDENT {
+                add_error(parser, "E2001", "expected enum variant name after '.'", dot_tok.line, dot_tok.col)
+                return ast.ast_alloc(ast.NodeKind.NIL_VALUE, dot_tok)
+            }
+            node = ast.ast_alloc(ast.NodeKind.IMPLICIT_ENUM, dot_tok)
+            data = new(ast.ImplicitEnumData)
+            data^.variant = parser^.cur_token.literal
+            data^.resolved_enum = ""
+            node^.implicit_enum = data
+            return node
+        }
+        is token.TokenKind.LPAREN { return parse_grouped_expression(parser) }
+        is token.TokenKind.LBRACE { return parse_array_or_map_literal(parser) }
+        is token.TokenKind.CAST { return parse_cast_expression(parser) }
+        is token.TokenKind.NEW { return parse_new_expression(parser) }
+        is token.TokenKind.RANGE { return parse_range_expression(parser) }
+        is token.TokenKind.IN, token.TokenKind.NOT_IN {
+            // 'in'/'not_in' without left-hand value
+            bad_token token.Token = parser^.cur_token
+            report_formatted(parser, "E2086", {parser^.cur_token.literal, parser^.cur_token.literal})
+            advance(parser)
+            parser^.no_struct_literal = true
+            parse_expression(parser, PREC_LOWEST)
+            parser^.no_struct_literal = false
+            dummy = ast.ast_alloc(ast.NodeKind.BOOL_VALUE, bad_token)
+            dd = new(ast.BoolValueData)
+            dd^.value = true
+            dummy^.bool_value = dd
+            return dummy
+        }
+        default {
+            if parser^.cur_token.kind != token.TokenKind.ILLEGAL {
+                if parser^.in_interp && cur_is(parser, token.TokenKind.EOF) {
+                    add_error(parser, "E2002", "unexpected end of interpolation expression", parser^.cur_token.line, parser^.cur_token.col)
+                } otherwise {
+                    add_error(parser, "E2002", fmt.sprintf("unexpected token '%s'", {token.token_display_name(parser^.cur_token)}), parser^.cur_token.line, parser^.cur_token.col)
+                }
+            }
+            return nil
+        }
+    }
+}
+
+// --- Expression parsing: infix parsers ---
+
+fn parse_infix_expression(parser ^Parser, left ^ast.AstNode) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.INFIX_EXPR, parser^.cur_token)
+    data = new(ast.InfixData)
+    data^.left = left
+    data^.op = parser^.cur_token.kind
+    prec i64 = get_token_precedence(parser^.cur_token.kind)
+    is_membership bool = parser^.cur_token.kind == token.TokenKind.IN || parser^.cur_token.kind == token.TokenKind.NOT_IN
+    suppress bool = is_membership ||
+        parser^.cur_token.kind == token.TokenKind.LT || parser^.cur_token.kind == token.TokenKind.GT ||
+        parser^.cur_token.kind == token.TokenKind.LT_EQ || parser^.cur_token.kind == token.TokenKind.GT_EQ ||
+        parser^.cur_token.kind == token.TokenKind.EQ || parser^.cur_token.kind == token.TokenKind.NOT_EQ
+    advance(parser)
+    // Restore what was there rather than clearing: a comparison inside an
+    // already-suppressed context (`if a == 1 && b {`) must hand the rest of the
+    // condition back a still-suppressed flag.
+    saved_suppress bool = parser^.no_struct_literal
+    if suppress { parser^.no_struct_literal = true }
+    data^.right = parse_expression(parser, prec)
+    parser^.no_struct_literal = saved_suppress
+    node^.infix = data
+    return node
+}
+
+// True when the parser sits on a token that can only begin a pointer or
+// container type spelling: ^T, [T], [T,N], or map[K:V].
+fn current_starts_complex_type(parser ^Parser) -> bool {
+    if cur_is(parser, token.TokenKind.CARET) || cur_is(parser, token.TokenKind.LBRACKET) { return true }
+    return cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "map" && peek_is(parser, token.TokenKind.LBRACKET)
+}
+
+fn parse_call_expression(parser ^Parser, function ^ast.AstNode) -> ^ast.AstNode {
+    if parser^.cur_token.preceded_by_ws {
+        // The argument list is still parsed so the closing ')' is consumed
+        report(parser, "E2073")
+    }
+    node = ast.ast_alloc(ast.NodeKind.CALL_EXPR, parser^.cur_token)
+    data = new(ast.CallData)
+    data^.function = function
+    mut arguments [^ast.AstNode] = {}
+    mut arg_names [string] = {}
+    mut has_named bool = false
+
+    if peek_is(parser, token.TokenKind.RPAREN) {
+        advance(parser)
+    } otherwise {
+        loop {
+            advance(parser)
+            // Check for named arg: ident:
+            if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.COLON) {
+                arrays.append(arg_names, parser^.cur_token.literal)
+                has_named = true
+                advance(parser)
+                advance(parser)
+            } otherwise {
+                arrays.append(arg_names, "")
+            }
+            // size_of(^T), size_of([T]), size_of(map[K:V]): a type spelling, not an expression
+            if function^.kind == ast.NodeKind.LABEL && function^.label^.value == "size_of" && current_starts_complex_type(parser) {
+                type_spelling string = type_or_empty(parse_complex_type(parser))
+                type_label = ast.ast_alloc(ast.NodeKind.LABEL, parser^.cur_token)
+                type_label_data = new(ast.LabelData)
+                type_label_data^.value = type_spelling
+                type_label^.label = type_label_data
+                arrays.append(arguments, type_label)
+            } otherwise {
+                arrays.append(arguments, parse_expression(parser, PREC_LOWEST))
+            }
+            if !peek_is(parser, token.TokenKind.COMMA) { break }
+            advance(parser)
+        }
+        if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    }
+
+    data^.args = arguments
+    if has_named {
+        data^.arg_names = arg_names
+    } otherwise {
+        data^.arg_names = {}
+    }
+    node^.call = data
+    return node
+}
+
+fn parse_member_expression(parser ^Parser, object ^ast.AstNode) -> ^ast.AstNode {
+    if parser^.cur_token.preceded_by_ws {
+        // Parsing goes on so the identifier after '.' is swallowed
+        report(parser, "E2074")
+    }
+    advance(parser) // skip the identifier after dot
+    node = ast.ast_alloc(ast.NodeKind.MEMBER_EXPR, parser^.cur_token)
+    data = new(ast.MemberData)
+    data^.object = object
+    data^.member = parser^.cur_token.literal
+    node^.member = data
+    return node
+}
+
+fn parse_index_expression(parser ^Parser, left ^ast.AstNode) -> ^ast.AstNode {
+    if parser^.cur_token.preceded_by_ws {
+        report(parser, "E2075")
+    }
+    // 'arr[]' is rejected before descending: with no prefix parser for ']' it
+    // would otherwise report two misleading errors for one mistake.
+    if peek_is(parser, token.TokenKind.RBRACKET) {
+        report(parser, "E2077")
+        advance(parser) // consume '[', leaving the current token on ']' to resync
+        return nil
+    }
+    node = ast.ast_alloc(ast.NodeKind.INDEX_EXPR, parser^.cur_token)
+    data = new(ast.IndexData)
+    data^.left = left
+    advance(parser)
+    data^.index_expr = parse_expression(parser, PREC_LOWEST)
+    if !expect_peek(parser, token.TokenKind.RBRACKET) { return nil }
+    node^.index_data = data
+    return node
+}
+
+fn parse_postfix_expression(parser ^Parser, left ^ast.AstNode) -> ^ast.AstNode {
+    if parser^.cur_token.preceded_by_ws {
+        report(parser, "E2076")
+    }
+    node = ast.ast_alloc(ast.NodeKind.POSTFIX_EXPR, parser^.cur_token)
+    data = new(ast.PostfixData)
+    data^.left = left
+    data^.op = parser^.cur_token.kind
+    node^.postfix = data
+    return node
+}
+
+// --- Expression parsing: infix dispatcher ---
+
+fn parse_infix(parser ^Parser, left ^ast.AstNode) -> ^ast.AstNode {
+    when parser^.cur_token.kind {
+        is token.TokenKind.PLUS, token.TokenKind.MINUS, token.TokenKind.ASTERISK,
+        token.TokenKind.SLASH, token.TokenKind.PERCENT,
+        token.TokenKind.EQ, token.TokenKind.NOT_EQ, token.TokenKind.LT, token.TokenKind.GT,
+        token.TokenKind.LT_EQ, token.TokenKind.GT_EQ,
+        token.TokenKind.AND, token.TokenKind.OR,
+        token.TokenKind.IN, token.TokenKind.NOT_IN,
+        token.TokenKind.BIT_AND, token.TokenKind.BIT_OR, token.TokenKind.BIT_XOR,
+        token.TokenKind.BIT_SHIFT_LEFT, token.TokenKind.BIT_SHIFT_RIGHT {
+            return parse_infix_expression(parser, left)
+        }
+        is token.TokenKind.LPAREN { return parse_call_expression(parser, left) }
+        is token.TokenKind.DOT { return parse_member_expression(parser, left) }
+        is token.TokenKind.LBRACKET { return parse_index_expression(parser, left) }
+        is token.TokenKind.INCREMENT, token.TokenKind.DECREMENT, token.TokenKind.CARET {
+            return parse_postfix_expression(parser, left)
+        }
+        default { return left }
+    }
+}
+
+// --- Main expression parser (Pratt) ---
+
+#[discard]
+fn parse_expression(parser ^Parser, prec i64) -> ^ast.AstNode {
+    parser^.depth = parser^.depth + 1
+    if parser^.depth > MAX_PARSE_DEPTH {
+        add_error(parser, "E2001", "expression is nested too deeply; maximum depth is ${MAX_PARSE_DEPTH}", parser^.cur_token.line, parser^.cur_token.col)
+        parser^.depth = parser^.depth - 1
+        return nil
+    }
+
+    left = parse_prefix(parser)
+    if left == nil {
+        parser^.depth = parser^.depth - 1
+        return nil
+    }
+
+    mut chain_length i64 = 0
+    as_long_as !peek_is(parser, token.TokenKind.EOF) && prec < get_token_precedence(parser^.peek_token.kind) {
+        chain_length = chain_length + 1
+        if chain_length > MAX_PARSE_DEPTH {
+            add_error(parser, "E2001", "expression is nested too deeply; maximum depth is ${MAX_PARSE_DEPTH}", parser^.peek_token.line, parser^.peek_token.col)
+            parser^.depth = parser^.depth - 1
+            return nil
+        }
+        advance(parser)
+        left = parse_infix(parser, left)
+        if left == nil {
+            parser^.depth = parser^.depth - 1
+            return nil
+        }
+    }
+
+    parser^.depth = parser^.depth - 1
+    return left
+}
+
+// --- Statement parsing: block ---
+
+fn parse_block_statement(parser ^Parser) -> ^ast.AstNode {
+    parser^.depth = parser^.depth + 1
+    if parser^.depth > MAX_PARSE_DEPTH {
+        add_error(parser, "E2001", "block is nested too deeply; maximum depth is ${MAX_PARSE_DEPTH}", parser^.cur_token.line, parser^.cur_token.col)
+        parser^.depth = parser^.depth - 1
+        return nil
+    }
+
+    node = ast.ast_alloc(ast.NodeKind.BLOCK_STMT, parser^.cur_token)
+    bd = new(ast.BlockData)
+    mut stmts [^ast.AstNode] = {}
+    advance(parser)
+
+    as_long_as !cur_is(parser, token.TokenKind.RBRACE) && !cur_is(parser, token.TokenKind.EOF) {
+        if cur_is(parser, token.TokenKind.SEMICOLON) {
+            advance(parser)
+            continue
+        }
+        parser^.seen_attribute_mask = 0
+        statement = parse_statement(parser)
+        if statement != nil {
+            arrays.append(stmts, statement)
+        } otherwise {
+            // Error recovery: skip to the next statement boundary
+            synchronize(parser)
+            if cur_is(parser, token.TokenKind.RBRACE) { break }
+            continue
+        }
+        advance(parser)
+    }
+
+    bd^.stmts = stmts
+    node^.block = bd
+    parser^.depth = parser^.depth - 1
+    return node
+}
+
+// --- Statement parsing: return ---
+
+fn parse_return_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.RETURN_STMT, parser^.cur_token)
+    data = new(ast.ReturnData)
+    mut values [^ast.AstNode] = {}
+
+    // A value follows only on the same line as `return` (peek, don't consume);
+    // a statement on the next line is a separate statement.
+    if !peek_is(parser, token.TokenKind.RBRACE) && !peek_is(parser, token.TokenKind.SEMICOLON) && !peek_is(parser, token.TokenKind.EOF) && parser^.peek_token.line == parser^.cur_token.line {
+        advance(parser)
+        arrays.append(values, parse_expression(parser, PREC_LOWEST))
+        as_long_as peek_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+            advance(parser)
+            arrays.append(values, parse_expression(parser, PREC_LOWEST))
+        }
+    }
+
+    data^.values = values
+    node^.return_stmt = data
+    return node
+}
+
+// --- Statement parsing: ensure ---
+
+fn parse_ensure_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.ENSURE_STMT, parser^.cur_token)
+    data = new(ast.EnsureData)
+    advance(parser)
+    data^.expr = parse_expression(parser, PREC_LOWEST)
+    node^.ensure_stmt = data
+    return node
+}
+
+// --- Attributes ---
+
+// One bit per attribute, tracked in Parser.seen_attribute_mask for the
+// declaration currently being parsed so a repeat can be rejected.
+const ATTRIBUTE_STRICT i64 = 1
+const ATTRIBUTE_FLAGS i64 = 2
+const ATTRIBUTE_JSON i64 = 4
+const ATTRIBUTE_DISCARD i64 = 8
+const ATTRIBUTE_TEST i64 = 16
+const ATTRIBUTE_DEPRECATED i64 = 32
+const ATTRIBUTE_DOC i64 = 64
+const ATTRIBUTE_ERROR_CODE i64 = 128
+const ATTRIBUTE_DEFINE i64 = 256
+
+// Attributes collected from one `#[a, b, ...]` list before they are applied to
+// the following declaration: one slot per attribute bit.
+const MAX_ATTRIBUTE_LIST_ENTRIES i64 = 8
+
+// True when this attribute was already applied to the current declaration,
+// reporting an error at the current token in that case.
+#[discard]
+fn reject_duplicate_attribute(parser ^Parser, bit i64, name string) -> bool {
+    if (parser^.seen_attribute_mask bit_and bit) != 0 {
+        report_formatted(parser, "E2090", {name})
+        return true
+    }
+    parser^.seen_attribute_mask = parser^.seen_attribute_mask bit_or bit
+    return false
+}
+
+// An attribute applied to the wrong kind of declaration, or with a
+// malformed argument.
+fn emit_attribute_error(parser ^Parser, message string, line i64, col i64) {
+    add_error(parser, "E2094", message, line, col)
+}
+
+// The attribute bit a bare attribute name (as written inside a `#[...]` list)
+// stands for, or 0 for an unrecognised name.
+fn attribute_bit_for_name(name string) -> i64 {
+    when name {
+        is "strict" { return ATTRIBUTE_STRICT }
+        is "flags" { return ATTRIBUTE_FLAGS }
+        is "json" { return ATTRIBUTE_JSON }
+        is "discard" { return ATTRIBUTE_DISCARD }
+        is "test" { return ATTRIBUTE_TEST }
+        is "deprecated" { return ATTRIBUTE_DEPRECATED }
+        is "doc" { return ATTRIBUTE_DOC }
+        is "error_code" { return ATTRIBUTE_ERROR_CODE }
+        is "define" { return ATTRIBUTE_DEFINE }
+        default { return 0 }
+    }
+}
+
+// The optional ("message") after #deprecated, with the current token on the
+// `(`; "" when it is absent or malformed.
+fn parse_deprecated_message(parser ^Parser) -> string {
+    if !cur_is(parser, token.TokenKind.LPAREN) { return "" }
+    advance(parser)
+    mut message = ""
+    if cur_is(parser, token.TokenKind.STRING) {
+        message = parser^.cur_token.literal
+        advance(parser)
+    } otherwise {
+        emit_attribute_error(parser, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")", parser^.cur_token.line, parser^.cur_token.col)
+    }
+    if cur_is(parser, token.TokenKind.RPAREN) {
+        advance(parser)
+    } otherwise {
+        emit_attribute_error(parser, "expected ')' after #deprecated message", parser^.cur_token.line, parser^.cur_token.col)
+    }
+    return message
+}
+
+// The types a #define constant may have: the primitives -define: can parse.
+fn is_define_type(type_name string) -> bool {
+    when type_name {
+        is "i8", "i16", "i32", "i64", "i128", "i256", "u8", "u16", "u32", "u64", "u128", "u256",
+        "f32", "f64", "bool", "char", "string" { return true }
+        default { return false }
+    }
+}
+
+// Marks `statement` as a #define constant, or reports an error when it is not a
+// top-level const of a primitive type.
+fn apply_define_attribute(parser ^Parser, statement ^ast.AstNode, line i64, col i64) {
+    if statement != nil && statement^.kind == ast.NodeKind.VAR_DECL && parser^.depth == 0 && !statement^.var_decl^.is_mutable && is_define_type(statement^.var_decl^.type_name) {
+        statement^.var_decl^.is_define = true
+        return
+    }
+    emit_attribute_error(parser, "#define attribute can only be applied to a top-level const declaration of an integer, float, bool, char, or string type", line, col)
+}
+
+// Applies one attribute (identified by its bare name) to the declaration that
+// follows a `#[...]` list, reporting an error when the declaration kind does not
+// accept it. `where` locates the diagnostic.
+fn apply_named_attribute(parser ^Parser, statement ^ast.AstNode, name string, message string, where token.Token) {
+    when name {
+        is "test" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_test = true
+            } otherwise {
+                emit_attribute_error(parser, "#test attribute can only be applied to function declarations", where.line, where.col)
+            }
+        }
+        is "discard" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_discard = true
+            } otherwise {
+                emit_attribute_error(parser, "#discard attribute can only be applied to function declarations", where.line, where.col)
+            }
+        }
+        is "json" {
+            if statement != nil && statement^.kind == ast.NodeKind.STRUCT_DECL {
+                statement^.struct_decl^.is_json = true
+            } otherwise {
+                emit_attribute_error(parser, "#json attribute can only be applied to struct declarations", where.line, where.col)
+            }
+        }
+        is "flags" {
+            if statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_flags = true
+            } otherwise {
+                emit_attribute_error(parser, "#flags attribute can only be applied to enum declarations", where.line, where.col)
+            }
+        }
+        is "error_code" {
+            if statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_error_code = true
+            } otherwise {
+                report_at(parser, "E3144", where.line, where.col)
+            }
+        }
+        is "define" { apply_define_attribute(parser, statement, where.line, where.col) }
+        is "strict" {
+            if statement != nil && statement^.kind == ast.NodeKind.WHEN_STMT {
+                statement^.when_stmt^.is_strict = true
+            } otherwise {
+                emit_attribute_error(parser, "#strict attribute can only be applied to when statements", where.line, where.col)
+            }
+        }
+        is "deprecated" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_deprecated = true
+                statement^.func_decl^.deprecated_message = message
+            } or statement != nil && statement^.kind == ast.NodeKind.STRUCT_DECL {
+                statement^.struct_decl^.is_deprecated = true
+                statement^.struct_decl^.deprecated_message = message
+            } or statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_deprecated = true
+                statement^.enum_decl^.deprecated_message = message
+            } otherwise {
+                emit_attribute_error(parser, "#deprecated attribute can only be applied to function, struct, or enum declarations", where.line, where.col)
+            }
+        }
+        // "doc": the parser discards #doc metadata, so there is nothing to
+        // attach; the entry is still validated for name and duplication.
+    }
+}
+
+// Single-line attribute list: `#[a, b, character("arg")]`. Additive sugar for the
+// stacked `#attr` form: each entry is validated against the following
+// declaration exactly as if it had been stacked. The list must stay on one line.
+fn parse_attribute_list(parser ^Parser) -> ^ast.AstNode {
+    list_start token.Token = parser^.cur_token
+    advance(parser)
+
+    mut names [string] = {}
+    mut messages [string] = {}
+    mut sites [token.Token] = {}
+    mut seen_count i64 = 0
+    mut is_malformed bool = false
+
+    as_long_as !cur_is(parser, token.TokenKind.RBRACKET) && !cur_is(parser, token.TokenKind.EOF) {
+        // `#[#test]`: an inner '#' on an entry
+        if cur_is(parser, token.TokenKind.STRICT) || cur_is(parser, token.TokenKind.FLAGS) || cur_is(parser, token.TokenKind.DOC) ||
+           cur_is(parser, token.TokenKind.JSON_ATTR) || cur_is(parser, token.TokenKind.DISCARD) ||
+           cur_is(parser, token.TokenKind.DEPRECATED) || cur_is(parser, token.TokenKind.TEST) || cur_is(parser, token.TokenKind.DEFINE) {
+            report_help_at(parser, "E2093", "write attributes without '#' inside '#[...]'", parser^.cur_token.line, parser^.cur_token.col)
+            is_malformed = true
+            break
+        }
+        if !cur_is(parser, token.TokenKind.IDENT) {
+            report_help_at(parser, "E2093", "expected an attribute name", parser^.cur_token.line, parser^.cur_token.col)
+            is_malformed = true
+            break
+        }
+        if parser^.cur_token.line != list_start.line {
+            report(parser, "E2092")
+            is_malformed = true
+            break
+        }
+
+        site token.Token = parser^.cur_token
+        attribute_name string = parser^.cur_token.literal
+        bit i64 = attribute_bit_for_name(attribute_name)
+        if bit == 0 {
+            report_at_formatted(parser, "E2091", {attribute_name}, site.line, site.col)
+            is_malformed = true
+            break
+        }
+        advance(parser)
+
+        mut deprecated_message = ""
+        if cur_is(parser, token.TokenKind.LPAREN) {
+            // Only 'deprecated' and 'doc' accept a '(...)'; 'deprecated'
+            // requires exactly one string literal.
+            if attribute_name == "deprecated" {
+                advance(parser)
+                if !cur_is(parser, token.TokenKind.STRING) {
+                    report_help_at(parser, "E2093", "'deprecated' takes exactly one string literal, e.g. deprecated(\"use x() instead\")", parser^.cur_token.line, parser^.cur_token.col)
+                    is_malformed = true
+                    break
+                }
+                deprecated_message = parser^.cur_token.literal
+                advance(parser)
+                if !cur_is(parser, token.TokenKind.RPAREN) {
+                    report_help_at(parser, "E2093", "'deprecated' takes exactly one string literal", parser^.cur_token.line, parser^.cur_token.col)
+                    is_malformed = true
+                    break
+                }
+                advance(parser)
+            } or attribute_name == "doc" {
+                // doc() arguments are accepted and discarded, as in the stacked form
+                advance(parser)
+                as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) { advance(parser) }
+                if cur_is(parser, token.TokenKind.RPAREN) { advance(parser) }
+            } otherwise {
+                report_help_at(parser, "E2093", "'${attribute_name}' takes no arguments", parser^.cur_token.line, parser^.cur_token.col)
+                is_malformed = true
+                break
+            }
+        }
+
+        seen_count = seen_count + 1
+        if !reject_duplicate_attribute(parser, bit, "#${attribute_name}") && len(names) < MAX_ATTRIBUTE_LIST_ENTRIES {
+            arrays.append(names, attribute_name)
+            arrays.append(messages, deprecated_message)
+            arrays.append(sites, site)
+        }
+
+        if cur_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+            if cur_is(parser, token.TokenKind.RBRACKET) {
+                report_help_at(parser, "E2093", "remove the trailing ',' before ']'", parser^.cur_token.line, parser^.cur_token.col)
+                is_malformed = true
+                break
+            }
+            continue
+        }
+        if cur_is(parser, token.TokenKind.RBRACKET) { break }
+        report_help_at(parser, "E2093", "expected ',' or ']' after an attribute", parser^.cur_token.line, parser^.cur_token.col)
+        is_malformed = true
+        break
+    }
+
+    // The closing ']' must sit on the opening line too: the in-loop check only
+    // sees attribute-name tokens, so `#[flags\n]` would otherwise slip through.
+    if !is_malformed && cur_is(parser, token.TokenKind.RBRACKET) && parser^.cur_token.line != list_start.line {
+        report(parser, "E2092")
+        is_malformed = true
+    }
+
+    if !is_malformed && seen_count == 0 && cur_is(parser, token.TokenKind.RBRACKET) {
+        report_help_at(parser, "E2093", "'#[...]' cannot be empty; list at least one attribute", list_start.line, list_start.col)
+        is_malformed = true
+    }
+
+    if cur_is(parser, token.TokenKind.RBRACKET) { advance(parser) }
+
+    // On a malformed list, skip ahead to the declaration keyword so the rest of
+    // the file still parses without a diagnostic cascade.
+    if is_malformed {
+        as_long_as !cur_is(parser, token.TokenKind.EOF) && !cur_is(parser, token.TokenKind.DO) && !cur_is(parser, token.TokenKind.CONST) &&
+                   !cur_is(parser, token.TokenKind.WHEN) && !cur_is(parser, token.TokenKind.MUT) {
+            advance(parser)
+        }
+    }
+
+    statement = parse_statement(parser)
+    for i in range(0, len(names)) {
+        apply_named_attribute(parser, statement, names[i], messages[i], sites[i])
+    }
+    return statement
+}
+
+// --- Statement parsing: or_return / or_panic / or_default desugaring ---
+
+const MAX_MULTI_VARIABLES i64 = 16
+const MAX_SHARED_RETURNS i64 = 16
+
+fn label_node(current_token token.Token, value string) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.LABEL, current_token)
+    data = new(ast.LabelData)
+    data^.value = value
+    node^.label = data
+    return node
+}
+
+fn member_node(current_token token.Token, object ^ast.AstNode, member string) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.MEMBER_EXPR, current_token)
+    data = new(ast.MemberData)
+    data^.object = object
+    data^.member = member
+    node^.member = data
+    return node
+}
+
+// One monotonically increasing id for every or_return temporary, so the
+// `mut a = ... or_return`, `mut a, b = ... or_return` and bare-statement
+// spellings never collide on `_gray_orN` within a function.
+fn next_or_return_id(parser ^Parser) -> i64 {
+    id i64 = or_return_temporary_id
+    or_return_temporary_id = id + 1
+    return id
+}
+
+fn make_or_return_temporary_name(parser ^Parser) -> string {
+    return "${ast.SYNTH_OR}${next_or_return_id(parser)}"
+}
+
+fn make_or_panic_temporary_name(parser ^Parser) -> string {
+    return "${ast.SYNTH_OR_PANIC}${next_or_return_id(parser)}"
+}
+
+fn make_or_default_temporary_name(parser ^Parser) -> string {
+    return "${ast.SYNTH_OR_DEFAULT}${next_or_return_id(parser)}"
+}
+
+// `mut <temporary_name> = value`, marked synthetic, with the type inferred.
+fn make_synthetic_temporary_declaration(parser ^Parser, temporary_name string, value ^ast.AstNode) -> ^ast.AstNode {
+    declaration = ast.ast_alloc(ast.NodeKind.VAR_DECL, parser^.cur_token)
+    data = new(ast.VarDeclData)
+    data^.is_mutable = true
+    data^.name = temporary_name
+    data^.is_synthetic = true
+    data^.value = value
+    declaration^.var_decl = data
+    return declaration
+}
+
+// After the or_return token has been consumed (the current token IS
+// or_return): the optional comma-separated fallback expressions written on the
+// same line, e.g. `... or_return -1, -2`.
+fn parse_or_return_fallbacks(parser ^Parser) -> [^ast.AstNode] {
+    or_return_line i64 = parser^.cur_token.line
+    mut fallbacks [^ast.AstNode] = {}
+    if parser^.peek_token.kind != token.TokenKind.EOF && parser^.peek_token.kind != token.TokenKind.SEMICOLON &&
+       parser^.peek_token.kind != token.TokenKind.RBRACE && parser^.peek_token.line == or_return_line {
+        advance(parser) // advance to the first fallback token
+        as_long_as len(fallbacks) < MAX_MULTI_VARIABLES {
+            arrays.append(fallbacks, parse_expression(parser, PREC_LOWEST))
+            if !peek_is(parser, token.TokenKind.COMMA) { break }
+            advance(parser)
+            advance(parser) // advance to the next fallback token
+        }
+    }
+    return fallbacks
+}
+
+// A block holding the given statements.
+fn block_of(current_token token.Token, stmts [^ast.AstNode]) -> ^ast.AstNode {
+    block = ast.ast_alloc(ast.NodeKind.BLOCK_STMT, current_token)
+    bd = new(ast.BlockData)
+    bd^.stmts = stmts
+    block^.block = bd
+    return block
+}
+
+// `if (_tmp.verr != nil) { }`: `verr` is a sentinel member the typechecker
+// rewrites to the concrete trailing-Error slot once the call's arity is known.
+fn make_error_check_if(parser ^Parser, temporary_name string) -> ^ast.AstNode {
+    current_token token.Token = parser^.cur_token
+    if_statement = ast.ast_alloc(ast.NodeKind.IF_STMT, current_token)
+    if_data = new(ast.IfData)
+    condition = ast.ast_alloc(ast.NodeKind.INFIX_EXPR, current_token)
+    condition_data = new(ast.InfixData)
+    condition_data^.left = member_node(current_token, label_node(current_token, temporary_name), "verr")
+    condition_data^.op = token.TokenKind.NOT_EQ
+    condition_data^.right = ast.ast_alloc(ast.NodeKind.NIL_VALUE, current_token)
+    condition^.infix = condition_data
+    if_data^.condition = condition
+    if_statement^.if_stmt = if_data
+    return if_statement
+}
+
+// The propagation guard for or_return:
+//
+//     if (_tmp.verr != nil) { return <fallbacks...>, _tmp.verr }
+//
+// With no fallbacks the return propagates just the error and codegen fills the
+// other slots with zero values.
+fn build_or_return_guard(parser ^Parser, temporary_name string, fallbacks [^ast.AstNode]) -> ^ast.AstNode {
+    current_token token.Token = parser^.cur_token
+    if_statement = make_error_check_if(parser, temporary_name)
+    return_statement = ast.ast_alloc(ast.NodeKind.RETURN_STMT, current_token)
+    return_data = new(ast.ReturnData)
+    propagated_error = member_node(current_token, label_node(current_token, temporary_name), "verr")
+    mut values [^ast.AstNode] = {}
+    if len(fallbacks) > 0 {
+        // If the user provided enough values to cover every return slot
+        // (including the error) they are used as-is; otherwise the propagated
+        // error is appended.
+        mut function_return_count i64 = 0
+        if parser^.current_func != nil { function_return_count = len(parser^.current_func^.func_decl^.return_types) }
+        user_covers_error bool = function_return_count > 0 && len(fallbacks) >= function_return_count
+        for_each fallback in fallbacks { arrays.append(values, fallback) }
+        if !user_covers_error { arrays.append(values, propagated_error) }
+    } otherwise {
+        arrays.append(values, propagated_error)
+    }
+    return_data^.values = values
+    return_statement^.return_stmt = return_data
+    if_statement^.if_stmt^.consequence = block_of(current_token, {return_statement})
+    return if_statement
+}
+
+// The abort guard for or_panic:
+//
+//     if (_tmp.verr != nil) { panic(<message>) }
+//
+// The message is the one the user wrote after `or_panic`, else the error's own.
+fn build_or_panic_guard(parser ^Parser, temporary_name string, message ^ast.AstNode) -> ^ast.AstNode {
+    current_token token.Token = parser^.cur_token
+    if_statement = make_error_check_if(parser, temporary_name)
+    mut panic_message = message
+    if panic_message == nil {
+        panic_message = member_node(current_token, member_node(current_token, label_node(current_token, temporary_name), "verr"), "msg")
+    }
+    panic_call = ast.ast_alloc(ast.NodeKind.CALL_EXPR, current_token)
+    call_data = new(ast.CallData)
+    call_data^.function = label_node(current_token, "panic")
+    call_data^.args = {panic_message}
+    call_data^.arg_names = {}
+    panic_call^.call = call_data
+    panic_statement = ast.ast_alloc(ast.NodeKind.EXPR_STMT, current_token)
+    statement_data = new(ast.ExprStmtData)
+    statement_data^.expr = panic_call
+    panic_statement^.expr_stmt = statement_data
+    if_statement^.if_stmt^.consequence = block_of(current_token, {panic_statement})
+    return if_statement
+}
+
+// The substitution guard for or_default:
+//
+//     if (_tmp.verr != nil) { _tmp.v0 = <fallback0>; _tmp.v1 = <fallback1> ... }
+//
+// The bindings that follow read `_tmp.vN`, so on failure they see the
+// fallbacks and on success the call's values; the fallbacks are only
+// evaluated on the failure path.
+fn build_or_default_guard(parser ^Parser, temporary_name string, fallbacks [^ast.AstNode]) -> ^ast.AstNode {
+    current_token token.Token = parser^.cur_token
+    if_statement = make_error_check_if(parser, temporary_name)
+    mut assignments [^ast.AstNode] = {}
+    for i in range(0, len(fallbacks)) {
+        assignment = ast.ast_alloc(ast.NodeKind.ASSIGN_STMT, fallbacks[i]^.tok)
+        assignment_data = new(ast.AssignData)
+        assignment_data^.target = member_node(current_token, label_node(current_token, temporary_name), "v${i}")
+        assignment_data^.op = token.TokenKind.ASSIGN
+        assignment_data^.value = fallbacks[i]
+        assignment^.assign = assignment_data
+        arrays.append(assignments, assignment)
+    }
+    if_statement^.if_stmt^.consequence = block_of(current_token, assignments)
+    return if_statement
+}
+
+// If peek is or_return / or_panic / or_default, consumes it and desugars
+//
+//     <declaration with value = expr> or_return
+//
+// into a block:
+//
+//     mut _tmp = expr
+//     if _tmp.v1 != nil { return _tmp.v1 }
+//     <declaration with value = _tmp.v0>
+//
+// Returns the desugared block, or nil if there was no such suffix (the caller
+// keeps the original declaration untouched).
+fn maybe_apply_or_return(parser ^Parser, original ^ast.AstNode) -> ^ast.AstNode {
+    is_panic bool = peek_is(parser, token.TokenKind.OR_PANIC)
+    is_default bool = peek_is(parser, token.TokenKind.OR_DEFAULT)
+    if !is_panic && !is_default && !peek_is(parser, token.TokenKind.OR_RETURN) { return nil }
+    advance(parser) // consume or_return / or_panic / or_default
+
+    mut fallbacks [^ast.AstNode] = {}
+    mut panic_message ^ast.AstNode = nil
+    if is_panic {
+        // an optional message on the same line: `or_panic "config is bad"`
+        or_panic_line i64 = parser^.cur_token.line
+        if parser^.peek_token.line == or_panic_line && !peek_is(parser, token.TokenKind.EOF) && !peek_is(parser, token.TokenKind.SEMICOLON) && !peek_is(parser, token.TokenKind.RBRACE) {
+            advance(parser)
+            panic_message = parse_expression(parser, PREC_LOWEST)
+            if panic_message == nil { return nil }
+        }
+    } otherwise {
+        fallbacks = parse_or_return_fallbacks(parser)
+    }
+
+    mut temporary_name string = ""
+    if is_panic {
+        temporary_name = make_or_panic_temporary_name(parser)
+    } or is_default {
+        temporary_name = make_or_default_temporary_name(parser)
+    } otherwise {
+        temporary_name = make_or_return_temporary_name(parser)
+    }
+    current_token token.Token = parser^.cur_token
+
+    mut stmts [^ast.AstNode] = {}
+    // _tmp = expr
+    arrays.append(stmts, make_synthetic_temporary_declaration(parser, temporary_name, original^.var_decl^.value))
+    if is_panic {
+        arrays.append(stmts, build_or_panic_guard(parser, temporary_name, panic_message))
+    } or is_default {
+        arrays.append(stmts, build_or_default_guard(parser, temporary_name, fallbacks))
+    } otherwise {
+        arrays.append(stmts, build_or_return_guard(parser, temporary_name, fallbacks))
+    }
+
+    // x = _tmp.v0
+    unwrapped = ast.ast_alloc(ast.NodeKind.VAR_DECL, original^.tok)
+    unwrapped_data = new(ast.VarDeclData)
+    unwrapped_data^.is_mutable = original^.var_decl^.is_mutable
+    unwrapped_data^.name = original^.var_decl^.name
+    unwrapped_data^.type_name = original^.var_decl^.type_name
+    unwrapped_data^.value = member_node(current_token, label_node(current_token, temporary_name), "v0")
+    unwrapped^.var_decl = unwrapped_data
+    arrays.append(stmts, unwrapped)
+    return block_of(current_token, stmts)
+}
+
+// --- Statement parsing: discard ---
+
+// The throwaway '_' is only meaningful when the right side is a
+// function call. Checked at parse time, before or_return desugaring, so the
+// user-written right side is what gets validated.
+fn check_discard_target(parser ^Parser, value ^ast.AstNode) {
+    if value == nil || value^.kind == ast.NodeKind.CALL_EXPR { return }
+    report_at(parser, "E5012", value^.tok.line, value^.tok.col)
+}
+
+// Bare throwaway: `_ = expr` (no mut/const keyword) at statement position.
+fn parse_discard_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.VAR_DECL, parser^.cur_token)
+    data = new(ast.VarDeclData)
+    data^.is_mutable = true
+    data^.name = "_"
+    advance(parser)
+    advance(parser) // move to the right side
+    data^.value = parse_expression(parser, PREC_LOWEST)
+    node^.var_decl = data
+    if data^.value == nil { return nil }
+
+    check_discard_target(parser, data^.value)
+
+    desugared = maybe_apply_or_return(parser, node)
+    if desugared != nil { return desugared }
+    return node
+}
+
+// --- Statement parsing: variable declaration ---
+
+// True when the parser's peek token can begin a type annotation.
+fn peek_starts_type(parser ^Parser) -> bool {
+    return peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.CARET) || peek_is(parser, token.TokenKind.LBRACKET) ||
+           peek_is(parser, token.TokenKind.STRUCT) || peek_is(parser, token.TokenKind.ENUM) || peek_is(parser, token.TokenKind.GENERIC)
+}
+
+// A block of declarations, one per name, each with the given value (or none).
+fn declarations_block(parser ^Parser, is_mutable bool, names [string], types [string], name_tokens [token.Token], value ^ast.AstNode) -> ^ast.AstNode {
+    mut stmts [^ast.AstNode] = {}
+    for i in range(0, len(names)) {
+        declaration = ast.ast_alloc(ast.NodeKind.VAR_DECL, name_tokens[i])
+        data = new(ast.VarDeclData)
+        data^.is_mutable = is_mutable
+        data^.name = names[i]
+        data^.type_name = types[i]
+        data^.value = value
+        declaration^.var_decl = data
+        arrays.append(stmts, declaration)
+    }
+    return block_of(parser^.cur_token, stmts)
+}
+
+fn parse_var_declaration_ex(parser ^Parser, bare bool) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.VAR_DECL, parser^.cur_token)
+    data = new(ast.VarDeclData)
+    data^.is_bare = bare
+
+    if bare {
+        data^.is_mutable = true
+        // the current token is already the variable name
+    } otherwise {
+        data^.is_mutable = parser^.cur_token.kind == token.TokenKind.MUT
+        if peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.BLANK) {
+            advance(parser)
+        } otherwise {
+            if !reject_keyword_as_name(parser, parser^.peek_token, "a variable name") {
+                expect_peek(parser, token.TokenKind.IDENT) // reports the error
+            }
+            return nil
+        }
+    }
+    data^.name = parser^.cur_token.literal
+    first_name_token token.Token = parser^.cur_token
+
+    // 'nil' is a value, not a type; consumed so it does not cascade into
+    // a "nil is an unexpected expression statement" diagnostic.
+    if peek_is(parser, token.TokenKind.NIL) {
+        advance(parser)
+        report(parser, "E2079")
+    }
+
+    // Optional type annotation (`generic` flows through parse_complex_type and
+    // lands on its own diagnostic)
+    data^.type_name = ""
+    if peek_starts_type(parser) {
+        advance(parser)
+        data^.type_name = parse_complex_type(parser)
+        if data^.type_name == TYPE_FAILED { return nil }
+        // `mut <name> struct/enum` should be `const`
+        if data^.is_mutable && (data^.type_name == "struct" || data^.type_name == "enum") {
+            add_error_sized(parser, "E2068", clip_to_buffer(error_registry.registry_message_formatted("E2068", {data^.type_name}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", node^.tok.line, node^.tok.col)
+            return nil
+        }
+    }
+
+    // The blank identifier requires '=' (or ',' for multi-var destructuring).
+    // Checked after the type annotation so `mut _ i64, ...` is allowed but
+    // `mut _ foo()` is caught before the leftover tokens desync the parser.
+    if data^.name == "_" && !peek_is(parser, token.TokenKind.ASSIGN) && !peek_is(parser, token.TokenKind.COMMA) {
+        mut keyword = "const"
+        if data^.is_mutable { keyword = "mut" }
+        add_error_sized(parser, "E2084", clip_to_buffer(error_registry.registry_message_formatted("E2084", {keyword}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", node^.tok.line, node^.tok.col)
+        synchronize(parser)
+        return nil
+    }
+
+    // Multi-var declaration: `x i64, y i64 = expr`, `x, y = a, b`, `_, _ = expr`
+    if peek_is(parser, token.TokenKind.COMMA) {
+        mut names [string] = {data^.name}
+        mut types [string] = {data^.type_name}
+        mut name_tokens [token.Token] = {first_name_token}
+
+        as_long_as peek_is(parser, token.TokenKind.COMMA) {
+            advance(parser)
+            // The binding name must be an identifier or '_'. Without this check
+            // a keyword is taken as the name and the token after it consumed
+            // as a type annotation.
+            if !peek_is(parser, token.TokenKind.IDENT) && !peek_is(parser, token.TokenKind.BLANK) {
+                if reject_keyword_as_name(parser, parser^.peek_token, "a variable name") { return nil }
+                expect_peek(parser, token.TokenKind.IDENT) // reports the error
+                return nil
+            }
+            advance(parser)
+            if len(names) >= MAX_MULTI_VARIABLES {
+                report_formatted(parser, "E2062", {"${MAX_MULTI_VARIABLES}"})
+                return nil
+            }
+            arrays.append(name_tokens, parser^.cur_token)
+            if cur_is(parser, token.TokenKind.BLANK) {
+                arrays.append(names, "_")
+            } otherwise {
+                arrays.append(names, parser^.cur_token.literal)
+            }
+            if peek_starts_type(parser) {
+                advance(parser)
+                member_type string = parse_complex_type(parser)
+                if member_type == TYPE_FAILED { return nil }
+                arrays.append(types, member_type)
+            } otherwise {
+                arrays.append(types, "")
+            }
+        }
+        variable_count i64 = len(names)
+
+        // A type written once, after the last name, applies to every name
+        // (`x, y, z i64`). A type on any earlier name means each name carries
+        // its own (`a i64, b f64 = f()`); names without one are inferred.
+        mut has_per_name_types bool = false
+        for i in range(0, variable_count - 1) {
+            if types[i] != "" { has_per_name_types = true }
+        }
+        mut shared_type = ""
+        if !has_per_name_types && types[variable_count - 1] != "" {
+            shared_type = types[variable_count - 1]
+            for i in range(0, variable_count) {
+                if names[i] != "_" { types[i] = shared_type }
+            }
+        }
+
+        // No value: every name is declared zero-initialized, so each needs a type.
+        if !peek_is(parser, token.TokenKind.ASSIGN) {
+            mut all_typed bool = true
+            for i in range(0, variable_count) {
+                if types[i] == "" { all_typed = false }
+            }
+            // '_' discards a call's result; with no value there is none.
+            for i in range(0, variable_count) {
+                if names[i] == "_" {
+                    report_at(parser, "E5012", node^.tok.line, node^.tok.col)
+                    return nil
+                }
+            }
+            if !all_typed {
+                expect_peek(parser, token.TokenKind.ASSIGN) // reports the error
+                return nil
+            }
+            return declarations_block(parser, data^.is_mutable, names, types, name_tokens, nil)
+        }
+
+        // Expect = expr [, expr ...]
+        if !expect_peek(parser, token.TokenKind.ASSIGN) { return nil }
+        advance(parser)
+        value = parse_expression(parser, PREC_LOWEST)
+        if value == nil { return nil }
+
+        // A list of values pairs up with the names, one each.
+        if peek_is(parser, token.TokenKind.COMMA) {
+            mut values [^ast.AstNode] = {value}
+            as_long_as peek_is(parser, token.TokenKind.COMMA) {
+                advance(parser)
+                advance(parser)
+                if len(values) >= MAX_MULTI_VARIABLES {
+                    report_formatted(parser, "E2062", {"${MAX_MULTI_VARIABLES}"})
+                    return nil
+                }
+                next_value = parse_expression(parser, PREC_LOWEST)
+                if next_value == nil { return nil }
+                arrays.append(values, next_value)
+            }
+            if has_per_name_types {
+                report_at(parser, "E2101", node^.tok.line, node^.tok.col)
+                return nil
+            }
+            if len(values) != variable_count {
+                add_error_sized(parser, "E2100", clip_to_buffer(error_registry.registry_message_formatted("E2100", {"${variable_count}", "${len(values)}"}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", node^.tok.line, node^.tok.col)
+                return nil
+            }
+            for i in range(0, variable_count) {
+                if names[i] == "_" { check_discard_target(parser, values[i]) }
+            }
+            // Every initializer is evaluated before any name is bound, so an
+            // initializer never sees a name declared on the same line. At file
+            // scope there is no statement to hold a temporary.
+            uses_temporaries bool = parser^.current_func != nil
+            mut temporary_names [string] = {}
+            mut stmts [^ast.AstNode] = {}
+            if uses_temporaries {
+                for i in range(0, variable_count) {
+                    temporary_name string = "${ast.SYNTH_TMP}${multi_variable_counter}"
+                    multi_variable_counter = multi_variable_counter + 1
+                    arrays.append(temporary_names, temporary_name)
+                    temporary_declaration = make_synthetic_temporary_declaration(parser, temporary_name, values[i])
+                    temporary_declaration^.var_decl^.type_name = types[i]
+                    temporary_declaration^.var_decl^.holds_single_value = true
+                    arrays.append(stmts, temporary_declaration)
+                }
+            }
+            for i in range(0, variable_count) {
+                declaration = ast.ast_alloc(ast.NodeKind.VAR_DECL, name_tokens[i])
+                declaration_data = new(ast.VarDeclData)
+                declaration_data^.is_mutable = data^.is_mutable
+                declaration_data^.name = names[i]
+                declaration_data^.type_name = types[i]
+                if uses_temporaries {
+                    declaration_data^.value = label_node(parser^.cur_token, temporary_names[i])
+                } otherwise {
+                    declaration_data^.value = values[i]
+                    mut earlier [string] = {}
+                    for earlier_index in range(0, i) { arrays.append(earlier, names[earlier_index]) }
+                    declaration_data^.earlier_group_names = earlier
+                }
+                declaration^.var_decl = declaration_data
+                arrays.append(stmts, declaration)
+            }
+            return block_of(parser^.cur_token, stmts)
+        }
+
+        // A single value that is not a call can only be given to every name.
+        // Typing the temporary with the shared type lets a literal take it
+        // (`a, b f32 = 1.5`).
+        value_is_call bool = value^.kind == ast.NodeKind.CALL_EXPR
+        if !value_is_call && has_per_name_types {
+            report_at(parser, "E2101", node^.tok.line, node^.tok.col)
+            return nil
+        }
+        if !value_is_call {
+            for i in range(0, variable_count) {
+                if names[i] == "_" {
+                    check_discard_target(parser, value)
+                    break
+                }
+            }
+        }
+
+        // At file scope there is no statement to hold a temporary, and a
+        // global's value is a constant expression, so each name takes the value
+        // directly.
+        if !value_is_call && parser^.current_func == nil {
+            return declarations_block(parser, data^.is_mutable, names, types, name_tokens, value)
+        }
+
+        // or_return on a destructuring bind: `mut a, b = two() or_return`. The N
+        // binding names are the non-error slots; the trailing Error is
+        // propagated if non-nil, otherwise control falls through and binds
+        // v0..v{N-1} as normal.
+        mut or_return_fallbacks [^ast.AstNode] = {}
+        has_or_default bool = peek_is(parser, token.TokenKind.OR_DEFAULT)
+        has_or_return bool = has_or_default || peek_is(parser, token.TokenKind.OR_RETURN)
+        if has_or_return {
+            advance(parser)
+            or_return_fallbacks = parse_or_return_fallbacks(parser)
+        }
+
+        // A unique temporary name. An or_return destructure uses the or_return
+        // prefix so the typechecker validates the (..., Error) tail and skips
+        // the "fewer variables than return values" check.
+        mut temporary_name string = ""
+        if has_or_default {
+            temporary_name = make_or_default_temporary_name(parser)
+        } or has_or_return {
+            temporary_name = make_or_return_temporary_name(parser)
+        } otherwise {
+            temporary_name = "${ast.SYNTH_TMP}${multi_variable_counter}"
+            multi_variable_counter = multi_variable_counter + 1
+        }
+
+        mut stmts [^ast.AstNode] = {}
+        temporary_declaration = make_synthetic_temporary_declaration(parser, temporary_name, value)
+        if !value_is_call { temporary_declaration^.var_decl^.type_name = shared_type }
+        arrays.append(stmts, temporary_declaration)
+
+        if has_or_return {
+            if has_or_default {
+                arrays.append(stmts, build_or_default_guard(parser, temporary_name, or_return_fallbacks))
+            } otherwise {
+                arrays.append(stmts, build_or_return_guard(parser, temporary_name, or_return_fallbacks))
+            }
+        }
+
+        // Individual declarations: type x = _tmp.vN
+        for i in range(0, variable_count) {
+            binding = ast.ast_alloc(ast.NodeKind.VAR_DECL, name_tokens[i])
+            binding_data = new(ast.VarDeclData)
+            binding_data^.is_mutable = data^.is_mutable
+            binding_data^.name = names[i]
+            binding_data^.type_name = types[i]
+            // The value is _gray_tmp.vN, or the temporary itself when a single
+            // non-call value is given to every name.
+            temporary_label = label_node(parser^.cur_token, temporary_name)
+            if value_is_call {
+                binding_data^.value = member_node(parser^.cur_token, temporary_label, "v${i}")
+            } otherwise {
+                binding_data^.value = temporary_label
+            }
+            binding^.var_decl = binding_data
+            arrays.append(stmts, binding)
+        }
+        return block_of(parser^.cur_token, stmts)
+    }
+
+    // = value
+    if peek_is(parser, token.TokenKind.ASSIGN) {
+        advance(parser)
+        advance(parser)
+        data^.value = parse_expression(parser, PREC_LOWEST)
+        node^.var_decl = data
+
+        if data^.value != nil && data^.name == "_" {
+            check_discard_target(parser, data^.value)
+        }
+
+        desugared = maybe_apply_or_return(parser, node)
+        if desugared != nil { return desugared }
+    }
+
+    node^.var_decl = data
+    return node
+}
+
+fn parse_var_declaration(parser ^Parser) -> ^ast.AstNode {
+    return parse_var_declaration_ex(parser, false)
+}
+
+// --- Statement parsing: function declaration ---
+
+fn is_integer_type_name(name string) -> bool {
+    return arrays.contains({"i8", "i16", "i32", "i64", "i128", "i256", "u8", "u16", "u32", "u64", "u128", "u256"}, name)
+}
+
+// `unsafe do`: consumes the `unsafe` modifier when it directly precedes `do`
+// and returns true. Anything else is left for the caller to reject.
+fn consume_unsafe_modifier(parser ^Parser) -> bool {
+    if !cur_is(parser, token.TokenKind.UNSAFE) || !peek_is(parser, token.TokenKind.DO) { return false }
+    advance(parser)
+    return true
+}
+
+// The function body's block carries the flag: the typechecker opens the unsafe
+// context when it checks that body.
+fn mark_function_unsafe(function_declaration ^ast.AstNode) {
+    if function_declaration != nil && function_declaration^.func_decl^.body != nil {
+        function_declaration^.func_decl^.body^.block^.is_unsafe = true
+    }
+}
+
+fn parse_func_declaration(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.FUNC_DECL, parser^.cur_token)
+    data = new(ast.FuncDeclData)
+
+    if reject_keyword_as_name(parser, parser^.peek_token, "a function name") { return nil }
+    if !expect_peek(parser, token.TokenKind.IDENT) { return nil }
+    data^.name = fmt.sprintf("%s", {parser^.cur_token.literal})
+
+    // Parameters
+    if !expect_peek(parser, token.TokenKind.LPAREN) { return nil }
+    mut params [ast.Param] = {}
+
+    if !peek_is(parser, token.TokenKind.RPAREN) {
+        advance(parser)
+        loop {
+            param = ast.Param{}
+            if cur_is(parser, token.TokenKind.AMPERSAND) {
+                param.is_mutable = true
+                advance(parser)
+            }
+            param.name = parser^.cur_token.literal
+
+            if parser^.cur_token.kind != token.TokenKind.IDENT && parser^.cur_token.kind != token.TokenKind.BLANK {
+                // a keyword used as a parameter name
+                add_error(parser, "E4027", fmt.sprintf("'%s' is a keyword and cannot be used as a parameter name", {param.name}), parser^.cur_token.line, parser^.cur_token.col)
+            } or parser^.cur_token.kind == token.TokenKind.IDENT && reserved.is_reserved_name(param.name) {
+                add_error(parser, "E4028", fmt.sprintf("'%s' is a built-in name and cannot be used as a parameter name", {param.name}), parser^.cur_token.line, parser^.cur_token.col)
+            }
+
+            // Type follows (unless next parameter or closing paren)
+            if peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.CARET) || peek_is(parser, token.TokenKind.LBRACKET) ||
+               peek_is(parser, token.TokenKind.GENERIC) || peek_is(parser, token.TokenKind.LT) || peek_is(parser, token.TokenKind.ILLEGAL) {
+                advance(parser)
+                if cur_is(parser, token.TokenKind.GENERIC) || cur_is(parser, token.TokenKind.ILLEGAL) {
+                    // An illegal token here is the removed `?` spelling, which
+                    // the lexer reports with an error.
+                    param.type_name = "generic"
+                    param.is_type_param = true
+                } or cur_is(parser, token.TokenKind.LT) {
+                    // The removed `<?>` spelling. The lexer reports the '?'
+                    // with an error; the rest is consumed so that is the only error.
+                    advance(parser)
+                    if peek_is(parser, token.TokenKind.GT) { advance(parser) }
+                    param.type_name = "generic"
+                    param.is_type_param = true
+                } otherwise {
+                    param.type_name = parse_complex_type(parser)
+                    if param.type_name == TYPE_FAILED { return nil }
+                }
+            } or peek_is(parser, token.TokenKind.AMPERSAND) {
+                // Common mistake: `name &type` instead of `&name type`. Without
+                // this the loop has no token to consume and spins forever.
+                add_error_sized(parser, "E3069", clip_to_buffer(error_registry.registry_message_formatted("E3069", {param.name, "type"}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", parser^.peek_token.line, parser^.peek_token.col)
+                return nil
+            }
+
+            // Default value: parameter type = expr
+            if peek_is(parser, token.TokenKind.ASSIGN) {
+                advance(parser)
+                advance(parser)
+                param.default_value = parse_expression(parser, PREC_LOWEST)
+                default_line i64 = parser^.cur_token.line
+                default_col i64 = parser^.cur_token.col
+                if param.default_value != nil {
+                    default_line = param.default_value^.tok.line
+                    default_col = param.default_value^.tok.col
+                }
+                if param.is_type_param { report_at(parser, "E2097", default_line, default_col) }
+                if param.is_mutable { report_at(parser, "E2099", default_line, default_col) }
+            }
+
+            arrays.append(params, param)
+
+            if peek_is(parser, token.TokenKind.COMMA) {
+                advance(parser)
+                advance(parser)
+            } or !peek_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+                // Forward-progress guard: any unexpected token between
+                // parameters that isn't ',' or ')' would otherwise loop forever.
+                add_error(parser, "E2001", fmt.sprintf("unexpected token '%s' in parameter list; expected ',' or ')'", {parser^.peek_token.literal}), parser^.peek_token.line, parser^.peek_token.col)
+                return nil
+            }
+            if cur_is(parser, token.TokenKind.RPAREN) || peek_is(parser, token.TokenKind.RPAREN) || cur_is(parser, token.TokenKind.EOF) { break }
+        }
+    }
+    if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+
+    // Backfill grouped parameter types and defaults (a, b i64 = 0: both get i64
+    // and both default to 0)
+    parameter_count i64 = len(params)
+    for i in range(0, parameter_count) {
+        index i64 = parameter_count - 1 - i
+        if params[index].type_name == "" && index + 1 < parameter_count {
+            params[index].type_name = params[index + 1].type_name
+            params[index].is_type_param = params[index + 1].is_type_param
+            if params[index].default_value == nil && params[index + 1].default_value != nil {
+                params[index].default_value = params[index + 1].default_value
+            }
+        }
+        if params[index].type_name == "" && params[index].default_value == nil {
+            add_error(parser, "E2002", fmt.sprintf("parameter '%s' is missing a type; every parameter must have a type (e.g., %s i64)", {params[index].name, params[index].name}), node^.tok.line, node^.tok.col)
+        }
+    }
+    data^.params = params
+
+    // Return type(s)
+    mut return_types [string] = {}
+    mut return_names [string] = {}
+
+    if peek_is(parser, token.TokenKind.ARROW) {
+        advance(parser)
+        advance(parser)
+
+        // Missing return type after ->
+        if cur_is(parser, token.TokenKind.LBRACE) {
+            add_error(parser, "E2002", "expected return type after '->', got '{'; either specify a type or remove the '->'", parser^.cur_token.line, parser^.cur_token.col)
+            data^.return_types = return_types
+            data^.return_names = return_names
+            data^.body = parse_block_statement(parser)
+            node^.func_decl = data
+            return node
+        }
+
+        // 'nil' is not a return type; a function that returns nothing
+        // omits the '-> ...' clause.
+        if cur_is(parser, token.TokenKind.NIL) {
+            report(parser, "E2079")
+            // Skip the nil and parse the body so the error doesn't cascade
+            advance(parser)
+            data^.return_types = return_types
+            data^.return_names = return_names
+            node^.func_decl = data
+            if !cur_is(parser, token.TokenKind.LBRACE) { return node }
+            data^.body = parse_block_statement(parser)
+            return node
+        }
+
+        if cur_is(parser, token.TokenKind.LPAREN) {
+            // Multiple / named return types:
+            //   -> (i64, string)   plain types
+            //   -> (x i64, y i64)  named returns
+            //   -> (x, y i64)      shared type
+            // If an identifier is a known type name it is a plain type list.
+            advance(parser)
+            as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+                mut is_type bool = false
+                if cur_is(parser, token.TokenKind.IDENT) {
+                    literal_text string = parser^.cur_token.literal
+                    first_char char = strings.char_at(literal_text, 0)
+                    is_type = is_integer_type_name(literal_text) || literal_text == "f32" || literal_text == "f64" || literal_text == "string" ||
+                              literal_text == "bool" || literal_text == "char" ||
+                              (literal_text == "map" && peek_is(parser, token.TokenKind.LBRACKET)) ||
+                              (literal_text == "func" && peek_is(parser, token.TokenKind.LPAREN)) ||
+                              (first_char >= 'A' && first_char <= 'Z')
+                }
+                // map[K:V] and func(...) are complex types, not named returns
+                is_complex_type_start bool = is_type && cur_is(parser, token.TokenKind.IDENT) &&
+                    ((parser^.cur_token.literal == "map" && peek_is(parser, token.TokenKind.LBRACKET)) ||
+                     (parser^.cur_token.literal == "func" && peek_is(parser, token.TokenKind.LPAREN)))
+
+                if cur_is(parser, token.TokenKind.IDENT) && !is_complex_type_start &&
+                   (peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.GENERIC) || peek_is(parser, token.TokenKind.LBRACKET) || peek_is(parser, token.TokenKind.CARET)) &&
+                   (!is_type || peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.CARET) || peek_is(parser, token.TokenKind.LBRACKET) || peek_is(parser, token.TokenKind.GENERIC)) {
+                    // Named return: name type
+                    return_name string = parser^.cur_token.literal
+                    advance(parser)
+                    if len(return_types) >= MAX_SHARED_RETURNS {
+                        report_formatted(parser, "E2060", {"${MAX_SHARED_RETURNS}"})
+                        return nil
+                    }
+                    arrays.append(return_names, return_name)
+                    arrays.append(return_types, type_or_empty(parse_complex_type(parser)))
+                } or cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.COMMA) && !is_type {
+                    // Shared type: (x, y i64); collect the names, assign one type
+                    mut shared_names [string] = {parser^.cur_token.literal}
+                    // Set when the list turns out to be plain types, e.g.
+                    // (count, string) with `count` a lowercase alias.
+                    mut is_plain_list bool = false
+                    mut has_type_after_names bool = false
+                    as_long_as peek_is(parser, token.TokenKind.COMMA) {
+                        advance(parser)
+                        advance(parser)
+                        if !cur_is(parser, token.TokenKind.IDENT) ||
+                           (parser^.cur_token.literal == "map" && peek_is(parser, token.TokenKind.LBRACKET)) ||
+                           (parser^.cur_token.literal == "func" && peek_is(parser, token.TokenKind.LPAREN)) {
+                            is_plain_list = true
+                            has_type_after_names = true
+                            break
+                        }
+                        arrays.append(shared_names, parser^.cur_token.literal)
+                        if len(shared_names) >= MAX_SHARED_RETURNS { break }
+                        if !peek_is(parser, token.TokenKind.COMMA) { break }
+                    }
+                    if peek_is(parser, token.TokenKind.RPAREN) { is_plain_list = true }
+                    if is_plain_list {
+                        for_each shared_name in shared_names {
+                            if len(return_types) >= MAX_SHARED_RETURNS {
+                                report_formatted(parser, "E2060", {"${MAX_SHARED_RETURNS}"})
+                                return nil
+                            }
+                            arrays.append(return_names, "")
+                            arrays.append(return_types, shared_name)
+                        }
+                        if has_type_after_names {
+                            if len(return_types) >= MAX_SHARED_RETURNS {
+                                report_formatted(parser, "E2060", {"${MAX_SHARED_RETURNS}"})
+                                return nil
+                            }
+                            arrays.append(return_names, "")
+                            arrays.append(return_types, type_or_empty(parse_complex_type(parser)))
+                        }
+                    } or peek_is(parser, token.TokenKind.IDENT) {
+                        // the current token is the last name, peek is the shared type
+                        advance(parser)
+                        for_each shared_name in shared_names {
+                            if len(return_types) >= MAX_SHARED_RETURNS {
+                                report_formatted(parser, "E2060", {"${MAX_SHARED_RETURNS}"})
+                                return nil
+                            }
+                            arrays.append(return_names, shared_name)
+                            arrays.append(return_types, read_type_name(parser))
+                        }
+                    }
+                } otherwise {
+                    // Plain type (no name): parse_complex_type handles array,
+                    // map and pointer types, not just simple identifiers.
+                    if len(return_types) >= MAX_SHARED_RETURNS {
+                        report_formatted(parser, "E2060", {"${MAX_SHARED_RETURNS}"})
+                        return nil
+                    }
+                    arrays.append(return_names, "")
+                    arrays.append(return_types, type_or_empty(parse_complex_type(parser)))
+                }
+                if peek_is(parser, token.TokenKind.COMMA) {
+                    advance(parser)
+                }
+                advance(parser)
+            }
+        } otherwise {
+            // Single return type (array, pointer, map, or plain)
+            single_type string = parse_complex_type(parser)
+            if single_type == TYPE_FAILED { return nil }
+            arrays.append(return_names, "")
+            arrays.append(return_types, single_type)
+
+            // `-> Foo^`. '^' after a type name is a dereference
+            // operator, not a type modifier; the correct form is `-> ^Foo`.
+            if peek_is(parser, token.TokenKind.CARET) {
+                advance(parser) // consume the '^' so the error can point at it
+                add_error_sized(parser, "E2081", clip_to_buffer(error_registry.registry_message_formatted("E2081", {single_type, single_type}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", parser^.cur_token.line, parser^.cur_token.col)
+                data^.return_types = return_types
+                data^.return_names = return_names
+                node^.func_decl = data
+                // Recover: parse the body to avoid cascading errors.
+                if peek_is(parser, token.TokenKind.LBRACE) {
+                    advance(parser)
+                    data^.body = parse_block_statement(parser)
+                }
+                return node
+            }
+        }
+    }
+
+    data^.return_types = return_types
+    data^.return_names = return_names
+
+    // Body
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    saved_func = parser^.current_func
+    node^.func_decl = data
+    parser^.current_func = node
+    data^.body = parse_block_statement(parser)
+    parser^.current_func = saved_func
+
+    return node
+}
+
+// --- Statement parsing: import ---
+
+// Why `name` cannot be bound as a module name, or "" when it can. The phrase
+// completes "module name 'x' ...".
+fn module_name_reject_reason(name string) -> string {
+    if len(name) == 0 { return "is empty" }
+    first char = strings.char_at(name, 0)
+    if !lexer.is_alpha(first) && first != '_' { return "is not a valid identifier" }
+    for i in range(1, len(name)) {
+        character char = strings.char_at(name, i)
+        if !lexer.is_alpha(character) && !lexer.is_digit(character) && character != '_' { return "is not a valid identifier" }
+    }
+    if token.lookup_keyword(name) != token.TokenKind.IDENT { return "is a keyword" }
+    return ""
+}
+
+// The length of the Grayscale source extension ending `name`, or 0.
+fn source_extension_length(name string) -> i64 {
+    for_each extension in {".gray", ".grayscale"} {
+        if len(name) > len(extension) && strings.slice(name, len(name) - len(extension), len(name)) == extension {
+            return len(extension)
+        }
+    }
+    return 0
+}
+
+fn parse_import_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.IMPORT_STMT, parser^.cur_token)
+    id = new(ast.ImportData)
+    mut items [ast.ImportItem] = {}
+    id^.auto_use = false
+    node^.import_stmt = id
+
+    mut is_extern_import bool = false
+    if cur_is(parser, token.TokenKind.EXTERN) {
+        is_extern_import = true
+        if !expect_peek(parser, token.TokenKind.IMPORT) { return nil }
+    }
+
+    loop {
+        advance(parser)
+        item = ast.ImportItem{}
+
+        if is_extern_import {
+            if !cur_is(parser, token.TokenKind.STRING) {
+                add_error(parser, "E6014", fmt.sprintf("expected string literal header path after 'extern import', got '%s'", {parser^.cur_token.literal}), parser^.cur_token.line, parser^.cur_token.col)
+                id^.items = items
+                return node
+            }
+            item.is_c_import = true
+            item.is_stdlib = false
+            item.source_path = parser^.cur_token.literal
+            item.tok_line = parser^.cur_token.line
+            item.tok_col = parser^.cur_token.col
+            item.import_alias = "extern"
+            item.mod_name = "extern"
+            // Only [A-Za-z0-9./_+-] is permitted in the path, to prevent injection
+            for i in range(0, len(item.source_path)) {
+                character char = strings.char_at(item.source_path, i)
+                is_allowed bool = lexer.is_alpha(character) || lexer.is_digit(character) || character == '/' || character == '.' || character == '_' || character == '-' || character == '+'
+                if !is_allowed {
+                    report(parser, "E2080")
+                    break
+                }
+            }
+            // 'extern import ... and use' is disallowed: C symbols stay qualified
+            if peek_is(parser, token.TokenKind.IDENT) && parser^.peek_token.literal == "and" {
+                advance(parser)
+                report(parser, "E6013")
+                if peek_is(parser, token.TokenKind.USE) { advance(parser) }
+            }
+            arrays.append(items, item)
+            if !peek_is(parser, token.TokenKind.COMMA) { break }
+            advance(parser)
+            continue
+        }
+
+        if cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "and" {
+            // `import and use`: consume 'and' then 'use'
+            id^.auto_use = true
+            advance(parser)
+            advance(parser) // advance to the alias or @module
+        }
+
+        // Migration hint for the retired `import character"header.h"` syntax. Only when
+        // the path looks like a C header/source; 'character' is a valid alias for
+        // ordinary imports (import character "./config.gray").
+        if cur_is(parser, token.TokenKind.IDENT) && parser^.cur_token.literal == "c" && peek_is(parser, token.TokenKind.STRING) {
+            header_path string = parser^.peek_token.literal
+            header_length i64 = len(header_path)
+            if header_length >= HEADER_EXTENSION_LENGTH && strings.char_at(header_path, header_length - HEADER_EXTENSION_LENGTH) == '.' &&
+               (strings.char_at(header_path, header_length - 1) == 'h' || strings.char_at(header_path, header_length - 1) == 'c') {
+                add_error(parser, "E6014", "'import c\"...\"' syntax has been replaced; use 'extern import \"...\"'", parser^.cur_token.line, parser^.cur_token.col)
+                advance(parser) // consume 'character', now on the string
+                item.is_c_import = true
+                item.is_stdlib = false
+                item.source_path = parser^.cur_token.literal
+                item.tok_line = parser^.cur_token.line
+                item.tok_col = parser^.cur_token.col
+                item.import_alias = "extern"
+                item.mod_name = "extern"
+                arrays.append(items, item)
+                if !peek_is(parser, token.TokenKind.COMMA) { break }
+                advance(parser)
+                continue
+            }
+        }
+
+        // Alias: an identifier followed by @ or a string
+        alias_token token.Token = parser^.cur_token
+        mut is_aliased_stdlib bool = false
+        if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.AT) {
+            is_aliased_stdlib = true
+            advance(parser) // consume the alias, now on @
+        } or cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.STRING) {
+            item.import_alias = parser^.cur_token.literal
+            advance(parser) // consume the alias, now on the string
+        }
+
+        if cur_is(parser, token.TokenKind.AT) {
+            item.is_stdlib = true
+            advance(parser)
+            item.mod_name = parser^.cur_token.literal
+            item.import_alias = parser^.cur_token.literal
+            // A stdlib module's name is fixed, unique and always a valid
+            // identifier, so a second name for it is one the symbol table
+            // cannot key.
+            if is_aliased_stdlib {
+                add_error_help(parser, "E6007", "standard library import '@${item.mod_name}' cannot be aliased", "remove the alias and use the module's own name", alias_token.line, alias_token.col)
+            }
+        } or cur_is(parser, token.TokenKind.STRING) {
+            item.is_stdlib = false
+            item.source_path = parser^.cur_token.literal
+            // A derived module name comes from the filesystem
+            is_derived_module bool = item.import_alias == ""
+            if is_derived_module {
+                slash_index i64 = strings.last_index_of(item.source_path, "/")
+                mut base string = item.source_path
+                if slash_index >= 0 { base = strings.slice(item.source_path, slash_index + 1, len(item.source_path)) }
+                extension_length i64 = source_extension_length(base)
+                if extension_length > 0 {
+                    // Strip the source extension: "helpers.gray" is "helpers"
+                    stem string = strings.slice(base, 0, len(base) - extension_length)
+                    item.import_alias = stem
+                    item.mod_name = stem
+                } or len(base) > 0 {
+                    // No source extension: the last path component
+                    item.import_alias = base
+                    item.mod_name = base
+                }
+            }
+            // The filesystem allows spellings Grayscale identifiers do not.
+            // Reject them here, where an alias is the fix, rather than at the
+            // use site where the name parses as something else entirely.
+            if is_derived_module && item.mod_name != "" {
+                reason string = module_name_reject_reason(item.mod_name)
+                if reason != "" {
+                    add_error_help(parser, "E6006", "module name '${item.mod_name}' ${reason}", "give the import an alias, e.g. import m \"${item.source_path}\"", parser^.cur_token.line, parser^.cur_token.col)
+                }
+            }
+            // 'extern' as a module name is reserved for C interop
+            if item.import_alias == "extern" {
+                add_error(parser, "E6014", "'extern' is reserved for C interop; rename the file or use an alias (e.g., 'import mymod \"./extern.gray\"')", parser^.cur_token.line, parser^.cur_token.col)
+            }
+        } otherwise {
+            mut shown = parser^.cur_token.literal
+            if shown == "" { shown = token.token_display_name(parser^.cur_token) }
+            add_error(parser, "E6014", "expected '@module' or '\"path\"' after 'import', got '${shown}'", parser^.cur_token.line, parser^.cur_token.col)
+            id^.items = items
+            return node
+        }
+
+        arrays.append(items, item)
+        if !peek_is(parser, token.TokenKind.COMMA) { break }
+        advance(parser)
+    }
+
+    id^.items = items
+    return node
+}
+
+// --- Statement parsing: using ---
+
+fn parse_using_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.USING_STMT, parser^.cur_token)
+    data = new(ast.UsingData)
+    mut modules [string] = {}
+
+    loop {
+        advance(parser)
+        if cur_is(parser, token.TokenKind.EXTERN) || parser^.cur_token.literal == "extern" {
+            report(parser, "E6013")
+        }
+        arrays.append(modules, parser^.cur_token.literal)
+        if !peek_is(parser, token.TokenKind.COMMA) { break }
+        advance(parser)
+    }
+
+    data^.modules = modules
+    node^.using_stmt = data
+    return node
+}
+
+// --- Statement parsing: if ---
+
+fn parse_if_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.IF_STMT, parser^.cur_token)
+    data = new(ast.IfData)
+    advance(parser)
+    // The '{' after a condition opens the block, never a struct literal
+    saved_suppress bool = parser^.no_struct_literal
+    parser^.no_struct_literal = true
+    data^.condition = parse_expression(parser, PREC_LOWEST)
+    parser^.no_struct_literal = saved_suppress
+
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    data^.consequence = parse_block_statement(parser)
+
+    if peek_is(parser, token.TokenKind.OR_KW) {
+        advance(parser) // skip 'or': it acts like 'else if'
+        // One level is left for the next branch's condition.
+        if parser^.depth + 1 >= MAX_PARSE_DEPTH {
+            add_error(parser, "E2001", "'or' chain is too long; it shares the nesting limit of ${MAX_PARSE_DEPTH}", parser^.cur_token.line, parser^.cur_token.col)
+            return nil
+        }
+        parser^.depth = parser^.depth + 1
+        data^.alternative = parse_if_statement(parser)
+        parser^.depth = parser^.depth - 1
+    } or peek_is(parser, token.TokenKind.OTHERWISE) {
+        advance(parser)
+        data^.else_token = parser^.cur_token
+        if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+        data^.alternative = parse_block_statement(parser)
+    }
+
+    node^.if_stmt = data
+    return node
+}
+
+// --- Statement parsing: struct declaration ---
+
+// A declaration nested inside a struct or enum body. `kind` and
+// `outer_name` name the enclosing declaration. Skips to the nested
+// declaration's closing brace to avoid cascading errors.
+fn reject_nested_declaration(parser ^Parser, kind string, outer_name string) {
+    report_formatted(parser, "E2058", {kind, outer_name})
+    mut depth i64 = 0
+    as_long_as !cur_is(parser, token.TokenKind.EOF) {
+        if cur_is(parser, token.TokenKind.LBRACE) { depth = depth + 1 }
+        if cur_is(parser, token.TokenKind.RBRACE) {
+            if depth <= 1 {
+                advance(parser)
+                break
+            }
+            depth = depth - 1
+        }
+        advance(parser)
+    }
+}
+
+fn parse_struct_declaration(parser ^Parser) -> ^ast.AstNode {
+    // cur_token is the struct name, already consumed by the caller
+    node = ast.ast_alloc(ast.NodeKind.STRUCT_DECL, parser^.cur_token)
+    data = new(ast.StructDeclData)
+    data^.name = parser^.cur_token.literal
+
+    advance(parser)
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    advance(parser)
+    as_long_as cur_is(parser, token.TokenKind.SEMICOLON) { advance(parser) }
+
+    mut sfields [ast.StructField] = {}
+    mut funcs [ast.StructFunc] = {}
+    mut has_pending_discard bool = false
+    mut has_pending_deprecated bool = false
+    mut pending_deprecated_message = ""
+    mut previous_field_line i64 = -1
+    mut field_separated bool = false
+
+    as_long_as !cur_is(parser, token.TokenKind.RBRACE) && !cur_is(parser, token.TokenKind.EOF) {
+        // A non-attribute token starts the next struct member; clear the
+        // per-declaration attribute set so duplicates are scoped to one member
+        // ('private' and '#test' are not real starts, so they don't reset).
+        if !cur_is(parser, token.TokenKind.DOC) && !cur_is(parser, token.TokenKind.DISCARD) && !cur_is(parser, token.TokenKind.DEPRECATED) &&
+           !cur_is(parser, token.TokenKind.TEST) && !cur_is(parser, token.TokenKind.PRIVATE) {
+            parser^.seen_attribute_mask = 0
+        }
+        // `#[...]` attribute lists are not supported on struct functions yet.
+        // One error, then the list is skipped so the body keeps parsing.
+        if cur_is(parser, token.TokenKind.HASH_LBRACKET) {
+            emit_attribute_error(parser, "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead", parser^.cur_token.line, parser^.cur_token.col)
+            as_long_as !cur_is(parser, token.TokenKind.RBRACKET) && !cur_is(parser, token.TokenKind.EOF) && !cur_is(parser, token.TokenKind.RBRACE) {
+                advance(parser)
+            }
+            if cur_is(parser, token.TokenKind.RBRACKET) { advance(parser) }
+            continue
+        }
+        // #doc on a struct function: consume the attribute and any
+        // parenthesised arguments, then handle the next token normally.
+        if cur_is(parser, token.TokenKind.DOC) {
+            reject_duplicate_attribute(parser, ATTRIBUTE_DOC, "#doc")
+            if peek_is(parser, token.TokenKind.LPAREN) {
+                advance(parser)
+                as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) { advance(parser) }
+            }
+            advance(parser)
+            continue
+        }
+        // #discard inside the body: a pending flag attached to the next function
+        if cur_is(parser, token.TokenKind.DISCARD) {
+            reject_duplicate_attribute(parser, ATTRIBUTE_DISCARD, "#discard")
+            has_pending_discard = true
+            advance(parser)
+            continue
+        }
+        // #test is not allowed on struct functions: a test function must be a
+        // top-level 'do' so the runner can call it directly.
+        if cur_is(parser, token.TokenKind.TEST) {
+            emit_attribute_error(parser, "#test attribute can only be applied to top-level function declarations, not struct functions", parser^.cur_token.line, parser^.cur_token.col)
+            advance(parser)
+            continue
+        }
+        // #deprecated inside the body: the same pending-flag treatment,
+        // independent of pending_discard so both can stack on one function.
+        if cur_is(parser, token.TokenKind.DEPRECATED) {
+            is_duplicate bool = reject_duplicate_attribute(parser, ATTRIBUTE_DEPRECATED, "#deprecated")
+            advance(parser)
+            has_pending_deprecated = true
+            message string = parse_deprecated_message(parser)
+            if !is_duplicate { pending_deprecated_message = message }
+            continue
+        }
+        // Struct-namespaced function: do func() or private do func()
+        is_unsafe_function bool = consume_unsafe_modifier(parser)
+        if cur_is(parser, token.TokenKind.DO) {
+            fdecl = parse_func_declaration(parser)
+            if is_unsafe_function { mark_function_unsafe(fdecl) }
+            if fdecl != nil {
+                if has_pending_discard {
+                    fdecl^.func_decl^.is_discard = true
+                    has_pending_discard = false
+                }
+                if has_pending_deprecated {
+                    fdecl^.func_decl^.is_deprecated = true
+                    fdecl^.func_decl^.deprecated_message = pending_deprecated_message
+                    has_pending_deprecated = false
+                    pending_deprecated_message = ""
+                }
+                arrays.append(funcs, ast.StructFunc{func_decl: fdecl, is_private: false})
+            }
+            advance(parser)
+            continue
+        }
+        if cur_is(parser, token.TokenKind.PRIVATE) && (peek_is(parser, token.TokenKind.DO) || peek_is(parser, token.TokenKind.UNSAFE)) {
+            advance(parser)
+            is_unsafe_private_function bool = consume_unsafe_modifier(parser)
+            fdecl = parse_func_declaration(parser)
+            if is_unsafe_private_function { mark_function_unsafe(fdecl) }
+            if fdecl != nil {
+                fdecl^.func_decl^.is_private = true
+                if has_pending_discard {
+                    fdecl^.func_decl^.is_discard = true
+                    has_pending_discard = false
+                }
+                if has_pending_deprecated {
+                    fdecl^.func_decl^.is_deprecated = true
+                    fdecl^.func_decl^.deprecated_message = pending_deprecated_message
+                    has_pending_deprecated = false
+                    pending_deprecated_message = ""
+                }
+                arrays.append(funcs, ast.StructFunc{func_decl: fdecl, is_private: true})
+            }
+            advance(parser)
+            continue
+        }
+
+        // Nested struct/enum declaration
+        if cur_is(parser, token.TokenKind.CONST) {
+            reject_nested_declaration(parser, "struct", data^.name)
+            continue
+        }
+
+        // #discard on a struct field instead of a function
+        if has_pending_discard {
+            report(parser, "E2089")
+            has_pending_discard = false
+        }
+
+        // Same for #deprecated. Clearing the pending state is what stops the
+        // attribute from drifting onto the next struct function in the body.
+        if has_pending_deprecated {
+            emit_attribute_error(parser, "#deprecated attribute can only be applied to function, struct, or enum declarations", parser^.cur_token.line, parser^.cur_token.col)
+            has_pending_deprecated = false
+            pending_deprecated_message = ""
+        }
+
+        // Fields on the same line must be separated by ';'
+        if previous_field_line >= 0 && parser^.cur_token.line == previous_field_line && !field_separated {
+            add_error(parser, "E2069", "struct fields on the same line must be separated by ';'; add ';' between them or start the next field on a new line", parser^.cur_token.line, parser^.cur_token.col)
+        }
+        field_separated = false
+        previous_field_line = parser^.cur_token.line
+
+        // One or more comma-separated field names, then the shared type,
+        // backfilled (mirrors the parameter grouping): `x, y, z f64` is three
+        // fields, all f64.
+        group_start i64 = len(sfields)
+        mut was_field_name_rejected bool = false
+        loop {
+            // Reject reserved keywords and type names as struct field names
+            if reject_keyword_as_name(parser, parser^.cur_token, "a struct field name") {
+                sfields = sfields_prefix(sfields, group_start)
+                was_field_name_rejected = true
+                break
+            }
+            if cur_is(parser, token.TokenKind.IDENT) && reserved.is_reserved_name(parser^.cur_token.literal) {
+                add_error(parser, "E4028", "'${parser^.cur_token.literal}' is a built-in name and cannot be used as a struct field name", parser^.cur_token.line, parser^.cur_token.col)
+                synchronize(parser)
+                sfields = sfields_prefix(sfields, group_start)
+                was_field_name_rejected = true
+                break
+            }
+            field = ast.StructField{name: parser^.cur_token.literal}
+            arrays.append(sfields, field)
+            advance(parser)
+            if cur_is(parser, token.TokenKind.COMMA) {
+                advance(parser) // skip comma, loop for the next name
+            } otherwise {
+                break
+            }
+        }
+        // A rejected field name has already been diagnosed and synchronized
+        // past: the cursor sits on the next field (or `}`). Re-enter the outer
+        // loop rather than parse a type, which would consume the next field's
+        // name and cascade a false error.
+        if was_field_name_rejected { continue }
+
+        // The current token is the type; parse it and backfill the group
+        type_name string = parse_complex_type(parser)
+        if type_name == TYPE_FAILED { return nil }
+        for i in range(group_start, len(sfields)) {
+            sfields[i].type_name = type_name
+        }
+        advance(parser)
+
+        // Optional field tag, `json:"Name"`, right after the type and before any
+        // default value. Stored raw; the typechecker validates it (for #json
+        // structs) and extracts the key.
+        if cur_is(parser, token.TokenKind.RAW_STRING) {
+            // A tag names one JSON key, so a comma-grouped field list
+            // cannot share it.
+            if len(sfields) - group_start > 1 {
+                add_error(parser, "E2095", "a field tag cannot be shared across grouped field names; give each field its own tag, separating fields with ';' or a new line", parser^.cur_token.line, parser^.cur_token.col)
+            } otherwise {
+                sfields[group_start].json_tag = parser^.cur_token.literal
+            }
+            advance(parser)
+        }
+
+        // Optional default value: `= expr`
+        if cur_is(parser, token.TokenKind.ASSIGN) {
+            advance(parser)
+            default_value = parse_expression(parser, PREC_LOWEST)
+            for i in range(group_start, len(sfields)) {
+                sfields[i].default_value = default_value
+            }
+            advance(parser)
+        }
+
+        // Skip an optional trailing comma after a field type
+        if cur_is(parser, token.TokenKind.COMMA) { advance(parser) }
+        // ';' separates fields on one line
+        as_long_as cur_is(parser, token.TokenKind.SEMICOLON) {
+            field_separated = true
+            advance(parser)
+        }
+    }
+
+    data^.struct_fields = sfields
+    data^.funcs = funcs
+    node^.struct_decl = data
+    return node
+}
+
+// The first `count` fields.
+fn sfields_prefix(declared [ast.StructField], count i64) -> [ast.StructField] {
+    mut kept [ast.StructField] = {}
+    for i in range(0, count) { arrays.append(kept, declared[i]) }
+    return kept
+}
+
+// --- Statement parsing: enum declaration ---
+
+fn parse_enum_declaration(parser ^Parser) -> ^ast.AstNode {
+    // cur_token is the enum name, already consumed by the caller
+    node = ast.ast_alloc(ast.NodeKind.ENUM_DECL, parser^.cur_token)
+    data = new(ast.EnumDeclData)
+    data^.name = parser^.cur_token.literal
+    data^.is_flags = false
+    data^.is_tagged = false
+    data^.is_error_code = false
+
+    advance(parser)
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    advance(parser)
+    as_long_as cur_is(parser, token.TokenKind.SEMICOLON) { advance(parser) }
+
+    mut values [ast.EnumVal] = {}
+    mut previous_variant_line i64 = -1
+    mut variant_separated bool = false
+
+    as_long_as !cur_is(parser, token.TokenKind.RBRACE) && !cur_is(parser, token.TokenKind.EOF) {
+        // None of these attributes is meaningful on a variant; each used to be
+        // read as the variant name. Diagnose and consume them so the name slot
+        // below sees the real variant.
+        if cur_is(parser, token.TokenKind.DISCARD) {
+            add_error(parser, "E2089", "#discard attribute can only be applied to function declarations, not enum variants", parser^.cur_token.line, parser^.cur_token.col)
+            advance(parser)
+            continue
+        }
+        if cur_is(parser, token.TokenKind.TEST) {
+            emit_attribute_error(parser, "#test attribute can only be applied to function declarations, not enum variants", parser^.cur_token.line, parser^.cur_token.col)
+            advance(parser)
+            continue
+        }
+        if cur_is(parser, token.TokenKind.DEPRECATED) {
+            emit_attribute_error(parser, "#deprecated attribute can only be applied to function, struct, or enum declarations", parser^.cur_token.line, parser^.cur_token.col)
+            advance(parser)
+            // consume an optional ("message") so it is not read as a variant
+            if cur_is(parser, token.TokenKind.LPAREN) {
+                as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) { advance(parser) }
+                if cur_is(parser, token.TokenKind.RPAREN) { advance(parser) }
+            }
+            continue
+        }
+
+        // Nested struct/enum declaration
+        if cur_is(parser, token.TokenKind.CONST) {
+            reject_nested_declaration(parser, "enum", data^.name)
+            continue
+        }
+
+        // Reject reserved names as enum variant names
+        if reject_keyword_as_name(parser, parser^.cur_token, "an enum variant name") { continue }
+        if cur_is(parser, token.TokenKind.IDENT) && reserved.is_reserved_name(parser^.cur_token.literal) {
+            add_error(parser, "E4028", "'${parser^.cur_token.literal}' is a built-in name and cannot be used as an enum variant name", parser^.cur_token.line, parser^.cur_token.col)
+            synchronize(parser)
+            continue
+        }
+
+        // Variants on the same line must be separated by ';'
+        if previous_variant_line >= 0 && parser^.cur_token.line == previous_variant_line && !variant_separated {
+            add_error(parser, "E2069", "enum variants on the same line must be separated by ';'; add ';' between them or start the next variant on a new line", parser^.cur_token.line, parser^.cur_token.col)
+        }
+        variant_separated = false
+        previous_variant_line = parser^.cur_token.line
+
+        ev = ast.EnumVal{name: parser^.cur_token.literal}
+
+        // Payload types: VARIANT(type1, type2, ...)
+        if peek_is(parser, token.TokenKind.LPAREN) {
+            advance(parser)
+            advance(parser) // first token of the first type
+            mut payload [string] = {}
+            as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+                payload_type string = parse_complex_type(parser)
+                if payload_type == TYPE_FAILED { return nil }
+                arrays.append(payload, payload_type)
+                advance(parser) // past the last token of the type
+                if cur_is(parser, token.TokenKind.COMMA) { advance(parser) }
+            }
+            ev.payload_types = payload
+            // the current token is now the closing paren
+        }
+
+        // Explicit value: VALUE = expr
+        if peek_is(parser, token.TokenKind.ASSIGN) {
+            // A payload and an explicit value are mutually exclusive
+            if len(ev.payload_types) > 0 {
+                report_formatted(parser, "E2083", {ev.name})
+            }
+            advance(parser)
+            advance(parser)
+            ev.value = parse_expression(parser, PREC_LOWEST)
+        }
+
+        arrays.append(values, ev)
+
+        // Skip an optional trailing comma
+        if peek_is(parser, token.TokenKind.COMMA) { advance(parser) }
+        advance(parser)
+
+        // ';' separates variants on one line
+        as_long_as cur_is(parser, token.TokenKind.SEMICOLON) {
+            variant_separated = true
+            advance(parser)
+        }
+    }
+
+    // is_tagged when any variant has a payload
+    for_each ev in values {
+        if len(ev.payload_types) > 0 {
+            data^.is_tagged = true
+            break
+        }
+    }
+
+    data^.values = values
+    node^.enum_decl = data
+    return node
+}
+
+// --- Statement parsing: alias ---
+
+fn parse_alias_declaration(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.ALIAS_DECL, parser^.cur_token)
+    data = new(ast.AliasDeclData)
+    if !expect_peek(parser, token.TokenKind.IDENT) { return nil }
+    data^.name = parser^.cur_token.literal
+    data^.is_private = false
+    if !expect_peek(parser, token.TokenKind.ASSIGN) { return nil }
+    advance(parser)
+
+    // A module-qualified type (Ident.Ident)
+    if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.DOT) {
+        add_error_sized(parser, "E3134", clip_to_buffer(error_registry.registry_message_formatted("E3134", {data^.name}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", parser^.cur_token.line, parser^.cur_token.col)
+        return nil
+    }
+
+    // A keyword, literal or punctuation mark cannot start a type
+    if !cur_is(parser, token.TokenKind.IDENT) && !cur_is(parser, token.TokenKind.LBRACKET) && !cur_is(parser, token.TokenKind.CARET) && !cur_is(parser, token.TokenKind.GENERIC) {
+        add_error(parser, "E2001", "unexpected token '${parser^.cur_token.literal}' in alias declaration; expected a type", parser^.cur_token.line, parser^.cur_token.col)
+        return nil
+    }
+
+    if cur_is(parser, token.TokenKind.GENERIC) {
+        add_error_sized(parser, "E3135", clip_to_buffer(error_registry.registry_message_formatted("E3135", {data^.name}), FORMATTED_MESSAGE_BUFFER_LENGTH), "", parser^.cur_token.line, parser^.cur_token.col)
+        return nil
+    }
+
+    target string = parse_complex_type(parser)
+    if target == TYPE_FAILED { return nil }
+    data^.target_type = target
+    node^.alias_decl = data
+    return node
+}
+
+// --- Statement parsing: for ---
+
+fn parse_for_statement(parser ^Parser) -> ^ast.AstNode {
+    for_tok token.Token = parser^.cur_token
+
+    // Optional parentheses: for (i in range(...))
+    has_parens bool = peek_is(parser, token.TokenKind.LPAREN)
+    if has_parens { advance(parser) }
+
+    if peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.BLANK) {
+        advance(parser) // the current token is IDENT or BLANK
+        if peek_is(parser, token.TokenKind.IN) {
+            // Iteration form: for x in range(...) { }. The typechecker rejects
+            // an iterable that is not a range.
+            var_name string = parser^.cur_token.literal
+            node = ast.ast_alloc(ast.NodeKind.FOR_STMT, for_tok)
+            for_data = new(ast.ForData)
+            for_data^.var_name = var_name
+            for_data^.var_type = ""
+            advance(parser)
+            advance(parser)
+            parser^.no_struct_literal = true
+            for_data^.iterable = parse_expression(parser, PREC_LOWEST)
+            parser^.no_struct_literal = false
+            if has_parens && peek_is(parser, token.TokenKind.RPAREN) { advance(parser) }
+            if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+            for_data^.body = parse_block_statement(parser)
+            node^.for_stmt = for_data
+            return node
+        }
+        // otherwise the current token is IDENT: fall through to the while-style
+    } otherwise {
+        advance(parser) // advance to the condition start token
+        // `for <keyword> in ...`: a keyword used as a loop variable name. (A
+        // while-style condition may legitimately start with a keyword such as
+        // `true`, so only a following `in` marks a binding.)
+        if is_keyword_token(parser^.cur_token.kind) && peek_is(parser, token.TokenKind.IN) {
+            reject_keyword_as_name(parser, parser^.cur_token, "a loop variable name")
+            return nil
+        }
+    }
+
+    // While-style: for condition { }
+    wnode = ast.ast_alloc(ast.NodeKind.WHILE_STMT, for_tok)
+    wd = new(ast.WhileData)
+    wd^.condition = parse_expression(parser, PREC_LOWEST)
+    if has_parens && peek_is(parser, token.TokenKind.RPAREN) { advance(parser) }
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    wd^.body = parse_block_statement(parser)
+    wnode^.while_stmt = wd
+    return wnode
+}
+
+// --- Statement parsing: for_each ---
+
+fn parse_for_each_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.FOR_EACH_STMT, parser^.cur_token)
+    data = new(ast.ForEachData)
+    advance(parser)
+
+    // Optional parentheses: for_each (val in arr) {}
+    has_paren bool = cur_is(parser, token.TokenKind.LPAREN)
+    if has_paren { advance(parser) }
+
+    if reject_keyword_as_name(parser, parser^.cur_token, "a loop variable name") { return nil }
+    data^.index_name = ""
+    data^.var_name = parser^.cur_token.literal
+
+    // index, value pattern: for_each i, item in collection
+    if peek_is(parser, token.TokenKind.COMMA) {
+        data^.index_name = data^.var_name
+        advance(parser)
+        advance(parser)
+        if reject_keyword_as_name(parser, parser^.cur_token, "a loop variable name") { return nil }
+        data^.var_name = parser^.cur_token.literal
+    }
+
+    if !expect_peek(parser, token.TokenKind.IN) { return nil }
+    advance(parser)
+
+    // Parse the collection carefully: the struct literal parser must not consume
+    // the block-opening { after an identifier or module.Name
+    if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.LBRACE) {
+        // a bare identifier followed by {: only the label
+        data^.collection = label_node(parser^.cur_token, parser^.cur_token.literal)
+    } otherwise {
+        saved_suppress bool = parser^.no_struct_literal
+        parser^.no_struct_literal = true
+        data^.collection = parse_expression(parser, PREC_LOWEST)
+        parser^.no_struct_literal = saved_suppress
+    }
+
+    if has_paren {
+        if !expect_peek(parser, token.TokenKind.RPAREN) { return nil }
+    }
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    data^.body = parse_block_statement(parser)
+    node^.for_each_stmt = data
+    return node
+}
+
+// --- Statement parsing: while ---
+
+fn parse_while_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.WHILE_STMT, parser^.cur_token)
+    data = new(ast.WhileData)
+    advance(parser)
+    saved_suppress bool = parser^.no_struct_literal
+    parser^.no_struct_literal = true
+    data^.condition = parse_expression(parser, PREC_LOWEST)
+    parser^.no_struct_literal = saved_suppress
+
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    data^.body = parse_block_statement(parser)
+    node^.while_stmt = data
+    return node
+}
+
+// --- Statement parsing: loop ---
+
+fn parse_loop_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.LOOP_STMT, parser^.cur_token)
+    data = new(ast.LoopData)
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    data^.body = parse_block_statement(parser)
+    node^.loop_stmt = data
+    return node
+}
+
+// --- Statement parsing: when ---
+
+// True when the position holds IDENT(IDENT, ..., IDENT). Assumes the current
+// token is the IDENT before the LPAREN. Consumes tokens past the closing paren
+// (the caller restores).
+fn scan_paren_bindings(parser ^Parser) -> bool {
+    advance(parser)
+    advance(parser)
+    mut bind_count i64 = 0
+    as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+        if !cur_is(parser, token.TokenKind.IDENT) { return false }
+        bind_count = bind_count + 1
+        advance(parser)
+        if cur_is(parser, token.TokenKind.COMMA) { advance(parser) }
+    }
+    return bind_count > 0 && cur_is(parser, token.TokenKind.RPAREN)
+}
+
+fn parse_when_statement(parser ^Parser) -> ^ast.AstNode {
+    node = ast.ast_alloc(ast.NodeKind.WHEN_STMT, parser^.cur_token)
+    data = new(ast.WhenStmtData)
+    advance(parser)
+    parser^.no_struct_literal = true
+    data^.value = parse_expression(parser, PREC_LOWEST)
+    parser^.no_struct_literal = false
+    data^.is_strict = false
+
+    if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+    advance(parser)
+
+    mut cases [ast.WhenCase] = {}
+
+    as_long_as !cur_is(parser, token.TokenKind.RBRACE) && !cur_is(parser, token.TokenKind.EOF) {
+        if cur_is(parser, token.TokenKind.IS) {
+            wc = ast.WhenCase{is_range: false, keyword_token: parser^.cur_token}
+            mut wc_values [^ast.AstNode] = {}
+            advance(parser)
+
+            // Destructuring pattern: IDENT(IDENT,...) or .IDENT(IDENT,...); all
+            // tokens inside the parens must be bare identifiers.
+            mut is_pattern_candidate bool = false
+            mut is_implicit_pattern bool = false
+            mut is_explicit_enum bool = false
+            mut is_qualified_enum bool = false
+            pattern_token token.Token = parser^.cur_token
+
+            if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.LPAREN) {
+                // IDENT(IDENT,...)
+                snapshot = save_snapshot(parser)
+                is_pattern_candidate = scan_paren_bindings(parser)
+                restore_snapshot(parser, snapshot)
+            } or cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.DOT) {
+                // IDENT.IDENT(IDENT,...) explicit enum form, or
+                // mod.IDENT.IDENT(IDENT,...) for an imported enum
+                snapshot = save_snapshot(parser)
+                advance(parser)
+                advance(parser)
+                if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.DOT) {
+                    advance(parser)
+                    advance(parser)
+                    is_qualified_enum = true
+                }
+                if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.LPAREN) {
+                    is_pattern_candidate = scan_paren_bindings(parser)
+                    if is_pattern_candidate { is_explicit_enum = true }
+                }
+                if !is_pattern_candidate { is_qualified_enum = false }
+                restore_snapshot(parser, snapshot)
+            } or cur_is(parser, token.TokenKind.DOT) && peek_is(parser, token.TokenKind.IDENT) {
+                // .IDENT(IDENT,...) implicit form
+                snapshot = save_snapshot(parser)
+                advance(parser)
+                if peek_is(parser, token.TokenKind.LPAREN) {
+                    is_pattern_candidate = scan_paren_bindings(parser)
+                    if is_pattern_candidate { is_implicit_pattern = true }
+                }
+                restore_snapshot(parser, snapshot)
+            }
+
+            if is_pattern_candidate {
+                // Consume the tokens and build a WHEN_PATTERN
+                pattern = ast.ast_alloc(ast.NodeKind.WHEN_PATTERN, pattern_token)
+                pattern_data = new(ast.WhenPatternData)
+                pattern_data^.is_implicit = is_implicit_pattern
+
+                if is_explicit_enum {
+                    pattern_data^.enum_name = parser^.cur_token.literal
+                    advance(parser) // skip the enum name (or module)
+                    advance(parser)
+                    if is_qualified_enum {
+                        pattern_data^.enum_name = "${pattern_data^.enum_name}.${parser^.cur_token.literal}"
+                        advance(parser)
+                        advance(parser)
+                    }
+                } otherwise {
+                    pattern_data^.enum_name = ""
+                    if is_implicit_pattern {
+                        advance(parser)
+                    }
+                }
+                pattern_data^.variant = parser^.cur_token.literal
+                advance(parser)
+                advance(parser)
+
+                mut bindings [string] = {}
+                as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+                    // Reject reserved names as binding names
+                    if reserved.is_reserved_name(parser^.cur_token.literal) {
+                        add_error(parser, "E4028", "'${parser^.cur_token.literal}' is a built-in name and cannot be used as a binding name", parser^.cur_token.line, parser^.cur_token.col)
+                    }
+                    arrays.append(bindings, parser^.cur_token.literal)
+                    advance(parser)
+                    if cur_is(parser, token.TokenKind.COMMA) { advance(parser) }
+                }
+                pattern_data^.bindings = bindings
+                pattern^.when_pattern = pattern_data
+                // the current token is the closing paren; the body's { is next
+                arrays.append(wc_values, pattern)
+            } otherwise {
+                if cur_is(parser, token.TokenKind.RANGE) { wc.is_range = true }
+                parser^.no_struct_literal = true
+                arrays.append(wc_values, parse_expression(parser, PREC_LOWEST))
+                as_long_as peek_is(parser, token.TokenKind.COMMA) {
+                    advance(parser)
+                    advance(parser)
+                    if cur_is(parser, token.TokenKind.RANGE) { wc.is_range = true }
+                    arrays.append(wc_values, parse_expression(parser, PREC_LOWEST))
+                }
+            }
+
+            parser^.no_struct_literal = false
+            if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+            wc.values = wc_values
+            wc.body = parse_block_statement(parser)
+            arrays.append(cases, wc)
+
+        } or cur_is(parser, token.TokenKind.DEFAULT) {
+            if data^.default_body != nil {
+                report(parser, "E2085")
+            }
+            if !expect_peek(parser, token.TokenKind.LBRACE) { return nil }
+            data^.default_body = parse_block_statement(parser)
+        }
+
+        advance(parser)
+    }
+
+    // Empty when block
+    if len(cases) == 0 && data^.default_body == nil {
+        report_at(parser, "E2059", node^.tok.line, node^.tok.col)
+    }
+
+    data^.cases = cases
+    node^.when_stmt = data
+    return node
+}
+
+// --- Main statement dispatcher ---
+
+// A `#strict` / `#flags` / `#json` / `#discard` / `#test` / `#error_code` /
+// `#deprecated` attribute written before a statement: applied to what follows.
+fn parse_stacked_attribute(parser ^Parser) -> ^ast.AstNode {
+    attribute_kind token.TokenKind = parser^.cur_token.kind
+    site token.Token = parser^.cur_token
+    name = strings.slice(site.literal, 1, len(site.literal))
+    mut message = ""
+    is_duplicate = reject_duplicate_attribute(parser, attribute_bit_for_name(name), "#${name}")
+    advance(parser)
+    if attribute_kind == token.TokenKind.DEPRECATED { message = parse_deprecated_message(parser) }
+    statement = parse_statement(parser)
+    where token.Token = parser^.cur_token
+    when name {
+        is "define" {
+            if !is_duplicate { apply_define_attribute(parser, statement, site.line, site.col) }
+        }
+        is "strict" {
+            if statement != nil && statement^.kind == ast.NodeKind.WHEN_STMT {
+                statement^.when_stmt^.is_strict = true
+            } or !is_duplicate {
+                emit_attribute_error(parser, "#strict attribute can only be applied to when statements", where.line, where.col)
+            }
+        }
+        is "flags" {
+            if statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_flags = true
+            } otherwise {
+                emit_attribute_error(parser, "#flags attribute can only be applied to enum declarations", where.line, where.col)
+            }
+        }
+        is "error_code" {
+            if statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_error_code = true
+            } otherwise {
+                report_at(parser, "E3144", where.line, where.col)
+            }
+        }
+        is "json" {
+            if statement != nil && statement^.kind == ast.NodeKind.STRUCT_DECL {
+                statement^.struct_decl^.is_json = true
+            } otherwise {
+                emit_attribute_error(parser, "#json attribute can only be applied to struct declarations", where.line, where.col)
+            }
+        }
+        is "discard" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_discard = true
+            } otherwise {
+                emit_attribute_error(parser, "#discard attribute can only be applied to function declarations", where.line, where.col)
+            }
+        }
+        is "test" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_test = true
+            } otherwise {
+                emit_attribute_error(parser, "#test attribute can only be applied to function declarations", where.line, where.col)
+            }
+        }
+        is "deprecated" {
+            if statement != nil && statement^.kind == ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.is_deprecated = true
+                if !is_duplicate { statement^.func_decl^.deprecated_message = message }
+            } or statement != nil && statement^.kind == ast.NodeKind.STRUCT_DECL {
+                statement^.struct_decl^.is_deprecated = true
+                if !is_duplicate { statement^.struct_decl^.deprecated_message = message }
+            } or statement != nil && statement^.kind == ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.is_deprecated = true
+                if !is_duplicate { statement^.enum_decl^.deprecated_message = message }
+            } or !is_duplicate {
+                emit_attribute_error(parser, "#deprecated attribute can only be applied to function, struct, or enum declarations", where.line, where.col)
+            }
+        }
+    }
+    return statement
+}
+
+fn parse_statement(parser ^Parser) -> ^ast.AstNode {
+    when parser^.cur_token.kind {
+        is token.TokenKind.PRIVATE {
+            // private do / private const / private mut: consume and set the flag
+            advance(parser)
+            statement = parse_statement(parser)
+            if statement != nil {
+                if statement^.kind == ast.NodeKind.FUNC_DECL {
+                    statement^.func_decl^.is_private = true
+                } or statement^.kind == ast.NodeKind.VAR_DECL {
+                    statement^.var_decl^.is_private = true
+                } or statement^.kind == ast.NodeKind.ALIAS_DECL {
+                    statement^.alias_decl^.is_private = true
+                } or statement^.kind == ast.NodeKind.STRUCT_DECL {
+                    statement^.struct_decl^.is_private = true
+                } or statement^.kind == ast.NodeKind.ENUM_DECL {
+                    statement^.enum_decl^.is_private = true
+                }
+            }
+            return statement
+        }
+        is token.TokenKind.UNSAFE {
+            // `unsafe { ... }` block or unsafe function
+            if peek_is(parser, token.TokenKind.LBRACE) {
+                advance(parser)
+                block = parse_block_statement(parser)
+                if block != nil { block^.block^.is_unsafe = true }
+                return block
+            }
+            if consume_unsafe_modifier(parser) {
+                function_declaration = parse_func_declaration(parser)
+                mark_function_unsafe(function_declaration)
+                return function_declaration
+            }
+            add_error(parser, "E2001", "expected '{' or 'do' after 'unsafe'", parser^.cur_token.line, parser^.cur_token.col)
+            return nil
+        }
+        is token.TokenKind.MUT, token.TokenKind.CONST {
+            // A keyword used as a name: const for struct / mut for i64
+            if reject_keyword_as_name(parser, parser^.peek_token, "a name") { return nil }
+            // A struct or enum declaration: const Name struct {
+            if parser^.cur_token.kind == token.TokenKind.CONST && peek_is(parser, token.TokenKind.IDENT) {
+                snapshot = save_snapshot(parser)
+                advance(parser) // now on IDENT (the name)
+                if peek_is(parser, token.TokenKind.STRUCT) {
+                    return parse_struct_declaration(parser)
+                }
+                if peek_is(parser, token.TokenKind.ENUM) {
+                    return parse_enum_declaration(parser)
+                }
+                restore_snapshot(parser, snapshot) // not a struct or enum
+            }
+            return parse_var_declaration(parser)
+        }
+        is token.TokenKind.DO { return parse_func_declaration(parser) }
+        is token.TokenKind.RETURN { return parse_return_statement(parser) }
+        is token.TokenKind.IMPORT { return parse_import_statement(parser) }
+        is token.TokenKind.USING { return parse_using_statement(parser) }
+        is token.TokenKind.IF { return parse_if_statement(parser) }
+        is token.TokenKind.FOR { return parse_for_statement(parser) }
+        is token.TokenKind.FOR_EACH { return parse_for_each_statement(parser) }
+        is token.TokenKind.AS_LONG_AS { return parse_while_statement(parser) }
+        is token.TokenKind.LOOP { return parse_loop_statement(parser) }
+        is token.TokenKind.BREAK { return parse_loop_jump_statement(parser, ast.NodeKind.BREAK_STMT) }
+        is token.TokenKind.CONTINUE { return parse_loop_jump_statement(parser, ast.NodeKind.CONTINUE_STMT) }
+        is token.TokenKind.WHEN { return parse_when_statement(parser) }
+        is token.TokenKind.ALIAS { return parse_alias_declaration(parser) }
+        is token.TokenKind.DISTINCT {
+            // `distinct alias Name = Type`
+            if !expect_peek(parser, token.TokenKind.ALIAS) { return nil }
+            declaration = parse_alias_declaration(parser)
+            if declaration != nil { declaration^.alias_decl^.is_distinct = true }
+            return declaration
+        }
+        is token.TokenKind.STRICT, token.TokenKind.FLAGS, token.TokenKind.ERROR_CODE_ATTR, token.TokenKind.JSON_ATTR,
+        token.TokenKind.DISCARD, token.TokenKind.TEST, token.TokenKind.DEPRECATED, token.TokenKind.DEFINE {
+            return parse_stacked_attribute(parser)
+        }
+        is token.TokenKind.DOC {
+            // #doc is skipped; its arguments are consumed if present
+            reject_duplicate_attribute(parser, ATTRIBUTE_DOC, "#doc")
+            if peek_is(parser, token.TokenKind.LPAREN) {
+                advance(parser)
+                as_long_as !cur_is(parser, token.TokenKind.RPAREN) && !cur_is(parser, token.TokenKind.EOF) {
+                    advance(parser)
+                }
+            }
+            advance(parser)
+            return parse_statement(parser)
+        }
+        is token.TokenKind.HASH_LBRACKET { return parse_attribute_list(parser) }
+        is token.TokenKind.ENSURE { return parse_ensure_statement(parser) }
+        is token.TokenKind.BLANK {
+            // Bare throwaway: `_ = expr` discards the right side without
+            // creating a symbol. `_, x = func()` is a bare multi-var declaration.
+            if peek_is(parser, token.TokenKind.ASSIGN) {
+                return parse_discard_statement(parser)
+            }
+            if peek_is(parser, token.TokenKind.COMMA) {
+                return parse_var_declaration_ex(parser, true)
+            }
+            add_error(parser, "E2002", "unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment", parser^.cur_token.line, parser^.cur_token.col)
+            synchronize(parser)
+            return nil
+        }
+        is token.TokenKind.EXTERN {
+            if peek_is(parser, token.TokenKind.IMPORT) {
+                return parse_import_statement(parser)
+            }
+            // Not an import: an expression statement (e.g. extern.printf(...))
+            return parse_expression_or_bare_declaration(parser)
+        }
+        default { return parse_expression_or_bare_declaration(parser) }
+    }
+}
+
+// True for `name operand <operator> ...` on one line where `name` is a near
+// miss of a statement word: no declaration can continue with an operator, so
+// this is a misspelled statement over an expression such as `retrun x + 1`.
+fn is_misspelled_statement_before_operand(parser ^Parser) -> bool {
+    if !cur_is(parser, token.TokenKind.IDENT) || !peek_is(parser, token.TokenKind.IDENT) || parser^.peek_token.line != parser^.cur_token.line {
+        return false
+    }
+    if suggest.suggest_statement_name(parser^.cur_token.literal) == "" { return false }
+    snapshot = save_snapshot(parser)
+    advance(parser)
+    following token.TokenKind = parser^.peek_token.kind
+    is_operator bool = parser^.peek_token.line == parser^.cur_token.line && following != token.TokenKind.LT && get_token_precedence(following) > PREC_LOWEST && get_token_precedence(following) < PREC_CALL
+    restore_snapshot(parser, snapshot)
+    return is_operator
+}
+
+// `name: for ...`: a label before a loop. The current token is the name.
+fn parse_labeled_statement(parser ^Parser) -> ^ast.AstNode {
+    label_token token.Token = parser^.cur_token
+    advance(parser)
+    advance(parser) // first token of the loop
+    kind token.TokenKind = parser^.cur_token.kind
+    is_loop bool = kind == token.TokenKind.FOR || kind == token.TokenKind.FOR_EACH || kind == token.TokenKind.AS_LONG_AS || kind == token.TokenKind.LOOP
+    if !is_loop {
+        report_at_formatted(parser, "E2103", {label_token.literal}, label_token.line, label_token.col)
+        if kind == token.TokenKind.LBRACE { return parse_block_statement(parser) }
+        return parse_statement(parser)
+    }
+    labeled_loop = parse_statement(parser)
+    if labeled_loop != nil { labeled_loop^.loop_label = label_token.literal }
+    return labeled_loop
+}
+
+// `break` / `continue`, with the label of the loop it leaves on the same line.
+fn parse_loop_jump_statement(parser ^Parser, kind ast.NodeKind) -> ^ast.AstNode {
+    node = ast.ast_alloc(kind, parser^.cur_token)
+    data = new(ast.LoopJumpData)
+    if peek_is(parser, token.TokenKind.IDENT) && parser^.peek_token.line == parser^.cur_token.line {
+        advance(parser)
+        data^.label = parser^.cur_token.literal
+    } or parser^.peek_token.line == parser^.cur_token.line && !peek_is(parser, token.TokenKind.RBRACE) && !peek_is(parser, token.TokenKind.EOF) && !peek_is(parser, token.TokenKind.ILLEGAL) {
+        mut word = "continue"
+        if kind == ast.NodeKind.BREAK_STMT { word = "break" }
+        add_error(parser, "E2002", "unexpected token '${token.token_display_name(parser^.peek_token)}' after '${word}'; only a loop label may follow", parser^.peek_token.line, parser^.peek_token.col)
+    }
+    node^.loop_jump = data
+    return node
+}
+
+// A bare variable declaration (`x i64 = 5`, `x, err = f()`) or an expression /
+// assignment statement.
+fn parse_expression_or_bare_declaration(parser ^Parser) -> ^ast.AstNode {
+    if cur_is(parser, token.TokenKind.IDENT) && peek_is(parser, token.TokenKind.COLON) {
+        return parse_labeled_statement(parser)
+    }
+    if is_misspelled_statement_before_operand(parser) {
+        // `retrun x + 1`: the typechecker reports the misspelled name, so keep
+        // it as the statement and drop the rest of the line.
+        misspelled = ast.ast_alloc(ast.NodeKind.EXPR_STMT, parser^.cur_token)
+        misspelled_data = new(ast.ExprStmtData)
+        misspelled_data^.expr = parse_expression(parser, PREC_LOWEST)
+        misspelled^.expr_stmt = misspelled_data
+        statement_line i64 = parser^.cur_token.line
+        as_long_as !peek_is(parser, token.TokenKind.EOF) && parser^.peek_token.line == statement_line { advance(parser) }
+        return misspelled
+    }
+    // Bare variable declaration: also array types (`x [i64] = {1,2,3}`).
+    // Whitespace before '[' disambiguates from an index expression.
+    // The name and what follows it must share a line, so a bare identifier
+    // cannot swallow the next statement's first token.
+    if cur_is(parser, token.TokenKind.IDENT) && parser^.peek_token.line == parser^.cur_token.line &&
+       (peek_is(parser, token.TokenKind.IDENT) || peek_is(parser, token.TokenKind.COMMA) ||
+        (peek_is(parser, token.TokenKind.LBRACKET) && parser^.peek_token.preceded_by_ws)) {
+        return parse_var_declaration_ex(parser, true)
+    }
+    // An assignment or an expression statement
+    expr = parse_expression(parser, PREC_LOWEST)
+    if expr == nil { return nil }
+
+    if is_assignment_op(parser^.peek_token.kind) {
+        advance(parser)
+        anode = ast.ast_alloc(ast.NodeKind.ASSIGN_STMT, parser^.cur_token)
+        ad = new(ast.AssignData)
+        ad^.target = expr
+        ad^.op = parser^.cur_token.kind
+        advance(parser)
+        ad^.value = parse_expression(parser, PREC_LOWEST)
+        anode^.assign = ad
+        return anode
+    }
+
+    // A bare `call() or_default x` has no binding to substitute into.
+    if peek_is(parser, token.TokenKind.OR_DEFAULT) {
+        advance(parser)
+        report(parser, "E2102")
+        synchronize(parser)
+        return nil
+    }
+
+    // Bare `call() or_return`: no bindings, just propagate the trailing error
+    // from the call's return tuple.
+    if peek_is(parser, token.TokenKind.OR_RETURN) {
+        advance(parser)
+        fallbacks = parse_or_return_fallbacks(parser)
+        temporary_name string = make_or_return_temporary_name(parser)
+        mut stmts [^ast.AstNode] = {}
+        arrays.append(stmts, make_synthetic_temporary_declaration(parser, temporary_name, expr))
+        arrays.append(stmts, build_or_return_guard(parser, temporary_name, fallbacks))
+        return block_of(parser^.cur_token, stmts)
+    }
+
+    enode = ast.ast_alloc(ast.NodeKind.EXPR_STMT, parser^.cur_token)
+    ed = new(ast.ExprStmtData)
+    ed^.expr = expr
+    enode^.expr_stmt = ed
+    return enode
+}
+
+// --- Public API ---
+
+fn parse_program(parser ^Parser) -> ^ast.AstNode {
+    eof_tok token.Token = token.make_token(token.TokenKind.EOF, "", 0, 0)
+    program = ast.ast_alloc(ast.NodeKind.PROGRAM, eof_tok)
+    pd = new(ast.ProgramData)
+    mut stmts [^ast.AstNode] = {}
+    mut using_stmts [^ast.AstNode] = {}
+
+    as_long_as !cur_is(parser, token.TokenKind.EOF) {
+        if cur_is(parser, token.TokenKind.SEMICOLON) {
+            advance(parser)
+            continue
+        }
+        parser^.seen_attribute_mask = 0
+        statement = parse_statement(parser)
+        if statement != nil && statement^.kind == ast.NodeKind.BLOCK_STMT && !statement^.block^.is_unsafe {
+            // `A, B i64 = 1, 2` at file scope: one global per name
+            for_each member in statement^.block^.stmts { arrays.append(stmts, member) }
+        } or statement != nil {
+            arrays.append(stmts, statement)
+        } otherwise {
+            // Error recovery: skip to the next statement boundary
+            synchronize(parser)
+            continue
+        }
+        advance(parser)
+    }
+
+    pd^.stmts = stmts
+    pd^.using_stmts = using_stmts
+    program^.program = pd
+    return program
+}

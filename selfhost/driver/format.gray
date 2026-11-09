@@ -1,0 +1,240 @@
+/*
+ * format.gray:  The source formatter. Lexes the source to build a per-line
+ * indentation depth table from brace nesting, then re-emits each original line
+ * with corrected leading whitespace.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @arrays
+import @strings
+import "../lexer/lexer"
+import "../lexer/token"
+
+const INDENT_WIDTH i64 = 4
+// The characters of a backslash escape in a string, and of the "/*" that opens a block comment.
+const ESCAPE_LENGTH i64 = 2
+const BLOCK_COMMENT_OPENER_LENGTH i64 = 2
+// The per-line tables are indexed by 1-based line number, so they hold slot 0 and one slot past the last line.
+const LINE_TABLE_EXTRA_SLOTS i64 = 2
+
+// Per line (1-indexed): brace depth at the start of the line, and whether the line
+// continues an unfinished statement.
+const DepthTables struct {
+    depth           [i64]
+    is_continuation [bool]
+}
+
+fn build_depth_tables(source string, file_name string, maximum_line i64) -> DepthTables {
+    mut table [i64] = {}
+    mut group_start [i64] = {}
+    mut first_token [i64] = {}
+    mut last_token [i64] = {}
+    mut end_depth [i64] = {}
+    mut end_group [i64] = {}
+    for filler in range(0, maximum_line + LINE_TABLE_EXTRA_SLOTS) {
+        arrays.append(table, -1)
+        arrays.append(group_start, -1)
+        arrays.append(first_token, -1)
+        arrays.append(last_token, -1)
+        arrays.append(end_depth, 0)
+        arrays.append(end_group, 0)
+    }
+
+    lex = lexer.lexer_create(source, file_name)
+    mut depth i64 = 0
+    mut group_depth i64 = 0
+    mut previous_kind token.TokenKind = token.TokenKind.EOF
+    // Per open `{`: whether it was a collection literal (preceded by `=`) rather than a scope
+    mut brace_is_literal [bool] = {}
+
+    mut current token.Token = lexer.next_token(lex)
+    as_long_as current.kind != token.TokenKind.EOF {
+        if current.kind == token.TokenKind.ILLEGAL { break }
+        if current.kind == token.TokenKind.NEWLINE {
+            current = lexer.next_token(lex)
+            continue
+        }
+        line i64 = current.line
+        if line < 1 || line > maximum_line {
+            previous_kind = current.kind
+            current = lexer.next_token(lex)
+            continue
+        }
+        if group_start[line] < 0 { group_start[line] = group_depth }
+        if first_token[line] < 0 { first_token[line] = cast(current.kind, i64) }
+        last_token[line] = cast(current.kind, i64)
+
+        if current.kind == token.TokenKind.RBRACE {
+            mut was_literal bool = false
+            if len(brace_is_literal) > 0 {
+                was_literal = arrays.remove_last(brace_is_literal)
+            }
+            if was_literal {
+                if group_depth > 0 { group_depth = group_depth - 1 }
+            } otherwise {
+                if depth > 0 { depth = depth - 1 }
+            }
+        }
+        if current.kind == token.TokenKind.RPAREN || current.kind == token.TokenKind.RBRACKET {
+            if group_depth > 0 { group_depth = group_depth - 1 }
+        }
+
+        if table[line] < 0 { table[line] = depth }
+
+        if current.kind == token.TokenKind.LBRACE {
+            is_literal bool = previous_kind == token.TokenKind.ASSIGN
+            arrays.append(brace_is_literal, is_literal)
+            if is_literal {
+                group_depth = group_depth + 1
+            } otherwise {
+                depth = depth + 1
+            }
+        }
+        if current.kind == token.TokenKind.LPAREN || current.kind == token.TokenKind.LBRACKET {
+            group_depth = group_depth + 1
+        }
+
+        end_depth[line] = depth
+        end_group[line] = group_depth
+        previous_kind = current.kind
+        current = lexer.next_token(lex)
+    }
+
+    // Blank and comment-only lines inherit the depth in effect after the last token line
+    mut inherited i64 = 0
+    mut inherited_group i64 = 0
+    for line in range(1, maximum_line + 1) {
+        if table[line] >= 0 {
+            inherited = end_depth[line]
+            inherited_group = end_group[line]
+        } otherwise {
+            table[line] = inherited
+            group_start[line] = inherited_group
+        }
+    }
+
+    and_kind i64 = cast(token.TokenKind.AND, i64)
+    or_kind i64 = cast(token.TokenKind.OR, i64)
+    mut is_continuation [bool] = {}
+    arrays.append(is_continuation, false)
+    for line in range(1, maximum_line + 1) {
+        leads_with_operator bool = first_token[line] == and_kind || first_token[line] == or_kind
+        previous_trails_with_operator bool = line > 1 && (last_token[line - 1] == and_kind || last_token[line - 1] == or_kind)
+        arrays.append(is_continuation, group_start[line] > 0 || leads_with_operator || previous_trails_with_operator)
+    }
+    return DepthTables{depth: table, is_continuation: is_continuation}
+}
+
+// Whether each line (1-indexed) starts inside a raw string opened on an earlier line.
+fn raw_string_line_starts(source string, maximum_line i64) -> [bool] {
+    mut starts [bool] = {false, false}
+    mut in_raw bool = false
+    mut in_string bool = false
+    source_length i64 = len(source)
+    mut index i64 = 0
+    as_long_as index < source_length {
+        character char = strings.char_at(source, index)
+        if character == '\n' {
+            arrays.append(starts, in_raw)
+            index = index + 1
+            continue
+        }
+        if in_raw {
+            if character == '`' { in_raw = false }
+            index = index + 1
+            continue
+        }
+        if in_string {
+            if character == '\\' && index + 1 < source_length {
+                index = index + ESCAPE_LENGTH
+                continue
+            }
+            if character == '"' { in_string = false }
+            index = index + 1
+            continue
+        }
+        if character == '`' {
+            in_raw = true
+            index = index + 1
+            continue
+        }
+        if character == '"' { in_string = true }
+        index = index + 1
+    }
+    as_long_as len(starts) <= maximum_line + 1 { arrays.append(starts, in_raw) }
+    return starts
+}
+
+fn block_comment_closes(content string, start_offset i64) -> bool {
+    mut index i64 = start_offset
+    as_long_as index + 1 < len(content) {
+        if strings.char_at(content, index) == '*' && strings.char_at(content, index + 1) == '/' { return true }
+        index = index + 1
+    }
+    return false
+}
+
+fn spaces(count i64) -> string {
+    if count <= 0 { return "" }
+    return strings.repeat(" ", count)
+}
+
+// The reformatted text of `source`.
+fn format_source(source string, file_name string) -> string {
+    mut lines [string] = strings.split(source, "\n")
+    // The C formatter stops at the end of the text: a trailing newline adds no line
+    if len(lines) > 0 && lines[len(lines) - 1] == "" { mut _ = arrays.remove_last(lines) }
+    mut maximum_line i64 = 1
+    for_each character in source {
+        if character == '\n' { maximum_line = maximum_line + 1 }
+    }
+    tables = build_depth_tables(source, file_name, maximum_line)
+    raw_starts = raw_string_line_starts(source, len(lines))
+
+    mut out [string] = {}
+    mut in_block_comment bool = false
+    mut block_comment_delta i64 = 0
+    mut continuation_delta i64 = 0
+    mut line_number i64 = 1
+    for_each line in lines {
+        mut content_start i64 = 0
+        as_long_as content_start < len(line) && (strings.char_at(line, content_start) == ' ' || strings.char_at(line, content_start) == '\t') {
+            content_start = content_start + 1
+        }
+        content string = strings.slice(line, content_start, len(line))
+        original_leading i64 = content_start
+
+        if len(content) == 0 {
+            arrays.append(out, "")
+        } or raw_starts[line_number] {
+            arrays.append(out, line)
+        } or in_block_comment {
+            mut leading i64 = original_leading + block_comment_delta
+            if leading < 0 { leading = 0 }
+            arrays.append(out, "${spaces(leading)}${content}")
+            if block_comment_closes(content, 0) { in_block_comment = false }
+        } or line_number <= maximum_line && tables.is_continuation[line_number] {
+            mut leading i64 = original_leading + continuation_delta
+            if leading < 0 { leading = 0 }
+            arrays.append(out, "${spaces(leading)}${content}")
+        } otherwise {
+            mut depth i64 = 0
+            if line_number <= maximum_line { depth = tables.depth[line_number] }
+            if depth < 0 { depth = 0 }
+            leading i64 = depth * INDENT_WIDTH
+            arrays.append(out, "${spaces(leading)}${content}")
+            if len(content) >= BLOCK_COMMENT_OPENER_LENGTH && strings.char_at(content, 0) == '/' && strings.char_at(content, 1) == '*' {
+                block_comment_delta = leading - original_leading
+                in_block_comment = !block_comment_closes(content, BLOCK_COMMENT_OPENER_LENGTH)
+            }
+            continuation_delta = leading - original_leading
+        }
+        line_number = line_number + 1
+    }
+    if len(out) == 0 { return "" }
+    return "${strings.join(out, "\n")}\n"
+}

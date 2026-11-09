@@ -1,0 +1,420 @@
+/*
+ * token.gray:  Token kind enumeration, Token struct, and keyword lookup for the
+ * self-hosted Grayscale lexer.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @maps
+
+// Maximum identifier length (matches C compiler constant)
+const MAX_IDENT_LEN i64 = 255
+
+const TokenKind enum {
+    // Special
+    ILLEGAL,
+    EOF,
+
+    // Identifiers and literals
+    IDENT,
+    INT,
+    FLOAT,
+    STRING,
+    RAW_STRING,
+    CHAR,
+
+    // Operators
+    ASSIGN,
+    PLUS,
+    MINUS,
+    BANG,
+    ASTERISK,
+    SLASH,
+    PERCENT,
+
+    // Comparison
+    LT,
+    GT,
+    EQ,
+    NOT_EQ,
+    LT_EQ,
+    GT_EQ,
+
+    // Compound assignment
+    PLUS_ASSIGN,
+    MINUS_ASSIGN,
+    ASTERISK_ASSIGN,
+    SLASH_ASSIGN,
+    PERCENT_ASSIGN,
+
+    // Increment/Decrement
+    INCREMENT,
+    DECREMENT,
+
+    // Logical
+    AND,
+    OR,
+
+    // Delimiters
+    COMMA,
+    COLON,
+    SEMICOLON,
+    NEWLINE,
+    LPAREN,
+    RPAREN,
+    LBRACE,
+    RBRACE,
+    LBRACKET,
+    RBRACKET,
+
+    // Caret (pointer type)
+    CARET,
+
+    // Arrow
+    ARROW,
+
+    // Dot
+    DOT,
+
+    // At sign
+    AT,
+
+    // Ampersand
+    AMPERSAND,
+
+    // Hash attributes
+    STRICT,
+    FLAGS,
+    DOC,
+    JSON_ATTR,
+    DISCARD,
+    DEPRECATED,
+    TEST,
+    ERROR_CODE_ATTR,
+    DEFINE,
+    HASH_LBRACKET,
+
+    // Keywords
+    MUT,
+    CONST,
+    DO,
+    RETURN,
+    IF,
+    OR_KW,
+    OTHERWISE,
+    FOR,
+    FOR_EACH,
+    AS_LONG_AS,
+    LOOP,
+    BREAK,
+    CONTINUE,
+    IN,
+    NOT_IN,
+    RANGE,
+    IMPORT,
+    USING,
+    STRUCT,
+    ENUM,
+    GENERIC,
+    NIL,
+    NEW,
+    TRUE,
+    FALSE,
+    BLANK,
+    ENSURE,
+    OR_RETURN,
+    OR_DEFAULT,
+    OR_PANIC,
+    EXTERN,
+    UNSAFE,
+
+    // Module system
+    MODULE,
+    PRIVATE,
+    USE,
+
+    // When/Is
+    WHEN,
+    IS,
+    DEFAULT,
+
+    // Type aliasing
+    ALIAS,
+    DISTINCT,
+
+    // Type conversion
+    CAST,
+
+    // Bitwise keyword operators
+    BIT_AND,
+    BIT_OR,
+    BIT_XOR,
+    BIT_NOT,
+    BIT_SHIFT_LEFT,
+    BIT_SHIFT_RIGHT
+}
+
+const Token struct {
+    kind TokenKind
+    literal string
+    line i64
+    col i64
+    file string
+    preceded_by_ws bool
+}
+
+fn make_token(kind TokenKind, literal string, line i64, col i64) -> Token {
+    return Token{
+        kind: kind,
+        literal: literal,
+        line: line,
+        col: col
+    }
+}
+
+// Keyword lookup table
+fn build_keywords() -> map[string:TokenKind] {
+    keywords = {
+        "_": TokenKind.BLANK,
+        "alias": TokenKind.ALIAS,
+        "as_long_as": TokenKind.AS_LONG_AS,
+        "bit_and": TokenKind.BIT_AND,
+        "bit_not": TokenKind.BIT_NOT,
+        "bit_or": TokenKind.BIT_OR,
+        "bit_shift_left": TokenKind.BIT_SHIFT_LEFT,
+        "bit_shift_right": TokenKind.BIT_SHIFT_RIGHT,
+        "bit_xor": TokenKind.BIT_XOR,
+        "break": TokenKind.BREAK,
+        "case": TokenKind.IS,
+        "cast": TokenKind.CAST,
+        "const": TokenKind.CONST,
+        "continue": TokenKind.CONTINUE,
+        "default": TokenKind.DEFAULT,
+        "defer": TokenKind.ENSURE,
+        "distinct": TokenKind.DISTINCT,
+        "do": TokenKind.DO,
+        "elif": TokenKind.OR_KW,
+        "else": TokenKind.OTHERWISE,
+        "ensure": TokenKind.ENSURE,
+        "enum": TokenKind.ENUM,
+        "extern": TokenKind.EXTERN,
+        "false": TokenKind.FALSE,
+        "fn": TokenKind.DO,
+        "for": TokenKind.FOR,
+        "for_each": TokenKind.FOR_EACH,
+        "generic": TokenKind.GENERIC,
+        "if": TokenKind.IF,
+        "import": TokenKind.IMPORT,
+        "in": TokenKind.IN,
+        "is": TokenKind.IS,
+        "loop": TokenKind.LOOP,
+        "mut": TokenKind.MUT,
+        "new": TokenKind.NEW,
+        "nil": TokenKind.NIL,
+        "not_in": TokenKind.NOT_IN,
+        "or": TokenKind.OR_KW,
+        "or_default": TokenKind.OR_DEFAULT,
+        "or_panic": TokenKind.OR_PANIC,
+        "or_return": TokenKind.OR_RETURN,
+        "otherwise": TokenKind.OTHERWISE,
+        "private": TokenKind.PRIVATE,
+        "range": TokenKind.RANGE,
+        "return": TokenKind.RETURN,
+        "struct": TokenKind.STRUCT,
+        "switch": TokenKind.WHEN,
+        "true": TokenKind.TRUE,
+        "unsafe": TokenKind.UNSAFE,
+        "use": TokenKind.USE,
+        "using": TokenKind.USING,
+        "when": TokenKind.WHEN,
+        "while": TokenKind.AS_LONG_AS
+    }
+    return keywords
+}
+
+fn lookup_keyword(ident string) -> TokenKind {
+    when ident {
+        is "_" { return TokenKind.BLANK }
+        is "alias" { return TokenKind.ALIAS }
+        is "as_long_as" { return TokenKind.AS_LONG_AS }
+        is "bit_and" { return TokenKind.BIT_AND }
+        is "bit_not" { return TokenKind.BIT_NOT }
+        is "bit_or" { return TokenKind.BIT_OR }
+        is "bit_shift_left" { return TokenKind.BIT_SHIFT_LEFT }
+        is "bit_shift_right" { return TokenKind.BIT_SHIFT_RIGHT }
+        is "bit_xor" { return TokenKind.BIT_XOR }
+        is "break" { return TokenKind.BREAK }
+        is "case" { return TokenKind.IS }
+        is "cast" { return TokenKind.CAST }
+        is "const" { return TokenKind.CONST }
+        is "continue" { return TokenKind.CONTINUE }
+        is "default" { return TokenKind.DEFAULT }
+        is "defer" { return TokenKind.ENSURE }
+        is "distinct" { return TokenKind.DISTINCT }
+        is "do" { return TokenKind.DO }
+        is "elif" { return TokenKind.OR_KW }
+        is "else" { return TokenKind.OTHERWISE }
+        is "ensure" { return TokenKind.ENSURE }
+        is "enum" { return TokenKind.ENUM }
+        is "extern" { return TokenKind.EXTERN }
+        is "false" { return TokenKind.FALSE }
+        is "fn" { return TokenKind.DO }
+        is "for" { return TokenKind.FOR }
+        is "for_each" { return TokenKind.FOR_EACH }
+        is "generic" { return TokenKind.GENERIC }
+        is "if" { return TokenKind.IF }
+        is "import" { return TokenKind.IMPORT }
+        is "in" { return TokenKind.IN }
+        is "is" { return TokenKind.IS }
+        is "loop" { return TokenKind.LOOP }
+        is "mut" { return TokenKind.MUT }
+        is "new" { return TokenKind.NEW }
+        is "nil" { return TokenKind.NIL }
+        is "not_in" { return TokenKind.NOT_IN }
+        is "or" { return TokenKind.OR_KW }
+        is "or_default" { return TokenKind.OR_DEFAULT }
+        is "or_panic" { return TokenKind.OR_PANIC }
+        is "or_return" { return TokenKind.OR_RETURN }
+        is "otherwise" { return TokenKind.OTHERWISE }
+        is "private" { return TokenKind.PRIVATE }
+        is "range" { return TokenKind.RANGE }
+        is "return" { return TokenKind.RETURN }
+        is "struct" { return TokenKind.STRUCT }
+        is "switch" { return TokenKind.WHEN }
+        is "true" { return TokenKind.TRUE }
+        is "unsafe" { return TokenKind.UNSAFE }
+        is "use" { return TokenKind.USE }
+        is "using" { return TokenKind.USING }
+        is "when" { return TokenKind.WHEN }
+        is "while" { return TokenKind.AS_LONG_AS }
+        default { return TokenKind.IDENT }
+    }
+}
+
+fn token_kind_name(kind TokenKind) -> string {
+    when kind {
+        is TokenKind.ILLEGAL { return "ILLEGAL" }
+        is TokenKind.EOF { return "EOF" }
+        is TokenKind.IDENT { return "IDENT" }
+        is TokenKind.INT { return "INT" }
+        is TokenKind.FLOAT { return "FLOAT" }
+        is TokenKind.STRING { return "STRING" }
+        is TokenKind.RAW_STRING { return "RAW_STRING" }
+        is TokenKind.CHAR { return "CHAR" }
+        is TokenKind.ASSIGN { return "=" }
+        is TokenKind.PLUS { return "+" }
+        is TokenKind.MINUS { return "-" }
+        is TokenKind.BANG { return "!" }
+        is TokenKind.ASTERISK { return "*" }
+        is TokenKind.SLASH { return "/" }
+        is TokenKind.PERCENT { return "%" }
+        is TokenKind.LT { return "<" }
+        is TokenKind.GT { return ">" }
+        is TokenKind.EQ { return "==" }
+        is TokenKind.NOT_EQ { return "!=" }
+        is TokenKind.LT_EQ { return "<=" }
+        is TokenKind.GT_EQ { return ">=" }
+        is TokenKind.PLUS_ASSIGN { return "+=" }
+        is TokenKind.MINUS_ASSIGN { return "-=" }
+        is TokenKind.ASTERISK_ASSIGN { return "*=" }
+        is TokenKind.SLASH_ASSIGN { return "/=" }
+        is TokenKind.PERCENT_ASSIGN { return "%=" }
+        is TokenKind.INCREMENT { return "++" }
+        is TokenKind.DECREMENT { return "--" }
+        is TokenKind.AND { return "&&" }
+        is TokenKind.OR { return "||" }
+        is TokenKind.COMMA { return "," }
+        is TokenKind.COLON { return ":" }
+        is TokenKind.SEMICOLON { return ";" }
+        is TokenKind.NEWLINE { return "NEWLINE" }
+        is TokenKind.LPAREN { return "(" }
+        is TokenKind.RPAREN { return ")" }
+        is TokenKind.LBRACE { return "{" }
+        is TokenKind.RBRACE { return "}" }
+        is TokenKind.LBRACKET { return "[" }
+        is TokenKind.RBRACKET { return "]" }
+        is TokenKind.CARET { return "^" }
+        is TokenKind.ARROW { return "->" }
+        is TokenKind.DOT { return "." }
+        is TokenKind.AT { return "@" }
+        is TokenKind.AMPERSAND { return "&" }
+        is TokenKind.STRICT { return "#strict" }
+        is TokenKind.FLAGS { return "#flags" }
+        is TokenKind.DOC { return "#doc" }
+        is TokenKind.JSON_ATTR { return "#json" }
+        is TokenKind.DISCARD { return "#discard" }
+        is TokenKind.DEPRECATED { return "#deprecated" }
+        is TokenKind.TEST { return "#test" }
+        is TokenKind.ERROR_CODE_ATTR { return "#error_code" }
+        is TokenKind.DEFINE { return "#define" }
+        is TokenKind.HASH_LBRACKET { return "#[" }
+        is TokenKind.MUT { return "mut" }
+        is TokenKind.CONST { return "const" }
+        is TokenKind.DO { return "do" }
+        is TokenKind.RETURN { return "return" }
+        is TokenKind.IF { return "if" }
+        is TokenKind.OR_KW { return "or" }
+        is TokenKind.OTHERWISE { return "otherwise" }
+        is TokenKind.FOR { return "for" }
+        is TokenKind.FOR_EACH { return "for_each" }
+        is TokenKind.AS_LONG_AS { return "as_long_as" }
+        is TokenKind.LOOP { return "loop" }
+        is TokenKind.BREAK { return "break" }
+        is TokenKind.CONTINUE { return "continue" }
+        is TokenKind.IN { return "in" }
+        is TokenKind.NOT_IN { return "not_in" }
+        is TokenKind.RANGE { return "range" }
+        is TokenKind.IMPORT { return "import" }
+        is TokenKind.USING { return "using" }
+        is TokenKind.STRUCT { return "struct" }
+        is TokenKind.ENUM { return "enum" }
+        is TokenKind.GENERIC { return "generic" }
+        is TokenKind.NIL { return "nil" }
+        is TokenKind.NEW { return "new" }
+        is TokenKind.TRUE { return "true" }
+        is TokenKind.FALSE { return "false" }
+        is TokenKind.BLANK { return "_" }
+        is TokenKind.ENSURE { return "ensure" }
+        is TokenKind.OR_RETURN { return "or_return" }
+        is TokenKind.OR_DEFAULT { return "or_default" }
+        is TokenKind.OR_PANIC { return "or_panic" }
+        is TokenKind.EXTERN { return "extern" }
+        is TokenKind.UNSAFE { return "unsafe" }
+        is TokenKind.MODULE { return "module" }
+        is TokenKind.PRIVATE { return "private" }
+        is TokenKind.USE { return "use" }
+        is TokenKind.WHEN { return "when" }
+        is TokenKind.IS { return "is" }
+        is TokenKind.DEFAULT { return "default" }
+        is TokenKind.ALIAS { return "alias" }
+        is TokenKind.DISTINCT { return "distinct" }
+        is TokenKind.CAST { return "cast" }
+        is TokenKind.BIT_AND { return "bit_and" }
+        is TokenKind.BIT_OR { return "bit_or" }
+        is TokenKind.BIT_XOR { return "bit_xor" }
+        is TokenKind.BIT_NOT { return "bit_not" }
+        is TokenKind.BIT_SHIFT_LEFT { return "bit_shift_left" }
+        is TokenKind.BIT_SHIFT_RIGHT { return "bit_shift_right" }
+        default { return "UNKNOWN" }
+    }
+}
+
+// True when some keyword spelling lexes to this kind. `_` (BLANK) counts: it
+// is in the keyword table.
+fn kind_is_keyword(kind TokenKind) -> bool {
+    for_each spelling, keyword_kind in build_keywords() {
+        if keyword_kind == kind { return true }
+    }
+    return false
+}
+
+// What a diagnostic calls a token: the spelling it was written with when that
+// is a real keyword spelling (`while` stays `while`, not `as_long_as`), else
+// the kind's name.
+fn token_display_name(current_token Token) -> string {
+    if lookup_keyword(current_token.literal) == current_token.kind && current_token.kind != TokenKind.IDENT { return current_token.literal }
+    return token_kind_name(current_token.kind)
+}

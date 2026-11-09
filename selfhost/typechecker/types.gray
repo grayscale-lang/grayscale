@@ -1,0 +1,718 @@
+/*
+ * types.gray:  Core type representation for the Grayscale type system. Defines
+ * TypeKind, GrayType, type constructors, comparison, and resolution.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings, @fmt, @maps, @arrays
+import "../lexer/token"
+
+// Offsets within a type name written as text.
+// In "func(", the position of the "(" and the position of the first parameter.
+const FUNC_OPEN_PAREN_INDEX i64 = 4
+const FUNC_PARAMS_START i64 = 5
+// The length of "->" in a function type name.
+const RETURN_ARROW_LENGTH i64 = 2
+// The length of "[]" and of "map[" in array and map type names.
+const ARRAY_BRACKETS_LENGTH i64 = 2
+const MAP_PREFIX_LENGTH i64 = 4
+// The shortest sized number type name: a letter and one digit, as in "i8".
+const MIN_NUMBER_TYPE_NAME_LENGTH i64 = 2
+
+// --- Type kinds ---
+
+const TypeKind enum {
+    VOID,
+    INT,
+    UINT,
+    FLOAT,
+    BOOL,
+    CHAR,
+    STRING,
+    ARRAY,
+    MAP,
+    STRUCT,
+    ENUM,
+    POINTER,
+    ERROR,
+    FUNCTION,
+    // The value of a range() call: Range<i64>, or Range<T> for the widest wide
+    // integer type among its bounds. Only a local variable can hold one.
+    RANGE,
+    NIL_TYPE,
+    // The result of an `extern.` C function call: deliberately incompatible with
+    // every Grayscale type, so it may only be consumed by an annotated
+    // declaration, another C call, from_c_string() or cast().
+    C_FUNCTION,
+    // A number literal, or an expression built only from number literals, that
+    // has not taken a type yet. It takes one from the slot it is stored into,
+    // the other operand of a binary operator, or a cast; otherwise it becomes
+    // i64 (f64 when is_decimal) when its statement finishes.
+    LITERAL,
+    UNKNOWN
+}
+
+// --- Function signature for typed function references ---
+
+const FuncSig struct {
+    param_count   i64
+    param_types   [string]
+    param_mutable [bool]
+    return_count  i64
+    return_types  [string]
+}
+
+// --- Core type representation ---
+
+const GrayType struct {
+    kind         TypeKind
+    name         string
+    element_type string
+    key_type     string
+    value_type   string
+    func_sig     ^FuncSig
+    // for LITERAL: written with a decimal point or exponent
+    is_decimal   bool
+    // For a `distinct alias` type: its registry name. kind and name are those
+    // of the underlying primitive, so every rule keyed on them applies
+    // unchanged; this field alone makes the type incompatible with others.
+    distinct_name string
+}
+
+// --- Type pool: singletons + deduplication cache ---
+
+const TypePool struct {
+    cache        map[string:^GrayType]
+    type_void    ^GrayType
+    type_i64     ^GrayType
+    type_u64     ^GrayType
+    type_f64     ^GrayType
+    type_bool    ^GrayType
+    type_char    ^GrayType
+    type_u8      ^GrayType
+    type_string  ^GrayType
+    type_nil     ^GrayType
+    type_unknown ^GrayType
+    type_c_function ^GrayType
+    type_literal_integer ^GrayType
+    type_literal_decimal ^GrayType
+}
+
+// --- Type name string predicates ---
+
+fn is_unsigned_type(tn string) -> bool {
+    if tn == "" { return false }
+    return tn == "u8" || tn == "u16" || tn == "u32" || tn == "u64" || tn == "u128" || tn == "u256"
+}
+
+fn is_signed_int_type(tn string) -> bool {
+    if tn == "" { return false }
+    return tn == "i8" || tn == "i16" || tn == "i32" || tn == "i64" || tn == "i128" || tn == "i256"
+}
+
+fn is_any_int_type(tn string) -> bool {
+    return is_signed_int_type(tn) || is_unsigned_type(tn)
+}
+
+fn is_bigint_type(tn string) -> bool {
+    if tn == "" { return false }
+    return tn == "i128" || tn == "u128" || tn == "i256" || tn == "u256"
+}
+
+// --- Create and initialize a type pool ---
+
+fn make_singleton(kind TypeKind, name string) -> ^GrayType {
+    t = new(GrayType)
+    t^.kind = kind
+    t^.name = name
+    t^.element_type = ""
+    t^.key_type = ""
+    t^.value_type = ""
+    t^.func_sig = nil
+    return t
+}
+
+fn create_type_pool() -> ^TypePool {
+    pool = new(TypePool)
+    // Do not reassign pool^.cache = {:} here — dangling-map codegen bug
+    pool^.type_void = make_singleton(TypeKind.VOID, "void")
+    pool^.type_i64 = make_singleton(TypeKind.INT, "i64")
+    pool^.type_u64 = make_singleton(TypeKind.UINT, "u64")
+    pool^.type_f64 = make_singleton(TypeKind.FLOAT, "f64")
+    pool^.type_bool = make_singleton(TypeKind.BOOL, "bool")
+    pool^.type_char = make_singleton(TypeKind.CHAR, "char")
+    pool^.type_u8 = make_singleton(TypeKind.UINT, "u8")
+    pool^.type_string = make_singleton(TypeKind.STRING, "string")
+    pool^.type_nil = make_singleton(TypeKind.NIL_TYPE, "nil")
+    pool^.type_unknown = make_singleton(TypeKind.UNKNOWN, "unknown")
+    pool^.type_c_function = make_singleton(TypeKind.C_FUNCTION, "a C interop value")
+    pool^.type_literal_integer = make_singleton(TypeKind.LITERAL, "integer literal")
+    pool^.type_literal_decimal = make_singleton(TypeKind.LITERAL, "decimal literal")
+    pool^.type_literal_decimal^.is_decimal = true
+    return pool
+}
+
+// --- Cache helpers ---
+
+fn make_cache_key(prefix string, name string) -> string {
+    return fmt.sprintf("%s:%s", {prefix, name})
+}
+
+fn pool_find(pool ^TypePool, prefix string, name string) -> ^GrayType {
+    key string = make_cache_key(prefix, name)
+    cache = pool^.cache
+    if maps.contains_key(cache, key) {
+        return cache[key]
+    }
+    return nil
+}
+
+fn pool_insert(pool ^TypePool, prefix string, name string, t ^GrayType) {
+    key string = make_cache_key(prefix, name)
+    mut cache = pool^.cache
+    cache[key] = t
+    pool^.cache = cache
+}
+
+// --- Type constructors ---
+
+fn make_type(kind TypeKind, name string, elem string, kt string, vt string) -> ^GrayType {
+    t = new(GrayType)
+    t^.kind = kind
+    t^.name = name
+    t^.element_type = elem
+    t^.key_type = kt
+    t^.value_type = vt
+    t^.func_sig = nil
+    return t
+}
+
+fn type_array(pool ^TypePool, elem_type string) -> ^GrayType {
+    found = pool_find(pool, "a", elem_type)
+    if found != nil { return found }
+    result = make_type(TypeKind.ARRAY, elem_type, elem_type, "", "")
+    pool_insert(pool, "a", elem_type, result)
+    return result
+}
+
+fn type_struct(pool ^TypePool, name string) -> ^GrayType {
+    found = pool_find(pool, "s", name)
+    if found != nil { return found }
+    result = make_type(TypeKind.STRUCT, name, "", "", "")
+    pool_insert(pool, "s", name, result)
+    return result
+}
+
+fn type_enum_type(pool ^TypePool, name string) -> ^GrayType {
+    found = pool_find(pool, "e", name)
+    if found != nil { return found }
+    result = make_type(TypeKind.ENUM, name, "", "", "")
+    pool_insert(pool, "e", name, result)
+    return result
+}
+
+fn type_pointer(pool ^TypePool, pointee_type string) -> ^GrayType {
+    found = pool_find(pool, "p", pointee_type)
+    if found != nil { return found }
+    result = make_type(TypeKind.POINTER, pointee_type, pointee_type, "", "")
+    pool_insert(pool, "p", pointee_type, result)
+    return result
+}
+
+fn type_map(pool ^TypePool, kt string, vt string) -> ^GrayType {
+    full_name string = fmt.sprintf("map[%s:%s]", {kt, vt})
+    found = pool_find(pool, "m", full_name)
+    if found != nil { return found }
+    result = make_type(TypeKind.MAP, full_name, "", kt, vt)
+    pool_insert(pool, "m", full_name, result)
+    return result
+}
+
+// --- Type predicates ---
+
+fn type_is_numeric(t ^GrayType) -> bool {
+    return t^.kind == TypeKind.INT || t^.kind == TypeKind.UINT || t^.kind == TypeKind.FLOAT || t^.kind == TypeKind.CHAR
+}
+
+fn type_is_integer(t ^GrayType) -> bool {
+    return t^.kind == TypeKind.INT || t^.kind == TypeKind.UINT || t^.kind == TypeKind.CHAR
+}
+
+// --- Distinct types ---
+
+// Declares `name` a distinct type over the primitive `underlying_name`:
+// type_from_name(name) then returns one shared type that has the primitive's
+// kind and name but is compatible with nothing but itself.
+fn register_distinct(pool ^TypePool, name string, underlying_name string) {
+    underlying = type_from_name(pool, underlying_name)
+    distinct_type = make_type(underlying^.kind, underlying^.name, underlying^.element_type, underlying^.key_type, underlying^.value_type)
+    distinct_type^.is_decimal = underlying^.is_decimal
+    distinct_type^.distinct_name = name
+    pool_insert(pool, "d", name, distinct_type)
+}
+
+// True when two types are the same distinct type, or neither is distinct.
+fn type_same_distinct(left ^GrayType, right ^GrayType) -> bool {
+    return left^.distinct_name == right^.distinct_name
+}
+
+// --- Type comparison ---
+
+fn type_equals(left ^GrayType, right ^GrayType) -> bool {
+    if left^.kind != right^.kind { return false }
+    if !type_same_distinct(left, right) { return false }
+    if left^.kind == TypeKind.STRUCT || left^.kind == TypeKind.ENUM {
+        return left^.name == right^.name
+    }
+    if left^.kind == TypeKind.ARRAY {
+        return left^.element_type == right^.element_type
+    }
+    if left^.kind == TypeKind.POINTER {
+        return left^.name == right^.name
+    }
+    if left^.kind == TypeKind.FUNCTION {
+        return left^.name == right^.name
+    }
+    return true
+}
+
+// --- Type display name ---
+
+fn type_display_name(t ^GrayType) -> string {
+    if t == nil { return "unknown" }
+    if t^.distinct_name != "" { return t^.distinct_name }
+    if t^.kind == TypeKind.POINTER && t^.name != "" {
+        return fmt.sprintf("^%s", {t^.name})
+    }
+    if t^.kind == TypeKind.ARRAY && t^.element_type != "" {
+        return fmt.sprintf("[%s]", {t^.element_type})
+    }
+    if t^.kind == TypeKind.MAP && t^.key_type != "" && t^.value_type != "" {
+        return fmt.sprintf("map[%s:%s]", {t^.key_type, t^.value_type})
+    }
+    return t^.name
+}
+
+// --- Builtin type name check ---
+
+// The index of the first ',' outside any brackets or parentheses, or -1. Given
+// the text after the '[' of an array spelling, it is the comma before N in
+// [T,N] even when T is itself a fixed-size array.
+fn type_top_level_comma(text string) -> i64 {
+    mut depth i64 = 0
+    for i in range(0, len(text)) {
+        cache = strings.char_at(text, i)
+        if cache == '[' || cache == '(' {
+            depth += 1
+        } or cache == ']' || cache == ')' {
+            depth -= 1
+        } or cache == ',' && depth == 0 {
+            return i
+        }
+        if depth < 0 { return -1 }
+    }
+    return -1
+}
+
+fn is_builtin_type_name(name string) -> bool {
+    if name == "" { return false }
+    if name == "ErrorCode" { return true }
+    if name == "void" { return true }
+    if name == "bool" || name == "char" || name == "string" { return true }
+    if name == "nil" || name == "Error" || name == "func" { return true }
+    if name == "i8" || name == "i16" || name == "i32" || name == "i64" { return true }
+    if name == "i128" || name == "i256" { return true }
+    if name == "u8" || name == "u16" || name == "u32" || name == "u64" { return true }
+    if name == "u128" || name == "u256" { return true }
+    if name == "f32" || name == "f64" { return true }
+    return false
+}
+
+// --- Func signature parsing helpers ---
+
+fn find_matching_paren(s string, start i64) -> i64 {
+    mut depth i64 = 0
+    mut i i64 = start
+    as_long_as i < len(s) {
+        character char = strings.char_at(s, i)
+        if character == '(' {
+            depth = depth + 1
+        }
+        if character == ')' {
+            depth = depth - 1
+            if depth == 0 { return i }
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn split_top_commas(s string, start i64, end_pos i64) -> [string] {
+    mut result [string] = {}
+    if end_pos <= start { return result }
+
+    mut depth i64 = 0
+    mut seg_start i64 = start
+    mut i i64 = start
+    as_long_as i <= end_pos {
+        mut character char = ','
+        if i < end_pos {
+            character = strings.char_at(s, i)
+        }
+        if character == '(' || character == '[' {
+            depth = depth + 1
+        }
+        if character == ')' || character == ']' {
+            depth = depth - 1
+        }
+        if depth == 0 && (character == ',' || i == end_pos) {
+            seg string = strings.slice(s, seg_start, i)
+            arrays.append(result, seg)
+            seg_start = i + 1
+        }
+        i = i + 1
+    }
+    return result
+}
+
+fn parse_func_sig(name string) -> ^FuncSig {
+    if !strings.starts_with(name, "func(") { return nil }
+
+    rparen i64 = find_matching_paren(name, FUNC_OPEN_PAREN_INDEX)
+    if rparen < 0 { return nil }
+
+    signature = new(FuncSig)
+    signature^.param_count = 0
+    signature^.return_count = 0
+
+    // Parse parameters (build locally to avoid arrays.append through pointer)
+    raw_params [string] = split_top_commas(name, FUNC_PARAMS_START, rparen)
+    signature^.param_count = len(raw_params)
+
+    for_each p in raw_params {
+        if len(p) > 0 && strings.starts_with(p, "&") {
+            arrays.append(signature^.param_mutable, true)
+            arrays.append(signature^.param_types, strings.slice(p, 1, len(p)))
+        } otherwise {
+            arrays.append(signature^.param_mutable, false)
+            arrays.append(signature^.param_types, p)
+        }
+    }
+
+    // Parse return types
+    after string = strings.slice(name, rparen + 1, len(name))
+    if strings.starts_with(after, "->") {
+        ret string = strings.slice(after, RETURN_ARROW_LENGTH, len(after))
+        if strings.starts_with(ret, "(") {
+            ret_len i64 = len(ret)
+            if ret_len > 1 && strings.char_at(ret, ret_len - 1) == ')' {
+                rets [string] = split_top_commas(ret, 1, ret_len - 1)
+                signature^.return_count = len(rets)
+                for_each r in rets { arrays.append(signature^.return_types, r) }
+            }
+        } or ret != "void" {
+            signature^.return_count = 1
+            arrays.append(signature^.return_types, ret)
+        }
+    }
+
+    return signature
+}
+
+// --- Stdlib opaque type normalization ---
+
+fn is_stdlib_opaque(name string) -> bool {
+    if name == "Thread" || name == "Mutex" || name == "SpinLock" || name == "Channel" { return true }
+    if name == "Socket" || name == "Listener" || name == "Database" { return true }
+    if name == "Router" || name == "HttpRequest" || name == "HttpResponse" { return true }
+    if name == "UUID" || name == "Arena" || name == "SourceLocation" { return true }
+    return false
+}
+
+// --- Builtin type resolver (replaces C bsearch on sorted table) ---
+
+fn resolve_builtin(pool ^TypePool, name string) -> ^GrayType {
+    // Singletons
+    if name == "void" { return pool^.type_void }
+    if name == "i64" { return pool^.type_i64 }
+    if name == "u64" { return pool^.type_u64 }
+    if name == "f64" { return pool^.type_f64 }
+    if name == "bool" { return pool^.type_bool }
+    if name == "char" { return pool^.type_char }
+    if name == "u8" { return pool^.type_u8 }
+    if name == "string" { return pool^.type_string }
+    if name == "nil" { return pool^.type_nil }
+
+    // Signed integer variants
+    if name == "i8" || name == "i16" || name == "i32" || name == "i128" || name == "i256" {
+        return pool_get_or_create(pool, "iv", TypeKind.INT, name)
+    }
+
+    // Unsigned integer variants
+    if name == "u16" || name == "u32" || name == "u128" || name == "u256" {
+        return pool_get_or_create(pool, "uv", TypeKind.UINT, name)
+    }
+
+    // Float variants
+    if name == "f32" {
+        return pool_get_or_create(pool, "fv", TypeKind.FLOAT, name)
+    }
+
+    // Error type
+    if name == "Error" {
+        return pool_get_or_create(pool, "E", TypeKind.ERROR, "Error")
+    }
+
+    // Bare "func" keyword (not a full signature)
+    if name == "func" {
+        return pool_get_or_create(pool, "F", TypeKind.FUNCTION, "func")
+    }
+
+    // The open ErrorCode enum shares the enum pool with every other enum
+    if name == "ErrorCode" {
+        return pool_get_or_create(pool, "e", TypeKind.ENUM, "ErrorCode")
+    }
+
+    return nil
+}
+
+fn pool_get_or_create(pool ^TypePool, prefix string, kind TypeKind, name string) -> ^GrayType {
+    found = pool_find(pool, prefix, name)
+    if found != nil { return found }
+    result = make_type(kind, name, "", "", "")
+    pool_insert(pool, prefix, name, result)
+    return result
+}
+
+// --- Central type resolver ---
+
+fn type_from_name(pool ^TypePool, name string) -> ^GrayType {
+    if name == "" { return pool^.type_unknown }
+
+    // A declared distinct type
+    distinct_found = pool_find(pool, "d", name)
+    if distinct_found != nil { return distinct_found }
+
+    // Typed function reference: func(p1,&p2)->R
+    if strings.starts_with(name, "func(") {
+        found = pool_find(pool, "f", name)
+        if found != nil { return found }
+        result = make_type(TypeKind.FUNCTION, name, "", "", "")
+        result^.func_sig = parse_func_sig(name)
+        pool_insert(pool, "f", name, result)
+        return result
+    }
+
+    // Builtin type names (int, string, i128, u64, f32, Error, etc.)
+    resolved = resolve_builtin(pool, name)
+    if resolved != nil { return resolved }
+
+    // Range type: Range<i64>, Range<i128>, ...
+    if strings.starts_with(name, "Range<") {
+        return pool_get_or_create(pool, "r", TypeKind.RANGE, name)
+    }
+
+    // Pointer type: ^int, ^Person
+    if strings.starts_with(name, "^") {
+        pointee string = strings.slice(name, 1, len(name))
+        return type_pointer(pool, pointee)
+    }
+
+    // Array type: [int], [string], [int,3]
+    if strings.starts_with(name, "[") {
+        name_len i64 = len(name)
+        if name_len > ARRAY_BRACKETS_LENGTH && strings.char_at(name, name_len - 1) == ']' {
+            elem string = strings.slice(name, 1, name_len - 1)
+            // Strip ",N" suffix for fixed-size arrays like [string,3]
+            comma_idx i64 = type_top_level_comma(elem)
+            if comma_idx >= 0 {
+                elem = strings.slice(elem, 0, comma_idx)
+            }
+            return type_array(pool, elem)
+        }
+    }
+
+    // Map type: map[K:V]
+    if strings.starts_with(name, "map[") {
+        inner string = strings.slice(name, MAP_PREFIX_LENGTH, len(name))
+        colon_idx i64 = strings.index_of(inner, ":")
+        if colon_idx >= 0 {
+            kt string = strings.slice(inner, 0, colon_idx)
+            val_start i64 = colon_idx + 1
+            val_end i64 = len(inner)
+            if val_end > 0 && strings.char_at(inner, val_end - 1) == ']' {
+                val_end = val_end - 1
+            }
+            vt string = strings.slice(inner, val_start, val_end)
+            return type_map(pool, kt, vt)
+        }
+    }
+
+    // Qualified stdlib type: mod.Type names its opaque type unqualified
+    dot_idx i64 = strings.index_of(name, ".")
+    if dot_idx >= 0 && dot_idx + 1 < len(name) {
+        dot_char char = strings.char_at(name, dot_idx + 1)
+        if dot_char >= 'A' && dot_char <= 'Z' {
+            base string = strings.slice(name, dot_idx + 1, len(name))
+            found = pool_find(pool, "e", base)
+            if found != nil { return found }
+            return type_struct(pool, base)
+        }
+    }
+
+    // Uppercase names the builtin table did not claim are user-defined types
+    if len(name) > 0 {
+        fc char = strings.char_at(name, 0)
+        if fc >= 'A' && fc <= 'Z' {
+            found = pool_find(pool, "e", name)
+            if found != nil { return found }
+            return type_struct(pool, name)
+        }
+    }
+
+    // Module-mangled user type: mod_Name, split at the last '_' so a module
+    // name that contains one keeps its whole prefix
+    us_idx i64 = strings.last_index_of(name, "_")
+    if us_idx >= 0 && us_idx + 1 < len(name) {
+        after_us char = strings.char_at(name, us_idx + 1)
+        if after_us >= 'A' && after_us <= 'Z' {
+            found = pool_find(pool, "e", name)
+            if found != nil { return found }
+            return type_struct(pool, name)
+        }
+    }
+
+    // An unbound type parameter ("?kind") keeps its spelling so codegen can
+    // resolve it per instantiation
+    if strings.starts_with(name, "?") {
+        found = pool_find(pool, "u", name)
+        if found != nil { return found }
+        placeholder = make_type(TypeKind.UNKNOWN, name, "", "", "")
+        pool_insert(pool, "u", name, placeholder)
+        return placeholder
+    }
+    return pool^.type_unknown
+}
+
+// --- Number conversion rules ---
+// type_conversion and type_binary_result are the only definition of the
+// sized-type rules.
+
+const Conversion enum {
+    SAME;        // the same type
+    WIDEN;       // every value fits: i32 -> i64, u8 -> i16, f32 -> f64
+    NARROW;      // a wider type: i64 -> i32, u64 -> u8, i64 -> u8, f64 -> f32
+    SIGN_CROSS;  // signed <-> unsigned of the same or greater width: i64 -> u64
+    MISMATCH     // no implicit conversion
+}
+
+// True for the integer and floating-point kinds a sized-type rule applies to.
+fn type_kind_is_number(kind TypeKind) -> bool {
+    return kind == TypeKind.INT || kind == TypeKind.UINT || kind == TypeKind.FLOAT
+}
+
+// Width in bits of a sized integer or floating-point type name; 0 for anything else.
+fn number_width(name string) -> i64 {
+    if len(name) < MIN_NUMBER_TYPE_NAME_LENGTH { return 0 }
+    first = strings.char_at(name, 0)
+    if first != 'i' && first != 'u' && first != 'f' { return 0 }
+    digits = strings.slice(name, 1, len(name))
+    if digits == "8" { return 8 }
+    if digits == "16" { return 16 }
+    if digits == "32" { return 32 }
+    if digits == "64" { return 64 }
+    if digits == "128" { return 128 }
+    if digits == "256" { return 256 }
+    return 0
+}
+
+// The conversion of a value of type `source` into a slot of type `target`.
+// Neither may be LITERAL: a literal takes its slot's type instead of converting.
+fn type_conversion(source ^GrayType, target ^GrayType) -> Conversion {
+    if source == nil || target == nil || source^.name == "" || target^.name == "" { return Conversion.MISMATCH }
+    if !type_same_distinct(source, target) { return Conversion.MISMATCH }
+    if type_kind_is_number(source^.kind) && type_kind_is_number(target^.kind) {
+        if source^.name == target^.name { return Conversion.SAME }
+        from_width = number_width(source^.name)
+        to_width = number_width(target^.name)
+        if source^.kind == TypeKind.FLOAT {
+            if target^.kind != TypeKind.FLOAT { return Conversion.MISMATCH }
+            if to_width > from_width { return Conversion.WIDEN }
+            return Conversion.NARROW
+        }
+        // An integer stored into a floating-point slot has always been accepted.
+        if target^.kind == TypeKind.FLOAT { return Conversion.WIDEN }
+        if to_width < from_width { return Conversion.NARROW }
+        if source^.kind == target^.kind { return Conversion.WIDEN }
+        // An unsigned value fits every strictly wider signed type.
+        if source^.kind == TypeKind.UINT && to_width > from_width { return Conversion.WIDEN }
+        return Conversion.SIGN_CROSS
+    }
+    if source^.kind != target^.kind { return Conversion.MISMATCH }
+    if source^.kind == TypeKind.ARRAY {
+        if source^.element_type != "" && target^.element_type != "" && source^.element_type == target^.element_type { return Conversion.SAME }
+        return Conversion.MISMATCH
+    }
+    if source^.kind == TypeKind.MAP {
+        if source^.key_type != "" && target^.key_type != "" && source^.value_type != "" && target^.value_type != "" && source^.key_type == target^.key_type && source^.value_type == target^.value_type { return Conversion.SAME }
+        return Conversion.MISMATCH
+    }
+    if source^.name == target^.name { return Conversion.SAME }
+    return Conversion.MISMATCH
+}
+
+// The type of `left operator right` for numeric operands (integer, floating-point
+// or LITERAL), or nil when the pair needs a cast. A comparison yields bool. When
+// both operands are literals the result is a literal.
+fn type_binary_result(pool ^TypePool, operator token.TokenKind, left ^GrayType, right ^GrayType) -> ^GrayType {
+    is_comparison = operator == token.TokenKind.EQ || operator == token.TokenKind.NOT_EQ || operator == token.TokenKind.LT || operator == token.TokenKind.GT || operator == token.TokenKind.LT_EQ || operator == token.TokenKind.GT_EQ
+    is_shift = operator == token.TokenKind.BIT_SHIFT_LEFT || operator == token.TokenKind.BIT_SHIFT_RIGHT
+    is_integers_only = is_shift || operator == token.TokenKind.BIT_AND || operator == token.TokenKind.BIT_OR || operator == token.TokenKind.BIT_XOR || operator == token.TokenKind.PERCENT
+    is_left_literal = left^.kind == TypeKind.LITERAL
+    is_right_literal = right^.kind == TypeKind.LITERAL
+    is_left_floating_point = left^.kind == TypeKind.FLOAT || (is_left_literal && left^.is_decimal)
+    is_right_floating_point = right^.kind == TypeKind.FLOAT || (is_right_literal && right^.is_decimal)
+    mut no_type ^GrayType = nil
+
+    if is_integers_only && (is_left_floating_point || is_right_floating_point) { return no_type }
+    if is_shift {
+        // The count can be any integer type; the result is the shifted operand's
+        // type. A literal shifted by a typed count still takes its type from context.
+        if is_left_literal { return pool^.type_literal_integer }
+        return left
+    }
+    if is_left_literal && is_right_literal {
+        if is_comparison { return pool^.type_bool }
+        if is_left_floating_point || is_right_floating_point { return pool^.type_literal_decimal }
+        return pool^.type_literal_integer
+    }
+    if is_left_literal || is_right_literal {
+        mut typed = left
+        mut literal = right
+        if is_left_literal {
+            typed = right
+            literal = left
+        }
+        if literal^.is_decimal && typed^.kind != TypeKind.FLOAT { return no_type }
+        if is_comparison { return pool^.type_bool }
+        return typed
+    }
+    if !type_same_distinct(left, right) { return no_type }
+    mut common ^GrayType = nil
+    if left^.name == right^.name {
+        common = left
+    } or left^.kind == right^.kind {
+        if number_width(left^.name) >= number_width(right^.name) {
+            common = left
+        } otherwise {
+            common = right
+        }
+    }
+    if common == nil { return no_type }
+    if is_comparison { return pool^.type_bool }
+    return common
+}

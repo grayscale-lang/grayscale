@@ -125,3 +125,9 @@ context/
 !/benchmarks/**
 /benchmarks/.gen/
 /benchmarks/results.json
+
+# Self-hosted compiler sources. Track them despite the global *.gray ignore;
+# keep the build output (binaries, generated C, backups) out of git.
+!/selfhost/
+!/selfhost/**
+/selfhost/build/

@@ -1,0 +1,352 @@
+/*
+ * diagnostics.gray:  Renders diagnostics: the severity line, the `-->`
+ * location, the quoted source line with an underline, an optional help line,
+ * and the closing summary.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @io, @os, @strings, @fmt, @maps, @arrays, @encoding
+
+// The widest quoted source line, and the window cut out of a longer one
+const SOURCE_LINE_MAX i64 = 2048
+const SOURCE_WINDOW_COLUMNS i64 = 100
+const ELISION_MARKER string = "..."
+const ELISION_COLUMNS i64 = 3
+// The columns of the window kept before the error when a long line is cut.
+const SOURCE_WINDOW_MARGIN i64 = 50
+
+// UTF-8 byte ranges: a continuation byte is 10xxxxxx, and lead bytes announce 1 to 3 more.
+const BYTE_VALUE_COUNT i64 = 256
+const ASCII_LIMIT i64 = 128
+const CONTINUATION_MASK i64 = 192
+const CONTINUATION_TAG i64 = 128
+const TWO_BYTE_LEAD_MIN i64 = 194
+const THREE_BYTE_LEAD_MIN i64 = 224
+const FOUR_BYTE_LEAD_MIN i64 = 240
+const FOUR_BYTE_LEAD_MAX i64 = 244
+// A C1 control character (U+0080 to U+009F) is the lead byte 194 and a second byte that is 100xxxxx.
+const C1_LEAD_BYTE i64 = 194
+const C1_SECOND_BYTE_MASK i64 = 224
+// The control characters shown as escapes: those below the space, and delete.
+const TAB_BYTE i64 = 9
+const NEWLINE_BYTE i64 = 10
+const SPACE_BYTE i64 = 32
+const DELETE_BYTE i64 = 127
+// The columns taken by the escapes "\u{xx}" and "\xNN".
+const C1_ESCAPE_COLUMNS i64 = 6
+const BYTE_ESCAPE_COLUMNS i64 = 4
+
+const COLOR_RESET string = "\x1b[0m"
+const COLOR_BOLD string = "\x1b[1m"
+const COLOR_RED string = "\x1b[31m"
+const COLOR_YELLOW string = "\x1b[33m"
+const COLOR_BLUE string = "\x1b[34m"
+const COLOR_CYAN string = "\x1b[36m"
+
+const Diagnostic struct {
+    is_error bool
+    code string
+    message string
+    file string
+    line i64
+    column i64
+    end_column i64
+    help string
+}
+
+// Colors only when stderr is a terminal. Decided once, on first use.
+mut colors_decided bool = false
+mut colors_enabled bool = false
+
+// Warnings the user asked not to see: all of them, or the listed codes.
+mut warnings_suppressed bool = false
+mut suppressed_codes [string] = {}
+
+// Source files already read, by path, as their lines. Each file is read once.
+mut source_lines map[string:[string]] = {:}
+
+fn configure_warnings(suppress_all bool, codes string) {
+    warnings_suppressed = suppress_all
+    if codes != "" { suppressed_codes = strings.split(codes, ",") }
+}
+
+fn color(code string) -> string {
+    if !colors_decided {
+        colors_decided = true
+        colors_enabled = system("test -t 2") == 0
+    }
+    if colors_enabled { return code }
+    return ""
+}
+
+fn byte_at(text string, index i64) -> i64 {
+    value i64 = cast(strings.char_at(text, index), i64)
+    if value < 0 { value = value + BYTE_VALUE_COUNT }
+    return value
+}
+
+// How many continuation bytes follow a UTF-8 lead byte, 0 for any other byte.
+fn continuation_count(byte i64) -> i64 {
+    if byte >= FOUR_BYTE_LEAD_MIN && byte <= FOUR_BYTE_LEAD_MAX { return 3 }
+    if byte >= THREE_BYTE_LEAD_MIN && byte < FOUR_BYTE_LEAD_MIN { return 2 }
+    if byte >= TWO_BYTE_LEAD_MIN && byte < THREE_BYTE_LEAD_MIN { return 1 }
+    return 0
+}
+
+// A byte that is not part of a complete UTF-8 sequence. `pending` is how many
+// continuation bytes the sequence in progress still owes; the second value is
+// its new value.
+fn is_stray_byte(text string, index i64, pending i64) -> (bool, i64) {
+    byte i64 = byte_at(text, index)
+    if pending > 0 && (byte bit_and CONTINUATION_MASK) == CONTINUATION_TAG { return false, pending - 1 }
+    if byte < ASCII_LIMIT { return false, 0 }
+    needed i64 = continuation_count(byte)
+    if needed == 0 || index + needed >= len(text) { return true, 0 }
+    for offset in range(1, needed + 1) {
+        if (byte_at(text, index + offset) bit_and CONTINUATION_MASK) != CONTINUATION_TAG { return true, 0 }
+    }
+    return false, needed
+}
+
+fn hex_byte(byte i64) -> string { return fmt.sprintf("\\x%02x", {byte}) }
+
+// `text[start:start+count]` with every control byte shown as an escape, and the
+// columns it takes. A tab, and a newline when `allow_newline`, pass through.
+fn visible(text string, start i64, count i64, allow_newline bool) -> (string, i64) {
+    mut output [u8] = {}
+    mut columns i64 = 0
+    mut pending i64 = 0
+    // is_stray_byte looks at the whole text, so work on the slice
+    piece string = strings.slice(text, start, start + count)
+    mut index i64 = 0
+    as_long_as index < len(piece) {
+        byte i64 = byte_at(piece, index)
+        is_c1 bool = byte == C1_LEAD_BYTE && index + 1 < len(piece) && (byte_at(piece, index + 1) bit_and C1_SECOND_BYTE_MASK) == CONTINUATION_TAG
+        mut shown string = ""
+        mut is_raw bool = false
+        if is_c1 {
+            shown = fmt.sprintf("\\u{%02x}", {byte_at(piece, index + 1)})
+            index = index + 1
+            pending = 0
+        } or byte == TAB_BYTE || (byte == NEWLINE_BYTE && allow_newline) {
+            is_raw = true
+            pending = 0
+        } or byte < SPACE_BYTE || byte == DELETE_BYTE {
+            shown = hex_byte(byte)
+            pending = 0
+        } otherwise {
+            stray, next_pending = is_stray_byte(piece, index, pending)
+            pending = next_pending
+            if stray { shown = hex_byte(byte) } otherwise { is_raw = true }
+        }
+        if is_raw {
+            arrays.append(output, cast(byte, u8))
+            columns = columns + 1
+        } otherwise {
+            for_each shown_byte in encoding.from_string(shown) { arrays.append(output, shown_byte) }
+            columns = columns + len(shown)
+        }
+        index = index + 1
+    }
+    return encoding.to_string(output), columns
+}
+
+// The columns the first `count` bytes of `text` take, counting each byte of a
+// multi-byte character as one, so the underline lines up under the text above it.
+fn visible_width(text string, count i64) -> i64 {
+    mut columns i64 = 0
+    mut pending i64 = 0
+    mut index i64 = 0
+    piece string = strings.slice(text, 0, count)
+    as_long_as index < len(piece) {
+        byte i64 = byte_at(piece, index)
+        is_continuation bool = pending > 0 && (byte bit_and CONTINUATION_MASK) == CONTINUATION_TAG
+        is_c1 bool = byte == C1_LEAD_BYTE && index + 1 < len(piece) && (byte_at(piece, index + 1) bit_and C1_SECOND_BYTE_MASK) == CONTINUATION_TAG
+        if is_c1 {
+            columns = columns + C1_ESCAPE_COLUMNS
+            index = index + 1
+            pending = 0
+        } or byte != TAB_BYTE && (byte < SPACE_BYTE || byte == DELETE_BYTE) {
+            columns = columns + BYTE_ESCAPE_COLUMNS
+            pending = 0
+        } otherwise {
+            stray, next_pending = is_stray_byte(piece, index, pending)
+            pending = next_pending
+            if stray {
+                columns = columns + BYTE_ESCAPE_COLUMNS
+            } or !is_continuation {
+                columns = columns + 1
+            }
+        }
+        index = index + 1
+    }
+    return columns
+}
+
+// The text of line `line_number` of `file`, or "" with false when it cannot be read.
+fn source_line(file string, line_number i64) -> (string, bool) {
+    if file == "" || line_number < 1 { return "", false }
+    if !maps.contains_key(source_lines, file) {
+        content, read_error = io.read_file(file)
+        if read_error != nil { return "", false }
+        mut cut i64 = len(content)
+        for position in range(0, len(content)) {
+            if strings.char_at(content, position) == '\0' {
+                cut = position
+                break
+            }
+        }
+        source_lines[file] = strings.split(strings.slice(content, 0, cut), "\n")
+    }
+    lines = source_lines[file]
+    if line_number > len(lines) { return "", false }
+    mut text string = lines[line_number - 1]
+    if len(text) >= SOURCE_LINE_MAX { text = strings.slice(text, 0, SOURCE_LINE_MAX - 1) }
+    return text, true
+}
+
+fn spaces(count i64) -> string {
+    mut text string = ""
+    for _ in range(0, count) { text = "${text} " }
+    return text
+}
+
+fn repeat_caret(count i64) -> string {
+    mut text string = ""
+    for _ in range(0, count) { text = "${text}^" }
+    return text
+}
+
+fn is_suppressed(diagnostic Diagnostic) -> bool {
+    if diagnostic.is_error { return false }
+    if warnings_suppressed { return true }
+    return arrays.contains(suppressed_codes, diagnostic.code)
+}
+
+fn print_diagnostic(diagnostic Diagnostic) {
+    if is_suppressed(diagnostic) { return }
+    mut label string = "error"
+    mut severity_color string = COLOR_RED
+    if !diagnostic.is_error {
+        label = "warning"
+        severity_color = COLOR_YELLOW
+    }
+    message_text, _ = visible(diagnostic.message, 0, len(diagnostic.message), true)
+    mut head string = "${color(COLOR_BOLD)}${color(severity_color)}${label}${color(COLOR_RESET)}"
+    if diagnostic.code != "" {
+        head = "${head}${color(COLOR_BOLD)}${color(severity_color)}[${diagnostic.code}]${color(COLOR_RESET)}"
+    }
+    eprintln("${head}${color(COLOR_BOLD)}: ${message_text}${color(COLOR_RESET)}")
+
+    if diagnostic.file != "" && diagnostic.line > 0 {
+        file_text, _ = visible(diagnostic.file, 0, len(diagnostic.file), false)
+        eprintln("  ${color(COLOR_BLUE)}-->${color(COLOR_RESET)} ${file_text}:${diagnostic.line}:${diagnostic.column}")
+    }
+
+    text, found = source_line(diagnostic.file, diagnostic.line)
+    if found && diagnostic.line > 0 {
+        mut start i64 = 1
+        if diagnostic.column > 0 { start = diagnostic.column }
+        mut end i64 = start
+        if diagnostic.end_column > 0 { end = diagnostic.end_column }
+        mut span_length i64 = end - start + 1
+        if span_length < 1 { span_length = 1 }
+
+        // Cut a long line to a window around the error column, never splitting a
+        // multi-byte character
+        line_length i64 = len(text)
+        mut window_start i64 = 0
+        mut window_end i64 = line_length
+        if line_length > SOURCE_WINDOW_COLUMNS {
+            mut error_index i64 = start - 1
+            if error_index >= line_length { error_index = line_length - 1 }
+            window_start = error_index - SOURCE_WINDOW_MARGIN
+            if window_start < 0 { window_start = 0 }
+            window_end = window_start + SOURCE_WINDOW_COLUMNS
+            if window_end > line_length {
+                window_end = line_length
+                window_start = window_end - SOURCE_WINDOW_COLUMNS
+            }
+            as_long_as window_start > 0 && (byte_at(text, window_start) bit_and CONTINUATION_MASK) == CONTINUATION_TAG { window_start = window_start - 1 }
+            as_long_as window_end < line_length && (byte_at(text, window_end) bit_and CONTINUATION_MASK) == CONTINUATION_TAG { window_end = window_end + 1 }
+        }
+        is_cut_left bool = window_start > 0
+        is_cut_right bool = window_end < line_length
+
+        eprintln("   ${color(COLOR_BLUE)}|${color(COLOR_RESET)}")
+        mut left_marker string = ""
+        if is_cut_left { left_marker = ELISION_MARKER }
+        mut right_marker string = ""
+        if is_cut_right { right_marker = ELISION_MARKER }
+        shown_line, _ = visible(text, window_start, window_end - window_start, false)
+        eprintln("${color(COLOR_BLUE)}${fmt.sprintf("%3d", {diagnostic.line})}${color(COLOR_RESET)} ${color(COLOR_BLUE)}|${color(COLOR_RESET)} ${left_marker}${shown_line}${right_marker}")
+
+        // The underline, aligned to the (possibly cut) text above and clipped to it
+        mut before_error i64 = start - 1 - window_start
+        if before_error < 0 { before_error = 0 }
+        if before_error > window_end - window_start { before_error = window_end - window_start }
+        mut padding i64 = (start - 1 - window_start) - before_error + visible_width(strings.slice(text, window_start, window_end), before_error)
+        if is_cut_left { padding = padding + ELISION_COLUMNS }
+        maximum_padding i64 = SOURCE_WINDOW_COLUMNS + ELISION_COLUMNS
+        if padding < 0 { padding = 0 }
+        if padding > maximum_padding { padding = maximum_padding }
+        visible_span i64 = window_end - (start - 1)
+        if span_length > visible_span { span_length = visible_span }
+        if span_length > 0 && start - 1 < len(text) { span_length = visible_width(strings.slice(text, start - 1, len(text)), span_length) }
+        if span_length < 1 { span_length = 1 }
+        eprintln("   ${color(COLOR_BLUE)}|${color(COLOR_RESET)} ${spaces(padding)}${color(COLOR_BOLD)}${color(severity_color)}${repeat_caret(span_length)}${color(COLOR_RESET)}")
+    }
+
+    if diagnostic.help != "" {
+        help_text, _ = visible(diagnostic.help, 0, len(diagnostic.help), true)
+        eprintln("   ${color(COLOR_BLUE)}|${color(COLOR_RESET)}")
+        eprintln("   ${color(COLOR_BLUE)}=${color(COLOR_RESET)} ${color(COLOR_CYAN)}help${color(COLOR_RESET)}: ${help_text}")
+    }
+    eprintln("")
+}
+
+// The closing line: the error and warning counts, and the hint about -q.
+fn print_summary(diagnostics [Diagnostic]) {
+    mut errors i64 = 0
+    mut warnings i64 = 0
+    for_each diagnostic in diagnostics {
+        if diagnostic.is_error {
+            errors = errors + 1
+        } or !is_suppressed(diagnostic) {
+            warnings = warnings + 1
+        }
+    }
+    if errors == 0 && warnings == 0 { return }
+    mut line string = "${color(COLOR_BOLD)}grayscale:${color(COLOR_RESET)} "
+    if errors > 0 {
+        mut plural string = "s"
+        if errors == 1 { plural = "" }
+        line = "${line}${color(COLOR_BOLD)}${color(COLOR_RED)}${errors} error${plural}${color(COLOR_RESET)}"
+    }
+    if errors > 0 && warnings > 0 { line = "${line}, " }
+    if warnings > 0 {
+        mut plural string = "s"
+        if warnings == 1 { plural = "" }
+        line = "${line}${color(COLOR_BOLD)}${color(COLOR_YELLOW)}${warnings} warning${plural}${color(COLOR_RESET)}"
+    }
+    if errors > 0 { line = "${line}. compilation failed." }
+    eprintln(line)
+    if warnings > 0 && !warnings_suppressed && len(suppressed_codes) == 0 {
+        eprintln("${color(COLOR_BOLD)}hint:${color(COLOR_RESET)} suppress warnings with -q <W1001,W1002,...> or -q all")
+    }
+}
+
+// --no-color: no escape sequences whatever the terminal.
+fn disable_color() {
+    colors_decided = true
+    colors_enabled = false
+}
+
+// The source of an entry that is not a file on disk (`check DIR`), so its lines can be quoted.
+fn set_virtual_source(file string, content string) {
+    source_lines[file] = strings.split(content, "\n")
+}

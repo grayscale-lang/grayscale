@@ -1,0 +1,609 @@
+/*
+ * resolve.gray:  Module-qualified name resolution: rewrites a parsed file so
+ * references to its own module's top-level declarations and to `alias.name` of
+ * imported modules use the mangled `module_name` spelling.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @strings, @arrays, @maps, @fmt
+import "../ast/ast"
+import "../typechecker/reserved"
+
+// A cast call takes the value and the target type.
+const CAST_ARGUMENT_COUNT i64 = 2
+
+// The import aliases the entry file refers to as `alias.name`: the checker never sees
+// such a reference, because it is rewritten to the mangled name, so the driver
+// reports them as used.
+mut entry_used_aliases [string:bool] = {:}
+
+fn note_entry_used_alias(module_alias string) {
+    entry_used_aliases[module_alias] = true
+}
+
+// Private declarations of module files, by mangled name: the original name, the
+// file that declares it, and whether it is a type alias (the error differs for a type alias).
+mut private_names [string:string] = {:}
+mut private_files [string:string] = {:}
+// Private declarations that are types (struct, enum, alias): a refused reference to one is not a use of its import
+mut private_types [string:bool] = {:}
+// The import alias an `import and use` / `using` module provided each name through
+mut used_import_alias [string:string] = {:}
+
+// A bare name that resolved through `using` is a use of its import, unless it names another file's private type
+fn note_used_decl_use(qualifier ^Qualifier, mangled string) {
+    if qualifier^.module_name != "" || !maps.contains_key(used_import_alias, mangled) { return }
+    if maps.contains_key(private_types, mangled) && private_types[mangled] && private_files[mangled] != qualifier^.file { return }
+    entry_used_aliases[used_import_alias[mangled]] = true
+}
+mut private_aliases [string:bool] = {:}
+
+// A reference to a mangled name, checked against the private declarations once
+// every module file has been read.
+const NameReference struct {
+    mangled string
+    file string
+    line i64
+    column i64
+}
+
+mut name_references [NameReference] = {}
+
+// A `name.member` reference in a file whose aliases do not include `name`: an error
+// when `name` is a module some other file of the program imports.
+const QualifierReference struct {
+    qualifier string
+    module_name string
+    file string
+    line i64
+    column i64
+}
+
+mut qualifier_references [QualifierReference] = {}
+
+// A bare name that two `import and use` modules of a file both declare, as "first|second"
+// in import order; the file being qualified decides which references are ambiguous.
+mut ambiguous_decls [string:string] = {:}
+
+fn set_ambiguous_decls(names [string:string]) {
+    ambiguous_decls = names
+}
+
+const AmbiguousReference struct {
+    name string
+    first_module string
+    second_module string
+    file string
+    line i64
+    column i64
+}
+
+mut ambiguous_references [AmbiguousReference] = {}
+
+// Notes a use of `word` that two `import and use` modules both provide.
+fn note_ambiguous_use(qualifier ^Qualifier, word string) {
+    if !maps.contains_key(ambiguous_decls, word) { return }
+    separator = strings.index_of(ambiguous_decls[word], "|")
+    first_module = strings.slice(ambiguous_decls[word], 0, separator)
+    second_module = strings.slice(ambiguous_decls[word], separator + 1, len(ambiguous_decls[word]))
+    if qualifier^.module_name == "" {
+        entry_used_aliases[first_module] = true
+        entry_used_aliases[second_module] = true
+    }
+    arrays.append(ambiguous_references, AmbiguousReference{name: word, first_module: first_module, second_module: second_module, file: qualifier^.file, line: qualifier^.line, column: qualifier^.column})
+}
+
+// The modules the program's own files have introduced so far.
+mut program_modules [string:bool] = {:}
+
+fn note_program_module(name string) {
+    program_modules[name] = true
+}
+
+const Qualifier struct {
+    module_name string
+    file string
+    line i64
+    column i64
+    outer_line i64
+    outer_column i64
+    in_field_type bool
+    in_cast_target bool
+    in_function bool
+    sanitize bool
+    type_names [string:bool]
+    locals [string:bool]
+    own_decls [string:bool]
+    sibling_only [string:bool]
+    aliases [string:string]
+    used_decls [string:string]
+}
+
+// The first name segment of `rest` ("Hidden" for "Hidden.make").
+fn first_segment(rest string) -> string {
+    dot = strings.index_of(rest, ".")
+    if dot >= 0 { return strings.slice(rest, 0, dot) }
+    return rest
+}
+
+// Notes that the file being qualified refers to `mangled` at the node it is in.
+fn note_reference(qualifier ^Qualifier, mangled string) {
+    if qualifier^.in_field_type && maps.contains_key(private_aliases, mangled) { return }
+    arrays.append(name_references, NameReference{mangled: mangled, file: qualifier^.file, line: qualifier^.line, column: qualifier^.column})
+}
+
+// Registers the private top-level declarations of one module file.
+fn register_private_declarations(program ^ast.AstNode, module_name string, file string) {
+    for_each statement in program^.program^.stmts {
+        mut name string = ""
+        mut is_private = false
+        mut is_alias = false
+        #strict
+        when statement^.kind {
+            is ast.NodeKind.FUNC_DECL {
+                name = statement^.func_decl^.name
+                is_private = statement^.func_decl^.is_private
+            }
+            is ast.NodeKind.STRUCT_DECL {
+                name = statement^.struct_decl^.name
+                is_private = statement^.struct_decl^.is_private
+            }
+            is ast.NodeKind.ENUM_DECL {
+                name = statement^.enum_decl^.name
+                is_private = statement^.enum_decl^.is_private
+            }
+            is ast.NodeKind.VAR_DECL {
+                name = statement^.var_decl^.name
+                is_private = statement^.var_decl^.is_private
+            }
+            is ast.NodeKind.ALIAS_DECL {
+                name = statement^.alias_decl^.name
+                is_private = statement^.alias_decl^.is_private
+                is_alias = true
+            }
+            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
+               ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+               ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+               ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+               ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+               ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+               ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+               ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+               ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+               ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+               ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+               ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
+               ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        }
+        if !is_private { continue }
+        mangled string = mangle(module_name, name)
+        private_names[mangled] = name
+        private_files[mangled] = file
+        private_aliases[mangled] = is_alias
+        private_types[mangled] = statement^.kind == ast.NodeKind.STRUCT_DECL || statement^.kind == ast.NodeKind.ENUM_DECL || is_alias
+    }
+}
+
+fn is_ident_byte(character char) -> bool {
+    return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '_'
+}
+
+fn mangle(module_name string, name string) -> string {
+    if module_name == "" { return name }
+    return fmt.sprintf("%s_%s", {module_name, name})
+}
+
+// Rewrites one identifier-or-dotted run of a type spelling.
+fn qualify_word(qualifier ^Qualifier, word string) -> string {
+    dot = strings.index_of(word, ".")
+    if dot >= 0 {
+        prefix_alias = strings.slice(word, 0, dot)
+        if maps.contains_key(qualifier^.aliases, prefix_alias) {
+            qualified_word string = mangle(qualifier^.aliases[prefix_alias], strings.slice(word, dot + 1, len(word)))
+            is_refused_cast_word bool = qualifier^.in_cast_target && maps.contains_key(private_types, qualified_word) && private_types[qualified_word] && private_files[qualified_word] != qualifier^.file
+            if qualifier^.module_name == "" && !is_refused_cast_word { entry_used_aliases[prefix_alias] = true }
+            note_reference(qualifier, mangle(qualifier^.aliases[prefix_alias], first_segment(strings.slice(word, dot + 1, len(word)))))
+            return qualified_word
+        }
+        // A module of the program that this file does not import
+        if prefix_alias != qualifier^.module_name && !maps.contains_key(qualifier^.locals, prefix_alias) && !maps.contains_key(qualifier^.type_names, prefix_alias) {
+            arrays.append(qualifier_references, QualifierReference{qualifier: prefix_alias, module_name: qualifier^.module_name, file: qualifier^.file, line: qualifier^.line, column: qualifier^.column})
+            if maps.contains_key(program_modules, prefix_alias) { return mangle(prefix_alias, strings.slice(word, dot + 1, len(word))) }
+        }
+        return word
+    }
+    if maps.contains_key(qualifier^.own_decls, word) {
+        if maps.contains_key(qualifier^.sibling_only, word) { note_reference(qualifier, mangle(qualifier^.module_name, word)) }
+        return mangle(qualifier^.module_name, word)
+    }
+    if maps.contains_key(qualifier^.used_decls, word) {
+        note_used_decl_use(qualifier, qualifier^.used_decls[word])
+        note_reference(qualifier, qualifier^.used_decls[word])
+        return qualifier^.used_decls[word]
+    }
+    return word
+}
+
+// Rewrites every identifier inside a type spelling such as `[^lib.Foo]` or
+// `map[string:Bar]`.
+fn qualify_type(qualifier ^Qualifier, type_name string) -> string {
+    if type_name == "" { return type_name }
+    mut out string = ""
+    mut i i64 = 0
+    n i64 = len(type_name)
+    as_long_as i < n {
+        character = strings.char_at(type_name, i)
+        if is_ident_byte(character) {
+            start i64 = i
+            as_long_as i < n && (is_ident_byte(strings.char_at(type_name, i)) || strings.char_at(type_name, i) == '.') {
+                i = i + 1
+            }
+            out = "${out}${qualify_word(qualifier, strings.slice(type_name, start, i))}"
+        } otherwise {
+            out = "${out}${strings.slice(type_name, i, i + 1)}"
+            i = i + 1
+        }
+    }
+    return out
+}
+
+fn qualify_types(qualifier ^Qualifier, names [string]) -> [string] {
+    mut out [string] = {}
+    for_each name in names { arrays.append(out, qualify_type(qualifier, name)) }
+    return out
+}
+
+fn qualify_all(qualifier ^Qualifier, nodes [^ast.AstNode]) {
+    for_each node in nodes { qualify_node(qualifier, node) }
+}
+
+fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
+    if node == nil { return }
+    qualifier^.line = node^.tok.line
+    qualifier^.column = node^.tok.col
+    // A reference through a chain of members is reported at the call it ends in, or
+    // else at the outermost member; only a call or member sets this for its child.
+    outer_line i64 = qualifier^.outer_line
+    outer_column i64 = qualifier^.outer_column
+    qualifier^.outer_line = 0
+    qualifier^.outer_column = 0
+    #strict
+    when node^.kind {
+        is ast.NodeKind.LABEL {
+            if maps.contains_key(qualifier^.locals, node^.label^.value) {
+                node^.label^.written_name = node^.label^.value
+                node^.label^.value = renamed(qualifier, node^.label^.value)
+            } or maps.contains_key(qualifier^.own_decls, node^.label^.value) {
+                if maps.contains_key(qualifier^.sibling_only, node^.label^.value) { note_reference(qualifier, mangle(qualifier^.module_name, node^.label^.value)) }
+                node^.label^.written_name = node^.label^.value
+                node^.label^.value = mangle(qualifier^.module_name, node^.label^.value)
+            } or maps.contains_key(qualifier^.used_decls, node^.label^.value) {
+                note_ambiguous_use(qualifier, node^.label^.value)
+                note_used_decl_use(qualifier, qualifier^.used_decls[node^.label^.value])
+                note_reference(qualifier, qualifier^.used_decls[node^.label^.value])
+                node^.label^.written_name = node^.label^.value
+                node^.label^.value = qualifier^.used_decls[node^.label^.value]
+            }
+        }
+        is ast.NodeKind.MEMBER_EXPR {
+            obj = node^.member^.object
+            // A module of the program that this file does not import still resolves, after an error
+            is_unimported bool = obj^.kind == ast.NodeKind.LABEL && !maps.contains_key(qualifier^.aliases, obj^.label^.value) && maps.contains_key(program_modules, obj^.label^.value) && obj^.label^.value != qualifier^.module_name && !maps.contains_key(qualifier^.locals, obj^.label^.value) && !maps.contains_key(qualifier^.own_decls, obj^.label^.value) && !maps.contains_key(qualifier^.type_names, obj^.label^.value)
+            if obj^.kind == ast.NodeKind.LABEL && (is_unimported || maps.contains_key(qualifier^.aliases, obj^.label^.value) && !maps.contains_key(qualifier^.locals, obj^.label^.value)) {
+                mut target_module string = obj^.label^.value
+                if !is_unimported {
+                    target_module = qualifier^.aliases[obj^.label^.value]
+                }
+                qualified string = mangle(target_module, node^.member^.member)
+                // A cast target naming another file's private type is refused, so it is not a use of the import
+                is_refused_cast bool = qualifier^.in_cast_target && maps.contains_key(private_types, qualified) && private_types[qualified] && private_files[qualified] != qualifier^.file
+                if !is_unimported && qualifier^.module_name == "" && !is_refused_cast { entry_used_aliases[obj^.label^.value] = true }
+                if outer_line != 0 {
+                    qualifier^.line = outer_line
+                    qualifier^.column = outer_column
+                }
+                if is_unimported { arrays.append(qualifier_references, QualifierReference{qualifier: obj^.label^.value, module_name: qualifier^.module_name, file: qualifier^.file, line: qualifier^.line, column: qualifier^.column}) }
+                note_reference(qualifier, qualified)
+                written_module = obj^.label^.value
+                written_member = node^.member^.member
+                node^.kind = ast.NodeKind.LABEL
+                node^.label = new(ast.LabelData)
+                node^.label^.value = qualified
+                node^.label^.qualifier = written_module
+                node^.label^.qualified_member = written_member
+            } otherwise {
+                qualifier^.outer_line = outer_line
+                qualifier^.outer_column = outer_column
+                if outer_line == 0 {
+                    qualifier^.outer_line = node^.tok.line
+                    qualifier^.outer_column = node^.tok.col
+                }
+                if obj^.kind == ast.NodeKind.LABEL && !maps.contains_key(qualifier^.locals, obj^.label^.value) && !maps.contains_key(qualifier^.own_decls, obj^.label^.value) && !maps.contains_key(qualifier^.type_names, obj^.label^.value) {
+                    mut reference_line i64 = node^.tok.line
+                    mut reference_column i64 = node^.tok.col
+                    if outer_line != 0 {
+                        reference_line = outer_line
+                        reference_column = outer_column
+                    }
+                    arrays.append(qualifier_references, QualifierReference{qualifier: obj^.label^.value, module_name: qualifier^.module_name, file: qualifier^.file, line: reference_line, column: reference_column})
+                }
+                qualify_node(qualifier, obj)
+                // an enum variant or struct function is not a field
+                if obj^.kind != ast.NodeKind.LABEL || (!maps.contains_key(qualifier^.type_names, obj^.label^.value) && obj^.label^.value != "extern") && !names_stdlib_module(qualifier, obj) {
+                    node^.member^.member = renamed_field(qualifier, node^.member^.member)
+                }
+            }
+        }
+        is ast.NodeKind.INTERPOLATED_STRING { qualify_all(qualifier, node^.interp_string^.parts) }
+        is ast.NodeKind.ARRAY_VALUE { qualify_all(qualifier, node^.array_value^.elements) }
+        is ast.NodeKind.MAP_VALUE {
+            qualify_all(qualifier, node^.map_value^.keys)
+            qualify_all(qualifier, node^.map_value^.values)
+        }
+        is ast.NodeKind.STRUCT_VALUE {
+            if maps.contains_key(qualifier^.used_decls, node^.struct_value^.name) && !maps.contains_key(qualifier^.own_decls, node^.struct_value^.name) { note_ambiguous_use(qualifier, node^.struct_value^.name) }
+            node^.struct_value^.name = qualify_type(qualifier, node^.struct_value^.name)
+            qualify_all(qualifier, node^.struct_value^.field_values)
+            if qualifier^.sanitize {
+                mut renamed_fields [string] = {}
+                for_each field_name in node^.struct_value^.field_names { arrays.append(renamed_fields, renamed_field(qualifier, field_name)) }
+                node^.struct_value^.field_names = renamed_fields
+            }
+        }
+        is ast.NodeKind.PREFIX_EXPR { qualify_node(qualifier, node^.prefix^.right) }
+        is ast.NodeKind.INFIX_EXPR {
+            qualify_node(qualifier, node^.infix^.left)
+            qualify_node(qualifier, node^.infix^.right)
+        }
+        is ast.NodeKind.POSTFIX_EXPR { qualify_node(qualifier, node^.postfix^.left) }
+        is ast.NodeKind.CALL_EXPR {
+            qualifier^.outer_line = node^.tok.line
+            qualifier^.outer_column = node^.tok.col
+            qualify_node(qualifier, node^.call^.function)
+            arguments = node^.call^.args
+            if node^.call^.function^.kind == ast.NodeKind.LABEL && node^.call^.function^.label^.value == "cast" && len(arguments) == CAST_ARGUMENT_COUNT {
+                qualify_node(qualifier, arguments[0])
+                qualifier^.in_cast_target = true
+                qualify_node(qualifier, arguments[1])
+                qualifier^.in_cast_target = false
+            } otherwise {
+                qualify_all(qualifier, arguments)
+            }
+        }
+        is ast.NodeKind.INDEX_EXPR {
+            qualify_node(qualifier, node^.index_data^.left)
+            qualify_node(qualifier, node^.index_data^.index_expr)
+        }
+        is ast.NodeKind.NEW_EXPR { node^.new_expr^.type_name = qualify_type(qualifier, node^.new_expr^.type_name) }
+        is ast.NodeKind.RANGE_EXPR {
+            qualify_node(qualifier, node^.range_expr^.start_expr)
+            qualify_node(qualifier, node^.range_expr^.end_expr)
+            qualify_node(qualifier, node^.range_expr^.step)
+        }
+        is ast.NodeKind.CAST_EXPR {
+            qualify_node(qualifier, node^.cast_data^.value)
+            qualifier^.line = node^.tok.line
+            qualifier^.column = node^.tok.col
+            qualifier^.in_cast_target = true
+            node^.cast_data^.target_type = qualify_type(qualifier, node^.cast_data^.target_type)
+            node^.cast_data^.element_type = qualify_type(qualifier, node^.cast_data^.element_type)
+            qualifier^.in_cast_target = false
+        }
+        is ast.NodeKind.FUNC_REF { qualify_node(qualifier, node^.func_ref^.function) }
+        is ast.NodeKind.WHEN_PATTERN {
+            node^.when_pattern^.enum_name = qualify_type(qualifier, node^.when_pattern^.enum_name)
+            for_each binding in node^.when_pattern^.bindings { bind_local(qualifier, binding) }
+            if qualifier^.sanitize {
+                mut renamed_bindings [string] = {}
+                for_each binding in node^.when_pattern^.bindings { arrays.append(renamed_bindings, renamed(qualifier, binding)) }
+                node^.when_pattern^.bindings = renamed_bindings
+            }
+        }
+        is ast.NodeKind.VAR_DECL {
+            node^.var_decl^.type_name = qualify_type(qualifier, node^.var_decl^.type_name)
+            qualify_node(qualifier, node^.var_decl^.value)
+            bind_local(qualifier, node^.var_decl^.name)
+            node^.var_decl^.name = renamed(qualifier, node^.var_decl^.name)
+        }
+        is ast.NodeKind.ASSIGN_STMT {
+            qualify_node(qualifier, node^.assign^.value)
+            // a bare declaration binds its name after its value is read
+            if node^.assign^.is_decl && node^.assign^.target^.kind == ast.NodeKind.LABEL { bind_local(qualifier, node^.assign^.target^.label^.value) }
+            qualify_node(qualifier, node^.assign^.target)
+        }
+        is ast.NodeKind.RETURN_STMT { qualify_all(qualifier, node^.return_stmt^.values) }
+        is ast.NodeKind.ENSURE_STMT { qualify_node(qualifier, node^.ensure_stmt^.expr) }
+        is ast.NodeKind.EXPR_STMT { qualify_node(qualifier, node^.expr_stmt^.expr) }
+        is ast.NodeKind.BLOCK_STMT { qualify_all(qualifier, node^.block^.stmts) }
+        is ast.NodeKind.IF_STMT {
+            qualify_node(qualifier, node^.if_stmt^.condition)
+            qualify_node(qualifier, node^.if_stmt^.consequence)
+            qualify_node(qualifier, node^.if_stmt^.alternative)
+        }
+        is ast.NodeKind.WHEN_STMT {
+            qualify_node(qualifier, node^.when_stmt^.value)
+            cases = node^.when_stmt^.cases
+            for_each when_case in cases {
+                qualify_all(qualifier, when_case.values)
+                qualify_node(qualifier, when_case.body)
+            }
+            qualify_node(qualifier, node^.when_stmt^.default_body)
+        }
+        is ast.NodeKind.FOR_STMT {
+            node^.for_stmt^.var_type = qualify_type(qualifier, node^.for_stmt^.var_type)
+            qualify_node(qualifier, node^.for_stmt^.iterable)
+            bind_local(qualifier, node^.for_stmt^.var_name)
+            node^.for_stmt^.var_name = renamed(qualifier, node^.for_stmt^.var_name)
+            qualify_node(qualifier, node^.for_stmt^.body)
+        }
+        is ast.NodeKind.FOR_EACH_STMT {
+            qualify_node(qualifier, node^.for_each_stmt^.collection)
+            bind_local(qualifier, node^.for_each_stmt^.index_name)
+            bind_local(qualifier, node^.for_each_stmt^.var_name)
+            node^.for_each_stmt^.index_name = renamed(qualifier, node^.for_each_stmt^.index_name)
+            node^.for_each_stmt^.var_name = renamed(qualifier, node^.for_each_stmt^.var_name)
+            qualify_node(qualifier, node^.for_each_stmt^.body)
+        }
+        is ast.NodeKind.WHILE_STMT {
+            qualify_node(qualifier, node^.while_stmt^.condition)
+            qualify_node(qualifier, node^.while_stmt^.body)
+        }
+        is ast.NodeKind.LOOP_STMT { qualify_node(qualifier, node^.loop_stmt^.body) }
+        is ast.NodeKind.FUNC_DECL { qualify_func(qualifier, node) }
+        is ast.NodeKind.STRUCT_DECL {
+            declared_fields = node^.struct_decl^.struct_fields
+            mut new_fields [ast.StructField] = {}
+            for_each field in declared_fields {
+                qualify_node(qualifier, field.default_value)
+                qualifier^.in_field_type = true
+                field_type string = qualify_type(qualifier, field.type_name)
+                qualifier^.in_field_type = false
+                arrays.append(new_fields, ast.StructField{name: renamed_field(qualifier, field.name), type_name: field_type, default_value: field.default_value, json_tag: field.json_tag})
+            }
+            node^.struct_decl^.struct_fields = new_fields
+            for_each struct_func in node^.struct_decl^.funcs { qualify_func(qualifier, struct_func.func_decl) }
+        }
+        is ast.NodeKind.ALIAS_DECL { node^.alias_decl^.target_type = qualify_type(qualifier, node^.alias_decl^.target_type) }
+        is ast.NodeKind.ENUM_DECL {
+            values = node^.enum_decl^.values
+            mut new_values [ast.EnumVal] = {}
+            for_each value in values {
+                qualify_node(qualifier, value.value)
+                arrays.append(new_values, ast.EnumVal{name: value.name, value: value.value, payload_types: qualify_types(qualifier, value.payload_types)})
+            }
+            node^.enum_decl^.values = new_values
+        }
+        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
+           ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
+           ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+           ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
+           ast.NodeKind.PROGRAM {}
+    }
+}
+
+fn qualify_func(qualifier ^Qualifier, node ^ast.AstNode) {
+    qualifier^.in_function = true
+    qualifier^.locals = {:}
+    for_each declared_param in node^.func_decl^.params { qualifier^.locals[declared_param.name] = true }
+    for_each declared_return in node^.func_decl^.return_names { bind_local(qualifier, declared_return) }
+    if qualifier^.sanitize {
+        mut renamed_returns [string] = {}
+        for_each declared_return in node^.func_decl^.return_names { arrays.append(renamed_returns, renamed(qualifier, declared_return)) }
+        node^.func_decl^.return_names = renamed_returns
+    }
+    params = node^.func_decl^.params
+    mut new_params [ast.Param] = {}
+    for_each param in params {
+        qualify_node(qualifier, param.default_value)
+        arrays.append(new_params, ast.Param{name: renamed(qualifier, param.name), type_name: qualify_type(qualifier, param.type_name), is_mutable: param.is_mutable, is_type_param: param.is_type_param, type_from_default: param.type_from_default, default_value: param.default_value})
+    }
+    node^.func_decl^.params = new_params
+    node^.func_decl^.return_types = qualify_types(qualifier, node^.func_decl^.return_types)
+    qualify_node(qualifier, node^.func_decl^.body)
+    qualifier^.in_function = false
+    qualifier^.locals = {:}
+}
+
+// Qualifies one parsed file. `aliases` maps each import alias visible in the file
+// to the module name that its declarations were mangled with.
+// `sibling_decls` holds the declarations of the other files of the same directory module.
+fn qualify_program(program ^ast.AstNode, module_name string, file string, aliases [string:string], used_decls [string:string], sibling_decls [string:bool]) {
+    qualifier = new(Qualifier)
+    qualifier^.module_name = module_name
+    qualifier^.file = file
+    qualifier^.aliases = aliases
+    qualifier^.used_decls = used_decls
+    mut decls [string:bool] = {:}
+    for_each statement in program^.program^.stmts {
+        #strict
+        when statement^.kind {
+            is ast.NodeKind.FUNC_DECL { decls[statement^.func_decl^.name] = true }
+            is ast.NodeKind.STRUCT_DECL { decls[statement^.struct_decl^.name] = true }
+            is ast.NodeKind.ENUM_DECL { decls[statement^.enum_decl^.name] = true }
+            is ast.NodeKind.VAR_DECL { decls[statement^.var_decl^.name] = true }
+            is ast.NodeKind.ALIAS_DECL { decls[statement^.alias_decl^.name] = true }
+            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
+               ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+               ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+               ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+               ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+               ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+               ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+               ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+               ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+               ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+               ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+               ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
+               ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        }
+    }
+    // Names only another file of the same directory module declares
+    mut sibling_only [string:bool] = {:}
+    for_each sibling_name in maps.get_keys(sibling_decls) {
+        if !maps.contains_key(decls, sibling_name) { sibling_only[sibling_name] = true }
+    }
+    for_each sibling_name in maps.get_keys(sibling_only) { decls[sibling_name] = true }
+    qualifier^.sibling_only = sibling_only
+    qualifier^.own_decls = decls
+    qualify_all(qualifier, program^.program^.stmts)
+}
+
+// A name declared inside a function shadows a module alias or declaration of the same name.
+fn bind_local(qualifier ^Qualifier, name string) {
+    if qualifier^.in_function && name != "" { qualifier^.locals[name] = true }
+}
+
+// Names C reserves or the C headers define; the generated code spells them `_gray_NAME`.
+fn is_c_keyword(name string) -> bool {
+    return arrays.contains({"EOF", "NULL", "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "errno", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "stderr", "stdin", "stdout", "struct", "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while"}, name)
+}
+
+// A local, parameter or loop variable under the name the generated C uses.
+fn renamed(qualifier ^Qualifier, name string) -> string {
+    if qualifier^.sanitize && qualifier^.in_function && is_c_keyword(name) { return "_gray_${name}" }
+    if qualifier^.sanitize && qualifier^.in_function && name != "" { ast.note_emitted_identifier(name) }
+    return name
+}
+
+// A struct field under the name the generated C uses.
+fn renamed_field(qualifier ^Qualifier, name string) -> string {
+    if qualifier^.sanitize && is_c_keyword(name) { return "_gray_${name}" }
+    if qualifier^.sanitize && name != "" { ast.note_emitted_identifier(name) }
+    return name
+}
+
+// Renames the C-reserved identifiers of a checked program, ready for codegen.
+fn sanitize_program(program ^ast.AstNode) {
+    qualifier = new(Qualifier)
+    qualifier^.sanitize = true
+    mut empty_decls [string:bool] = {:}
+    qualifier^.own_decls = empty_decls
+    qualifier^.sibling_only = empty_decls
+    qualifier^.aliases = {:}
+    qualifier^.used_decls = {:}
+    mut type_names [string:bool] = {:}
+    for_each statement in program^.program^.stmts {
+        if statement^.kind == ast.NodeKind.ENUM_DECL { type_names[statement^.enum_decl^.name] = true }
+        if statement^.kind == ast.NodeKind.STRUCT_DECL { type_names[statement^.struct_decl^.name] = true }
+    }
+    qualifier^.type_names = type_names
+    qualify_all(qualifier, program^.program^.stmts)
+}
+
+fn note_used_import_alias(mangled string, module_alias string) {
+    used_import_alias[mangled] = module_alias
+}
+
+// Is `obj` the qualifier of a standard-library module function (`arrays` in `arrays.append`)?
+fn names_stdlib_module(qualifier ^Qualifier, obj ^ast.AstNode) -> bool {
+    if obj^.kind != ast.NodeKind.LABEL { return false }
+    name = obj^.label^.value
+    if maps.contains_key(qualifier^.locals, name) || maps.contains_key(qualifier^.own_decls, name) { return false }
+    mut module_name = name
+    if maps.contains_key(qualifier^.aliases, name) { module_name = qualifier^.aliases[name] }
+    return reserved.is_stdlib_module_name(module_name)
+}

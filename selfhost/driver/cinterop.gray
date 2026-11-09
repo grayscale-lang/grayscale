@@ -1,0 +1,950 @@
+/*
+ * cinterop.gray:  Checks on the C headers named by `extern import`: header
+ * preflight and cross-file header conflicts. The target C compiler is the
+ * source of truth.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @io, @os, @strings, @fmt, @arrays, @path, @maps
+import "../typechecker/types"
+import "./diagnostics"
+import "../typechecker/typechecker"
+import "../util/error_registry"
+
+// Fewer headers than this cannot conflict with each other.
+const MIN_HEADERS_FOR_CONFLICT i64 = 2
+// The length of the text before a quoted type in the AST dump (a space and a quote, or ":" and a quote).
+const DUMP_QUOTE_PREFIX_LENGTH i64 = 2
+// Longer type, signature and function pointer spellings than these are not read.
+const MAX_TYPE_TEXT_LENGTH i64 = 128
+const MAX_SIGNATURE_TEXT_LENGTH i64 = 512
+const MAX_FUNCTION_POINTER_TEXT_LENGTH i64 = 256
+// The number of top-level groups in a signature that also holds a GCC part.
+const GROUP_COUNT_WITH_GCC_PART i64 = 2
+// The length of "(*)", which marks a function pointer type.
+const FUNCTION_POINTER_MARKER_LENGTH i64 = 3
+// The base of the numbers in a Grayscale type name.
+const DECIMAL_BASE i64 = 10
+// Widths in bits of the C types, and of the Grayscale bool and char.
+const C_CHAR_BITS i64 = 8
+const C_SHORT_BITS i64 = 16
+const C_INT_BITS i64 = 32
+const C_LONG_BITS i64 = 64
+const C_LONG_LONG_BITS i64 = 64
+const C_FLOAT_BITS i64 = 32
+const C_DOUBLE_BITS i64 = 64
+const BOOL_BITS i64 = 8
+const GRAY_CHAR_BITS i64 = 32
+
+// One `extern import "header"`: the header as written, the file that wrote it, and where
+// the header's string literal sits.
+const CHeader struct {
+    header_name string
+    file        string
+    line        i64
+    column      i64
+}
+
+// Every C header import of the program in the order the import queue reached them.
+mut c_headers [CHeader] = {}
+
+fn note_c_import(header_path string, file string, line i64, column i64) {
+    arrays.append(c_headers, CHeader{header_name: header_path, file: file, line: line, column: column})
+}
+
+fn c_header_is_local(header_path string) -> bool {
+    return strings.starts_with(header_path, "./") || strings.starts_with(header_path, "../")
+}
+
+// The directory of `file_path` with its trailing separator, "./" when it has none.
+fn directory_of(file_path string) -> string {
+    separator_index i64 = strings.last_index_of(file_path, "/")
+    if separator_index < 0 { return "./" }
+    return strings.slice(file_path, 0, separator_index + 1)
+}
+
+// A local header resolved against the directory of the file that imports it.
+fn resolve_local_header(header CHeader) -> string {
+    return "${directory_of(header.file)}${header.header_name}"
+}
+
+// The key two imports of one header share: the resolved path of a local header, the name
+// of a system one.
+fn header_key(header CHeader) -> string {
+    if c_header_is_local(header.header_name) { return resolve_local_header(header) }
+    return header.header_name
+}
+
+// Each distinct header, in first-seen order.
+fn distinct_c_headers() -> [CHeader] {
+    mut unique_headers [CHeader] = {}
+    mut seen [string:bool] = {:}
+    for_each header in c_headers {
+        key string = "${c_header_is_local(header.header_name)}:${header_key(header)}"
+        if maps.contains_key(seen, key) { continue }
+        seen[key] = true
+        arrays.append(unique_headers, header)
+    }
+    return unique_headers
+}
+
+// Whether `compiler` can be launched at all.
+fn c_compiler_runs(compiler string) -> bool {
+    probe_result, probe_error = os.exec(compiler, {"--version"})
+    return probe_error == nil && probe_result.exit_code == 0
+}
+
+// The C compiler that checks headers: GRAY_CC, then CC, when they name one program; else
+// the first of cc, gcc, clang on PATH.
+fn detect_c_compiler() -> string {
+    environment_names [string] = {"GRAY_CC", "CC"}
+    for_each variable in environment_names {
+        value string = os.get_env(variable)
+        if value == "" || strings.contains_any(value, " \t") { continue }
+        if c_compiler_runs(value) { return value }
+    }
+    candidate_names [string] = {"cc", "gcc", "clang"}
+    for_each candidate in candidate_names {
+        if c_compiler_runs(candidate) { return candidate }
+    }
+    return ""
+}
+
+// The `#include` lines of the headers, as the generated C includes them.
+fn header_includes(headers [CHeader]) -> string {
+    mut lines string = ""
+    for_each header in headers {
+        if c_header_is_local(header.header_name) {
+            // Absolute, as the generated C includes it: a stub in the temp directory cannot
+            // resolve a path relative to the working directory
+            mut target string = resolve_local_header(header)
+            absolute_target, absolute_error = path.absolute_path(target)
+            if absolute_error == nil { target = absolute_target }
+            lines = "${lines}#include \"${target}\"\n"
+        } otherwise {
+            lines = "${lines}#include <${header.header_name}>\n"
+        }
+    }
+    return lines
+}
+
+// The compiler flags that put the directory of every file naming a local header on the
+// quoted-include path.
+fn local_header_flags() -> [string] {
+    mut flags [string] = {}
+    mut directories [string] = {}
+    for_each header in c_headers {
+        if !c_header_is_local(header.header_name) { continue }
+        directory string = directory_of(header.file)
+        if arrays.contains(directories, directory) { continue }
+        arrays.append(directories, directory)
+        arrays.append(flags, "-iquote")
+        arrays.append(flags, directory)
+    }
+    return flags
+}
+
+// gcc quotes symbols with curly quotes in a UTF-8 locale; clang uses ASCII ones.
+fn normalize_c_quotes(text string) -> string {
+    return strings.replace(strings.replace(text, "‘", "'"), "’", "'")
+}
+
+fn remove_file(file_path string) {
+    mut _, _ = io.delete_file(file_path)
+}
+
+// Runs the compiler's -fsyntax-only on `source` written to a stub file. Returns the exit code
+// (-1 when it could not be run) and the compiler's stderr.
+fn run_syntax_probe(compiler string, source string, extra_flags [string]) -> (i64, string) {
+    stub_path, stub_error = io.temp_file()
+    if stub_error != nil { return -1, "" }
+    stub_c_path string = "${stub_path}.c"
+    _, write_error = io.write_file(stub_c_path, source)
+    if write_error != nil { return -1, "" }
+    mut arguments [string] = {"-fsyntax-only"}
+    for_each flag in extra_flags { arrays.append(arguments, flag) }
+    for_each flag in local_header_flags() { arrays.append(arguments, flag) }
+    arrays.append(arguments, stub_c_path)
+    result, exec_error = os.exec(compiler, arguments)
+    remove_file(stub_c_path)
+    remove_file(stub_path)
+    if exec_error != nil { return -1, "" }
+    return result.exit_code, normalize_c_quotes(result.stderr)
+}
+
+// Whether the compiler rejects a stub that includes only `headers`, and what it said.
+fn headers_fail_to_compile(compiler string, headers [CHeader]) -> (bool, string) {
+    code, error_text = run_syntax_probe(compiler, header_includes(headers), {})
+    return code > 0, error_text
+}
+
+// The name in quotes right after `marker` in `text`, or "".
+fn quoted_after(text string, marker string) -> string {
+    start i64 = strings.index_of(text, marker)
+    if start < 0 { return "" }
+    name_start i64 = start + len(marker)
+    if name_start >= len(text) || strings.char_at(text, name_start) != '\'' { return "" }
+    rest string = strings.slice(text, name_start + 1, len(text))
+    end_index i64 = strings.index_of(rest, "'")
+    if end_index < 0 { return "" }
+    return strings.slice(rest, 0, end_index)
+}
+
+// Two headers of the program that declare one C symbol differently. All `extern
+// import`s share one translation unit, so the pair is found by compiling the headers
+// together, then narrowing. Fails open, like the C driver. Returns the diagnostics found.
+fn report_c_header_conflicts(compiler string) -> [diagnostics.Diagnostic] {
+    mut found [diagnostics.Diagnostic] = {}
+    headers = distinct_c_headers()
+    if len(headers) < MIN_HEADERS_FOR_CONFLICT { return found }
+
+    all_fail, _ = headers_fail_to_compile(compiler, headers)
+    if !all_fail { return found }
+    for_each header in headers {
+        single_fails, _ = headers_fail_to_compile(compiler, {header})
+        if single_fails { return found }
+    }
+
+    for later_index in range(1, len(headers)) {
+        for earlier_index in range(0, later_index) {
+            later = headers[later_index]
+            earlier = headers[earlier_index]
+            pair_fails, error_text = headers_fail_to_compile(compiler, {earlier, later})
+            if !pair_fails { continue }
+
+            mut symbol string = quoted_after(error_text, "conflicting types for ")
+            if symbol == "" { symbol = quoted_after(error_text, "redefinition of ") }
+            if symbol == "" { return found }
+
+            help string = "every 'extern import' in the program shares one C namespace; '${earlier.header_name}' is imported in ${earlier.file}. Import only one of the two headers, or rename the symbol in one of them."
+            message string = error_registry.registry_message_formatted("E6016", {later.header_name, earlier.header_name, symbol})
+            arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E6016", message: message, file: later.file, line: later.line, column: later.column, help: help})
+            return found
+        }
+    }
+    return found
+}
+
+// A header that cannot be found for this target. Only the distinct headers are asked.
+fn preflight_c_headers(compiler string) -> [diagnostics.Diagnostic] {
+    mut found [diagnostics.Diagnostic] = {}
+    for_each header in distinct_c_headers() {
+        mut is_found bool = true
+        if c_header_is_local(header.header_name) {
+            is_found = io.file_exists(resolve_local_header(header))
+        } otherwise {
+            code, _ = run_syntax_probe(compiler, "#include <${header.header_name}>\nint main(void){return 0;}\n", {})
+            // A compiler that could not be run leaves the real compile to report it
+            is_found = code <= 0
+        }
+        if is_found { continue }
+        help string = "'${header.header_name}' is not available for this target, or the library that provides it is not installed. Grayscale has no conditional import: only import C headers that are available on every target you build for."
+        message string = error_registry.registry_message_formatted("E6015", {header.header_name})
+        arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E6015", message: message, file: header.file, line: header.line, column: header.column, help: help})
+    }
+    return found
+}
+
+// --- Validation of `extern.NAME` uses against the real headers ---
+
+// What a C function hands back or takes, as far as a Grayscale declaration or cast can
+// tell: the kind, not the exact width. CLASS_UNKNOWN is a spelling not recognised (a
+// typedef name); it is never rejected.
+const CLASS_UNKNOWN i64 = 0
+const CLASS_VOID i64 = 1
+const CLASS_INTEGER i64 = 2
+const CLASS_FLOATING_POINT i64 = 3
+const CLASS_POINTER i64 = 4
+const CLASS_AGGREGATE i64 = 5
+
+// The most callback arguments of one call that are checked
+const CALLBACK_ARGUMENT_LIMIT i64 = 8
+// How many leading parameters of a C function have their kind recorded
+const SIGNATURE_PARAMETER_LIMIT i64 = 16
+
+const CSignature struct {
+    minimum_parameters i64
+    is_variadic        bool
+    return_class       i64
+    return_text        string
+    return_bits        i64
+    parameter_count    i64
+    parameter_class    [i64]
+    parameter_text     [string]
+    parameter_bits     [i64]
+    pointee_class      [i64]
+    pointee_is_byte    [bool]
+    pointee_is_const   [bool]
+}
+
+// The AST dump, read once: the last FunctionDecl type of each name, the first TypedefDecl.
+mut dump_functions [string:string] = {:}
+mut dump_typedefs_written [string:string] = {:}
+mut dump_typedefs_resolved [string:string] = {:}
+
+fn is_identifier_char(character char) -> bool {
+    return (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '_'
+}
+
+// The words of `text` separated by spaces.
+fn space_words(text string) -> [string] {
+    mut words [string] = {}
+    for_each piece in strings.split(text, " ") {
+        if piece != "" { arrays.append(words, piece) }
+    }
+    return words
+}
+
+// Reads the AST dump text into the function and typedef tables.
+fn index_ast_dump(dump string) {
+    dump_functions = {:}
+    dump_typedefs_written = {:}
+    dump_typedefs_resolved = {:}
+    for_each line in strings.split(dump, "\n") {
+        is_function bool = strings.contains(line, "FunctionDecl")
+        is_typedef bool = strings.contains(line, "TypedefDecl")
+        if !is_function && !is_typedef { continue }
+        quote_index i64 = strings.index_of(line, " '")
+        if quote_index < 0 { continue }
+        before string = strings.slice(line, 0, quote_index)
+        name_start i64 = strings.last_index_of(before, " ") + 1
+        name string = strings.slice(before, name_start, len(before))
+        if name == "" { continue }
+        rest string = strings.slice(line, quote_index + DUMP_QUOTE_PREFIX_LENGTH, len(line))
+        end_index i64 = strings.index_of(rest, "'")
+        if end_index < 0 { continue }
+        written string = strings.slice(rest, 0, end_index)
+        if is_function {
+            dump_functions[name] = written
+        } or !maps.contains_key(dump_typedefs_written, name) {
+            mut resolved string = ""
+            after string = strings.slice(rest, end_index + 1, len(rest))
+            if strings.starts_with(after, ":'") {
+                inner string = strings.slice(after, DUMP_QUOTE_PREFIX_LENGTH, len(after))
+                inner_end i64 = strings.index_of(inner, "'")
+                if inner_end >= 0 { resolved = strings.slice(inner, 0, inner_end) }
+            }
+            dump_typedefs_written[name] = written
+            dump_typedefs_resolved[name] = resolved
+        }
+    }
+}
+
+// Removes the words clang and gcc add to a parameter or return type that say nothing about
+// its kind (_Nonnull, restrict, ...), then tidies the spacing.
+fn strip_c_qualifier_noise(text string) -> string {
+    mut kept string = ""
+    mut index i64 = 0
+    as_long_as index < len(text) {
+        character char = strings.char_at(text, index)
+        if !is_identifier_char(character) {
+            kept = "${kept}${character}"
+            index = index + 1
+            continue
+        }
+        mut run_end i64 = index
+        as_long_as run_end < len(text) && is_identifier_char(strings.char_at(text, run_end)) { run_end = run_end + 1 }
+        word string = strings.slice(text, index, run_end)
+        is_noise bool = word == "_Null_unspecified" || word == "_Nonnull" || word == "_Nullable" || word == "__restrict__" || word == "__restrict" || word == "restrict"
+        if !is_noise { kept = "${kept}${word}" }
+        index = run_end
+    }
+    mut tidy string = ""
+    for position in range(0, len(kept)) {
+        character char = strings.char_at(kept, position)
+        if character == ' ' {
+            if len(tidy) == 0 { continue }
+            last char = strings.char_at(tidy, len(tidy) - 1)
+            next_character char = 'x'
+            if position + 1 < len(kept) { next_character = strings.char_at(kept, position + 1) }
+            if last == ' ' || last == '(' || next_character == ')' || next_character == ' ' { continue }
+        }
+        tidy = "${tidy}${character}"
+    }
+    as_long_as len(tidy) > 0 && strings.char_at(tidy, len(tidy) - 1) == ' ' { tidy = strings.slice(tidy, 0, len(tidy) - 1) }
+    return tidy
+}
+
+// Classifies a C type spelled the way clang's AST dump prints it ("unsigned long",
+// "void *", "enum E", "struct tm").
+fn classify_c_return(spelling string) -> i64 {
+    if strings.contains(spelling, "*") || strings.contains(spelling, "[") { return CLASS_POINTER }
+    mut saw_integer bool = false
+    mut saw_floating bool = false
+    mut saw_void bool = false
+    for_each word in space_words(spelling) {
+        if word == "const" || word == "volatile" { continue }
+        if word == "struct" || word == "union" { return CLASS_AGGREGATE }
+        if word == "enum" || word == "_Bool" || word == "unsigned" || word == "signed" || word == "char" || word == "short" || word == "int" {
+            saw_integer = true
+            continue
+        }
+        if word == "long" { continue }
+        if word == "float" || word == "double" {
+            saw_floating = true
+            continue
+        }
+        if word == "void" {
+            saw_void = true
+            continue
+        }
+        return CLASS_UNKNOWN
+    }
+    if saw_void { return CLASS_VOID }
+    if saw_floating { return CLASS_FLOATING_POINT }
+    if saw_integer || strings.contains(spelling, "long") { return CLASS_INTEGER }
+    return CLASS_UNKNOWN
+}
+
+// Classifies a typedef name by its TypedefDecl, trying the spelling as written, then the
+// resolved one. Returns the class and the text that classified.
+fn classify_c_typedef_text(name string) -> (i64, string) {
+    if !maps.contains_key(dump_typedefs_written, name) { return CLASS_UNKNOWN, "" }
+    written_text string = dump_typedefs_written[name]
+    resolved_text string = dump_typedefs_resolved[name]
+    if len(written_text) >= MAX_TYPE_TEXT_LENGTH { return CLASS_UNKNOWN, "" }
+    written_class i64 = classify_c_return(written_text)
+    if written_class != CLASS_UNKNOWN { return written_class, written_text }
+    if resolved_text == "" || len(resolved_text) >= MAX_TYPE_TEXT_LENGTH { return CLASS_UNKNOWN, "" }
+    resolved_class i64 = classify_c_return(resolved_text)
+    if resolved_class != CLASS_UNKNOWN { return resolved_class, resolved_text }
+    return CLASS_UNKNOWN, ""
+}
+
+fn classify_c_typedef(name string) -> i64 {
+    typedef_class, _ = classify_c_typedef_text(name)
+    return typedef_class
+}
+
+// Splits the pointee of a plain data-pointer parameter such as "FILE *" from the pointer.
+fn split_c_pointee(parameter_text string) -> (bool, string) {
+    last_star i64 = strings.last_index_of(parameter_text, "*")
+    if last_star < 0 || strings.contains(parameter_text, "(") || strings.contains(parameter_text, "[") { return false, "" }
+    return true, strings.slice(parameter_text, 0, last_star)
+}
+
+// The type name left in `pointee` once const and volatile are dropped, and whether const was there.
+fn strip_c_pointee_qualifiers(pointee string) -> (string, bool) {
+    mut remaining [string] = {}
+    mut is_const bool = false
+    for_each word in space_words(pointee) {
+        if word == "const" {
+            is_const = true
+            continue
+        }
+        if word == "volatile" { continue }
+        arrays.append(remaining, word)
+    }
+    return strings.join(remaining, " "), is_const
+}
+
+// What a plain data-pointer parameter points at: its class, whether it is a byte, whether const.
+fn classify_c_pointee(parameter_text string) -> (i64, bool, bool) {
+    ok, pointee = split_c_pointee(parameter_text)
+    if !ok { return CLASS_UNKNOWN, false, false }
+    if strings.contains(pointee, "*") { return CLASS_POINTER, false, false }
+    name, is_const = strip_c_pointee_qualifiers(pointee)
+    mut pointee_kind i64 = classify_c_return(name)
+    mut resolved string = name
+    if pointee_kind == CLASS_UNKNOWN && name != "" {
+        typedef_class, typedef_text = classify_c_typedef_text(name)
+        pointee_kind = typedef_class
+        if typedef_class != CLASS_UNKNOWN { resolved = typedef_text }
+    }
+    return pointee_kind, pointee_kind == CLASS_INTEGER && strings.contains(resolved, "char"), is_const
+}
+
+// The width in bits of the C integer or floating-point type `spelling` names, 0 when it is
+// neither or its width depends on something not visible here.
+fn c_scalar_bits(spelling string) -> i64 {
+    mut has_long bool = false
+    mut has_char bool = false
+    mut has_short bool = false
+    mut has_int bool = false
+    mut long_count i64 = 0
+    for_each word in space_words(spelling) {
+        if word == "float" { return C_FLOAT_BITS }
+        if word == "double" {
+            if has_long { return 0 }
+            return C_DOUBLE_BITS
+        }
+        if word == "_Bool" { return C_CHAR_BITS }
+        if word == "enum" { return C_INT_BITS }
+        if word == "long" {
+            has_long = true
+            long_count = long_count + 1
+        } or word == "char" {
+            has_char = true
+        } or word == "short" {
+            has_short = true
+        } or word == "int" {
+            has_int = true
+        }
+    }
+    if has_char { return C_CHAR_BITS }
+    if has_short { return C_SHORT_BITS }
+    if long_count >= 2 { return C_LONG_LONG_BITS }
+    if has_long { return C_LONG_BITS }
+    if has_int || strings.contains(spelling, "unsigned") || strings.contains(spelling, "signed") { return C_INT_BITS }
+    return 0
+}
+
+// c_scalar_bits of a parameter or return spelling, following a typedef name to what it stands for.
+fn c_type_bits(spelling string, type_class i64) -> i64 {
+    if type_class != CLASS_INTEGER && type_class != CLASS_FLOATING_POINT { return 0 }
+    mut resolved string = spelling
+    if classify_c_return(spelling) == CLASS_UNKNOWN {
+        typedef_class, typedef_text = classify_c_typedef_text(spelling)
+        if typedef_class != CLASS_UNKNOWN { resolved = typedef_text }
+    }
+    return c_scalar_bits(resolved)
+}
+
+// Fills in what a return or parameter spelled as a typedef name stands for.
+fn resolve_c_signature_typedefs(signature CSignature) -> CSignature {
+    mut resolved_return_class i64 = signature.return_class
+    if resolved_return_class == CLASS_UNKNOWN && signature.return_text != "" {
+        resolved_return_class = classify_c_typedef(signature.return_text)
+    }
+    mut resolved_classes [i64] = {}
+    mut resolved_bits [i64] = {}
+    mut resolved_pointee_classes [i64] = {}
+    mut resolved_pointee_bytes [bool] = {}
+    mut resolved_pointee_consts [bool] = {}
+    for parameter_index in range(0, signature.parameter_count) {
+        text string = signature.parameter_text[parameter_index]
+        mut parameter_class i64 = signature.parameter_class[parameter_index]
+        if parameter_class == CLASS_UNKNOWN { parameter_class = classify_c_typedef(text) }
+        arrays.append(resolved_classes, parameter_class)
+        arrays.append(resolved_bits, c_type_bits(text, parameter_class))
+        mut pointee_class i64 = CLASS_UNKNOWN
+        mut pointee_is_byte bool = false
+        mut pointee_is_const bool = false
+        detected_class, detected_byte, detected_const = classify_c_pointee(text)
+        if parameter_class == CLASS_POINTER {
+            pointee_class = detected_class
+            pointee_is_byte = detected_byte
+            pointee_is_const = detected_const
+        }
+        arrays.append(resolved_pointee_classes, pointee_class)
+        arrays.append(resolved_pointee_bytes, pointee_is_byte)
+        arrays.append(resolved_pointee_consts, pointee_is_const)
+    }
+    return CSignature{
+        minimum_parameters: signature.minimum_parameters,
+        is_variadic: signature.is_variadic,
+        return_class: resolved_return_class,
+        return_text: signature.return_text,
+        return_bits: c_type_bits(signature.return_text, resolved_return_class),
+        parameter_count: signature.parameter_count,
+        parameter_class: resolved_classes,
+        parameter_text: signature.parameter_text,
+        parameter_bits: resolved_bits,
+        pointee_class: resolved_pointee_classes,
+        pointee_is_byte: resolved_pointee_bytes,
+        pointee_is_const: resolved_pointee_consts
+    }
+}
+
+// Parses a clang `-ast-dump` FunctionDecl type spelling such as "int (int, FILE *)" or
+// "int (const char *, ...)" into a signature. False when the text does not have the
+// expected "(...)" shape, so the caller skips validation instead of guessing.
+fn count_c_parameters(signature_text string) -> (bool, CSignature) {
+    mut output CSignature = CSignature{}
+    length i64 = len(signature_text)
+    if length == 0 || strings.char_at(signature_text, length - 1) != ')' { return false, output }
+
+    // Every top-level '(' ... ')' group. An ordinary function spells as "RT (PARAMS)", one
+    // group; a function returning a function pointer spells as "RT (*(PARAMS))(INNER)", two.
+    mut first_open i64 = -1
+    mut first_close i64 = -1
+    mut last_open i64 = -1
+    mut last_close i64 = -1
+    mut group_count i64 = 0
+    mut depth i64 = 0
+    for index in range(0, length) {
+        character char = strings.char_at(signature_text, index)
+        if character == '(' {
+            if depth == 0 {
+                last_open = index
+                if group_count == 0 { first_open = index }
+            }
+            depth = depth + 1
+        } or character == ')' {
+            depth = depth - 1
+            if depth == 0 {
+                last_close = index
+                if group_count == 0 { first_close = index }
+                group_count = group_count + 1
+            }
+        }
+    }
+    if group_count == 0 || depth != 0 { return false, output }
+
+    mut parameter_list string = ""
+    mut has_parameter_list bool = false
+
+    if group_count == GROUP_COUNT_WITH_GCC_PART && last_close == length - 1 {
+        gcc_part string = strings.slice(signature_text, first_open + 1, first_close)
+        gcc_length i64 = len(gcc_part)
+        mut cursor i64 = 0
+        as_long_as cursor < gcc_length && strings.char_at(gcc_part, cursor) == ' ' { cursor = cursor + 1 }
+        if cursor < gcc_length && strings.char_at(gcc_part, cursor) == '*' {
+            cursor = cursor + 1
+            as_long_as cursor < gcc_length && strings.char_at(gcc_part, cursor) != '(' && strings.char_at(gcc_part, cursor) != '*' { cursor = cursor + 1 }
+            if cursor < gcc_length && strings.char_at(gcc_part, cursor) == '(' {
+                inner_open i64 = cursor
+                mut inner_depth i64 = 0
+                mut inner_close i64 = -1
+                for scan in range(inner_open, gcc_length) {
+                    scan_character char = strings.char_at(gcc_part, scan)
+                    if scan_character == '(' {
+                        inner_depth = inner_depth + 1
+                    } or scan_character == ')' {
+                        inner_depth = inner_depth - 1
+                        if inner_depth == 0 {
+                            inner_close = scan
+                            break
+                        }
+                    }
+                }
+                if inner_close >= 0 {
+                    parameter_list = strings.slice(gcc_part, inner_open + 1, inner_close)
+                    has_parameter_list = true
+                    output.return_class = CLASS_POINTER
+                    output.return_text = "function pointer"
+                }
+            }
+        }
+    }
+
+    if !has_parameter_list {
+        // Ordinary shape: the sole (or final) top-level group is the parameter list
+        parameter_list = strings.slice(signature_text, last_open + 1, length - 1)
+        mut return_length i64 = last_open
+        as_long_as return_length > 0 && strings.char_at(signature_text, return_length - 1) == ' ' { return_length = return_length - 1 }
+        if return_length > 0 && return_length < MAX_TYPE_TEXT_LENGTH {
+            output.return_text = strip_c_qualifier_noise(strings.slice(signature_text, 0, return_length))
+            output.return_class = classify_c_return(output.return_text)
+        }
+    }
+
+    parameter_list = strings.trim(parameter_list)
+    if parameter_list == "" || parameter_list == "void" { return true, output }
+
+    mut nest i64 = 0
+    mut segment_start i64 = 0
+    mut count i64 = 0
+    mut variadic bool = false
+    parameter_length i64 = len(parameter_list)
+    for index in range(0, parameter_length + 1) {
+        is_at_end bool = index == parameter_length
+        mut character char = ','
+        if !is_at_end { character = strings.char_at(parameter_list, index) }
+        if !is_at_end && (character == '(' || character == '[') {
+            nest = nest + 1
+            continue
+        }
+        if !is_at_end && (character == ')' || character == ']') {
+            nest = nest - 1
+            continue
+        }
+        if character == ',' && nest == 0 {
+            segment string = strings.trim(strings.slice(parameter_list, segment_start, index))
+            if segment == "..." {
+                variadic = true
+            } or len(segment) > 0 {
+                if count < SIGNATURE_PARAMETER_LIMIT && len(segment) < MAX_TYPE_TEXT_LENGTH {
+                    cleaned string = strip_c_qualifier_noise(segment)
+                    arrays.append(output.parameter_text, cleaned)
+                    arrays.append(output.parameter_class, classify_c_return(cleaned))
+                    arrays.append(output.parameter_bits, 0)
+                    arrays.append(output.pointee_class, CLASS_UNKNOWN)
+                    arrays.append(output.pointee_is_byte, false)
+                    arrays.append(output.pointee_is_const, false)
+                    output.parameter_count = count + 1
+                }
+                count = count + 1
+            }
+            segment_start = index + 1
+        }
+    }
+    output.minimum_parameters = count
+    output.is_variadic = variadic
+    return true, output
+}
+
+// `name`'s signature from the AST dump, with typedef names followed. False when the dump has
+// no FunctionDecl for it (a macro, or a dump shape not handled).
+fn find_c_function_signature(name string) -> (bool, CSignature) {
+    if !maps.contains_key(dump_functions, name) { return false, CSignature{} }
+    text string = dump_functions[name]
+    if len(text) >= MAX_SIGNATURE_TEXT_LENGTH { return false, CSignature{} }
+    ok, parsed = count_c_parameters(text)
+    if !ok { return false, CSignature{} }
+    return true, resolve_c_signature_typedefs(parsed)
+}
+
+// Whether a C result of class `return_class` may be declared as, or cast to, `asserted`.
+// A declaration accepts only the matching family; cast() also crosses families where C
+// allows it. A void or aggregate result fits nothing.
+fn c_return_fits(return_class i64, asserted ^types.GrayType, via_cast bool) -> bool {
+    if return_class == CLASS_UNKNOWN { return true }
+    if return_class == CLASS_VOID || return_class == CLASS_AGGREGATE { return false }
+    if asserted^.kind == types.TypeKind.FLOAT { return return_class == CLASS_FLOATING_POINT || (via_cast && return_class == CLASS_INTEGER) }
+    if asserted^.kind == types.TypeKind.POINTER { return return_class == CLASS_POINTER || (via_cast && return_class == CLASS_INTEGER) }
+    return return_class == CLASS_INTEGER || via_cast
+}
+
+// Whether `argument_type` is a pointer or string whose pointee C cannot accept for the data
+// pointer parameter `parameter_index`.
+fn c_pointer_pointee_mismatch(signature CSignature, parameter_index i64, argument_type ^types.GrayType) -> bool {
+    pointee i64 = signature.pointee_class[parameter_index]
+    if pointee == CLASS_UNKNOWN { return false }
+    if argument_type^.kind == types.TypeKind.STRING {
+        if signature.pointee_is_byte[parameter_index] { return false }
+        return !(pointee == CLASS_VOID && signature.pointee_is_const[parameter_index])
+    }
+    if argument_type^.kind != types.TypeKind.POINTER || argument_type^.element_type == "" { return false }
+    if pointee == CLASS_VOID { return false }
+    element string = argument_type^.element_type
+    if element == "void" || element == "u8" { return false }
+    if strings.starts_with(element, "^") { return pointee != CLASS_POINTER }
+    is_floating_element bool = element == "f32" || element == "f64"
+    second char = 'x'
+    if len(element) > 1 { second = strings.char_at(element, 1) }
+    first char = strings.char_at(element, 0)
+    is_integer_element bool = element == "bool" || element == "char" || ((first == 'i' || first == 'u') && second >= '0' && second <= '9')
+    if is_floating_element { return pointee != CLASS_FLOATING_POINT }
+    // An out-parameter holding an opaque handle is a pointer-sized integer
+    if pointee == CLASS_POINTER && (element == "i64" || element == "u64") { return false }
+    if is_integer_element { return pointee != CLASS_INTEGER }
+    return pointee != CLASS_AGGREGATE
+}
+
+// Whether a Grayscale argument cannot be converted by C to the parameter: a string, nil or
+// pointer where C wants a number, or a number where C wants a pointer.
+fn c_argument_kind_mismatch(signature CSignature, parameter_index i64, argument_type ^types.GrayType) -> bool {
+    parameter_class i64 = signature.parameter_class[parameter_index]
+    kind types.TypeKind = argument_type^.kind
+    is_argument_number bool = kind == types.TypeKind.INT || kind == types.TypeKind.UINT || kind == types.TypeKind.FLOAT || kind == types.TypeKind.BOOL || kind == types.TypeKind.CHAR
+    is_argument_pointer bool = kind == types.TypeKind.STRING || kind == types.TypeKind.POINTER || kind == types.TypeKind.NIL_TYPE
+    if parameter_class == CLASS_INTEGER || parameter_class == CLASS_FLOATING_POINT { return is_argument_pointer }
+    if parameter_class == CLASS_POINTER {
+        if is_argument_number { return true }
+        return c_pointer_pointee_mismatch(signature, parameter_index, argument_type)
+    }
+    return false
+}
+
+// Whether a Grayscale parameter or return type cannot stand for the C type of class
+// `c_class` and width `c_bits` in a callback.
+fn callback_scalar_mismatch(c_class i64, c_bits i64, gray_type ^types.GrayType) -> bool {
+    if gray_type == nil || c_class == CLASS_UNKNOWN || c_class == CLASS_AGGREGATE { return false }
+    mut value_bits i64 = 0
+    mut value_class i64 = CLASS_UNKNOWN
+    when gray_type^.kind {
+        is types.TypeKind.INT {
+            value_class = CLASS_INTEGER
+            value_bits = leading_number(strings.slice(gray_type^.name, 1, len(gray_type^.name)))
+        }
+        is types.TypeKind.UINT {
+            value_class = CLASS_INTEGER
+            value_bits = leading_number(strings.slice(gray_type^.name, 1, len(gray_type^.name)))
+        }
+        is types.TypeKind.BOOL {
+            value_class = CLASS_INTEGER
+            value_bits = BOOL_BITS
+        }
+        is types.TypeKind.CHAR {
+            value_class = CLASS_INTEGER
+            value_bits = GRAY_CHAR_BITS
+        }
+        is types.TypeKind.FLOAT {
+            value_class = CLASS_FLOATING_POINT
+            value_bits = leading_number(strings.slice(gray_type^.name, 1, len(gray_type^.name)))
+        }
+        is types.TypeKind.POINTER { value_class = CLASS_POINTER }
+        default { return false }
+    }
+    if value_class != c_class { return true }
+    return c_bits != 0 && value_bits != 0 && c_bits != value_bits
+}
+
+// The number at the start of `text`, 0 when there is none.
+fn leading_number(text string) -> i64 {
+    mut value i64 = 0
+    for position in range(0, len(text)) {
+        character char = strings.char_at(text, position)
+        if character < '0' || character > '9' { break }
+        value = value * DECIMAL_BASE + cast(character, i64) - cast('0', i64)
+    }
+    return value
+}
+
+// Whether the Grayscale `callback` cannot be called through the C function pointer type
+// spelled `pointer_text`: a different number of parameters, or a parameter or return of
+// another kind or width. Anything not readable is accepted.
+fn callback_mismatches_function_pointer(pointer_text string, callback typechecker.FuncSig) -> bool {
+    mut spelled string = pointer_text
+    if !strings.contains(spelled, "(*)") {
+        typedef_class, typedef_text = classify_c_typedef_text(spelled)
+        if typedef_class != CLASS_UNKNOWN { spelled = typedef_text }
+    }
+    marker i64 = strings.index_of(spelled, "(*)")
+    if marker < 0 { return false }
+    after string = strings.slice(spelled, marker + FUNCTION_POINTER_MARKER_LENGTH, len(spelled))
+    if !strings.starts_with(after, "(") { return false }
+    shape string = "${strings.slice(spelled, 0, marker)} ${after}"
+    if len(shape) >= MAX_FUNCTION_POINTER_TEXT_LENGTH { return false }
+    ok, parsed = count_c_parameters(shape)
+    if !ok || parsed.is_variadic { return false }
+    expected CSignature = resolve_c_signature_typedefs(parsed)
+
+    if len(callback.param_types) != expected.minimum_parameters { return true }
+    for parameter_index in range(0, expected.parameter_count) {
+        if parameter_index >= len(callback.param_types) { break }
+        if callback_scalar_mismatch(expected.parameter_class[parameter_index], expected.parameter_bits[parameter_index], callback.param_types[parameter_index]) { return true }
+    }
+    if expected.return_class == CLASS_VOID { return len(callback.return_types) != 0 }
+    if expected.return_class == CLASS_UNKNOWN { return false }
+    if len(callback.return_types) != 1 { return true }
+    return callback_scalar_mismatch(expected.return_class, expected.return_bits, callback.return_types[0])
+}
+
+// The AST dump of a stub that only includes the headers; "" when the compiler rejects the
+// flags (gcc) or produces nothing.
+fn capture_clang_ast_dump(compiler string, includes string) -> string {
+    stub_path, stub_error = io.temp_file()
+    if stub_error != nil { return "" }
+    stub_c_path string = "${stub_path}.c"
+    _, write_error = io.write_file(stub_c_path, includes)
+    if write_error != nil { return "" }
+    mut arguments [string] = {"-Xclang", "-ast-dump", "-fsyntax-only"}
+    for_each flag in local_header_flags() { arrays.append(arguments, flag) }
+    arrays.append(arguments, stub_c_path)
+    result, exec_error = os.exec(compiler, arguments)
+    remove_file(stub_c_path)
+    remove_file(stub_path)
+    if exec_error != nil || result.exit_code != 0 { return "" }
+    return result.stdout
+}
+
+// Whether a captured C compiler stderr flags `name` as unknown, for a constant, a macro or a call.
+fn c_symbol_flagged_undeclared(text string, name string) -> bool {
+    if text == "" || name == "" { return false }
+    return strings.contains(text, "identifier '${name}'") || strings.contains(text, "'${name}' undeclared") || strings.contains(text, "undeclared function '${name}'") || strings.contains(text, "declaration of function '${name}'")
+}
+
+// A stub that references every recorded extern site by name, each in the shape it is used:
+// a call gets a parenthesized call with placeholder arguments (a function-like macro is
+// only expanded when followed by '('), a constant a bare reference.
+fn extern_probe_body(sites [typechecker.ExternCallSite]) -> string {
+    mut body string = "static void _gray_extern_probe(void) {\n"
+    for_each site in sites {
+        if site.is_call {
+            mut argument_list string = ""
+            for argument_index in range(0, site.argument_count) {
+                if argument_index > 0 { argument_list = "${argument_list}, " }
+                argument_list = "${argument_list}0"
+            }
+            body = "${body}    (void)(${site.function_name}(${argument_list}));\n"
+        } otherwise {
+            body = "${body}    (void)(${site.function_name});\n"
+        }
+    }
+    return "${body}}\n"
+}
+
+// Validates every extern.NAME use the typechecker recorded against the real C headers, using
+// the target compiler as the source of truth: existence, argument count,
+// argument kinds, callbacks and the asserted result type. Fails
+// open wherever the compiler cannot say.
+fn validate_c_extern_signatures(compiler string, checker ^typechecker.TypeChecker, entry_file string) -> [diagnostics.Diagnostic] {
+    mut found [diagnostics.Diagnostic] = {}
+    conflicts = report_c_header_conflicts(compiler)
+    if len(conflicts) > 0 { return conflicts }
+
+    sites = checker^.extern_calls
+    if len(sites) == 0 { return found }
+    headers = distinct_c_headers()
+    includes string = header_includes(headers)
+    if includes == "" { return found }
+
+    // Check 1: does each referenced symbol exist at all?
+    _, probe_text = run_syntax_probe(compiler, "${includes}${extern_probe_body(sites)}", {})
+    for_each site in sites {
+        if c_symbol_flagged_undeclared(probe_text, site.function_name) {
+            file string = site.file
+            if file == "" { file = entry_file }
+            arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5052", message: error_registry.registry_message_formatted("E5052", {site.function_name}), file: file, line: site.line, column: site.col})
+        }
+    }
+
+    dump string = capture_clang_ast_dump(compiler, includes)
+    if dump == "" { return found }
+    index_ast_dump(dump)
+
+    for_each site in sites {
+        has_signature, signature = find_c_function_signature(site.function_name)
+        if !has_signature { continue }
+        site_file string = site.file
+        if site_file == "" { site_file = entry_file }
+
+        actual i64 = site.argument_count
+        mut is_valid bool = actual == signature.minimum_parameters
+        if signature.is_variadic { is_valid = actual >= signature.minimum_parameters }
+        if !is_valid {
+            mut expected string = "${signature.minimum_parameters}"
+            if signature.is_variadic { expected = "at least ${signature.minimum_parameters}" }
+            arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5050", message: error_registry.registry_message_formatted("E5050", {site.function_name, expected, "${actual}"}), file: site_file, line: site.line, column: site.col})
+        }
+
+        if is_valid && site.is_call && site.node != nil {
+            arguments = site.node^.call^.args
+            for argument_index in range(0, actual) {
+                if argument_index >= signature.parameter_count || argument_index >= len(site.argument_types) { break }
+                argument_type = site.argument_types[argument_index]
+                if argument_type == nil || !c_argument_kind_mismatch(signature, argument_index, argument_type) { continue }
+                argument = arguments[argument_index]
+                mut argument_file string = argument^.tok.file
+                if argument_file == "" { argument_file = site_file }
+                message string = error_registry.registry_message_formatted("E5054", {"${argument_index + 1}", site.function_name, types.type_display_name(argument_type), signature.parameter_text[argument_index]})
+                arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5054", message: message, file: argument_file, line: argument^.tok.line, column: argument^.tok.col})
+            }
+        }
+
+        if is_valid && site.node != nil && site.is_call {
+            arguments = site.node^.call^.args
+            for argument_index in range(0, actual) {
+                if argument_index >= signature.parameter_count || argument_index >= CALLBACK_ARGUMENT_LIMIT || argument_index >= len(site.callback_names) { break }
+                callback_name string = site.callback_names[argument_index]
+                if callback_name == "" { continue }
+                callback = typechecker.find_func(checker, callback_name)
+                if callback == nil || callback^.decl == nil { continue }
+                if !callback_mismatches_function_pointer(signature.parameter_text[argument_index], callback^) { continue }
+                argument = arguments[argument_index]
+                mut callback_file string = argument^.tok.file
+                if callback_file == "" { callback_file = site_file }
+                message string = error_registry.registry_message_formatted("E5067", {callback^.decl^.name, "${argument_index + 1}", site.function_name, signature.parameter_text[argument_index]})
+                arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5067", message: message, file: callback_file, line: argument^.tok.line, column: argument^.tok.col})
+            }
+        }
+
+        if site.asserted_type != nil && !c_return_fits(signature.return_class, site.asserted_type, site.is_asserted_via_cast) {
+            mut help string = "declare the result with a type of the same kind as the C return type"
+            if signature.return_class == CLASS_VOID {
+                help = "this C function returns nothing; call it as a statement"
+            } or c_return_fits(signature.return_class, site.asserted_type, true) {
+                help = "declare the result with a type of the same kind, or convert it explicitly with cast()"
+            }
+            message string = error_registry.registry_message_formatted("E5053", {site.function_name, signature.return_text, types.type_display_name(site.asserted_type)})
+            arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5053", message: message, file: site_file, line: site.line, column: site.col, help: help})
+        }
+    }
+    return found
+}

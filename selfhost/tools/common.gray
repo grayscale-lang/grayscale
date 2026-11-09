@@ -1,0 +1,118 @@
+/*
+ * common.gray:  Helpers shared by the self-host tools. Every tool is run from
+ * the repository root: `./gray selfhost/tools/NAME.gray` builds it; the binary
+ * runs there.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @io, @os, @strings, @arrays, @fmt
+
+// The result of running a program.
+const Run struct {
+    exit_code i64
+    stdout string
+    stderr string
+    launched bool
+}
+
+// Runs `program` with `arguments` and captures its output.
+fn run(program string, arguments [string]) -> Run {
+    result, launch_error = os.exec(program, arguments)
+    if launch_error != nil { return Run{exit_code: -1, stderr: launch_error.message, launched: false} }
+    return Run{exit_code: result.exit_code, stdout: result.stdout, stderr: result.stderr, launched: true}
+}
+
+// Runs `program` with its standard input closed, so a program that reads input
+// ends instead of waiting.
+fn run_closed_input(program string, arguments [string]) -> Run {
+    mut command_line [string] = {"-c", "exec \"$0\" \"$@\" </dev/null"}
+    arrays.append(command_line, program)
+    for_each argument in arguments { arrays.append(command_line, argument) }
+    return run("sh", command_line)
+}
+
+// The lines of a text file, without a trailing empty line.
+fn read_lines(file_path string) -> [string] {
+    text, read_error = io.read_file(file_path)
+    if read_error != nil { return {} }
+    mut lines [string] = strings.split(text, "\n")
+    if len(lines) > 0 && lines[len(lines) - 1] == "" {
+        mut trimmed [string] = {}
+        for index in range(0, len(lines) - 1) { arrays.append(trimmed, lines[index]) }
+        return trimmed
+    }
+    return lines
+}
+
+// Every `.gray` file under `directory`, sorted, as paths from the working directory.
+fn source_files(directory string) -> [string] {
+    paths, walk_error = io.walk(directory)
+    mut found [string] = {}
+    if walk_error != nil { return found }
+    for_each walked in paths {
+        if strings.ends_with(walked, ".gray") {
+            // walk lists paths relative to the directory walked
+            mut prefix string = directory
+            if !strings.ends_with(prefix, "/") { prefix = "${prefix}/" }
+            arrays.append(found, "${prefix}${walked}")
+        }
+    }
+    arrays.sort_asc(found)
+    return found
+}
+
+// Builds a Grayscale program with the real compiler; false when it did not build.
+fn build_with_real_compiler(source string, output string) -> bool {
+    built = run("./gray", {"build", source, "-o", output})
+    return built.exit_code == 0
+}
+
+// Builds a C file with the system compiler.
+fn compile_c(source string, output string, extra_sources [string]) -> bool {
+    mut arguments [string] = {"-w", "-Igrayc/src", "-o", output, source}
+    for_each extra in extra_sources { arrays.append(arguments, extra) }
+    return run("cc", arguments).exit_code == 0
+}
+
+// The C sources the reference-side dumpers link: the lexer and what it needs.
+fn lexer_sources() -> [string] {
+    return {"grayc/src/lexer/lexer.c", "grayc/src/lexer/token.c", "grayc/src/util/arena.c", "grayc/src/util/error.c", "grayc/src/util/error_codes.c", "grayc/src/util/platform.c", "grayc/src/util/buf.c"}
+}
+
+fn write_text(file_path string, text string) {
+    _, write_error = io.write_file(file_path, text)
+    if write_error != nil { eprintln("cannot write ${file_path}: ${write_error.message}") }
+}
+
+// The text of a file, or "" when it cannot be read.
+fn read_text(file_path string) -> string {
+    text, read_error = io.read_file(file_path)
+    if read_error != nil { return "" }
+    return text
+}
+
+// Builds `source` with the real compiler and with `driver`, runs both programs and
+// compares their output and exit code. "skip" when the real compiler cannot build it,
+// "nobuild" when only the self-hosted driver cannot, "differ", or "ok".
+fn compare_program(source string, driver string) -> string {
+    mut work string = "selfhost/build/compare"
+    suffix = os.get_env("COMPARE_DIR")
+    if suffix != "" { work = "selfhost/build/compare_${suffix}" }
+    _ = run("mkdir", {"-p", work})
+    for_each leftover in {"${work}/real.bin", "${work}/self.bin"} {
+        if io.file_exists(leftover) {
+            _, _ = io.delete_file(leftover)
+        }
+    }
+    if !build_with_real_compiler(source, "${work}/real.bin") { return "skip" }
+    _ = run(driver, {"build", source, "-o", "${work}/self.bin"})
+    if !io.file_exists("${work}/self.bin") { return "nobuild" }
+    real = run_closed_input("${work}/real.bin", {})
+    self_run = run_closed_input("${work}/self.bin", {})
+    if real.stdout == self_run.stdout && real.stderr == self_run.stderr && real.exit_code == self_run.exit_code { return "ok" }
+    return "differ"
+}

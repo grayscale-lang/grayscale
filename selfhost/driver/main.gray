@@ -1,0 +1,1534 @@
+/*
+ * main.gray:  Driver for the self-hosted compiler: CLI parsing, reading the
+ * source, lexing and parsing, import resolution, type checking, code generation
+ * and the C compiler invocation.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @io, @path, @os, @strings, @fmt, @arrays, @maps, @time
+import "../ast/ast"
+import "../lexer/lexer"
+import "./format"
+import "../parser/parser"
+import "./defines"
+import "./resolve"
+import "../codegen/codegen"
+import "./ccompile"
+import "./cinterop"
+import "./diagnostics"
+import "../typechecker/typechecker"
+import "../util/error_registry"
+
+// --- CLI options ---
+
+// The version printed by `version` and the usage text; a build of grayc sets it from the release.
+#[define]
+const GRAY_VERSION string = "unknown"
+
+const MAXIMUM_ARENA_LIMIT i64 = 9223372036854775807
+
+// The base of the numbers in a flag value.
+const DECIMAL_BASE i64 = 10
+// The command line holds the program name and at least one argument.
+const MIN_COMMAND_LINE_LENGTH i64 = 2
+const DEFINE_FLAG_PREFIX string = "--define="
+const ARENA_LIMIT_FLAG_PREFIX string = "--arena-limit="
+// The prefix of a path written relative to the current directory.
+const CURRENT_DIRECTORY_PREFIX string = "./"
+const GRAY_EXTENSION string = ".gray"
+const GRAYSCALE_EXTENSION string = ".grayscale"
+// Import errors past this many are dropped.
+const MAX_IMPORT_ERRORS i64 = 20
+// The order of a merged program: imports, then variables, then declarations.
+const STAGE_IMPORTS i64 = 0
+const STAGE_VARIABLES i64 = 1
+const STAGE_DECLARATIONS i64 = 2
+// A shell reports a program killed by signal N as exit status 128 + N.
+const SIGNAL_EXIT_OFFSET i64 = 128
+const SIGNAL_HANGUP i64 = 1
+const SIGNAL_INTERRUPT i64 = 2
+const SIGNAL_QUIT i64 = 3
+const SIGNAL_ILLEGAL_INSTRUCTION i64 = 4
+const SIGNAL_TRAP i64 = 5
+const SIGNAL_ABORT i64 = 6
+const SIGNAL_BUS_ERROR_LINUX i64 = 7
+const SIGNAL_FLOATING_POINT i64 = 8
+const SIGNAL_KILL i64 = 9
+const SIGNAL_BUS_ERROR_DARWIN i64 = 10
+const SIGNAL_SEGMENTATION_FAULT i64 = 11
+const SIGNAL_BROKEN_PIPE i64 = 13
+const SIGNAL_ALARM i64 = 14
+const SIGNAL_TERMINATE i64 = 15
+
+const Options struct {
+    input_file  string
+    output_file string
+    emit_c_only bool
+    check_only  bool
+    run_mode    bool
+    verbose     bool
+    show_time   bool
+    no_color    bool
+    debug_syms  bool
+    quiet_all   bool
+    quiet_codes string
+    opt_level   string
+    define_args [string]
+    format_mode bool
+    test_mode bool
+    // 0 lets codegen use its 1 GB default
+    arena_limit i64
+    // A command given with --cc, used in place of the detected C compiler
+    cc_override string
+    // Arguments after `--`, given to the program a run starts
+    program_arguments [string]
+}
+
+fn default_options() -> Options {
+    return Options{
+        input_file:  "",
+        output_file: "",
+        emit_c_only: false,
+        check_only:  false,
+        run_mode:    false,
+        verbose:     false,
+        show_time:   false,
+        no_color:    false,
+        debug_syms:  false,
+        quiet_all:   false,
+        quiet_codes: "",
+        opt_level:   "",
+        define_args: {},
+        format_mode: false,
+        test_mode: false,
+        arena_limit: 0,
+        cc_override: "",
+        program_arguments: {},
+    }
+}
+
+fn print_usage() {
+    eprintln("Grayscale v${GRAY_VERSION} — Simple to write. Safe to run.")
+    eprintln("\nUsage:")
+    eprintln("  gray <file.gray|file.grayscale> [options]  Compile and run")
+    eprintln("  gray build <file.gray|file.grayscale> [options] Compile to binary")
+    eprintln("  gray check <file.gray|file.grayscale>  Type check only")
+    eprintln("  gray version                       Show version")
+    eprintln("\nOptions:")
+    eprintln("  -o <file>       Output binary name (default: based on input filename)")
+    eprintln("  -c              Emit C source only (don't compile)")
+    eprintln("  -O0, -O1, -O2, -O3  Optimization level (default: -O3 for GCC, -O2 otherwise)")
+    eprintln("  -g              Include debug symbols")
+    eprintln("  -v, --verbose   Show compilation commands")
+    eprintln("  --time          Show compilation timing")
+    eprintln("  --quiet         Suppress all warnings")
+    eprintln("  --quiet W1001   Suppress specific warnings (comma-separated)")
+    eprintln("  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)")
+    eprintln("  --define=NAME=VALUE   Override the #define constant NAME (repeatable)")
+    eprintln("  --no-color      Disable colored output")
+    eprintln("  --test          Build a test runner from #test functions (used by 'gray test')")
+    eprintln("  -h, --help      Show this help")
+}
+
+fn parse_args() -> Options {
+    mut opts Options = default_options()
+    arguments [string] = os.args()
+
+    if len(arguments) < MIN_COMMAND_LINE_LENGTH {
+        print_usage()
+        exit(1)
+    }
+
+    mut i i64 = 1
+    as_long_as i < len(arguments) {
+        arg string = arguments[i]
+
+        if arg == "version" || arg == "--version" {
+            println("gray ${GRAY_VERSION}")
+            exit(0)
+        }
+        if arg == "--help" || arg == "-h" {
+            print_usage()
+            exit(0)
+        }
+        if arg == "--" {
+            for_each program_argument in arrays.slice(arguments, i + 1, len(arguments)) { arrays.append(opts.program_arguments, program_argument) }
+            break
+        }
+        if arg == "-o" && i + 1 < len(arguments) {
+            i = i + 1
+            opts.output_file = arguments[i]
+            i = i + 1
+            continue
+        }
+        if arg == "-c" {
+            opts.emit_c_only = true
+            i = i + 1
+            continue
+        }
+        if arg == "-O0" {
+            opts.opt_level = "-O0"
+            i = i + 1
+            continue
+        }
+        if arg == "-O1" {
+            opts.opt_level = "-O1"
+            i = i + 1
+            continue
+        }
+        if arg == "-O2" {
+            opts.opt_level = "-O2"
+            i = i + 1
+            continue
+        }
+        if arg == "-O3" {
+            opts.opt_level = "-O3"
+            i = i + 1
+            continue
+        }
+        if arg == "-g" {
+            opts.debug_syms = true
+            i = i + 1
+            continue
+        }
+        if arg == "-v" {
+            opts.verbose = true
+            i = i + 1
+            continue
+        }
+        if strings.starts_with(arg, DEFINE_FLAG_PREFIX) {
+            arrays.append(opts.define_args, strings.slice(arg, len(DEFINE_FLAG_PREFIX), len(arg)))
+            i = i + 1
+            continue
+        }
+        if arg == "--fmt" {
+            opts.format_mode = true
+            i = i + 1
+            continue
+        }
+        if arg == "--test" {
+            opts.test_mode = true
+            i = i + 1
+            continue
+        }
+        if arg == "--time" {
+            opts.show_time = true
+            i = i + 1
+            continue
+        }
+        if arg == "--no-color" {
+            opts.no_color = true
+            i = i + 1
+            continue
+        }
+        if arg == "--quiet" || arg == "-q" {
+            if i + 1 < len(arguments) && arguments[i + 1] == "all" {
+                i = i + 1
+                opts.quiet_all = true
+            } or i + 1 < len(arguments) && strings.starts_with(arguments[i + 1], "W") {
+                i = i + 1
+                opts.quiet_codes = arguments[i]
+            } or i + 1 < len(arguments) && strings.starts_with(arguments[i + 1], "E") {
+                eprintln("gray: '-q' only accepts warning codes (W-prefixed), not error code '${arguments[i + 1]}'")
+                exit(1)
+            } otherwise {
+                opts.quiet_all = true
+            }
+            i = i + 1
+            continue
+        }
+        if strings.starts_with(arg, ARENA_LIMIT_FLAG_PREFIX) {
+            limit_text = strings.slice(arg, len(ARENA_LIMIT_FLAG_PREFIX), len(arg))
+            limit, is_valid_limit = parse_arena_limit(limit_text)
+            if !is_valid_limit {
+                eprintln("gray: invalid --arena-limit '${limit_text}': expected a positive number of bytes up to ${MAXIMUM_ARENA_LIMIT}")
+                exit(1)
+            }
+            opts.arena_limit = limit
+            i = i + 1
+            continue
+        }
+        if arg == "--cc" && i + 1 < len(arguments) {
+            i = i + 1
+            opts.cc_override = arguments[i]
+            i = i + 1
+            continue
+        }
+        if arg == "check" && opts.input_file == "" {
+            opts.check_only = true
+            i = i + 1
+            continue
+        }
+        if arg == "build" && opts.input_file == "" {
+            i = i + 1
+            continue
+        }
+        //run is not a valid command. I suppose adding it is ok but prefer not....
+        if arg == "run" && opts.input_file == "" {
+            opts.run_mode = true
+            i = i + 1
+            continue
+        }
+        if strings.starts_with(arg, "-") {
+            eprintln("gray: unknown option '${arg}'")
+            exit(1)
+        }
+        opts.input_file = arg
+        i = i + 1
+    }
+
+    if opts.input_file == "" {
+        eprintln("gray: no input file")
+        exit(1)
+    }
+
+    return opts
+}
+
+// --- Path utilities ---
+
+fn path_basename(file_path string) -> string {
+    idx i64 = strings.last_index_of(file_path, "/")
+    if idx < 0 { return file_path }
+    return strings.slice(file_path, idx + 1, len(file_path))
+}
+
+fn path_dir(file_path string) -> string {
+    idx i64 = strings.last_index_of(file_path, "/")
+    if idx < 0 { return "./" }
+    return strings.slice(file_path, 0, idx + 1)
+}
+
+// Collapses `.` and `..` segments so one file reached through different
+// relative spellings has one key.
+fn normalize_path(file_path string) -> string {
+    is_absolute bool = strings.starts_with(file_path, "/")
+    mut kept [string] = {}
+    for_each segment in strings.split(file_path, "/") {
+        if segment == "" || segment == "." { continue }
+        if segment == ".." && len(kept) > 0 && kept[len(kept) - 1] != ".." {
+            mut _ = arrays.remove_last(kept)
+            continue
+        }
+        arrays.append(kept, segment)
+    }
+    joined string = strings.join(kept, "/")
+    if is_absolute { return "/${joined}" }
+    return joined
+}
+
+fn strip_gray_ext(name string) -> string {
+    if strings.ends_with(name, GRAYSCALE_EXTENSION) {
+        return strings.slice(name, 0, len(name) - len(GRAYSCALE_EXTENSION))
+    }
+    if strings.ends_with(name, GRAY_EXTENSION) {
+        return strings.slice(name, 0, len(name) - len(GRAY_EXTENSION))
+    }
+    return name
+}
+
+fn output_name_from_input(input_path string) -> string {
+    base string = path_basename(input_path)
+    return strip_gray_ext(base)
+}
+
+// --- Import resolution ---
+
+// Track already-imported file paths to avoid circular imports.
+// Using a map[string:string] keyed on normalized file path.
+
+// The source files an import path names: a single file (with or without its
+// .gray / .grayscale extension), or every source file of a directory in
+// alphabetical order.
+fn import_source_files(import_path string) -> [string] {
+    mut files [string] = {}
+    if (strings.ends_with(import_path, ".gray") || strings.ends_with(import_path, ".grayscale")) && io.file_exists(import_path) {
+        arrays.append(files, import_path)
+        return files
+    }
+    dot_gray_path string = fmt.sprintf("%s.gray", {import_path})
+    if io.file_exists(dot_gray_path) {
+        arrays.append(files, dot_gray_path)
+        return files
+    }
+    dot_grayscale_path string = fmt.sprintf("%s.grayscale", {import_path})
+    if io.file_exists(dot_grayscale_path) {
+        arrays.append(files, dot_grayscale_path)
+        return files
+    }
+    return scan_source_directory(import_path)
+}
+
+// The source files of a directory, in alphabetical order, without hidden files.
+fn scan_source_directory(import_path string) -> [string] {
+    mut files [string] = {}
+    if !io.is_directory(import_path) { return files }
+    entries, list_err = io.list_dir(import_path)
+    if list_err != nil { return files }
+    mut directory string = import_path
+    if !strings.ends_with(directory, "/") { directory = "${directory}/" }
+    mut sorted_entries [string] = entries
+    arrays.sort_asc(sorted_entries)
+    for_each entry in sorted_entries {
+        if strings.starts_with(entry, ".") { continue }
+        if has_source_extension(entry) {
+            arrays.append(files, "${directory}${entry}")
+        }
+    }
+    return files
+}
+
+fn has_source_extension(name string) -> bool {
+    return strings.ends_with(name, ".gray") || strings.ends_with(name, GRAYSCALE_EXTENSION)
+}
+
+// The files an extensionless path names once each source extension is appended.
+fn extension_matches(import_path string) -> [string] {
+    mut matches [string] = {}
+    for_each extension in {".gray", ".grayscale"} {
+        candidate string = "${import_path}${extension}"
+        if io.file_exists(candidate) && !io.is_directory(candidate) { arrays.append(matches, candidate) }
+    }
+    return matches
+}
+
+// What the import phase has bound so far, across every file: the module name
+// each import introduced, the canonical path it names ("" for a stdlib module),
+// the file whose import statement introduced it, and whether it is a stdlib module.
+mut seen_names [string] = {}
+mut seen_paths [string] = {}
+mut seen_files [string] = {}
+mut seen_stdlib [bool] = {}
+
+// Canonical path of the program's entry file, and where each imported file came
+// from: the file whose import statement first pulled it in, and whether it was
+// pulled in as one file of a directory import.
+mut entry_path string = ""
+mut imported_from [string:string] = {:}
+mut imported_from_directory [string:bool] = {:}
+// "file>module" for each module that holds a file another module imported first
+mut imported_also [string:bool] = {:}
+
+fn record_seen(name string, canonical_path string, file string, is_stdlib bool) {
+    arrays.append(seen_names, name)
+    arrays.append(seen_paths, canonical_path)
+    arrays.append(seen_files, file)
+    arrays.append(seen_stdlib, is_stdlib)
+}
+
+fn seen_name_index(name string) -> i64 {
+    mut index i64 = 0
+    as_long_as index < len(seen_names) {
+        if seen_names[index] == name { return index }
+        index = index + 1
+    }
+    return -1
+}
+
+// The file that first imported `canonical_path`, or "" for the entry file.
+fn imported_by_file(canonical_path string) -> string {
+    if maps.contains_key(imported_from, canonical_path) { return imported_from[canonical_path] }
+    return ""
+}
+
+// The diagnostics of the import phase: imports that resolve to nothing, a module
+// imported twice, and the parse errors of every imported file. A failed import
+// merges no declarations, so the errors that would follow from its absence are
+// not reported.
+mut import_diagnostics [diagnostics.Diagnostic] = {}
+
+fn count_errors(list [diagnostics.Diagnostic]) -> i64 {
+    mut total i64 = 0
+    for_each entry in list { if entry.is_error { total = total + 1 } }
+    return total
+}
+
+// The diagnostic for a parse error found in `fallback_file` unless the error names its own.
+fn diagnostic_of(err parser.ParseError, fallback_file string) -> diagnostics.Diagnostic {
+    mut file string = err.file
+    if file == "" { file = fallback_file }
+    return diagnostics.Diagnostic{is_error: true, code: err.code, message: err.message, file: file, line: err.line, column: err.col, end_column: err.end_col, help: err.help}
+}
+
+// Records an import-phase error, dropping it past the twentieth.
+fn record_import_diagnostic(entry diagnostics.Diagnostic) {
+    if entry.is_error && count_errors(import_diagnostics) >= MAX_IMPORT_ERRORS { return }
+    arrays.append(import_diagnostics, entry)
+}
+
+fn report_import_error(code string, message string, help string, statement ^ast.AstNode, file string) {
+    record_import_diagnostic(diagnostics.Diagnostic{is_error: true, code: code, message: message, file: file, line: statement^.tok.line, column: statement^.tok.col, help: help})
+}
+
+fn report_import_warning(code string, message string, statement ^ast.AstNode, file string) {
+    record_import_diagnostic(diagnostics.Diagnostic{is_error: false, code: code, message: message, file: file, line: statement^.tok.line, column: statement^.tok.col})
+}
+
+// The directory part of a canonical path, without a trailing separator.
+fn canonical_dirname(canonical_path string) -> string {
+    return normalize_path(path_dir(canonical_path))
+}
+
+// True when the import names a file inside `sibling_directory`, the directory
+// whose import pulled in the file being resolved.
+fn names_sibling(import_dir string, source_path string, sibling_directory string) -> bool {
+    mut relative string = source_path
+    if strings.starts_with(relative, CURRENT_DIRECTORY_PREFIX) { relative = strings.slice(relative, len(CURRENT_DIRECTORY_PREFIX), len(relative)) }
+    mut checked string = "${import_dir}${relative}"
+    if !has_source_extension(checked) {
+        matches = extension_matches(checked)
+        if len(matches) > 0 { checked = matches[0] }
+    }
+    if !io.file_exists(checked) && !io.is_directory(checked) { return false }
+    return canonical_dirname(normalize_path(checked)) == sibling_directory
+}
+
+// `is_entry` is true for the program itself; `sibling_directory` is the canonical
+// directory whose import pulled `input_file` in ("" when it was not one of a
+// directory's files). An import of a file in that directory is a sibling reference,
+// not an import.
+// Files whose imports are still to be processed, in the order the C resolver queues
+// their import statements: breadth-first.
+mut pending_programs [^ast.AstNode] = {}
+mut pending_files [string] = {}
+mut pending_sibling_directories [string] = {}
+
+fn resolve_imports(program ^ast.AstNode, input_file string, &imported map[string:string], &merged [^ast.AstNode]) {
+    resolve_file_imports(program, input_file, imported, merged, true, "")
+    mut queue_head i64 = 0
+    as_long_as queue_head < len(pending_programs) {
+        queued_program = pending_programs[queue_head]
+        queued_file string = pending_files[queue_head]
+        queued_sibling string = pending_sibling_directories[queue_head]
+        queue_head = queue_head + 1
+        resolve_file_imports(queued_program, queued_file, imported, merged, false, queued_sibling)
+    }
+}
+
+fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[string:string], &merged [^ast.AstNode], is_entry bool, sibling_directory string) {
+    if is_entry {
+        entry_path = normalize_path(input_file)
+        imported[entry_path] = "main"
+    }
+
+    input_dir string = path_dir(input_file)
+
+    // The sibling files this file has already named
+    mut seen_siblings [string] = {}
+
+    // Walk import statements in the program
+    mut si i64 = 0
+    as_long_as si < len(program^.program^.stmts) {
+        statement = program^.program^.stmts[si]
+        if statement^.kind != ast.NodeKind.IMPORT_STMT {
+            si = si + 1
+            continue
+        }
+
+        // Workaround: for_each over a struct-array field reached through a
+        // pointer mistypes the loop variable as the pointer's pointee
+        // struct instead of the array element.
+        import_items = statement^.import_stmt^.items
+        for_each item in import_items {
+            if item.is_c_import {
+                cinterop.note_c_import(item.source_path, input_file, item.tok_line, item.tok_col)
+                continue
+            }
+
+            // A stdlib import binds a module name just as a local one does
+            if item.is_stdlib {
+                mut stdlib_name string = item.mod_name
+                if item.import_alias != "" { stdlib_name = item.import_alias }
+                if stdlib_name == "" { continue }
+                bound_index i64 = seen_name_index(stdlib_name)
+                if bound_index >= 0 {
+                    if !seen_stdlib[bound_index] {
+                        report_import_error("E6001", "module name '${stdlib_name}' is already imported; use an alias to distinguish them", "", statement, input_file)
+                    } or seen_files[bound_index] == input_file {
+                        report_import_error("E6011", error_registry.registry_message_formatted("E6011", {stdlib_name}), "remove the duplicate import", statement, input_file)
+                    }
+                    continue
+                }
+                record_seen(stdlib_name, "", input_file, true)
+                continue
+            }
+            if item.source_path == "" { continue }
+
+            // Resolve path relative to input directory
+            mut rel string = item.source_path
+            if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) {
+                rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel))
+            }
+            import_path string = fmt.sprintf("%s%s", {input_dir, rel})
+
+            // A file of the directory that pulled this file in names a sibling
+            if !is_entry && sibling_directory != "" && names_sibling(input_dir, item.source_path, sibling_directory) {
+                mut sibling_file string = "${input_dir}${rel}"
+                if !has_source_extension(sibling_file) {
+                    sibling_matches = extension_matches(sibling_file)
+                    if len(sibling_matches) > 0 { sibling_file = sibling_matches[0] }
+                }
+                sibling_key string = normalize_path(sibling_file)
+                if arrays.contains(seen_siblings, sibling_key) {
+                    report_import_error("E6011", "'${item.source_path}' is already imported in this file", "remove the duplicate import", statement, input_file)
+                } otherwise {
+                    arrays.append(seen_siblings, sibling_key)
+                }
+                continue
+            }
+
+            // The files the path names: one file, or every file of a directory
+            mut source_files [string] = {}
+            mut is_directory_import = false
+            if has_source_extension(import_path) {
+                arrays.append(source_files, import_path)
+            } otherwise {
+                matches = extension_matches(import_path)
+                if len(matches) > 1 {
+                    report_import_error("E6017", error_registry.registry_message_formatted("E6017", {item.source_path}), "", statement, input_file)
+                    continue
+                }
+                if len(matches) == 1 {
+                    arrays.append(source_files, matches[0])
+                } or io.is_directory(import_path) {
+                    if !is_entry && normalize_path(import_path) == normalize_path(input_dir) {
+                        report_import_error("E6004", "cannot import own module directory '${item.source_path}'", "", statement, input_file)
+                        continue
+                    }
+                    source_files = scan_source_directory(import_path)
+                    is_directory_import = true
+                    if len(source_files) == 0 {
+                        report_import_error("E6003", error_registry.registry_message_formatted("E6003", {item.source_path}), "", statement, input_file)
+                        continue
+                    }
+                } otherwise {
+                    report_import_error("E6002", error_registry.registry_message_formatted("E6002", {item.source_path}), "", statement, input_file)
+                    continue
+                }
+            }
+
+            // Derive module name from the file or directory name
+            mut module_base string = path_basename(rel)
+            if module_base == "" && len(rel) > 1 {
+                module_base = path_basename(strings.slice(rel, 0, len(rel) - 1))
+            }
+            written_name string = strip_gray_ext(module_base)
+            mut display_name string = written_name
+            if item.import_alias != "" { display_name = item.import_alias }
+
+            mut target_path string = normalize_path(import_path)
+            if !is_directory_import { target_path = normalize_path(source_files[0]) }
+            // A module of the same name from another place is a distinct module
+            mod_name string = unique_module_name(written_name, target_path)
+
+            // The same target named twice in one file, whatever it was called
+            mut has_collision = false
+            mut seen_index i64 = 0
+            as_long_as seen_index < len(seen_names) {
+                if !seen_stdlib[seen_index] && seen_paths[seen_index] == target_path && seen_files[seen_index] == input_file {
+                    report_import_error("E6011", error_registry.registry_message_formatted("E6011", {display_name}), "remove the duplicate import", statement, input_file)
+                    has_collision = true
+                    break
+                }
+                seen_index = seen_index + 1
+            }
+            // Two different targets under one module name; the same target reached
+            // from two files is a diamond dependency and stays silent
+            seen_index = 0
+            as_long_as seen_index < len(seen_names) && !has_collision {
+                // A module name binds only in the file that wrote it
+                if seen_names[seen_index] == display_name && (seen_files[seen_index] == input_file || seen_stdlib[seen_index]) {
+                    if !seen_stdlib[seen_index] && seen_paths[seen_index] == target_path {
+                        has_collision = true
+                        break
+                    }
+                    report_import_error("E6001", "module name '${display_name}' is already imported; use an alias to distinguish them", "", statement, input_file)
+                    has_collision = true
+                    break
+                }
+                seen_index = seen_index + 1
+            }
+            if has_collision { continue }
+            record_seen(display_name, target_path, input_file, false)
+
+            for_each source_file in source_files {
+                resolved_path string = normalize_path(source_file)
+
+                // The entry file is the program, not a module
+                if len(source_files) == 1 && resolved_path == entry_path {
+                    report_import_error("E6005", "cannot import '${item.source_path}'; it is the program's entry point", "move the shared declarations into a third file and import that from both", statement, input_file)
+                    continue
+                }
+
+                // A file the program already holds under another module (imported directly in one
+                // place and through its directory in another) is also a member of this module: its
+                // declarations are merged again under this module's name
+                mut is_second_module bool = false
+                if maps.contains_key(imported, resolved_path) && imported[resolved_path] != "main" && imported[resolved_path] != mod_name {
+                    also_key string = "${resolved_path}>${mod_name}"
+                    if !maps.contains_key(imported_also, also_key) {
+                        imported_also[also_key] = true
+                        is_second_module = true
+                    }
+                }
+
+                // Check if already imported
+                if maps.contains_key(imported, resolved_path) {
+                    importer_path string = normalize_path(input_file)
+                    importer_in_directory bool = maps.contains_key(imported_from_directory, importer_path) && imported_from_directory[importer_path]
+                    if importer_in_directory && len(source_files) == 1 {
+                        report_import_warning("W2014", "import of '${item.source_path}' is redundant; already included by directory import", statement, input_file)
+                    } or len(source_files) == 1 && maps.contains_key(imported_from_directory, resolved_path) && imported_from_directory[resolved_path] && imported_by_file(resolved_path) == input_file {
+                        report_import_warning("W2015", "import of '${item.source_path}' is redundant; already included by directory import", statement, input_file)
+                    } or len(source_files) == 1 && imported_by_file(resolved_path) == input_file {
+                        owner_module string = imported[resolved_path]
+                        report_import_error("E6011", "'${item.source_path}' is already imported in this file as part of module '${owner_module}'", "use the '${owner_module}' namespace, or remove one of the imports", statement, input_file)
+                    }
+                    if !is_second_module { continue }
+                }
+
+                // Mark as imported
+                if !is_second_module {
+                    imported[resolved_path] = mod_name
+                    imported_from[resolved_path] = input_file
+                    imported_from_directory[resolved_path] = is_directory_import
+                }
+                resolve.note_program_module(mod_name)
+
+                // Read and parse imported file; its diagnostics name it as it was written
+                imp_source string, read_err = io.read_file(source_file)
+                if read_err != nil {
+                    report_import_error("E6002", error_registry.registry_message_formatted("E6002", {source_file}), "", statement, input_file)
+                    continue
+                }
+
+                imp_lex = lexer.lexer_create(imp_source, source_file)
+                imp_parser = parser.parser_create(imp_lex, source_file)
+                imp_program = parser.parse_program(imp_parser)
+
+                if len(imp_parser^.errors) > 0 {
+                    // Same workaround as above: copy the array field to a local first.
+                    imp_errs = imp_parser^.errors
+                    for_each imp_err in imp_errs { record_import_diagnostic(diagnostic_of(imp_err, source_file)) }
+                    continue
+                }
+
+                mut child_sibling_directory string = ""
+                mut sibling_decls [string:bool] = {:}
+                if is_directory_import {
+                    child_sibling_directory = normalize_path(import_path)
+                    sibling_decls = directory_declarations(source_files)
+                }
+                resolve.register_private_declarations(imp_program, mod_name, source_file)
+                mut module_aliases [string:string] = file_aliases(imp_program, source_file, child_sibling_directory, mod_name, imported)
+                // A module may name its own declarations through its module name
+                if !maps.contains_key(module_aliases, mod_name) { module_aliases[mod_name] = mod_name }
+                resolve.qualify_program(imp_program, mod_name, source_file, module_aliases, auto_use_decls(imp_program, source_file), sibling_decls)
+
+                // Prefix imported declarations with module name and merge into main program
+                prefix_and_merge(merged, imp_program, mod_name)
+
+                // Its own imports are resolved after every import already queued
+                arrays.append(pending_programs, imp_program)
+                arrays.append(pending_files, source_file)
+                arrays.append(pending_sibling_directories, child_sibling_directory)
+            }
+        }
+
+        si = si + 1
+    }
+}
+
+// Maps each local import alias in a parsed file to the module name that the
+// imported file's declarations are mangled with.
+// The module name an import path introduces: its file or directory name without
+// extension or trailing separator.
+fn module_name_of(source_path string) -> string {
+    mut rel string = source_path
+    if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) { rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel)) }
+    mut base string = path_basename(rel)
+    if base == "" && len(rel) > 1 { base = path_basename(strings.slice(rel, 0, len(rel) - 1)) }
+    return strip_gray_ext(base)
+}
+
+// The names every file of a directory module declares at the top level.
+fn directory_declarations(files [string]) -> [string:bool] {
+    mut names [string:bool] = {:}
+    for_each file in files {
+        source string, read_err = io.read_file(file)
+        if read_err != nil { continue }
+        parsed = parser.parse_program(parser.parser_create(lexer.lexer_create(source, file), file))
+        for_each declaration in parsed^.program^.stmts {
+            #strict
+            when declaration^.kind {
+                is ast.NodeKind.FUNC_DECL { names[declaration^.func_decl^.name] = true }
+                is ast.NodeKind.STRUCT_DECL { names[declaration^.struct_decl^.name] = true }
+                is ast.NodeKind.ENUM_DECL { names[declaration^.enum_decl^.name] = true }
+                is ast.NodeKind.VAR_DECL { names[declaration^.var_decl^.name] = true }
+                is ast.NodeKind.ALIAS_DECL { names[declaration^.alias_decl^.name] = true }
+                is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
+                   ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+                   ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+                   ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+                   ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+                   ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+                   ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+                   ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+                   ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+                   ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT,
+                   ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
+                   ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
+                   ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
+                   ast.NodeKind.PROGRAM {}
+            }
+        }
+    }
+    return names
+}
+
+// A sibling import of a directory module's file maps to the directory module itself.
+fn file_aliases(program ^ast.AstNode, file_path string, sibling_directory string, directory_module string, imported map[string:string]) -> [string:string] {
+    mut aliases [string:string] = {:}
+    for_each statement in program^.program^.stmts {
+        if statement^.kind != ast.NodeKind.IMPORT_STMT { continue }
+        items = statement^.import_stmt^.items
+        for_each item in items {
+            if item.is_stdlib || item.is_c_import || item.source_path == "" { continue }
+            stem string = module_name_of(item.source_path)
+            mut mod_name string = unique_module_name(stem, import_target_path(path_dir(file_path), item.source_path))
+            if sibling_directory != "" && names_sibling(path_dir(file_path), item.source_path, sibling_directory) {
+                mod_name = directory_module
+            } otherwise {
+                // A file a directory import already brought in belongs to that module
+                owner string = owner_of_single_file(path_dir(file_path), item.source_path, imported)
+                if owner != "" { mod_name = owner }
+            }
+            if item.import_alias != "" {
+                aliases[item.import_alias] = mod_name
+            } otherwise {
+                aliases[stem] = mod_name
+            }
+        }
+    }
+    return aliases
+}
+
+// The module name each imported target (file or directory) is known by, and how many
+// distinct targets have claimed each written name: the first claims the name as written,
+// a later one gets `name__2`, `name__3`, ...
+mut module_by_target [string:string] = {:}
+mut module_claims [string:i64] = {:}
+
+fn unique_module_name(written_name string, target_path string) -> string {
+    if target_path == "" { return written_name }
+    if maps.contains_key(module_by_target, target_path) { return module_by_target[target_path] }
+    mut claims i64 = 0
+    if maps.contains_key(module_claims, written_name) { claims = module_claims[written_name] }
+    module_claims[written_name] = claims + 1
+    mut assigned string = written_name
+    if claims > 0 { assigned = "${written_name}__${claims + 1}" }
+    module_by_target[target_path] = assigned
+    return assigned
+}
+
+// The normalized path of the file or directory an import written in `import_dir` names, or "".
+fn import_target_path(import_dir string, source_path string) -> string {
+    mut relative string = source_path
+    if strings.starts_with(relative, CURRENT_DIRECTORY_PREFIX) { relative = strings.slice(relative, len(CURRENT_DIRECTORY_PREFIX), len(relative)) }
+    target string = "${import_dir}${relative}"
+    if has_source_extension(target) { return normalize_path(target) }
+    matches = extension_matches(target)
+    if len(matches) == 1 { return normalize_path(matches[0]) }
+    if len(matches) == 0 && io.is_directory(target) { return normalize_path(target) }
+    return ""
+}
+
+// The module that already imported the single file `source_path` names, or "".
+fn owner_of_single_file(import_dir string, source_path string, imported map[string:string]) -> string {
+    mut relative string = source_path
+    if strings.starts_with(relative, CURRENT_DIRECTORY_PREFIX) { relative = strings.slice(relative, len(CURRENT_DIRECTORY_PREFIX), len(relative)) }
+    mut target string = "${import_dir}${relative}"
+    if !has_source_extension(target) {
+        matches = extension_matches(target)
+        if len(matches) != 1 { return "" }
+        target = matches[0]
+    }
+    key string = normalize_path(target)
+    if maps.contains_key(imported, key) && imported[key] != "main" { return imported[key] }
+    return ""
+}
+
+// Maps each top-level name declared by a module this file brings in with
+// `import and use` to the name the module's declarations are mangled with.
+fn auto_use_decls(program ^ast.AstNode, file_path string) -> [string:string] {
+    mut used [string:string] = {:}
+    mut provider_of [string:string] = {:}
+    mut ambiguous [string:string] = {:}
+    input_dir string = path_dir(file_path)
+    mut using_names [string:bool] = {:}
+    for_each statement in program^.program^.stmts {
+        if statement^.kind != ast.NodeKind.USING_STMT { continue }
+        for_each used_name in statement^.using_stmt^.modules { using_names[used_name] = true }
+    }
+    for_each statement in program^.program^.stmts {
+        if statement^.kind != ast.NodeKind.IMPORT_STMT { continue }
+        items = statement^.import_stmt^.items
+        for_each item in items {
+            if item.is_stdlib || item.is_c_import || item.source_path == "" { continue }
+            module_alias string = item.import_alias
+            if module_alias == "" { module_alias = strip_gray_ext(path_basename(item.source_path)) }
+            if !statement^.import_stmt^.auto_use && !maps.contains_key(using_names, module_alias) { continue }
+            mut rel string = item.source_path
+            if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) { rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel)) }
+            mod_name string = strip_gray_ext(path_basename(rel))
+            for_each resolved_path in import_source_files(fmt.sprintf("%s%s", {input_dir, rel})) {
+                source string, read_err = io.read_file(resolved_path)
+                if read_err != nil { continue }
+                module_program = parser.parse_program(parser.parser_create(lexer.lexer_create(source, resolved_path), resolved_path))
+                for_each declaration in module_program^.program^.stmts {
+                    mut declared_name string = ""
+                    #strict
+                    when declaration^.kind {
+                        is ast.NodeKind.FUNC_DECL { declared_name = declaration^.func_decl^.name }
+                        is ast.NodeKind.STRUCT_DECL { declared_name = declaration^.struct_decl^.name }
+                        is ast.NodeKind.ENUM_DECL { declared_name = declaration^.enum_decl^.name }
+                        is ast.NodeKind.VAR_DECL { declared_name = declaration^.var_decl^.name }
+                        is ast.NodeKind.ALIAS_DECL { declared_name = declaration^.alias_decl^.name }
+                        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
+                           ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING,
+                           ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
+                           ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE,
+                           ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR,
+                           ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
+                           ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
+                           ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
+                           ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT,
+                           ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
+                           ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT,
+                           ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT,
+                           ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
+                           ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+                    }
+                    if declared_name == "" { continue }
+                    // Two modules providing one name leave the pick to import order
+                    if maps.contains_key(provider_of, declared_name) && provider_of[declared_name] != mod_name {
+                        if !maps.contains_key(ambiguous, declared_name) { ambiguous[declared_name] = "${provider_of[declared_name]}|${mod_name}" }
+                        continue
+                    }
+                    provider_of[declared_name] = mod_name
+                    used[declared_name] = resolve.mangle(mod_name, declared_name)
+                    resolve.note_used_import_alias(resolve.mangle(mod_name, declared_name), module_alias)
+                }
+            }
+        }
+    }
+    resolve.set_ambiguous_decls(ambiguous)
+    return used
+}
+
+// Prefix all top-level declarations in imp_program with mod_name
+// and append them to the main program's statement list.
+// `imports.c` inserts each imported file's variables after the entry's imports and its other
+// declarations one by one at a fixed point, so the later a file is processed the earlier
+// its declarations come, and a file's own non-variable declarations end up reversed.
+mut merged_variables [^ast.AstNode] = {}
+mut merged_declarations [^ast.AstNode] = {}
+
+fn prefix_and_merge(&merged [^ast.AstNode], imp_program ^ast.AstNode, mod_name string) {
+    file_start i64 = len(merged)
+    prefix_file_statements(merged, imp_program, mod_name)
+    mut file_variables [^ast.AstNode] = {}
+    mut file_declarations [^ast.AstNode] = {}
+    mut position i64 = file_start
+    as_long_as position < len(merged) {
+        statement = merged[position]
+        if statement^.kind == ast.NodeKind.VAR_DECL || statement^.kind == ast.NodeKind.IMPORT_STMT {
+            arrays.append(file_variables, statement)
+        } otherwise {
+            arrays.append(file_declarations, statement)
+        }
+        position = position + 1
+    }
+    mut next_variables [^ast.AstNode] = file_variables
+    mut reversed_declarations [^ast.AstNode] = {}
+    mut reverse_index i64 = len(file_declarations) - 1
+    as_long_as reverse_index >= 0 {
+        arrays.append(reversed_declarations, file_declarations[reverse_index])
+        reverse_index = reverse_index - 1
+    }
+    for_each existing in merged_variables { arrays.append(next_variables, existing) }
+    mut next_declarations [^ast.AstNode] = reversed_declarations
+    for_each existing in merged_declarations { arrays.append(next_declarations, existing) }
+    merged_variables = next_variables
+    merged_declarations = next_declarations
+    as_long_as len(merged) > file_start { mut _ = arrays.remove_last(merged) }
+}
+
+fn prefix_file_statements(&merged [^ast.AstNode], imp_program ^ast.AstNode, mod_name string) {
+    for_each statement in imp_program^.program^.stmts {
+        #strict
+        when statement^.kind {
+            is ast.NodeKind.FUNC_DECL {
+                statement^.func_decl^.original_name = statement^.func_decl^.name
+                statement^.func_decl^.name = fmt.sprintf("%s_%s", {mod_name, statement^.func_decl^.name})
+                // Merge: insert before existing non-import statements
+                arrays.append(merged, statement)
+            }
+            is ast.NodeKind.STRUCT_DECL {
+                statement^.struct_decl^.original_name = statement^.struct_decl^.name
+                statement^.struct_decl^.name = fmt.sprintf("%s_%s", {mod_name, statement^.struct_decl^.name})
+                arrays.append(merged, statement)
+            }
+            is ast.NodeKind.ENUM_DECL {
+                statement^.enum_decl^.original_name = statement^.enum_decl^.name
+                statement^.enum_decl^.name = fmt.sprintf("%s_%s", {mod_name, statement^.enum_decl^.name})
+                arrays.append(merged, statement)
+            }
+            is ast.NodeKind.ALIAS_DECL {
+                statement^.alias_decl^.name = fmt.sprintf("%s_%s", {mod_name, statement^.alias_decl^.name})
+                arrays.append(merged, statement)
+            }
+            is ast.NodeKind.VAR_DECL {
+                statement^.var_decl^.original_name = statement^.var_decl^.name
+                statement^.var_decl^.name = fmt.sprintf("%s_%s", {mod_name, statement^.var_decl^.name})
+                arrays.append(merged, statement)
+            }
+            is ast.NodeKind.IMPORT_STMT {
+                // Stdlib imports carry the headers the merged code needs, and a C header is
+                // collected for the whole program
+                for_each item in statement^.import_stmt^.items {
+                    if item.is_stdlib || item.is_c_import {
+                        arrays.append(merged, statement)
+                        break
+                    }
+                }
+            }
+            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
+               ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
+               ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
+               ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
+               ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
+               ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
+               ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
+               ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
+               ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
+               ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
+               ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
+               ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.USING_STMT,
+               ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {
+                // Skip module/using statements from imported files
+            }
+        }
+    }
+}
+
+// Places the merged imported declarations, dependencies first, between the
+// entry file's leading import statements and its own declarations.
+fn finish_merge(program ^ast.AstNode) {
+    mut stmts [^ast.AstNode] = {}
+    mut stage i64 = STAGE_IMPORTS
+    for_each existing in program^.program^.stmts {
+        header bool = existing^.kind == ast.NodeKind.IMPORT_STMT || existing^.kind == ast.NodeKind.USING_STMT
+        if stage == STAGE_IMPORTS && !header {
+            stage = STAGE_VARIABLES
+            for_each declaration in merged_variables { arrays.append(stmts, declaration) }
+        }
+        if stage == STAGE_VARIABLES && existing^.kind != ast.NodeKind.VAR_DECL {
+            stage = STAGE_DECLARATIONS
+            for_each declaration in merged_declarations { arrays.append(stmts, declaration) }
+        }
+        arrays.append(stmts, existing)
+    }
+    if stage == STAGE_IMPORTS { for_each declaration in merged_variables { arrays.append(stmts, declaration) } }
+    if stage < STAGE_DECLARATIONS { for_each declaration in merged_declarations { arrays.append(stmts, declaration) } }
+    program^.program^.stmts = stmts
+}
+
+// --- Error reporting ---
+
+// Prints the errors of one phase and the closing summary, then stops.
+fn fail_with(errors [parser.ParseError], fallback_file string) {
+    mut list [diagnostics.Diagnostic] = {}
+    for_each err in errors { arrays.append(list, diagnostic_of(err, fallback_file)) }
+    fail_with_diagnostics(list)
+}
+
+fn fail_with_diagnostics(list [diagnostics.Diagnostic]) {
+    for_each entry in list { diagnostics.print_diagnostic(entry) }
+    diagnostics.print_summary(list)
+    exit(1)
+}
+
+// References to a private declaration from a file other than the one that declares it.
+// The position in the merged program of the top-level declaration holding line `line` of `file`: the checker
+// reports in that order.
+fn declaration_position(program ^ast.AstNode, file string, line i64) -> i64 {
+    mut position i64 = -1
+    mut best_line i64 = -1
+    stmts = program^.program^.stmts
+    for index in range(0, len(stmts)) {
+        if stmts[index]^.tok.file == file && stmts[index]^.tok.line <= line && stmts[index]^.tok.line > best_line {
+            best_line = stmts[index]^.tok.line
+            position = index
+        }
+    }
+    return position
+}
+
+fn private_access_diagnostics(program ^ast.AstNode) -> [diagnostics.Diagnostic] {
+    mut found [diagnostics.Diagnostic] = {}
+    mut positions [i64] = {}
+    mut reported [string:bool] = {:}
+    for_each reference in resolve.name_references {
+        if !maps.contains_key(resolve.private_files, reference.mangled) { continue }
+        if resolve.private_files[reference.mangled] == reference.file { continue }
+        key string = "${reference.file}:${reference.line}:${reference.column}:${reference.mangled}"
+        if maps.contains_key(reported, key) { continue }
+        reported[key] = true
+        mut code string = "E4015"
+        if resolve.private_aliases[reference.mangled] { code = "E4021" }
+        arrays.append(found, diagnostics.Diagnostic{is_error: true, code: code, message: error_registry.registry_message_formatted(code, {resolve.private_names[reference.mangled]}), file: reference.file, line: reference.line, column: reference.column})
+        arrays.append(positions, declaration_position(program, reference.file, reference.line))
+    }
+    // Stable insertion sort by declaration position
+    mut ordered [diagnostics.Diagnostic] = {}
+    mut ordered_positions [i64] = {}
+    for index in range(0, len(found)) {
+        mut insert_at i64 = len(ordered)
+        as_long_as insert_at > 0 && ordered_positions[insert_at - 1] > positions[index] { insert_at = insert_at - 1 }
+        arrays.insert_at(ordered, insert_at, found[index])
+        arrays.insert_at(ordered_positions, insert_at, positions[index])
+    }
+    return ordered
+}
+
+// `module.name` written in a file that does not import the module, which is
+// loaded only because another file imports it.
+fn unimported_module_diagnostics(imported map[string:string]) -> [diagnostics.Diagnostic] {
+    mut module_names [string:bool] = {:}
+    for_each module_path in maps.get_keys(imported) { module_names[imported[module_path]] = true }
+    mut found [diagnostics.Diagnostic] = {}
+    for_each reference in resolve.qualifier_references {
+        if !maps.contains_key(module_names, reference.qualifier) || reference.qualifier == "main" { continue }
+        if reference.qualifier == reference.module_name { continue }
+        arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E4033", message: error_registry.registry_message_formatted("E4033", {reference.qualifier}), file: reference.file, line: reference.line, column: reference.column, help: "add an import for it at the top of the file"})
+    }
+    return found
+}
+
+// A bare name two `import and use` modules both provide, used unqualified.
+fn ambiguous_use_diagnostics() -> [diagnostics.Diagnostic] {
+    mut found [diagnostics.Diagnostic] = {}
+    for_each reference in resolve.ambiguous_references {
+        arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E4031", message: error_registry.registry_message_formatted("E4031", {reference.name, reference.first_module, reference.second_module, reference.first_module, reference.name}), file: reference.file, line: reference.line, column: reference.column})
+    }
+    return found
+}
+
+// --- Main pipeline ---
+
+fn main() {
+    opts Options = parse_args()
+    start_time i64 = time.now_ms()
+
+    // `gray check DIR` checks the directory as the module `import "./DIR/"` merges
+    mut source string = ""
+    mut read_err Error = nil
+    if opts.check_only && io.is_directory(opts.input_file) {
+        directory_path string, real_err = path.absolute_path(opts.input_file)
+        separator_at i64 = strings.last_index_of(directory_path, "/")
+        if real_err != nil || separator_at < 0 || separator_at == len(directory_path) - 1 {
+            eprintln("gray: cannot read '${opts.input_file}'")
+            exit(1)
+        }
+        source = "import \"./${strings.slice(directory_path, separator_at + 1, len(directory_path))}/\"\n"
+        opts.input_file = directory_path
+        diagnostics.set_virtual_source(directory_path, source)
+        typechecker.set_directory_entry(true)
+    } otherwise {
+        file_text string, file_error = io.read_file(opts.input_file)
+        source = file_text
+        read_err = file_error
+    }
+    if read_err != nil {
+        mut open_failure = "Permission denied"
+        if !io.file_exists(opts.input_file) { open_failure = "No such file or directory" }
+        if io.is_directory(opts.input_file) { open_failure = "Is a directory" }
+        eprintln("gray: cannot open '${opts.input_file}': ${open_failure}")
+        exit(1)
+    }
+
+    if !opts.quiet_all && opts.quiet_codes != "" {
+        for_each quiet_code in strings.split(opts.quiet_codes, ",") {
+            if quiet_code == "" { continue }
+            if strings.starts_with(quiet_code, "E") {
+                eprintln("gray: '-q' only accepts warning codes (W-prefixed), not error code '${quiet_code}'")
+                exit(1)
+            }
+            if !strings.starts_with(quiet_code, "W") || error_registry.registry_message(quiet_code) == "" {
+                eprintln("gray: unknown warning code '${quiet_code}'")
+                exit(1)
+            }
+        }
+    }
+    if opts.no_color { diagnostics.disable_color() }
+    diagnostics.configure_warnings(opts.quiet_all, opts.quiet_codes)
+
+    // Lex and parse
+    lex = lexer.lexer_create(source, opts.input_file)
+    par = parser.parser_create(lex, opts.input_file)
+    program = parser.parse_program(par)
+
+    // Check for parse errors
+    if len(par^.errors) > 0 { fail_with(par^.errors, opts.input_file) }
+
+    // --fmt: reindent the file in place; a file that does not parse is refused
+    if opts.format_mode {
+        _, format_write_err = io.write_file(opts.input_file, format.format_source(source, opts.input_file))
+        if format_write_err != nil {
+            eprintln("gray: fmt: cannot write '${opts.input_file}'")
+            exit(1)
+        }
+        exit(0)
+    }
+
+    // Resolve imports
+    mut imported [string:string] = {:}
+    mut merged [^ast.AstNode] = {}
+    resolve_imports(program, opts.input_file, imported, merged)
+    if count_errors(import_diagnostics) > 0 { fail_with_diagnostics(import_diagnostics) }
+    resolve.qualify_program(program, "", opts.input_file, file_aliases(program, opts.input_file, "", "", imported), auto_use_decls(program, opts.input_file), {:})
+    finish_merge(program)
+
+    // Apply -define: overrides to the #define constants of the entry file and every
+    // imported module before anything reads their values
+    define_errors = defines.defines_apply(program, opts.input_file, opts.define_args)
+    if len(define_errors) > 0 { fail_with(define_errors, opts.input_file) }
+
+    // Typecheck the entry file
+    for_each used_alias in maps.get_keys(resolve.entry_used_aliases) { typechecker.note_resolver_used_import(used_alias) }
+    for_each module_path in maps.get_keys(imported) { typechecker.note_user_module(imported[module_path]) }
+    for_each denied in resolve.name_references {
+        if maps.contains_key(resolve.private_files, denied.mangled) && resolve.private_files[denied.mangled] != denied.file { typechecker.note_denied_reference(denied.file, denied.line, denied.column) }
+    }
+    typechecker.set_test_mode(opts.test_mode)
+    codegen.set_test_mode(opts.test_mode)
+    codegen.set_arena_limit(opts.arena_limit)
+    checker = typechecker.typecheck_program(program, opts.check_only)
+    mut checked [diagnostics.Diagnostic] = import_diagnostics
+    mut error_total i64 = 0
+    for_each access_error in private_access_diagnostics(program) {
+        arrays.append(checked, access_error)
+        error_total = error_total + 1
+    }
+    for_each ambiguous_error in ambiguous_use_diagnostics() {
+        arrays.append(checked, ambiguous_error)
+        error_total = error_total + 1
+    }
+    for_each unimported_error in unimported_module_diagnostics(imported) {
+        arrays.append(checked, unimported_error)
+        error_total = error_total + 1
+    }
+    for_each diag in checker^.diagnostics {
+        is_error bool = !strings.starts_with(diag.code, "W")
+        if is_error { error_total = error_total + 1 }
+        arrays.append(checked, diagnostics.Diagnostic{is_error: is_error, code: diag.code, message: diag.message, file: diag.file, line: diag.line, column: diag.col, end_column: diag.end_col, help: diag.help})
+    }
+    if error_total > 0 { fail_with_diagnostics(checked) }
+    // Warnings are shown even when the check succeeds
+    for_each entry in checked { diagnostics.print_diagnostic(entry) }
+    diagnostics.print_summary(checked)
+
+    // C headers named by `extern import`: reachable on this target, and not at odds with each other
+    if len(cinterop.c_headers) > 0 && !opts.emit_c_only {
+        c_compiler = cinterop.detect_c_compiler()
+        if c_compiler != "" {
+            mut interop_errors [diagnostics.Diagnostic] = {}
+            if !opts.check_only { interop_errors = cinterop.preflight_c_headers(c_compiler) }
+            if len(interop_errors) == 0 { interop_errors = cinterop.validate_c_extern_signatures(c_compiler, checker, opts.input_file) }
+            if len(interop_errors) > 0 {
+                mut with_interop [diagnostics.Diagnostic] = checked
+                for_each interop_error in interop_errors { arrays.append(with_interop, interop_error) }
+                fail_with_diagnostics(with_interop)
+            }
+        }
+    }
+
+    if opts.check_only {
+        if opts.show_time { eprintln("gray: check completed in ${time.now_ms() - start_time}.0ms") }
+        eprintln("${diagnostics.color(diagnostics.COLOR_BOLD)}${diagnostics.color("\x1b[32m")}gray: ${opts.input_file}: no errors!${diagnostics.color(diagnostics.COLOR_RESET)}")
+        exit(0)
+    }
+
+    // Codegen
+    resolve.sanitize_program(program)
+    c_source = codegen.generate_program(program, opts.input_file)
+    frontend_end_time i64 = time.now_ms()
+
+    mut output_path string = opts.output_file
+    if opts.run_mode && output_path == "" {
+        output_path = ccompile.temporary_path("gray_run_", "")
+        if output_path == "" {
+            eprintln("gray: cannot create a private temporary directory")
+            exit(1)
+        }
+    } or output_path == "" {
+        output_path = output_name_from_input(opts.input_file)
+    }
+
+    if opts.emit_c_only {
+        mut c_output_path string = "${path_basename(strip_gray_ext(opts.input_file))}.c"
+        if opts.output_file != "" { c_output_path = opts.output_file }
+        _, write_err = io.write_file(c_output_path, c_source)
+        if write_err != nil {
+            eprintln("gray: failed to write C output: ${c_output_path}")
+            exit(1)
+        }
+        println("Generated: ${c_output_path}")
+        exit(0)
+    }
+
+    // The generated C goes to a private temporary file named after the output
+    c_path string = ccompile.temporary_path("gray_${path_basename(output_path)}_", ".c")
+    if c_path == "" {
+        eprintln("gray: cannot create a private temporary directory")
+        exit(1)
+    }
+    _, c_write_err = io.write_file(c_path, c_source)
+    if c_write_err != nil {
+        eprintln("gray: cannot write '${c_path}'")
+        exit(1)
+    }
+
+    is_command bool = opts.cc_override != ""
+    mut c_compiler string = opts.cc_override
+    if !is_command {
+        c_compiler = detect_c_compiler()
+        if c_compiler == "" {
+            eprintln("gray: no C compiler found.")
+            eprintln("  Install gcc or clang to compile Grayscale programs.")
+            eprintln("  On macOS: xcode-select --install")
+            eprintln("  On Ubuntu: sudo apt install gcc")
+            eprintln("  On Windows: install MinGW-w64, e.g.")
+            eprintln("    winget install BrechtSanders.WinLibs.POSIX.UCRT.Base")
+            exit(1)
+        }
+    }
+    tinycc bool = ccompile.is_tinycc(c_compiler)
+    if tinycc {
+        _, lowered_write_err = io.write_file(c_path, ccompile.lower_auto_type(c_source))
+        if lowered_write_err != nil { exit(1) }
+    }
+
+    runtime_directory string = ccompile.find_runtime_directory()
+    if runtime_directory == "" {
+        eprintln("gray: cannot find runtime headers.")
+        eprintln("  Searched:")
+        eprintln("    - \$GRAY_RUNTIME environment variable")
+        eprintln("    - relative to gray binary")
+        eprintln("    - ./grayc/src/ (project root)")
+        eprintln("    - /usr/local/lib/grayc/")
+        eprintln("  Try: cd <project-root> && make -C grayc install")
+        exit(1)
+    }
+
+    // The prebuilt libgrayrt.a is for the host's own compiler; any other compiler builds its own
+    mut archive_path string = ccompile.join_path(runtime_directory, "../libgrayrt.a")
+    mut has_archive bool = false
+    if tinycc || is_command || ccompile.cannot_link_archive(c_compiler, is_command) {
+        has_archive = !strings.contains(c_source, "#include \"sqlite.h\"")
+        if has_archive {
+            built_archive = ccompile.ensure_runtime_archive(c_compiler, is_command, runtime_directory)
+            archive_path = built_archive.archive_file
+            has_archive = built_archive.is_usable
+        }
+    } or io.file_exists(archive_path) {
+        has_archive = true
+    } otherwise {
+        self_path, self_error = os.executable_path()
+        if self_error == nil {
+            beside_binary = ccompile.join_path(ccompile.directory_of(self_path), "libgrayrt.a")
+            if io.file_exists(beside_binary) {
+                archive_path = beside_binary
+                has_archive = true
+            }
+        }
+    }
+
+    c_compiler_start_time i64 = time.now_ms()
+    compiler_words = ccompile.compiler_words(c_compiler, is_command)
+    mut compiler_arguments [string] = arrays.slice(compiler_words, 1, len(compiler_words))
+    for_each flag in c_compile_flags(opts, c_compiler, is_command, tinycc, runtime_directory) { arrays.append(compiler_arguments, flag) }
+    for_each flag in cinterop.local_header_flags() {
+        if tinycc && flag == "-iquote" { arrays.append(compiler_arguments, "-I") } otherwise { arrays.append(compiler_arguments, flag) }
+    }
+    for_each flag in {"-o", output_path, c_path} { arrays.append(compiler_arguments, flag) }
+    if has_archive {
+        arrays.append(compiler_arguments, archive_path)
+    } otherwise {
+        for_each runtime_source in ccompile.runtime_sources() { arrays.append(compiler_arguments, ccompile.join_path(runtime_directory, runtime_source)) }
+        // The SQLite amalgamation is by far the slowest file to compile, and TinyCC's Mach-O linker
+        // rejects it: those compilers include it only for a program that uses it
+        skips_unused_sqlite bool = tinycc || ccompile.cannot_link_archive(c_compiler, is_command)
+        has_vendor bool = io.file_exists(ccompile.join_path(runtime_directory, "vendor/sqlite3.c")) && (!skips_unused_sqlite || strings.contains(c_source, "#include \"sqlite.h\""))
+        for_each stdlib_source in ccompile.stdlib_sources() {
+            if !has_vendor && (stdlib_source == "stdlib/sqlite.c" || stdlib_source == "vendor/sqlite3.c") { continue }
+            arrays.append(compiler_arguments, ccompile.join_path(runtime_directory, stdlib_source))
+        }
+    }
+    // Drop the sections nothing references; Apple ld and GNU ld spell it differently
+    if !tinycc {
+        if os.current_os() == os.MAC_OS { arrays.append(compiler_arguments, "-Wl,-dead_strip") } otherwise { arrays.append(compiler_arguments, "-Wl,--gc-sections") }
+    }
+    arrays.append(compiler_arguments, "-lm")
+    arrays.append(compiler_arguments, "-lpthread")
+    if !tinycc && os.current_os() == os.MAC_OS { arrays.append(compiler_arguments, "-Wl,-w") }
+
+    if opts.verbose { eprintln("gray: ${strings.join(arrays.concat({compiler_words[0]}, compiler_arguments), " ")}") }
+
+    // The compiler's own text is shown only when the build fails or under -v
+    mut compiler_status i64 = 1
+    compile_result, compile_error = os.exec(compiler_words[0], compiler_arguments)
+    if compile_error != nil {
+        eprintln("gray: could not run the C compiler '${compiler_words[0]}'")
+    } otherwise {
+        compiler_status = compile_result.exit_code
+        if compiler_status != 0 || opts.verbose { eprint(compile_result.stderr) }
+    }
+    c_compiler_end_time i64 = time.now_ms()
+
+    if compiler_status != 0 {
+        eprintln("gray: C compilation failed")
+        if len(cinterop.c_headers) > 0 { eprintln("gray: hint: check that all C headers in extern import \"...\" exist and are installed") }
+        eprintln("gray: generated C source at ${c_path}")
+    } otherwise {
+        remove_file(c_path)
+        if !opts.run_mode {
+            out_base string = path_basename(output_path)
+            if !opts.no_color && os.is_tty() {
+                println("\x1b[32mCompiled '\x1b[1m${out_base}\x1b[22m' in ${c_compiler_end_time - start_time}ms!\x1b[0m")
+            } otherwise {
+                println("Compiled '${out_base}' in ${c_compiler_end_time - start_time}ms!")
+            }
+            flush()
+        }
+        if opts.show_time {
+            eprintln("  frontend:  ${frontend_end_time - start_time}.0ms (lex + parse + typecheck + codegen)")
+            eprintln("  setup:     ${c_compiler_start_time - frontend_end_time}.0ms (compiler probe + temp write)")
+            eprintln("  cc:        ${c_compiler_end_time - c_compiler_start_time}.0ms (compile + link)")
+        }
+    }
+
+    // Run mode: execute the binary with the program's own arguments, then remove it
+    mut ran_program bool = false
+    if compiler_status == 0 && opts.run_mode {
+        mut run_command string = shell_quote(run_target(output_path))
+        for_each program_argument in opts.program_arguments { run_command = "${run_command} ${shell_quote(program_argument)}" }
+        compiler_status = system("${run_command}; exit $?")
+        if compiler_status < 0 {
+            eprintln("gray: cannot execute '${output_path}'")
+            compiler_status = 1
+        } or crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET) != "" {
+            eprintln("gray: program crashed: signal ${compiler_status - SIGNAL_EXIT_OFFSET} (${crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET)})")
+        }
+        ran_program = true
+        remove_file(output_path)
+    }
+    if ran_program { exit(compiler_status) }
+    if compiler_status != 0 { exit(1) }
+    exit(0)
+}
+
+fn remove_file(file_path string) {
+    mut _, _ = io.delete_file(file_path)
+}
+
+// A path that names the file itself: a bare name must not resolve to another binary on PATH.
+fn run_target(output_path string) -> string {
+    if strings.contains(output_path, "/") { return output_path }
+    return "./${output_path}"
+}
+
+fn shell_quote(text string) -> string {
+    return "'${strings.replace(text, "'", "'\\''")}'"
+}
+
+// strsignal's text for the fatal signals a crashed program ends with, "" for any other number.
+fn crash_signal_name(signal_number i64) -> string {
+    mut darwin bool = os.current_os() == os.MAC_OS
+    if signal_number == SIGNAL_HANGUP { return "Hangup: 1" }
+    if signal_number == SIGNAL_INTERRUPT { return "Interrupt: 2" }
+    if signal_number == SIGNAL_QUIT { return "Quit: 3" }
+    if signal_number == SIGNAL_ILLEGAL_INSTRUCTION { return "Illegal instruction: 4" }
+    if signal_number == SIGNAL_TRAP { return "Trace/BPT trap: 5" }
+    if signal_number == SIGNAL_ABORT { return "Abort trap: 6" }
+    if signal_number == SIGNAL_FLOATING_POINT { return "Floating point exception: 8" }
+    if signal_number == SIGNAL_KILL { return "Killed: 9" }
+    if signal_number == SIGNAL_SEGMENTATION_FAULT { return "Segmentation fault: 11" }
+    if signal_number == SIGNAL_BROKEN_PIPE { return "Broken pipe: 13" }
+    if signal_number == SIGNAL_ALARM { return "Alarm clock: 14" }
+    if signal_number == SIGNAL_TERMINATE { return "Terminated: 15" }
+    if darwin && signal_number == SIGNAL_BUS_ERROR_DARWIN { return "Bus error: 10" }
+    if !darwin && signal_number == SIGNAL_BUS_ERROR_LINUX { return "Bus error" }
+    return ""
+}
+
+// The C compiler flags that come before the output and source paths.
+fn c_compile_flags(opts Options, c_compiler string, is_command bool, tinycc bool, runtime_directory string) -> [string] {
+    mut flags [string] = {"-std=c11", "-D_POSIX_C_SOURCE=200809L", "-D_XOPEN_SOURCE=700", "-D_DARWIN_C_SOURCE"}
+    if opts.debug_syms { arrays.append(flags, "-g") }
+    mut optimization_level = opts.opt_level
+    if optimization_level == "" {
+        optimization_level = "-O2"
+        if ccompile.banner_is_gcc(ccompile.c_compiler_banner(c_compiler, is_command)) { optimization_level = "-O3" }
+    }
+    arrays.append(flags, optimization_level)
+    if !tinycc {
+        arrays.append(flags, "-ffunction-sections")
+        arrays.append(flags, "-fdata-sections")
+    }
+    arrays.append(flags, "-DGRAY_GENERATED_C=1")
+    arrays.append(flags, "-Wall")
+    if !tinycc {
+        for_each flag in {"-Wno-unused-function", "-Wno-unused-variable", "-Wno-unused-but-set-variable", "-Wno-tautological-compare", "-Wno-infinite-recursion", "-Wno-incompatible-pointer-types-discards-qualifiers", "-Wno-incompatible-pointer-types", "-Wno-pointer-sign"} { arrays.append(flags, flag) }
+    }
+    for_each flag in {"-isystem", ccompile.join_path(runtime_directory, "runtime"), "-isystem", ccompile.join_path(runtime_directory, "stdlib"), "-isystem", runtime_directory} { arrays.append(flags, flag) }
+    return flags
+}
+
+// The byte count of a `--arena-limit=` value: digits only, positive, no larger than
+// MAXIMUM_ARENA_LIMIT.
+fn parse_arena_limit(text string) -> (i64, bool) {
+    if len(text) == 0 { return 0, false }
+    mut limit i64 = 0
+    for position in range(0, len(text)) {
+        digit = strings.char_at(text, position)
+        if digit < '0' || digit > '9' { return 0, false }
+        digit_value = cast(digit, i64) - cast('0', i64)
+        if limit > (MAXIMUM_ARENA_LIMIT - digit_value) / DECIMAL_BASE { return 0, false }
+        limit = limit * DECIMAL_BASE + digit_value
+    }
+    if limit == 0 { return 0, false }
+    return limit, true
+}
+
+// The command that compiles generated C: GRAY_CC or CC when it names a command on PATH (a stale CC
+// from a profile must not break a system that only has gcc), else the first of cc, gcc, clang
+// found on PATH; "" when there is none.
+fn detect_c_compiler() -> string {
+    for_each environment_name in {"GRAY_CC", "CC"} {
+        environment_value = os.get_env(environment_name)
+        if environment_value == "" || strings.contains(environment_value, " ") || strings.contains(environment_value, "\t") { continue }
+        _, found_in_environment = os.find_executable(environment_value)
+        if found_in_environment { return environment_value }
+    }
+    for_each candidate in {"cc", "gcc", "clang"} {
+        _, found_candidate = os.find_executable(candidate)
+        if found_candidate { return candidate }
+    }
+    return ""
+}

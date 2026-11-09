@@ -1,0 +1,104 @@
+/*
+ * scope.gray:  Lexical scope chain and symbol table for the type checker. The
+ * symbol table is a stdlib map, and ASBAM reclaims scope memory, so there is no
+ * scope_destroy.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @maps
+import "../ast/ast"
+import "./types"
+
+const Symbol struct {
+    name string
+    sym_type ^types.GrayType
+    declared_type string
+    mutable bool
+    is_ref bool
+    const_source bool
+    used bool
+    def_line i64
+    def_column i64
+    def_file string
+    // The line of the `is` pattern that bound a when payload
+    binding_line i64
+    // The line of the function declaration, for a parameter
+    param_line i64
+    ret_types [^types.GrayType]
+    func_ref_name string
+    // The `extern.` call a variable inferred from a C call result was bound to, or nil
+    c_call ^ast.AstNode
+    func_array_refs [string]
+    // Lifetime origin of a pointer value: the depth of the scope declaring the
+    // variable whose address it holds, biased by +1 so 0 means "no tracked
+    // origin", and that variable's name for diagnostics
+    origin_depth i64
+    origin_name string
+    // The same for a pointer buried in a field or element of this aggregate
+    field_origin_depth i64
+    field_origin_name string
+    // Bound to a new() result: the pointee lives in the heap arena
+    is_heap bool
+    // The @mem arena a pointer variable points into, and the arena epoch when it was
+    // bound; the same for a pointer buried in a field or element
+    mem_arena string
+    mem_epoch i64
+    field_mem_arena string
+    field_mem_epoch i64
+    // The arena handle this variable names (itself, or the handle it aliases)
+    arena_identifier string
+}
+
+const Scope struct {
+    parent ^Scope
+    depth i64
+    symbols map[string:^Symbol]
+}
+
+fn scope_create(parent ^Scope) -> ^Scope {
+    s = new(Scope)
+    s^.parent = parent
+    if parent != nil { s^.depth = parent^.depth + 1 }
+    return s
+}
+
+fn scope_lookup_local(scope ^Scope, name string) -> ^Symbol {
+    symbols = scope^.symbols
+    if maps.contains_key(symbols, name) {
+        return symbols[name]
+    }
+    return nil
+}
+
+fn scope_lookup(scope ^Scope, name string) -> ^Symbol {
+    // type inference, not an explicit ^Scope annotation
+    mut cur = scope
+    as_long_as cur != nil {
+        found = scope_lookup_local(cur, name)
+        if found != nil { return found }
+        cur = cur^.parent
+    }
+    return nil
+}
+
+fn scope_define(scope ^Scope, name string, t ^types.GrayType, mutable bool) {
+    existing = scope_lookup_local(scope, name)
+    if existing != nil {
+        existing^.sym_type = t
+        existing^.mutable = mutable
+        return
+    }
+
+    symbol = new(Symbol)
+    symbol^.name = name
+    symbol^.sym_type = t
+    symbol^.mutable = mutable
+
+    mut symbols = scope^.symbols
+    symbols[name] = symbol
+    scope^.symbols = symbols
+}

@@ -1,0 +1,643 @@
+/*
+ * folding.gray:  Number literals folded at full width. An integer is a sign and
+ * a 320-bit magnitude, wide enough for every integer type plus intermediate
+ * results.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+import @arrays, @strconv, @strings
+import "../ast/ast"
+import "../lexer/token"
+
+const LITERAL_LIMBS i64 = 10
+
+const LIMB_RADIX u64 = 4294967296
+// The bits of one limb, and a limb with all of them set.
+const LIMB_BITS i64 = 32
+const LIMB_MASK u64 = 4294967295
+// The top bit of a limb: the sign bit of a two's complement value.
+const LIMB_SIGN_BIT u64 = 2147483648
+// The bits of a whole literal magnitude, and the limbs of a product of two.
+const LITERAL_BITS i64 = 320
+const PRODUCT_LIMBS i64 = 20
+// The magnitude of the smallest i64.
+const I64_MIN_MAGNITUDE u64 = 9223372036854775808
+// The base of the digits of a decimal literal.
+const DECIMAL_BASE u64 = 10
+// A shift count wider than this many bits is always larger than any literal.
+const SHIFT_COUNT_BITS i64 = 16
+// The widest integer type, in bits.
+const WIDEST_INTEGER_BITS i64 = 256
+// The text a whole-number f64 is spelled with.
+const WHOLE_NUMBER_SUFFIX string = ".0"
+
+const LiteralValue struct {
+    is_decimal bool
+    // An integer step reached 2^320, or a typed step overflowed its type
+    is_too_large bool
+    is_negative bool
+    // Little-endian 32-bit limbs, each held in a u64
+    magnitude [u64]
+    decimal f64
+}
+
+// --- Magnitudes ---
+
+fn magnitude_zero() -> [u64] {
+    mut limbs [u64] = {}
+    for _ in range(0, LITERAL_LIMBS) { arrays.append(limbs, 0) }
+    return limbs
+}
+
+fn magnitude_is_zero(magnitude [u64]) -> bool {
+    for_each limb in magnitude {
+        if limb != 0 { return false }
+    }
+    return true
+}
+
+fn magnitude_compare(left [u64], right [u64]) -> i64 {
+    mut index i64 = LITERAL_LIMBS - 1
+    as_long_as index >= 0 {
+        if left[index] != right[index] {
+            if left[index] > right[index] { return 1 }
+            return -1
+        }
+        index = index - 1
+    }
+    return 0
+}
+
+fn magnitude_bit_length(magnitude [u64]) -> i64 {
+    mut index i64 = LITERAL_LIMBS - 1
+    as_long_as index >= 0 {
+        if magnitude[index] != 0 {
+            mut bits i64 = LIMB_BITS
+            as_long_as (magnitude[index] bit_and (cast(1, u64) bit_shift_left bits - 1)) == 0 { bits = bits - 1 }
+            return index * LIMB_BITS + bits
+        }
+        index = index - 1
+    }
+    return 0
+}
+
+// The sum, and whether it fits.
+fn magnitude_add(left [u64], right [u64]) -> ([u64], bool) {
+    mut sum [u64] = magnitude_zero()
+    mut carry u64 = 0
+    for index in range(0, LITERAL_LIMBS) {
+        digit_sum u64 = left[index] + right[index] + carry
+        sum[index] = digit_sum bit_and LIMB_MASK
+        carry = (digit_sum bit_shift_right LIMB_BITS)
+    }
+    return sum, carry == 0
+}
+
+// left - right, where left >= right.
+fn magnitude_subtract(left [u64], right [u64]) -> [u64] {
+    mut difference [u64] = magnitude_zero()
+    mut borrow u64 = 0
+    for index in range(0, LITERAL_LIMBS) {
+        subtrahend u64 = right[index] + borrow
+        if left[index] >= subtrahend {
+            difference[index] = left[index] - subtrahend
+            borrow = 0
+        } otherwise {
+            difference[index] = left[index] + LIMB_RADIX - subtrahend
+            borrow = 1
+        }
+    }
+    return difference
+}
+
+// The product, and whether it fits.
+fn magnitude_multiply(left [u64], right [u64]) -> ([u64], bool) {
+    mut product [u64] = {}
+    for _ in range(0, PRODUCT_LIMBS) { arrays.append(product, 0) }
+    for row in range(0, LITERAL_LIMBS) {
+        mut carry u64 = 0
+        for column in range(0, LITERAL_LIMBS) {
+            partial u64 = product[row + column] + left[row] * right[column] + carry
+            product[row + column] = partial bit_and LIMB_MASK
+            carry = (partial bit_shift_right LIMB_BITS)
+        }
+        product[row + LITERAL_LIMBS] = carry
+    }
+    mut result [u64] = magnitude_zero()
+    for index in range(0, LITERAL_LIMBS) { result[index] = product[index] }
+    for index in range(LITERAL_LIMBS, PRODUCT_LIMBS) {
+        if product[index] != 0 { return result, false }
+    }
+    return result, true
+}
+
+// magnitude << bits, and whether no set bit was shifted out.
+fn magnitude_shift_left(magnitude [u64], bits i64) -> ([u64], bool) {
+    if magnitude_is_zero(magnitude) { return magnitude, true }
+    if bits >= LITERAL_BITS || magnitude_bit_length(magnitude) + bits > LITERAL_BITS {
+        return magnitude, false
+    }
+    limbs i64 = bits / LIMB_BITS
+    rest i64 = bits % LIMB_BITS
+    mut shifted [u64] = magnitude_zero()
+    mut index i64 = LITERAL_LIMBS - 1
+    as_long_as index >= 0 {
+        mut high u64 = 0
+        if index - limbs >= 0 { high = magnitude[index - limbs] }
+        mut below u64 = 0
+        if index - limbs - 1 >= 0 { below = magnitude[index - limbs - 1] }
+        if rest != 0 {
+            shifted[index] = ((high bit_shift_left rest) bit_or (below bit_shift_right LIMB_BITS - rest)) bit_and LIMB_MASK
+        } otherwise {
+            shifted[index] = high
+        }
+        index = index - 1
+    }
+    return shifted, true
+}
+
+// magnitude >> bits, and whether a set bit was shifted out.
+fn magnitude_shift_right(magnitude [u64], bits i64) -> ([u64], bool) {
+    if bits >= LITERAL_BITS { return magnitude_zero(), !magnitude_is_zero(magnitude) }
+    limbs i64 = bits / LIMB_BITS
+    rest i64 = bits % LIMB_BITS
+    mut lost bool = false
+    for index in range(0, limbs) {
+        if magnitude[index] != 0 { lost = true }
+    }
+    if rest != 0 && (magnitude[limbs] bit_and ((cast(1, u64) bit_shift_left rest) - 1)) != 0 { lost = true }
+    mut shifted [u64] = magnitude_zero()
+    for index in range(0, LITERAL_LIMBS) {
+        mut limb_value u64 = 0
+        if index + limbs < LITERAL_LIMBS { limb_value = magnitude[index + limbs] }
+        mut high u64 = 0
+        if index + limbs + 1 < LITERAL_LIMBS { high = magnitude[index + limbs + 1] }
+        if rest != 0 {
+            shifted[index] = ((limb_value bit_shift_right rest) bit_or (high bit_shift_left LIMB_BITS - rest)) bit_and LIMB_MASK
+        } otherwise {
+            shifted[index] = limb_value
+        }
+    }
+    return shifted, lost
+}
+
+// quotient and remainder of dividend / divisor, for a nonzero divisor.
+fn magnitude_divide(dividend [u64], divisor [u64]) -> ([u64], [u64]) {
+    mut quotient [u64] = magnitude_zero()
+    mut remainder [u64] = magnitude_zero()
+    mut bit_index i64 = magnitude_bit_length(dividend) - 1
+    as_long_as bit_index >= 0 {
+        shifted, _ = magnitude_shift_left(remainder, 1)
+        remainder = shifted
+        if (dividend[bit_index / LIMB_BITS] bit_and (cast(1, u64) bit_shift_left bit_index % LIMB_BITS)) != 0 {
+            remainder[0] = remainder[0] bit_or 1
+        }
+        if magnitude_compare(remainder, divisor) >= 0 {
+            remainder = magnitude_subtract(remainder, divisor)
+            quotient[bit_index / LIMB_BITS] = quotient[bit_index / LIMB_BITS] bit_or (cast(1, u64) bit_shift_left bit_index % LIMB_BITS)
+        }
+        bit_index = bit_index - 1
+    }
+    return quotient, remainder
+}
+
+// True when the magnitude is exactly 2^exponent.
+fn magnitude_is_power_of_two(magnitude [u64], exponent i64) -> bool {
+    for index in range(0, LITERAL_LIMBS) {
+        mut expect u64 = 0
+        if index == exponent / LIMB_BITS { expect = (cast(1, u64) bit_shift_left exponent % LIMB_BITS) }
+        if magnitude[index] != expect { return false }
+    }
+    return true
+}
+
+// --- Values ---
+
+fn literal_from_u64(value u64) -> LiteralValue {
+    mut literal LiteralValue = LiteralValue{magnitude: magnitude_zero()}
+    literal.magnitude[0] = value bit_and LIMB_MASK
+    literal.magnitude[1] = (value bit_shift_right LIMB_BITS)
+    return literal
+}
+
+fn literal_from_decimal(value f64) -> LiteralValue {
+    return LiteralValue{is_decimal: true, magnitude: magnitude_zero(), decimal: value}
+}
+
+fn literal_as_double(value LiteralValue) -> f64 {
+    if value.is_decimal { return value.decimal }
+    mut total f64 = 0.0
+    mut index i64 = LITERAL_LIMBS - 1
+    as_long_as index >= 0 {
+        total = total * 4294967296.0 + cast(value.magnitude[index], f64)
+        index = index - 1
+    }
+    if value.is_negative { return -total }
+    return total
+}
+
+fn literal_normalize_sign(value LiteralValue) -> LiteralValue {
+    mut normalized LiteralValue = value
+    if !normalized.is_decimal && magnitude_is_zero(normalized.magnitude) { normalized.is_negative = false }
+    return normalized
+}
+
+// Two's complement across all limbs, for the bitwise operators.
+fn literal_to_twos(value LiteralValue) -> [u64] {
+    if !value.is_negative { return value.magnitude }
+    mut inverted [u64] = magnitude_zero()
+    for index in range(0, LITERAL_LIMBS) { inverted[index] = (value.magnitude[index] bit_xor LIMB_MASK) }
+    carry_one [u64] = literal_from_u64(1).magnitude
+    sum, _ = magnitude_add(inverted, carry_one)
+    return sum
+}
+
+fn literal_from_twos(twos [u64]) -> LiteralValue {
+    mut value LiteralValue = LiteralValue{magnitude: twos}
+    if (twos[LITERAL_LIMBS - 1] bit_and LIMB_SIGN_BIT) != 0 {
+        value.is_negative = true
+        mut inverted [u64] = magnitude_zero()
+        for index in range(0, LITERAL_LIMBS) { inverted[index] = (twos[index] bit_xor LIMB_MASK) }
+        sum, _ = magnitude_add(inverted, literal_from_u64(1).magnitude)
+        value.magnitude = sum
+    }
+    return value
+}
+
+// left + right for integers of any sign.
+fn literal_add(left LiteralValue, right LiteralValue) -> LiteralValue {
+    mut result LiteralValue = left
+    if left.is_negative == right.is_negative {
+        sum, fits = magnitude_add(left.magnitude, right.magnitude)
+        result.magnitude = sum
+        if !fits { result.is_too_large = true }
+    } or magnitude_compare(left.magnitude, right.magnitude) >= 0 {
+        result.magnitude = magnitude_subtract(left.magnitude, right.magnitude)
+    } otherwise {
+        result = right
+        result.magnitude = magnitude_subtract(right.magnitude, left.magnitude)
+    }
+    result.is_too_large = result.is_too_large || left.is_too_large || right.is_too_large
+    return literal_normalize_sign(result)
+}
+
+// --- Which expressions are literals ---
+
+// True when `node` is built only from number literals: a literal, a unary
+// minus or bit_not of one, a binary arithmetic or bitwise operator on two, or
+// a literal shifted by any count. Such an expression has no type of its own
+// until a context gives it one.
+fn is_literal_expression(node ^ast.AstNode) -> bool {
+    if node == nil { return false }
+    when node^.kind {
+        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE { return true }
+        is ast.NodeKind.PREFIX_EXPR {
+            return (node^.prefix^.op == token.TokenKind.MINUS || node^.prefix^.op == token.TokenKind.BIT_NOT) && is_literal_expression(node^.prefix^.right)
+        }
+        is ast.NodeKind.INFIX_EXPR {
+            operator = node^.infix^.op
+            if operator == token.TokenKind.BIT_SHIFT_LEFT || operator == token.TokenKind.BIT_SHIFT_RIGHT {
+                return is_literal_expression(node^.infix^.left)
+            }
+            is_foldable = operator == token.TokenKind.PLUS || operator == token.TokenKind.MINUS || operator == token.TokenKind.ASTERISK || operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT || operator == token.TokenKind.BIT_AND || operator == token.TokenKind.BIT_OR || operator == token.TokenKind.BIT_XOR
+            return is_foldable && is_literal_expression(node^.infix^.left) && is_literal_expression(node^.infix^.right)
+        }
+        default { return false }
+    }
+}
+
+// True when the literal expression `node` has a decimal literal in it. The
+// count of a shift is not part of the shifted value.
+fn literal_expression_is_decimal(node ^ast.AstNode) -> bool {
+    when node^.kind {
+        is ast.NodeKind.FLOAT_VALUE { return true }
+        is ast.NodeKind.PREFIX_EXPR { return literal_expression_is_decimal(node^.prefix^.right) }
+        is ast.NodeKind.INFIX_EXPR {
+            operator = node^.infix^.op
+            if operator == token.TokenKind.BIT_SHIFT_LEFT || operator == token.TokenKind.BIT_SHIFT_RIGHT {
+                return literal_expression_is_decimal(node^.infix^.left)
+            }
+            return literal_expression_is_decimal(node^.infix^.left) || literal_expression_is_decimal(node^.infix^.right)
+        }
+        default { return false }
+    }
+}
+
+// --- Folding ---
+
+// The file-scope const integers a name may fold to.
+const ConstantTable struct {
+    names [string]
+    values [LiteralValue]
+    typed_as string
+}
+
+fn constant_table_find(table ^ConstantTable, name string) -> i64 {
+    if table == nil { return -1 }
+    for index in range(0, len(table^.names)) {
+        if table^.names[index] == name { return index }
+    }
+    return -1
+}
+
+// The integer literal's value at full width.
+fn literal_from_int_node(node ^ast.AstNode) -> LiteralValue {
+    data = node^.int_value
+    // `value` holds the u64 bit pattern read as an i64
+    mut bits u64 = 0
+    if data^.value < 0 {
+        bits = cast(data^.value - (-9223372036854775807 - 1), u64) + I64_MIN_MAGNITUDE
+    } otherwise {
+        bits = cast(data^.value, u64)
+    }
+    mut literal LiteralValue = literal_from_u64(bits)
+    if data^.overflow_u64 {
+        literal.magnitude = magnitude_zero()
+        limb_ten [u64] = literal_from_u64(DECIMAL_BASE).magnitude
+        for position in range(0, len(data^.literal)) {
+            character char = strings.char_at(data^.literal, position)
+            if character < '0' || character > '9' { continue }
+            digit [u64] = literal_from_u64(cast(character, u64) - cast('0', u64)).magnitude
+            product, product_fits = magnitude_multiply(literal.magnitude, limb_ten)
+            sum, sum_fits = magnitude_add(product, digit)
+            literal.magnitude = sum
+            if !product_fits || !sum_fits {
+                literal.is_too_large = true
+                break
+            }
+        }
+    }
+    return literal
+}
+
+// Folds `node` from its folded operands. False when `node` is not a constant: a
+// shift by a non-constant count, a division by zero, a negative shift count,
+// or an operator the operands do not support (reported elsewhere).
+fn constant_fold(table ^ConstantTable, node ^ast.AstNode) -> (LiteralValue, bool) {
+    folded, is_constant = constant_fold_step(table, node)
+    if !is_constant { return folded, false }
+    // With a type to fold in, a step that leaves the type's range overflowed
+    if table != nil && table^.typed_as != "" && !folded.is_decimal && node^.kind != ast.NodeKind.LABEL && !is_literal_expression(node) {
+        is_unsigned = strings.starts_with(table^.typed_as, "u")
+        if !literal_fits(folded, table^.typed_as, false, is_unsigned) { folded.is_too_large = true }
+    }
+    return folded, true
+}
+
+fn constant_fold_step(table ^ConstantTable, node ^ast.AstNode) -> (LiteralValue, bool) {
+    mut none LiteralValue = LiteralValue{magnitude: magnitude_zero()}
+    if node == nil { return none, false }
+    when node^.kind {
+        is ast.NodeKind.LABEL {
+            index = constant_table_find(table, node^.label^.value)
+            if index < 0 { return none, false }
+            return table^.values[index], true
+        }
+        is ast.NodeKind.INT_VALUE { return literal_from_int_node(node), true }
+        is ast.NodeKind.FLOAT_VALUE { return literal_from_decimal(node^.float_value^.value), true }
+        is ast.NodeKind.PREFIX_EXPR {
+            operand, found = constant_fold(table, node^.prefix^.right)
+            if !found { return none, false }
+            mut result LiteralValue = operand
+            if node^.prefix^.op == token.TokenKind.MINUS {
+                if result.is_decimal {
+                    result.decimal = -result.decimal
+                } otherwise {
+                    result.is_negative = !result.is_negative
+                }
+                return literal_normalize_sign(result), true
+            }
+            if node^.prefix^.op == token.TokenKind.BIT_NOT && !result.is_decimal {
+                // ~x == -x - 1
+                mut minus_one LiteralValue = literal_from_u64(1)
+                minus_one.is_negative = true
+                result.is_negative = !result.is_negative
+                return literal_add(literal_normalize_sign(result), minus_one), true
+            }
+            return none, false
+        }
+        is ast.NodeKind.INFIX_EXPR {
+            folded, found = fold_infix(table, node)
+            return folded, found
+        }
+        default { return none, false }
+    }
+}
+
+fn fold_infix(table ^ConstantTable, node ^ast.AstNode) -> (LiteralValue, bool) {
+    mut none LiteralValue = LiteralValue{magnitude: magnitude_zero()}
+    left, left_found = constant_fold(table, node^.infix^.left)
+    right, right_found = constant_fold(table, node^.infix^.right)
+    if !left_found || !right_found { return none, false }
+    operator = node^.infix^.op
+    if left.is_decimal || right.is_decimal {
+        left_double f64 = literal_as_double(left)
+        right_double f64 = literal_as_double(right)
+        mut decimal_result f64 = 0.0
+        if operator == token.TokenKind.PLUS {
+            decimal_result = left_double + right_double
+        } or operator == token.TokenKind.MINUS {
+            decimal_result = left_double - right_double
+        } or operator == token.TokenKind.ASTERISK {
+            decimal_result = left_double * right_double
+        } or operator == token.TokenKind.SLASH && right_double != 0.0 {
+            decimal_result = left_double / right_double
+        } otherwise {
+            return none, false
+        }
+        return literal_from_decimal(decimal_result), true
+    }
+    if operator == token.TokenKind.PLUS || operator == token.TokenKind.MINUS {
+        mut negated LiteralValue = right
+        if operator == token.TokenKind.MINUS { negated = literal_normalize_sign(LiteralValue{is_negative: !right.is_negative, is_too_large: right.is_too_large, magnitude: right.magnitude}) }
+        return literal_add(left, negated), true
+    }
+    if operator == token.TokenKind.ASTERISK {
+        mut product LiteralValue = left
+        magnitude_product, product_fits = magnitude_multiply(left.magnitude, right.magnitude)
+        product.magnitude = magnitude_product
+        if !product_fits { product.is_too_large = true }
+        product.is_negative = left.is_negative != right.is_negative
+        product.is_too_large = product.is_too_large || left.is_too_large || right.is_too_large
+        return literal_normalize_sign(product), true
+    }
+    if operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT {
+        if magnitude_is_zero(right.magnitude) { return none, false }
+        quotient_magnitude, remainder_magnitude = magnitude_divide(left.magnitude, right.magnitude)
+        // C semantics: the quotient truncates toward zero and the remainder
+        // takes the dividend's sign.
+        mut quotient LiteralValue = LiteralValue{magnitude: quotient_magnitude, is_negative: left.is_negative != right.is_negative}
+        mut remainder LiteralValue = LiteralValue{magnitude: remainder_magnitude, is_negative: left.is_negative}
+        mut chosen LiteralValue = remainder
+        if operator == token.TokenKind.SLASH { chosen = quotient }
+        chosen.is_too_large = left.is_too_large || right.is_too_large
+        return literal_normalize_sign(chosen), true
+    }
+    if operator == token.TokenKind.BIT_AND || operator == token.TokenKind.BIT_OR || operator == token.TokenKind.BIT_XOR {
+        left_limbs [u64] = literal_to_twos(left)
+        right_limbs [u64] = literal_to_twos(right)
+        mut combined [u64] = magnitude_zero()
+        for index in range(0, LITERAL_LIMBS) {
+            if operator == token.TokenKind.BIT_AND {
+                combined[index] = left_limbs[index] bit_and right_limbs[index]
+            } or operator == token.TokenKind.BIT_OR {
+                combined[index] = left_limbs[index] bit_or right_limbs[index]
+            } otherwise {
+                combined[index] = left_limbs[index] bit_xor right_limbs[index]
+            }
+        }
+        mut bitwise LiteralValue = literal_from_twos(combined)
+        bitwise.is_too_large = left.is_too_large || right.is_too_large
+        return bitwise, true
+    }
+    if operator == token.TokenKind.BIT_SHIFT_LEFT || operator == token.TokenKind.BIT_SHIFT_RIGHT {
+        if right.is_negative { return none, false }
+        mut count i64 = LITERAL_BITS
+        if magnitude_bit_length(right.magnitude) <= SHIFT_COUNT_BITS { count = cast(right.magnitude[0], i64) }
+        mut shifted LiteralValue = left
+        if operator == token.TokenKind.BIT_SHIFT_LEFT {
+            moved, moved_fits = magnitude_shift_left(left.magnitude, count)
+            shifted.magnitude = moved
+            if !moved_fits { shifted.is_too_large = true }
+        } otherwise {
+            // An arithmetic shift: a negative value rounds toward negative infinity.
+            moved, lost = magnitude_shift_right(left.magnitude, count)
+            shifted.magnitude = moved
+            if shifted.is_negative && lost {
+                sum, _ = magnitude_add(shifted.magnitude, literal_from_u64(1).magnitude)
+                shifted.magnitude = sum
+            }
+        }
+        return literal_normalize_sign(shifted), true
+    }
+    return none, false
+}
+
+// --- Fitting a type ---
+
+// Bits in a sized integer type name; 0 for anything else.
+fn integer_type_bits(name string) -> i64 {
+    when name {
+        is "i8", "u8" { return 8 }
+        is "i16", "u16" { return 16 }
+        is "i32", "u32" { return 32 }
+        is "i64", "u64" { return 64 }
+        is "i128", "u128" { return 128 }
+        is "i256", "u256" { return 256 }
+        default { return 0 }
+    }
+}
+
+// True when the folded value fits the number type `type_name`, whose kind is
+// floating-point when `is_float`.
+fn literal_fits(value LiteralValue, type_name string, is_float bool, is_unsigned bool) -> bool {
+    if is_float {
+        magnitude_value f64 = literal_as_double(value)
+        if value.is_too_large || magnitude_value != magnitude_value { return false }
+        absolute f64 = magnitude_value
+        if absolute < 0.0 { absolute = -absolute }
+        if absolute > 1.7976931348623157e308 { return false }
+        // An f32 literal fits when it rounds to a finite f32: below the midpoint
+        // between FLT_MAX and 2^128, which ties to infinity.
+        if type_name == "f32" { return absolute < 340282356779733661637539395458142568448.0 }
+        return true
+    }
+    if value.is_decimal || value.is_too_large { return false }
+    bits i64 = integer_type_bits(type_name)
+    length i64 = magnitude_bit_length(value.magnitude)
+    if is_unsigned { return !value.is_negative && length <= bits }
+    if !value.is_negative { return length <= bits - 1 }
+    // -2^(bits-1) is the one negative value whose magnitude needs `bits`.
+    return length < bits || (length == bits && magnitude_is_power_of_two(value.magnitude, bits - 1))
+}
+
+// True when the folded integer fits some integer type: i256 below zero, u256
+// otherwise.
+fn literal_fits_some_integer(value LiteralValue) -> bool {
+    if value.is_too_large { return false }
+    length i64 = magnitude_bit_length(value.magnitude)
+    if !value.is_negative { return length <= WIDEST_INTEGER_BITS }
+    return length < WIDEST_INTEGER_BITS || (length == WIDEST_INTEGER_BITS && magnitude_is_power_of_two(value.magnitude, WIDEST_INTEGER_BITS - 1))
+}
+
+// The value of the folded integer when it fits i64.
+fn literal_value_as_i64(value LiteralValue) -> (i64, bool) {
+    if value.is_decimal || !literal_fits(value, "i64", false, false) { return 0, false }
+    magnitude u64 = value.magnitude[0] bit_or (value.magnitude[1] bit_shift_left LIMB_BITS)
+    if value.is_negative {
+        if magnitude == I64_MIN_MAGNITUDE { return -9223372036854775807 - 1, true }
+        return -cast(magnitude, i64), true
+    }
+    return cast(magnitude, i64), true
+}
+
+// <0, 0 or >0 as the folded integer `left` is below, equal to or above `right`.
+fn literal_compare(left LiteralValue, right LiteralValue) -> i64 {
+    if left.is_negative != right.is_negative {
+        if left.is_negative { return -1 }
+        return 1
+    }
+    by_magnitude i64 = magnitude_compare(left.magnitude, right.magnitude)
+    if left.is_negative { return -by_magnitude }
+    return by_magnitude
+}
+
+// --- Text ---
+
+// Decimal text of an integer literal value.
+fn literal_integer_text(value LiteralValue) -> string {
+    mut digits [string] = {}
+    mut working [u64] = value.magnitude
+    limb_ten [u64] = literal_from_u64(DECIMAL_BASE).magnitude
+    mut is_first bool = true
+    as_long_as is_first || !magnitude_is_zero(working) {
+        is_first = false
+        quotient, remainder = magnitude_divide(working, limb_ten)
+        arrays.append(digits, "${remainder[0]}")
+        working = quotient
+    }
+    mut text string = ""
+    if value.is_negative { text = "-" }
+    mut index i64 = len(digits) - 1
+    as_long_as index >= 0 {
+        text = "${text}${digits[index]}"
+        index = index - 1
+    }
+    return text
+}
+
+// The shortest decimal text that reads back as `value`.
+fn decimal_text(value f64) -> string {
+    text string = strconv.from_f64(value)
+    if strings.ends_with(text, WHOLE_NUMBER_SUFFIX) { return strings.slice(text, 0, len(text) - len(WHOLE_NUMBER_SUFFIX)) }
+    return text
+}
+
+fn literal_text(value LiteralValue) -> string {
+    if value.is_decimal { return decimal_text(value.decimal) }
+    return literal_integer_text(value)
+}
+
+// The inclusive range of a sized integer type as decimal text: its minimum and
+// maximum, or two empty strings for any other name.
+fn integer_type_range(name string) -> (string, string) {
+    when name {
+        is "i8" { return "-128", "127" }
+        is "i16" { return "-32768", "32767" }
+        is "i32" { return "-2147483648", "2147483647" }
+        is "i64" { return "-9223372036854775808", "9223372036854775807" }
+        is "i128" { return "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727" }
+        is "i256" { return "-57896044618658097711785492504343953926634992332820282019728792003956564819968", "57896044618658097711785492504343953926634992332820282019728792003956564819967" }
+        is "u8" { return "0", "255" }
+        is "u16" { return "0", "65535" }
+        is "u32" { return "0", "4294967295" }
+        is "u64" { return "0", "18446744073709551615" }
+        is "u128" { return "0", "340282366920938463463374607431768211455" }
+        is "u256" { return "0", "115792089237316195423570985008687907853269984665640564039457584007913129639935" }
+        default { return "", "" }
+    }
+}
