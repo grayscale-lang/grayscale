@@ -458,26 +458,15 @@ fn table_type(generator ^CodeGen, node ^ast.AstNode) -> string {
 fn expr_type(generator ^CodeGen, node ^ast.AstNode) -> string {
     if node^.resolved_type == "" {
         // code the checker never reached (after a return) still has a literal's own type
-        #strict
         when node^.kind {
             is ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING { return "string" }
             is ast.NodeKind.INT_VALUE { return "i64" }
             is ast.NodeKind.FLOAT_VALUE { return "f64" }
             is ast.NodeKind.BOOL_VALUE { return "bool" }
             is ast.NodeKind.CHAR_VALUE { return "char" }
-            is ast.NodeKind.LABEL, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-            ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-            ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-            ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-            ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-            ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-            ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-            ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-            ast.NodeKind.PROGRAM {}
+            // These kinds are not plain literals, so they have no literal type
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
     }
     if len(generator^.generics.names) > 0 && (node^.resolved_type == "unknown" || strings.starts_with(node^.resolved_type, "?")) {

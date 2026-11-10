@@ -2800,7 +2800,6 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
 
     mut result = checker^.pool^.type_unknown
 
-    #strict
     when node^.kind {
         is ast.NodeKind.INT_VALUE { result = checker^.pool^.type_i64 }
         is ast.NodeKind.FLOAT_VALUE { result = checker^.pool^.type_f64 }
@@ -2840,13 +2839,9 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
         is ast.NodeKind.FUNC_REF { result = resolve_func_ref(checker, node) }
         is ast.NodeKind.CALL_EXPR { result = resolve_call_expr(checker, node) }
         is ast.NodeKind.IMPLICIT_ENUM { result = resolve_implicit_enum(checker, node) }
-        is ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-        ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-        ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // Statements and declarations have no expression type
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 
     if !checker^.suppress_type_writes { node^.resolved_type = types.type_display_name(result) }
@@ -6245,7 +6240,6 @@ fn length_changing_call_on_name(checker ^TypeChecker, node ^ast.AstNode, paramet
 fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, parameter_name string) -> string {
     if node == nil { return "" }
     mut children [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             found = length_changing_call_on_name(checker, node, parameter_name)
@@ -6270,16 +6264,9 @@ fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, paramet
         is ast.NodeKind.EXPR_STMT { arrays.append(children, node^.expr_stmt^.expr) }
         is ast.NodeKind.ENSURE_STMT { arrays.append(children, node^.ensure_stmt^.expr) }
         is ast.NodeKind.RETURN_STMT { children = node^.return_stmt^.values }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no child nodes to collect
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     for_each child in children {
         found_in_child = body_mutates_array_parameter(checker, child, parameter_name)
@@ -6878,7 +6865,6 @@ fn restore_arena_state(checker ^TypeChecker, snapshot [ArenaLifetime]) {
 // iteration is caught. A handle declared inside the body is fresh each iteration.
 fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -6937,17 +6923,9 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
         is ast.NodeKind.FOR_EACH_STMT { premark_loop_body(checker, node^.for_each_stmt^.body, body) }
         is ast.NodeKind.WHILE_STMT { premark_loop_body(checker, node^.while_stmt^.body, body) }
         is ast.NodeKind.LOOP_STMT { premark_loop_body(checker, node^.loop_stmt^.body, body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -6955,7 +6933,6 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
 // escape check does not depend on statement order.
 fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -7005,16 +6982,9 @@ fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
         is ast.NodeKind.FOR_EACH_STMT { premark_function_destroys(checker, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { premark_function_destroys(checker, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { premark_function_destroys(checker, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -7096,7 +7066,6 @@ fn record_mem_parameter_field(signature ^FuncSig, index i64, suffix string) {
 
 fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
     if node == nil || signature^.decl == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -7167,16 +7136,9 @@ fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values { mem_walk(checker, signature, value) }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -7194,24 +7156,13 @@ fn return_expression_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^as
         return 0, 0
     }
     mut buried_parts [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.STRUCT_VALUE { buried_parts = node^.struct_value^.field_values }
         is ast.NodeKind.ARRAY_VALUE { buried_parts = node^.array_value^.elements }
         is ast.NodeKind.MAP_VALUE { buried_parts = node^.map_value^.values }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no nested element values
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     if node^.kind == ast.NodeKind.STRUCT_VALUE || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE {
         mut field_bits i64 = 0
@@ -7271,7 +7222,6 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
     mut direct_bits i64 = 0
     mut field_bits i64 = 0
     mut children [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values {
@@ -7293,17 +7243,9 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
         is ast.NodeKind.FOR_EACH_STMT { arrays.append(children, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { arrays.append(children, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { arrays.append(children, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no child statements
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     for_each child in children {
         child_direct, child_field = return_statement_mem_bits(checker, signature, child)
@@ -8989,7 +8931,6 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
     // A file-scope or struct-scope const of a primitive type needs an annotation
     if !variable_data^.is_mutable && variable_data^.type_name == "" && value != nil && (checker^.function_depth == 0 || checker^.current_struct_name != "") && !is_temporary && !is_or_temporary && value^.kind != ast.NodeKind.STRUCT_VALUE && value^.kind != ast.NodeKind.FUNC_REF && value^.kind != ast.NodeKind.ARRAY_VALUE && value^.kind != ast.NodeKind.MAP_VALUE {
         mut suggested = "<type>"
-        #strict
         when value^.kind {
             is ast.NodeKind.INT_VALUE { suggested = "i64" }
             is ast.NodeKind.FLOAT_VALUE { suggested = "f64" }
@@ -8997,19 +8938,9 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
             is ast.NodeKind.INTERPOLATED_STRING { suggested = "string" }
             is ast.NodeKind.CHAR_VALUE { suggested = "char" }
             is ast.NodeKind.BOOL_VALUE { suggested = "bool" }
-            is ast.NodeKind.LABEL, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-            ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-            ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-            ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-            ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-            ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-            ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-            ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-            ast.NodeKind.PROGRAM {}
+            // Not a plain literal, so there is no type to suggest
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
         add_diagnostic(checker, "E3131", error_registry.registry_message_formatted("E3131", {display, suggested}), file, line, col)
     }
@@ -9633,7 +9564,6 @@ fn return_expression_parameter_bits(checker ^TypeChecker, signature ^FuncSig, no
 fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) -> i64 {
     if node == nil { return 0 }
     mut bits i64 = 0
-    #strict
     when node^.kind {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values { bits = bits bit_or return_expression_parameter_bits(checker, signature, value) }
@@ -9652,17 +9582,9 @@ fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, nod
         is ast.NodeKind.FOR_EACH_STMT { bits = return_statement_parameter_bits(checker, signature, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { bits = return_statement_parameter_bits(checker, signature, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { bits = return_statement_parameter_bits(checker, signature, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds yield no parameter bits
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     return bits
 }
@@ -9821,7 +9743,6 @@ fn pointer_writer_parameter(checker ^TypeChecker, call ^ast.AstNode) -> (string,
 // escapes the argument.
 fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.ASSIGN_STMT {
             signature^.writes_through_parameter = signature^.writes_through_parameter bit_or write_target_parameter_bit(signature, body, node^.assign^.target)
@@ -9946,16 +9867,9 @@ fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node
                 escape_walk(checker, signature, body, value)
             }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-        ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-        ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -10978,7 +10892,6 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
         add_diagnostic(checker, "E3070", error_registry.registry_message("E3070"), node^.tok.file, node^.tok.line, node^.tok.col)
         return
     }
-    #strict
     when node^.kind {
         is ast.NodeKind.BLOCK_STMT {
             for_each statement in node^.block^.stmts {
@@ -10998,18 +10911,9 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
             for_each case_entry in node^.when_stmt^.cases { check_no_nested_ensure(checker, case_entry.body, true) }
             check_no_nested_ensure(checker, node^.when_stmt^.default_body, true)
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds cannot contain a nested ensure
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -12073,7 +11977,6 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
             add_diagnostic(checker, "E2056", error_registry.registry_message("E2056"), node^.tok.file, node^.tok.line, node^.tok.col)
         }
     }
-    #strict
     when node^.kind {
         is ast.NodeKind.FUNC_DECL { check_function_declaration(checker, node) }
         is ast.NodeKind.STRUCT_DECL { check_struct_declaration(checker, node) }
@@ -12162,14 +12065,9 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
             if node^.block^.is_unsafe { report_unused_in_scope(checker, checker^.current_scope) }
             checker^.current_scope = outer_scope
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // Expressions need no declaration check at file scope
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -12464,7 +12362,6 @@ fn check_alias_block(checker ^TypeChecker, block ^ast.AstNode, state ^AliasState
 // Scans an expression tree for the !in / not_in membership operator.
 fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^AliasState, file string) {
     if expression == nil { return }
-    #strict
     when expression^.kind {
         is ast.NodeKind.INFIX_EXPR {
             if expression^.infix^.op == token.TokenKind.NOT_IN {
@@ -12515,22 +12412,14 @@ fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^
                 check_alias_expression(checker, part, state, file)
             }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.NEW_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds hold no alias expression
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
 fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, file string) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.WHILE_STMT {
             note_alias_form(checker, state^.loop_form, node^.tok.literal, "as_long_as", "while", node^.tok.line, node^.tok.col, file)
@@ -12598,16 +12487,9 @@ fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, 
             check_alias_expression(checker, node^.ensure_stmt^.expr, state, file)
         }
         is ast.NodeKind.EXPR_STMT { check_alias_expression(checker, node^.expr_stmt^.expr, state, file) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-        ast.NodeKind.PROGRAM {}
+        // These kinds hold no alias block
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 

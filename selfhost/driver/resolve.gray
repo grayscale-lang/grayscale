@@ -142,7 +142,6 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
         mut name string = ""
         mut is_private = false
         mut is_alias = false
-        #strict
         when statement^.kind {
             is ast.NodeKind.FUNC_DECL {
                 name = statement^.func_decl^.name
@@ -165,19 +164,9 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
                 is_private = statement^.alias_decl^.is_private
                 is_alias = true
             }
-            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-            ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-            ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-            ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-            ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-            ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-            ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-            ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-            ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+            // Expressions and statements declare no top-level name
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
         if !is_private { continue }
         mangled string = mangle(module_name, name)
@@ -271,7 +260,6 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
     outer_column i64 = qualifier^.outer_column
     qualifier^.outer_line = 0
     qualifier^.outer_column = 0
-    #strict
     when node^.kind {
         is ast.NodeKind.LABEL {
             if maps.contains_key(qualifier^.locals, node^.label^.value) {
@@ -477,11 +465,9 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
             }
             node^.enum_decl^.values = new_values
         }
-        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
-        ast.NodeKind.PROGRAM {}
+        // These kinds have no child nodes to qualify
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -519,26 +505,15 @@ fn qualify_program(program ^ast.AstNode, module_name string, file string, aliase
     qualifier^.used_decls = used_decls
     mut decls [string:bool] = {:}
     for_each statement in program^.program^.stmts {
-        #strict
         when statement^.kind {
             is ast.NodeKind.FUNC_DECL { decls[statement^.func_decl^.name] = true }
             is ast.NodeKind.STRUCT_DECL { decls[statement^.struct_decl^.name] = true }
             is ast.NodeKind.ENUM_DECL { decls[statement^.enum_decl^.name] = true }
             is ast.NodeKind.VAR_DECL { decls[statement^.var_decl^.name] = true }
             is ast.NodeKind.ALIAS_DECL { decls[statement^.alias_decl^.name] = true }
-            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-            ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-            ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-            ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-            ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-            ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-            ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-            ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-            ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+            // Every other node kind is an expression or statement that only appears inside a function body
+            // If a new NodeKind can declare a top-level name, add a branch for it above
+            default {}
         }
     }
     // Names only another file of the same directory module declares
