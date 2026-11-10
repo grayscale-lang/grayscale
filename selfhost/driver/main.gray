@@ -678,11 +678,7 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
 
                 // Check if already imported
                 if maps.contains_key(imported, resolved_path) {
-                    importer_path string = normalize_path(input_file)
-                    importer_in_directory bool = maps.contains_key(imported_from_directory, importer_path) && imported_from_directory[importer_path]
-                    if importer_in_directory && len(source_files) == 1 {
-                        report_import_warning("W2014", "import of '${item.source_path}' is redundant; already included by directory import", statement, input_file)
-                    } or len(source_files) == 1 && maps.contains_key(imported_from_directory, resolved_path) && imported_from_directory[resolved_path] && imported_by_file(resolved_path) == input_file {
+                    if len(source_files) == 1 && maps.contains_key(imported_from_directory, resolved_path) && imported_from_directory[resolved_path] && imported_by_file(resolved_path) == input_file {
                         report_import_warning("W2015", "import of '${item.source_path}' is redundant; already included by directory import", statement, input_file)
                     } or len(source_files) == 1 && imported_by_file(resolved_path) == input_file {
                         owner_module string = imported[resolved_path]

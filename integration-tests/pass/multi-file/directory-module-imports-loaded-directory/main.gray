@@ -1,0 +1,15 @@
+/*
+ * Pass Test: a file inside a directory module imports a directory the program
+ * already loaded. The import is the only thing that brings the module into
+ * scope in that file, so it is not reported as redundant (W2014).
+ */
+
+// expect-not: W2014
+
+import "./model"
+import "./data"
+
+do main() {
+    item model.Item = data.make_item()
+    println(item.name)
+}

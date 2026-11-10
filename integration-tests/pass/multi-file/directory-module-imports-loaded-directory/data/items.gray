@@ -1,0 +1,5 @@
+import "../model"
+
+do make_item() -> model.Item {
+    return model.Item{name: "sword"}
+}
