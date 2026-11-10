@@ -1,0 +1,29 @@
+/*
+ * when_binding_named_c_reserved_word.gray - a when payload binding may be
+ * named after a C reserved word.
+ */
+
+const Pair enum {
+    One(i64),
+    Two(i64, i64),
+    None
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    first Pair = Pair.One(5)
+    when first {
+        is .One(int) { if int == 5 { passed += 1 } otherwise { failed += 1 } }
+        default { failed += 1 }
+    }
+
+    second Pair = Pair.Two(3, 4)
+    when second {
+        is .Two(static, NULL) { if static + NULL == 7 { passed += 1 } otherwise { failed += 1 } }
+        default { failed += 1 }
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -14582,7 +14582,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                                 codegen->current_file = saved_when_file;
                                 emit_indent(codegen);
                                 emit_formatted(codegen, "%s %s = ", binding_c_type,
-                                    pattern->data.when_pattern.bindings[binding_index]);
+                                    sanitize_name(pattern->data.when_pattern.bindings[binding_index]));
                                 emit(codegen, when_temporary);
                                 emit_formatted(codegen, ".data.%s._%d;\n", variant_name, binding_index);
                             }
