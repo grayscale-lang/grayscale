@@ -2743,6 +2743,8 @@ fn gen_call(generator ^CodeGen, node ^ast.AstNode) -> string {
     if callee^.kind == ast.NodeKind.LABEL {
         name = callee^.label^.value
         if name == "println" || name == "print" || name == "eprintln" || name == "eprint" {
+            if len(arguments) == 0 && name == "println" { return "putchar('\\n')" }
+            if len(arguments) == 0 { return "fputc('\\n', stderr)" }
             if arguments[0]^.kind == ast.NodeKind.NIL_VALUE { return "gray_builtin_${name}_str(gray_string_lit(\"nil\"))" }
             if (is_composite_print_type(generator, expr_type(generator, arguments[0])) || expr_type(generator, arguments[0]) == "UUID") && !maps.contains_key(generator^.enums, expr_type(generator, arguments[0])) {
                 return composite_print(generator, name, arguments[0])
@@ -2767,6 +2769,7 @@ fn gen_call(generator ^CodeGen, node ^ast.AstNode) -> string {
             if is_map_type(expr_type(generator, arguments[0])) { return "(int64_t)(${gen_expr(generator, arguments[0])}).count" }
             return "(int64_t)(${gen_expr(generator, arguments[0])}).len"
         }
+        if name == "exit" && len(arguments) == 0 { return "gray_builtin_exit(0)" }
         if name == "exit" || name == "system" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" || name == "char_count" {
             return "gray_builtin_${name}(${gen_args(generator, arguments)})"
         }

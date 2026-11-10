@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - eprint() called with no arguments
+ * Expected: "'eprint()' expects 1 argument(s), got 0" error
+ */
+
+do main() {
+    eprint()
+}

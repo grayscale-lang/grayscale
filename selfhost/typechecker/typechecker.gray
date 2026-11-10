@@ -4791,6 +4791,11 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
     }
     if name == "error" { return resolve_error_call(checker, node) }
     if name == "type_of" { return resolve_type_of_call(checker, node) }
+    if name == "addr" && len(node^.call^.args) != 1 {
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+        resolve_call_args_only(checker, node)
+        return checker^.pool^.type_unknown
+    }
     if (name == "addr" || name == "raw") && len(node^.call^.args) == 1 { return resolve_address_call(checker, node, name) }
     if is_wrapping_builtin_name(name) {
         require_unsafe_context(checker, node, "${name}()")
@@ -4862,7 +4867,19 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         resolve_call_args_only(checker, node)
         return checker^.pool^.type_void
     }
-    if (name == "print" || name == "println" || name == "eprint" || name == "eprintln") && len(node^.call^.args) == 1 {
+    if name == "print" || name == "println" || name == "eprint" || name == "eprintln" {
+        print_argument_count = len(node^.call^.args)
+        if (name == "println" || name == "eprintln") && print_argument_count > 1 {
+            add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "0 or 1", "${print_argument_count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            resolve_call_args_only(checker, node)
+            return checker^.pool^.type_void
+        }
+        if (name == "print" || name == "eprint") && print_argument_count != 1 {
+            add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${print_argument_count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            resolve_call_args_only(checker, node)
+            return checker^.pool^.type_void
+        }
+        if print_argument_count == 0 { return checker^.pool^.type_void }
         print_type = resolve_expression(checker, node^.call^.args[0])
         reject_multi_return_in_single_position(checker, node^.call^.args[0])
         if print_type^.kind == types.TypeKind.C_FUNCTION {
