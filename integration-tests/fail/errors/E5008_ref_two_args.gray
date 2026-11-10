@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - ref() called with two arguments
+ * Expected: "'ref()' expects 1 argument(s), got 2" error
+ */
+
+do main() {
+    ref(1, 2)
+}

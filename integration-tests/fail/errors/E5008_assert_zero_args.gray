@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - assert() called with no arguments
+ * Expected: "'assert()' expects 1 or 2 argument(s), got 0" error
+ */
+
+do main() {
+    assert()
+}

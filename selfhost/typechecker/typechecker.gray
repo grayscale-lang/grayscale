@@ -4641,13 +4641,20 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
     count i64 = len(arguments)
     arity i64 = -1
     if name == "to_char" { arity = 2 }
-    if name == "char_count" || name == "to_c_string" || name == "system" || name == "char" { arity = 1 }
+    if name == "char_count" || name == "to_c_string" || name == "system" || name == "char" || name == "panic" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" { arity = 1 }
     mut result ^types.GrayType = checker^.pool^.type_void
     if name == "to_char" || name == "char" { result = checker^.pool^.type_char }
     if name == "char_count" || name == "system" { result = checker^.pool^.type_i64 }
     if name == "to_c_string" { result = types.type_pointer(checker^.pool, "u8") }
     if arity >= 0 && count != arity {
         add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "${arity}", "${count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+        for_each argument in arguments { resolve_expression(checker, argument) }
+        return result
+    }
+    if (name == "exit" && count > 1) || (name == "assert" && (count < 1 || count > 2)) {
+        mut expected_count = "0 or 1"
+        if name == "assert" { expected_count = "1 or 2" }
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, expected_count, "${count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
         for_each argument in arguments { resolve_expression(checker, argument) }
         return result
     }
@@ -4758,6 +4765,11 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         }
         return checker^.pool^.type_i64
     }
+    if (name == "addr" || name == "raw" || name == "ref" || name == "copy") && len(node^.call^.args) != 1 {
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+        resolve_call_args_only(checker, node)
+        return checker^.pool^.type_unknown
+    }
     // `ref(place)` is a transparent reference: it has the place's own type
     if name == "ref" && len(node^.call^.args) == 1 {
         place = node^.call^.args[0]
@@ -4791,11 +4803,6 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
     }
     if name == "error" { return resolve_error_call(checker, node) }
     if name == "type_of" { return resolve_type_of_call(checker, node) }
-    if name == "addr" && len(node^.call^.args) != 1 {
-        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
-        resolve_call_args_only(checker, node)
-        return checker^.pool^.type_unknown
-    }
     if (name == "addr" || name == "raw") && len(node^.call^.args) == 1 { return resolve_address_call(checker, node, name) }
     if is_wrapping_builtin_name(name) {
         require_unsafe_context(checker, node, "${name}()")
@@ -4901,6 +4908,9 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         return checker^.pool^.type_void
     }
     if name == "embed" { return resolve_embed_call(checker, node) }
+    if name == "input" && len(node^.call^.args) != 0 {
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "0", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     resolve_call_args_only(checker, node)
     if name == "len" || name == "char_count" || name == "size_of" { return checker^.pool^.type_i64 }
     if name == "type_of" || name == "input" { return checker^.pool^.type_string }

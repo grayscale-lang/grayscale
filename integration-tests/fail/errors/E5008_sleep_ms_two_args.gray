@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - sleep_ms() called with two arguments
+ * Expected: "'sleep_ms()' expects 1 argument(s), got 2" error
+ */
+
+do main() {
+    sleep_ms(1, 2)
+}

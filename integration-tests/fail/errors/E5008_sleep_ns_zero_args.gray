@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - sleep_ns() called with no arguments
+ * Expected: "'sleep_ns()' expects 1 argument(s), got 0" error
+ */
+
+do main() {
+    sleep_ns()
+}

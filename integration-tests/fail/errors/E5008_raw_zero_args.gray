@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - raw() called with no arguments
+ * Expected: "'raw()' expects 1 argument(s), got 0" error
+ */
+
+do main() {
+    raw()
+}

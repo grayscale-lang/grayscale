@@ -9808,6 +9808,9 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = type_pointer("u8");
     } else if (strcmp(function_name, "input") == 0) {
+        if (node->data.call.argument_count != 0) {
+            typechecker_error_arity(checker, node, "input", "0", node->data.call.argument_count);
+        }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "here") == 0) {
         if (node->data.call.argument_count != 0) {
@@ -9930,6 +9933,15 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                strcmp(function_name, "sleep_s") == 0 ||
                strcmp(function_name, "sleep_ms") == 0 ||
                strcmp(function_name, "sleep_ns") == 0) {
+        /* E5008: exit takes 0 or 1 arguments, assert 1 or 2, the rest exactly 1 */
+        int argument_count = node->data.call.argument_count;
+        if (strcmp(function_name, "exit") == 0) {
+            if (argument_count > 1) typechecker_error_arity(checker, node, "exit", "0 or 1", argument_count);
+        } else if (strcmp(function_name, "assert") == 0) {
+            if (argument_count < 1 || argument_count > 2) typechecker_error_arity(checker, node, "assert", "1 or 2", argument_count);
+        } else if (argument_count != 1) {
+            typechecker_error_arity(checker, node, function_name, "1", argument_count);
+        }
         /* Validate argument types for these builtins */
         if (strcmp(function_name, "exit") == 0 && node->data.call.argument_count >= 1) {
             GrayType *first_argument_type = check_expression_as(checker, node->data.call.arguments[0], &TYPE_I64);
