@@ -356,8 +356,11 @@ static int keyword_compare(const void *key_pointer, const void *element) {
  * with that name is a syntax error there. Sorted for bsearch. */
 static bool is_c_keyword(const char *name) {
     static const char *keywords[] = {
-        "EOF", "NULL", "auto", "bool", "break", "case", "char", "const",
-        "continue", "default", "do", "double", "else", "enum", "errno",
+        "EOF", "NULL", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex",
+        "_Generic", "_Noreturn", "_Static_assert", "_Thread_local",
+        "__FUNCTION__", "__PRETTY_FUNCTION__", "__func__",
+        "auto", "bool", "break", "case", "char", "const",
+        "continue", "default", "defined", "do", "double", "else", "enum", "errno",
         "extern", "false", "float", "for", "goto", "if", "inline", "int",
         "long", "register", "restrict", "return", "short", "signed", "sizeof",
         "static", "stderr", "stdin", "stdout", "struct", "switch",

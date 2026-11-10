@@ -559,7 +559,7 @@ fn bind_local(qualifier ^Qualifier, name string) {
 
 // Names C reserves or the C headers define; the generated code spells them `_gray_NAME`.
 fn is_c_keyword(name string) -> bool {
-    return arrays.contains({"EOF", "NULL", "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "errno", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "stderr", "stdin", "stdout", "struct", "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while"}, name)
+    return arrays.contains({"EOF", "NULL", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Noreturn", "_Static_assert", "_Thread_local", "__FUNCTION__", "__PRETTY_FUNCTION__", "__func__", "auto", "bool", "break", "case", "char", "const", "continue", "default", "defined", "do", "double", "else", "enum", "errno", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "stderr", "stdin", "stdout", "struct", "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while"}, name)
 }
 
 // A local, parameter or loop variable under the name the generated C uses.
