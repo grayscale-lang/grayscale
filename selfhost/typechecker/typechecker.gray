@@ -10498,7 +10498,7 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
     // A direct variable whose value does not fit it
     if target^.kind == ast.NodeKind.LABEL {
         target_symbol = scope.scope_lookup(checker^.current_scope, target^.label^.value)
-        if target_symbol != nil && target_symbol^.sym_type^.kind != types.TypeKind.UNKNOWN && assigned_value_type^.kind != types.TypeKind.UNKNOWN && target_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, target_type, assigned_value_type) && !(target_type^.kind == types.TypeKind.ENUM && is_int_kind(assigned_value_type^.kind)) && !(target_type^.kind == types.TypeKind.POINTER && is_ref_variable(checker, ad^.value)) && !(assigned_value_type^.kind == types.TypeKind.NIL_TYPE && (target_type^.kind == types.TypeKind.POINTER || target_type^.kind == types.TypeKind.ERROR)) && assigned_value_type^.kind != types.TypeKind.VOID {
+        if target_symbol != nil && target_symbol^.sym_type^.kind != types.TypeKind.UNKNOWN && assigned_value_type^.kind != types.TypeKind.UNKNOWN && target_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, target_type, assigned_value_type) && !(target_type^.kind == types.TypeKind.ENUM && is_int_kind(assigned_value_type^.kind)) && !(target_type^.kind == types.TypeKind.POINTER && is_ref_variable(checker, ad^.value)) && !(assigned_value_type^.kind == types.TypeKind.NIL_TYPE && (target_type^.kind == types.TypeKind.POINTER || target_type^.kind == types.TypeKind.ERROR)) {
             report_assign_mismatch(checker, node, assigned_value_type, target_type)
         }
         // Struct-to-struct name mismatch
