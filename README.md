@@ -101,6 +101,8 @@ Download the latest release for your platform from the [Releases page](https://g
 
 For now, releases are experimental builds named `experimental-YYYYMMDD-build#`: the UTC date of the merge into `main`, then a build number that counts up from 1 within that date.
 
+If you are on 0.14.1 or earlier, `gray update` cannot see experimental builds. Download one from the Releases page and replace your `gray` binary once. After that, `gray update` installs every newer release.
+
 ### Build from source
 
 Requires a C11 compiler with GNU extensions: GCC 11+, Clang 14+, or TinyCC 0.9.27+. Grayscale uses the first of `cc`, `gcc`, or `clang` it finds. Pass `--cc <compiler>` to `gray` or `gray build` to choose another for one run (`gray main.gray --cc tcc`), or set `GRAY_CC` or `CC`. `--cc` takes precedence over both. `GRAY_CC` is the compiler `gray` uses for `.gray` programs; `CC` is the compiler `make` uses to build the runtime library, and `gray` falls back to it only when `GRAY_CC` is unset (`CC=clang GRAY_CC=gcc make selfhost build`).
