@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3040 - multi-value call passed to type_of()
+ */
+
+do f() -> (i64, Error) { return 1, nil }
+
+do main() {
+    println(type_of(f()))
+}

@@ -4562,6 +4562,7 @@ fn resolve_type_of_call(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayT
         }
     }
     argument_type = resolve_expression(checker, argument)
+    reject_multi_return_in_single_position(checker, argument)
     if argument_type^.kind == types.TypeKind.VOID {
         add_diagnostic(checker, "E3187", error_registry.registry_message_formatted("E3187", {"the argument of type_of()"}), node^.tok.file, node^.tok.line, node^.tok.col)
     }
@@ -4663,6 +4664,7 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
             }
         }
         argument_type = resolve_expression(checker, arguments[0])
+        reject_multi_return_in_single_position(checker, arguments[0])
         if !is_int_kind(argument_type^.kind) && argument_type^.kind != types.TypeKind.CHAR {
             report_argument_type(checker, node, 1, "char", "an integer codepoint", shown_type(checker, argument_type))
         }
@@ -4670,6 +4672,7 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
     }
     if name == "exit" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" {
         argument_type = check_expression_as(checker, arguments[0], checker^.pool^.type_i64)
+        reject_multi_return_in_single_position(checker, arguments[0])
         check_scalar_argument(checker, node, argument_type, 1, name, "integer", "an integer")
         return result
     }
@@ -4835,6 +4838,7 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
             }
         }
         mut argument_type = resolve_expression(checker, fields_argument)
+        reject_multi_return_in_single_position(checker, fields_argument)
         // A pointer to a struct reads through
         if argument_type^.kind == types.TypeKind.POINTER && argument_type^.element_type != "" && is_struct_name(checker, argument_type^.element_type) {
             argument_type = checker_type_from_name(checker, argument_type^.element_type)
@@ -4846,6 +4850,7 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
     }
     if name == "copy" && len(node^.call^.args) == 1 {
         copied_type = resolve_expression(checker, node^.call^.args[0])
+        reject_multi_return_in_single_position(checker, node^.call^.args[0])
         if copied_type^.kind == types.TypeKind.FUNCTION {
             add_diagnostic(checker, "E5029", error_registry.registry_message("E5029"), node^.tok.file, node^.tok.line, node^.tok.col)
             return checker^.pool^.type_unknown
@@ -5789,6 +5794,7 @@ fn resolve_len_call(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType 
     }
     allow_range_use(checker, arguments[0])
     argument_type = resolve_expression(checker, arguments[0])
+    reject_multi_return_in_single_position(checker, arguments[0])
     reject_void_in_context(checker, arguments[0], argument_type, "'len()' argument")
     kind = argument_type^.kind
     mut is_measurable = kind == types.TypeKind.STRING || kind == types.TypeKind.ARRAY || kind == types.TypeKind.MAP || kind == types.TypeKind.RANGE
