@@ -1123,7 +1123,15 @@ static int type_name_deep_copy_depth = 0;
 
 /* The declaration of a tagged enum, or NULL for any other type name. */
 static AstNode *tagged_enum_declaration(CodeGen *codegen, const char *name) {
-    if (!name || !codegen_enum_is_tagged(codegen, name)) return NULL;
+    if (!name) return NULL;
+    /* Enums are keyed by their mangled spelling; a type is written as it is
+     * named where it appears, so resolve it as find_struct_declaration does. */
+    if (!codegen_enum_is_tagged(codegen, name)) {
+        const char *resolved = codegen_resolve_type(codegen, name);
+        if (!resolved || resolved == name || strcmp(resolved, name) == 0) return NULL;
+        name = resolved;
+        if (!codegen_enum_is_tagged(codegen, name)) return NULL;
+    }
     int enum_index = codegen_enum_index(codegen, name);
     return enum_index >= 0 ? codegen->enum_declarations[enum_index] : NULL;
 }
@@ -1145,17 +1153,20 @@ static bool type_needs_copy_walk(CodeGen *codegen, const char *gray_type_name, b
             if (strcmp(type_name_deep_copy_visiting[j], gray_type_name) == 0) return false;
         }
         if (type_name_deep_copy_depth < CYCLE_GUARD_DEPTH) type_name_deep_copy_visiting[type_name_deep_copy_depth++] = gray_type_name;
-        for (int i = 0; i < enum_declaration->data.enum_declaration.value_count; i++) {
+        /* Payload types are written in the enum's own module. */
+        const char *enum_caller_module = codegen->current_module;
+        const char *enum_caller_file = codegen->current_file;
+        codegen_enter_node(codegen, enum_declaration);
+        bool enum_shares = false;
+        for (int i = 0; i < enum_declaration->data.enum_declaration.value_count && !enum_shares; i++) {
             EnumValue *variant = &enum_declaration->data.enum_declaration.values[i];
-            for (int k = 0; k < variant->payload_count; k++) {
-                if (type_needs_copy_walk(codegen, variant->payload_types[k], count_strings)) {
-                    type_name_deep_copy_depth--;
-                    return true;
-                }
-            }
+            for (int k = 0; k < variant->payload_count && !enum_shares; k++)
+                enum_shares = type_needs_copy_walk(codegen, variant->payload_types[k], count_strings);
         }
+        codegen->current_module = enum_caller_module;
+        codegen->current_file = enum_caller_file;
         type_name_deep_copy_depth--;
-        return false;
+        return enum_shares;
     }
     /* Cycle detection: if we're already visiting this struct, stop. */
     for (int j = 0; j < type_name_deep_copy_depth; j++) {
@@ -1412,6 +1423,10 @@ static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, con
     int unique_id = codegen_next_id(codegen);
     emit_formatted(codegen, "({ %s _es%d = %s; %s _ed%d = _es%d; switch (_es%d.tag) { ",
                    c_enum, unique_id, source_variable, c_enum, unique_id, unique_id, unique_id);
+    /* Payload types are written in the enum's own module. */
+    const char *caller_module = codegen->current_module;
+    const char *caller_file = codegen->current_file;
+    codegen_enter_node(codegen, enum_declaration);
     for (int i = 0; i < enum_declaration->data.enum_declaration.value_count; i++) {
         EnumValue *variant = &enum_declaration->data.enum_declaration.values[i];
         bool needs_copy = false;
@@ -1429,6 +1444,8 @@ static void emit_enum_deep_copy(CodeGen *codegen, AstNode *enum_declaration, con
         }
         emit(codegen, "break; ");
     }
+    codegen->current_module = caller_module;
+    codegen->current_file = caller_file;
     emit_formatted(codegen, "default: break; } _ed%d; })", unique_id);
     emit_enum_deep_copy_depth--;
 }
