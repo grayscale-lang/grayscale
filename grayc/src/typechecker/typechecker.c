@@ -15904,6 +15904,11 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             strcmp(target->data.label.value, "_") != 0) {
             const char *name = target->data.label.value;
             Symbol *symbol = checker_lookup_symbol(checker, name);
+            /* E2038: reserved type name as variable name, as for `mut` */
+            if (!symbol && name[0] != '_' && is_reserved_type_name(name)) {
+                NODE_ERROR_FORMATTED(checker, node, "E2038", name, "a variable");
+                return;
+            }
             /* A module-level var/const declared later in the file has a
              * DeclarationEntry already (register_declaration_symbols runs before any body
              * is checked) even though its Scope Symbol does not exist yet —

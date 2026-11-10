@@ -10397,6 +10397,10 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
     // Implicit declaration: `x = expr` where `x` is not in scope
     if target^.kind == ast.NodeKind.LABEL && ad^.op == token.TokenKind.ASSIGN && target^.label^.value != "_" {
         name = target^.label^.value
+        if scope.scope_lookup(checker^.current_scope, name) == nil && !strings.starts_with(name, "_") && reserved.is_reserved_type_name(name) {
+            add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            return
+        }
         if scope.scope_lookup(checker^.current_scope, name) == nil && !reserved.is_reserved_builtin_func_name(name) && !is_struct_name(checker, name) && !is_enum_name(checker, name) && find_func(checker, name) == nil {
             allow_range_use(checker, ad^.value)
             value_type = resolve_expression(checker, ad^.value)

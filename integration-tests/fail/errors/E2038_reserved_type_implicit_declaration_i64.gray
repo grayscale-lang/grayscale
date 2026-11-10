@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2038 - reserved type name used as an implicitly declared variable
+ * Expected: "'i64' is a reserved type name" error
+ */
+
+do main() {
+    i64 = 1
+}

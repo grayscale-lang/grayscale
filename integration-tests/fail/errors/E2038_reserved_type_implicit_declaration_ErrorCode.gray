@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2038 - reserved type name used as an implicitly declared variable
+ * Expected: "'ErrorCode' is a reserved type name" error
+ */
+
+do main() {
+    ErrorCode = 1
+}
