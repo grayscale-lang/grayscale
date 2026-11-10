@@ -1,0 +1,7 @@
+import "./types"
+
+do main() {
+    mut kinds = {1, 2}
+    println(len(types.Kind))
+    println(kinds)
+}

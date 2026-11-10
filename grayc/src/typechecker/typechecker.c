@@ -10744,7 +10744,8 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
          * resolve_generic_call() for a `generic` parameter, the stdlib argument
          * check for an EXPECTED_ARGUMENT_TYPE position, the builtin's own handler for the
          * rest. Resolving one here would report the type name as a value. */
-        if (node->data.call.arguments[i]->kind == NODE_LABEL &&
+        if ((node->data.call.arguments[i]->kind == NODE_LABEL ||
+             node->data.call.arguments[i]->kind == NODE_MEMBER_EXPRESSION) &&
             argument_is_type_position(checker, node, callee_declaration, callee_leading_parameters, i))
             continue;
         if (is_reference_call && node->data.call.arguments[i]->kind == NODE_LABEL &&
@@ -12334,6 +12335,9 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             } else if (member_entry->kind == DECLARATION_FUNCTION) {
                 const char *written = typechecker_format(checker, "%s.%s", object_name, member);
                 NODE_ERROR_FORMATTED(checker, node, "E3031", written, written, written);
+            } else if (member_entry->kind == DECLARATION_STRUCT || member_entry->kind == DECLARATION_ENUM ||
+                       member_entry->kind == DECLARATION_ALIAS) {
+                NODE_ERROR_FORMATTED(checker, node, "E3100", typechecker_format(checker, "%s.%s", object_name, member));
             }
         }
     } else if (object->kind == NODE_MEMBER_EXPRESSION) {
