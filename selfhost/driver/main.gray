@@ -143,142 +143,142 @@ fn parse_args() -> Options {
         exit(1)
     }
 
-    mut i i64 = 1
-    as_long_as i < len(arguments) {
-        arg string = arguments[i]
+    mut argument_index i64 = 1
+    as_long_as argument_index < len(arguments) {
+        argument string = arguments[argument_index]
 
-        if arg == "version" || arg == "--version" {
+        if argument == "version" || argument == "--version" {
             println("gray ${GRAY_VERSION}")
             exit(0)
         }
-        if arg == "--help" || arg == "-h" {
+        if argument == "--help" || argument == "-h" {
             print_usage()
             exit(0)
         }
-        if arg == "--" {
-            for_each program_argument in arrays.slice(arguments, i + 1, len(arguments)) { arrays.append(opts.program_arguments, program_argument) }
+        if argument == "--" {
+            for_each program_argument in arrays.slice(arguments, argument_index + 1, len(arguments)) { arrays.append(opts.program_arguments, program_argument) }
             break
         }
-        if arg == "-o" && i + 1 < len(arguments) {
-            i = i + 1
-            opts.output_file = arguments[i]
-            i = i + 1
+        if argument == "-o" && argument_index + 1 < len(arguments) {
+            argument_index = argument_index + 1
+            opts.output_file = arguments[argument_index]
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-c" {
+        if argument == "-c" {
             opts.emit_c_only = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-O0" {
+        if argument == "-O0" {
             opts.opt_level = "-O0"
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-O1" {
+        if argument == "-O1" {
             opts.opt_level = "-O1"
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-O2" {
+        if argument == "-O2" {
             opts.opt_level = "-O2"
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-O3" {
+        if argument == "-O3" {
             opts.opt_level = "-O3"
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-g" {
+        if argument == "-g" {
             opts.debug_syms = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "-v" {
+        if argument == "-v" {
             opts.verbose = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if strings.starts_with(arg, DEFINE_FLAG_PREFIX) {
-            arrays.append(opts.define_args, strings.slice(arg, len(DEFINE_FLAG_PREFIX), len(arg)))
-            i = i + 1
+        if strings.starts_with(argument, DEFINE_FLAG_PREFIX) {
+            arrays.append(opts.define_args, strings.slice(argument, len(DEFINE_FLAG_PREFIX), len(argument)))
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--fmt" {
+        if argument == "--fmt" {
             opts.format_mode = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--test" {
+        if argument == "--test" {
             opts.test_mode = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--time" {
+        if argument == "--time" {
             opts.show_time = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--no-color" {
+        if argument == "--no-color" {
             opts.no_color = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--quiet" || arg == "-q" {
-            if i + 1 < len(arguments) && arguments[i + 1] == "all" {
-                i = i + 1
+        if argument == "--quiet" || argument == "-q" {
+            if argument_index + 1 < len(arguments) && arguments[argument_index + 1] == "all" {
+                argument_index = argument_index + 1
                 opts.quiet_all = true
-            } or i + 1 < len(arguments) && strings.starts_with(arguments[i + 1], "W") {
-                i = i + 1
-                opts.quiet_codes = arguments[i]
-            } or i + 1 < len(arguments) && strings.starts_with(arguments[i + 1], "E") {
-                eprintln("gray: '-q' only accepts warning codes (W-prefixed), not error code '${arguments[i + 1]}'")
+            } or argument_index + 1 < len(arguments) && strings.starts_with(arguments[argument_index + 1], "W") {
+                argument_index = argument_index + 1
+                opts.quiet_codes = arguments[argument_index]
+            } or argument_index + 1 < len(arguments) && strings.starts_with(arguments[argument_index + 1], "E") {
+                eprintln("gray: '-q' only accepts warning codes (W-prefixed), not error code '${arguments[argument_index + 1]}'")
                 exit(1)
             } otherwise {
                 opts.quiet_all = true
             }
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if strings.starts_with(arg, ARENA_LIMIT_FLAG_PREFIX) {
-            limit_text = strings.slice(arg, len(ARENA_LIMIT_FLAG_PREFIX), len(arg))
+        if strings.starts_with(argument, ARENA_LIMIT_FLAG_PREFIX) {
+            limit_text = strings.slice(argument, len(ARENA_LIMIT_FLAG_PREFIX), len(argument))
             limit, is_valid_limit = parse_arena_limit(limit_text)
             if !is_valid_limit {
                 eprintln("gray: invalid --arena-limit '${limit_text}': expected a positive number of bytes up to ${MAXIMUM_ARENA_LIMIT}")
                 exit(1)
             }
             opts.arena_limit = limit
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "--cc" && i + 1 < len(arguments) {
-            i = i + 1
-            opts.cc_override = arguments[i]
-            i = i + 1
+        if argument == "--cc" && argument_index + 1 < len(arguments) {
+            argument_index = argument_index + 1
+            opts.cc_override = arguments[argument_index]
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "check" && opts.input_file == "" {
+        if argument == "check" && opts.input_file == "" {
             opts.check_only = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if arg == "build" && opts.input_file == "" {
-            i = i + 1
+        if argument == "build" && opts.input_file == "" {
+            argument_index = argument_index + 1
             continue
         }
         //run is not a valid command. I suppose adding it is ok but prefer not....
-        if arg == "run" && opts.input_file == "" {
+        if argument == "run" && opts.input_file == "" {
             opts.run_mode = true
-            i = i + 1
+            argument_index = argument_index + 1
             continue
         }
-        if strings.starts_with(arg, "-") {
-            eprintln("gray: unknown option '${arg}'")
+        if strings.starts_with(argument, "-") {
+            eprintln("gray: unknown option '${argument}'")
             exit(1)
         }
-        opts.input_file = arg
-        i = i + 1
+        opts.input_file = argument
+        argument_index = argument_index + 1
     }
 
     if opts.input_file == "" {
@@ -292,15 +292,15 @@ fn parse_args() -> Options {
 // --- Path utilities ---
 
 fn path_basename(file_path string) -> string {
-    idx i64 = strings.last_index_of(file_path, "/")
-    if idx < 0 { return file_path }
-    return strings.slice(file_path, idx + 1, len(file_path))
+    slash_index i64 = strings.last_index_of(file_path, "/")
+    if slash_index < 0 { return file_path }
+    return strings.slice(file_path, slash_index + 1, len(file_path))
 }
 
 fn path_dir(file_path string) -> string {
-    idx i64 = strings.last_index_of(file_path, "/")
-    if idx < 0 { return "./" }
-    return strings.slice(file_path, 0, idx + 1)
+    slash_index i64 = strings.last_index_of(file_path, "/")
+    if slash_index < 0 { return "./" }
+    return strings.slice(file_path, 0, slash_index + 1)
 }
 
 // Collapses `.` and `..` segments so one file reached through different
@@ -521,11 +521,11 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
     mut seen_siblings [string] = {}
 
     // Walk import statements in the program
-    mut si i64 = 0
-    as_long_as si < len(program^.program^.stmts) {
-        statement = program^.program^.stmts[si]
+    mut import_index i64 = 0
+    as_long_as import_index < len(program^.program^.stmts) {
+        statement = program^.program^.stmts[import_index]
         if statement^.kind != ast.NodeKind.IMPORT_STMT {
-            si = si + 1
+            import_index = import_index + 1
             continue
         }
 
@@ -559,15 +559,15 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
             if item.source_path == "" { continue }
 
             // Resolve path relative to input directory
-            mut rel string = item.source_path
-            if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) {
-                rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel))
+            mut relative_path string = item.source_path
+            if strings.starts_with(relative_path, CURRENT_DIRECTORY_PREFIX) {
+                relative_path = strings.slice(relative_path, len(CURRENT_DIRECTORY_PREFIX), len(relative_path))
             }
-            import_path string = fmt.sprintf("%s%s", {input_dir, rel})
+            import_path string = fmt.sprintf("%s%s", {input_dir, relative_path})
 
             // A file of the directory that pulled this file in names a sibling
             if !is_entry && sibling_directory != "" && names_sibling(input_dir, item.source_path, sibling_directory) {
-                mut sibling_file string = "${input_dir}${rel}"
+                mut sibling_file string = "${input_dir}${relative_path}"
                 if !has_source_extension(sibling_file) {
                     sibling_matches = extension_matches(sibling_file)
                     if len(sibling_matches) > 0 { sibling_file = sibling_matches[0] }
@@ -612,9 +612,9 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
             }
 
             // Derive module name from the file or directory name
-            mut module_base string = path_basename(rel)
-            if module_base == "" && len(rel) > 1 {
-                module_base = path_basename(strings.slice(rel, 0, len(rel) - 1))
+            mut module_base string = path_basename(relative_path)
+            if module_base == "" && len(relative_path) > 1 {
+                module_base = path_basename(strings.slice(relative_path, 0, len(relative_path) - 1))
             }
             written_name string = strip_gray_ext(module_base)
             mut display_name string = written_name
@@ -735,7 +735,7 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
             }
         }
 
-        si = si + 1
+        import_index = import_index + 1
     }
 }
 
@@ -744,10 +744,10 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
 // The module name an import path introduces: its file or directory name without
 // extension or trailing separator.
 fn module_name_of(source_path string) -> string {
-    mut rel string = source_path
-    if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) { rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel)) }
-    mut base string = path_basename(rel)
-    if base == "" && len(rel) > 1 { base = path_basename(strings.slice(rel, 0, len(rel) - 1)) }
+    mut relative_path string = source_path
+    if strings.starts_with(relative_path, CURRENT_DIRECTORY_PREFIX) { relative_path = strings.slice(relative_path, len(CURRENT_DIRECTORY_PREFIX), len(relative_path)) }
+    mut base string = path_basename(relative_path)
+    if base == "" && len(relative_path) > 1 { base = path_basename(strings.slice(relative_path, 0, len(relative_path) - 1)) }
     return strip_gray_ext(base)
 }
 
@@ -866,10 +866,10 @@ fn auto_use_decls(program ^ast.AstNode, file_path string) -> [string:string] {
             module_alias string = item.import_alias
             if module_alias == "" { module_alias = strip_gray_ext(path_basename(item.source_path)) }
             if !statement^.import_stmt^.auto_use && !maps.contains_key(using_names, module_alias) { continue }
-            mut rel string = item.source_path
-            if strings.starts_with(rel, CURRENT_DIRECTORY_PREFIX) { rel = strings.slice(rel, len(CURRENT_DIRECTORY_PREFIX), len(rel)) }
-            mod_name string = strip_gray_ext(path_basename(rel))
-            for_each resolved_path in import_source_files(fmt.sprintf("%s%s", {input_dir, rel})) {
+            mut relative_path string = item.source_path
+            if strings.starts_with(relative_path, CURRENT_DIRECTORY_PREFIX) { relative_path = strings.slice(relative_path, len(CURRENT_DIRECTORY_PREFIX), len(relative_path)) }
+            mod_name string = strip_gray_ext(path_basename(relative_path))
+            for_each resolved_path in import_source_files(fmt.sprintf("%s%s", {input_dir, relative_path})) {
                 source string, read_err = io.read_file(resolved_path)
                 if read_err != nil { continue }
                 module_program = parser.parse_program(parser.parser_create(lexer.lexer_create(source, resolved_path), resolved_path))

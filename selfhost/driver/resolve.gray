@@ -221,7 +221,7 @@ fn qualify_word(qualifier ^Qualifier, word string) -> string {
 // `map[string:Bar]`.
 fn qualify_type(qualifier ^Qualifier, type_name string) -> string {
     if type_name == "" { return type_name }
-    mut out string = ""
+    mut output string = ""
     mut i i64 = 0
     n i64 = len(type_name)
     as_long_as i < n {
@@ -231,13 +231,13 @@ fn qualify_type(qualifier ^Qualifier, type_name string) -> string {
             as_long_as i < n && (is_ident_byte(strings.char_at(type_name, i)) || strings.char_at(type_name, i) == '.') {
                 i = i + 1
             }
-            out = "${out}${qualify_word(qualifier, strings.slice(type_name, start, i))}"
+            output = "${output}${qualify_word(qualifier, strings.slice(type_name, start, i))}"
         } otherwise {
-            out = "${out}${strings.slice(type_name, i, i + 1)}"
+            output = "${output}${strings.slice(type_name, i, i + 1)}"
             i = i + 1
         }
     }
-    return out
+    return output
 }
 
 fn qualify_types(qualifier ^Qualifier, names [string]) -> [string] {

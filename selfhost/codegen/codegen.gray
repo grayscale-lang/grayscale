@@ -2112,7 +2112,7 @@ fn address_of_arg(generator ^CodeGen, arg ^ast.AstNode) -> string {
 
 fn gen_args(generator ^CodeGen, arguments [^ast.AstNode]) -> string {
     mut pieces [string] = {}
-    for_each arg in arguments { arrays.append(pieces, gen_expr(generator, arg)) }
+    for_each argument in arguments { arrays.append(pieces, gen_expr(generator, argument)) }
     return strings.join(pieces, ", ")
 }
 
@@ -2385,22 +2385,22 @@ fn indent_print_block(generator ^CodeGen, text string, extra_level i64) -> strin
 }
 
 // The runtime print function for a value of this type.
-fn print_call(generator ^CodeGen, variant string, arg string, type_name string) -> string {
-    if type_name == "Error" { return "gray_builtin_${variant}_str((${arg}) ? (${arg})->msg : gray_string_lit(\"nil\"))" }
-    if is_error_code_type(generator, type_name) { return "gray_builtin_${variant}_str(gray_string_lit(gray_error_code_name((int64_t)(${arg}))))" }
-    if is_string_enum(generator, type_name) { return "gray_builtin_${variant}_str(${arg})" }
+fn print_call(generator ^CodeGen, variant string, argument string, type_name string) -> string {
+    if type_name == "Error" { return "gray_builtin_${variant}_str((${argument}) ? (${argument})->msg : gray_string_lit(\"nil\"))" }
+    if is_error_code_type(generator, type_name) { return "gray_builtin_${variant}_str(gray_string_lit(gray_error_code_name((int64_t)(${argument}))))" }
+    if is_string_enum(generator, type_name) { return "gray_builtin_${variant}_str(${argument})" }
     if type_name == "UUID" { return "gray_builtin_${variant}_str(gray_string_lit(\"UUID{}\"))" }
-    if is_wide_name(type_name) { return "gray_builtin_${variant}_str(${wide_prefix(type_name)}_to_string(gray_default_arena, ${arg}))" }
-    if type_name == "string" { return "gray_builtin_${variant}_str(${arg})" }
-    if type_name == "bool" { return "gray_builtin_${variant}_bool(${arg})" }
-    if type_name == "char" { return "gray_builtin_${variant}_char(${arg})" }
+    if is_wide_name(type_name) { return "gray_builtin_${variant}_str(${wide_prefix(type_name)}_to_string(gray_default_arena, ${argument}))" }
+    if type_name == "string" { return "gray_builtin_${variant}_str(${argument})" }
+    if type_name == "bool" { return "gray_builtin_${variant}_bool(${argument})" }
+    if type_name == "char" { return "gray_builtin_${variant}_char(${argument})" }
     if is_float_name(type_name) {
         bits = F64_BITS
         if type_name == "f32" { bits = F32_BITS }
-        return "gray_builtin_${variant}_floating_point(${arg}, ${bits})"
+        return "gray_builtin_${variant}_floating_point(${argument}, ${bits})"
     }
-    if is_unsigned_int_name(type_name) { return "gray_builtin_${variant}_u64(${arg})" }
-    return "gray_builtin_${variant}_i64(${arg})"
+    if is_unsigned_int_name(type_name) { return "gray_builtin_${variant}_u64(${argument})" }
+    return "gray_builtin_${variant}_i64(${argument})"
 }
 
 // The instantiation a call to generic function `callee_decl` selects: the type
@@ -3115,8 +3115,8 @@ fn format_segmented(generator ^CodeGen, node ^ast.AstNode, values FormatValues, 
     mut stream = "stdout"
     if prefix == "fprintf(stderr, " { stream = "stderr" }
     unique_id = next_id(generator)
-    mut out string = "({ "
-    if to_string { out = "({ GrayFmtOut _gray_fs${unique_id} = {0}; " }
+    mut output string = "({ "
+    if to_string { output = "({ GrayFmtOut _gray_fs${unique_id} = {0}; " }
     mut segment_start i64 = 0
     mut segment_first_value i64 = 0
     mut value_index i64 = 0
@@ -3133,25 +3133,25 @@ fn format_segmented(generator ^CodeGen, node ^ast.AstNode, values FormatValues, 
         if segment_end > segment_start || (is_last && newline) {
             segment = strings.slice(text, segment_start, segment_end)
             if to_string {
-                out = "${out}gray_fmt_out_printf(&_gray_fs${unique_id}, "
+                output = "${output}gray_fmt_out_printf(&_gray_fs${unique_id}, "
             } otherwise {
-                out = "${out}fprintf(${stream}, "
+                output = "${output}fprintf(${stream}, "
             }
-            out = "${out}${format_normalized(generator, values, segment, is_last && newline, segment_first_value)}${format_arguments(generator, node, values, segment, true, segment_first_value)}); "
+            output = "${output}${format_normalized(generator, values, segment, is_last && newline, segment_first_value)}${format_arguments(generator, node, values, segment, true, segment_first_value)}); "
         }
         if is_last { break }
-        out = "${out}{ GrayString _gray_fv = ${format_string_value(generator, node, values, directives[index], value_index)}"
+        output = "${output}{ GrayString _gray_fv = ${format_string_value(generator, node, values, directives[index], value_index)}"
         if to_string {
-            out = "${out}; gray_fmt_out_write(_gray_fv.data, 1, (size_t)_gray_fv.len, &_gray_fs${unique_id}); } "
+            output = "${output}; gray_fmt_out_write(_gray_fv.data, 1, (size_t)_gray_fv.len, &_gray_fs${unique_id}); } "
         } otherwise {
-            out = "${out}; fwrite(_gray_fv.data, 1, (size_t)_gray_fv.len, ${stream}); } "
+            output = "${output}; fwrite(_gray_fv.data, 1, (size_t)_gray_fv.len, ${stream}); } "
         }
         value_index = value_index + 1
         segment_start = directives[index].end
         segment_first_value = value_index
     }
-    if to_string { return "${out}gray_fmt_out_finish(gray_default_arena, &_gray_fs${unique_id}); })" }
-    return "${out}(void)0; })"
+    if to_string { return "${output}gray_fmt_out_finish(gray_default_arena, &_gray_fs${unique_id}); })" }
+    return "${output}(void)0; })"
 }
 
 fn gen_format_call(generator ^CodeGen, node ^ast.AstNode, prefix string, newline bool) -> string {
@@ -5438,7 +5438,7 @@ fn gen_function(generator ^CodeGen, node ^ast.AstNode, concrete string, owner st
         generator^.generics = ast.generic_bindings_init(function_data, concrete)
     }
     mut eff_returns [string] = {}
-    for_each rt in function_data^.return_types { arrays.append(eff_returns, eff(generator, rt)) }
+    for_each return_type in function_data^.return_types { arrays.append(eff_returns, eff(generator, return_type)) }
     generator^.return_types = eff_returns
     generator^.multi_name = multi_return_type_name(function_data, fn_name)
     generator^.ref_params = {}

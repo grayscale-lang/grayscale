@@ -195,7 +195,7 @@ fn format_source(source string, file_name string) -> string {
     tables = build_depth_tables(source, file_name, maximum_line)
     raw_starts = raw_string_line_starts(source, len(lines))
 
-    mut out [string] = {}
+    mut output [string] = {}
     mut in_block_comment bool = false
     mut block_comment_delta i64 = 0
     mut continuation_delta i64 = 0
@@ -209,24 +209,24 @@ fn format_source(source string, file_name string) -> string {
         original_leading i64 = content_start
 
         if len(content) == 0 {
-            arrays.append(out, "")
+            arrays.append(output, "")
         } or raw_starts[line_number] {
-            arrays.append(out, line)
+            arrays.append(output, line)
         } or in_block_comment {
             mut leading i64 = original_leading + block_comment_delta
             if leading < 0 { leading = 0 }
-            arrays.append(out, "${spaces(leading)}${content}")
+            arrays.append(output, "${spaces(leading)}${content}")
             if block_comment_closes(content, 0) { in_block_comment = false }
         } or line_number <= maximum_line && tables.is_continuation[line_number] {
             mut leading i64 = original_leading + continuation_delta
             if leading < 0 { leading = 0 }
-            arrays.append(out, "${spaces(leading)}${content}")
+            arrays.append(output, "${spaces(leading)}${content}")
         } otherwise {
             mut depth i64 = 0
             if line_number <= maximum_line { depth = tables.depth[line_number] }
             if depth < 0 { depth = 0 }
             leading i64 = depth * INDENT_WIDTH
-            arrays.append(out, "${spaces(leading)}${content}")
+            arrays.append(output, "${spaces(leading)}${content}")
             if len(content) >= BLOCK_COMMENT_OPENER_LENGTH && strings.char_at(content, 0) == '/' && strings.char_at(content, 1) == '*' {
                 block_comment_delta = leading - original_leading
                 in_block_comment = !block_comment_closes(content, BLOCK_COMMENT_OPENER_LENGTH)
@@ -235,6 +235,6 @@ fn format_source(source string, file_name string) -> string {
         }
         line_number = line_number + 1
     }
-    if len(out) == 0 { return "" }
-    return "${strings.join(out, "\n")}\n"
+    if len(output) == 0 { return "" }
+    return "${strings.join(output, "\n")}\n"
 }
