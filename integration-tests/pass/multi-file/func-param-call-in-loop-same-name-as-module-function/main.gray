@@ -1,0 +1,24 @@
+import "./lib"
+
+mut calls i64 = 0
+
+do record(text string) {
+    calls += 1
+}
+
+do run(helper func(string)) {
+    for i in range(0, 2) {
+        text string = "x${i}"
+        helper(text)
+    }
+}
+
+unsafe do main() {
+    run(()record)
+    mut counter i64 = 0
+    if calls == 2 && lib.helper(addr(counter), "y") == "lib:y" && counter == 1 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

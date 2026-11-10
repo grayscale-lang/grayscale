@@ -10572,6 +10572,13 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
         return NULL;
     }
 
+    /* A bare call to a func-typed parameter calls the argument, never a
+     * module function whose mangled name ends in the parameter's name. */
+    if (function_node->kind == NODE_LABEL && codegen->current_function) {
+        for (int i = 0; i < codegen->current_function->data.function_declaration.parameter_count; i++)
+            if (strcmp(codegen->current_function->data.function_declaration.parameters[i].name, name) == 0) return NULL;
+    }
+
     AstNode *exact = find_function(codegen, name);
     if (exact) return exact;
 
