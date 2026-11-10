@@ -6067,7 +6067,10 @@ fn generate_program(program ^ast.AstNode, file string) -> string {
     // The names the program uses as written may be macros in the C headers
     mut undefines string = ""
     identifiers = identifiers_in_emission_order(generator, undefine_index + 1, main_index)
-    for_each identifier in identifiers { undefines = "${undefines}#undef ${identifier}\n" }
+    // `defined` is a preprocessor operator that #undef rejects, and the generated code itself uses the NULL macro
+    for_each identifier in identifiers {
+        if identifier != "defined" && identifier != "NULL" { undefines = "${undefines}#undef ${identifier}\n" }
+    }
     generator^.out[collection_include_index] = "${generator^.out[collection_include_index]}${collection_includes}"
     generator^.out[undefine_index] = "${generator^.out[undefine_index]}${undefines}"
     return strings.join(generator^.out, "")
