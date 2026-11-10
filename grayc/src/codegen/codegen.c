@@ -14317,8 +14317,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         AstNode *coll = node->data.for_each.collection;
         GrayType *collection_type = codegen_type_of(codegen, coll);
 
-        const char *index_name = node->data.for_each.index_name;
-        if (!index_name) index_name = "_gray_idx";
+        const char *index_name = node->data.for_each.index_name ? sanitize_name(node->data.for_each.index_name) : "_gray_idx";
         bool is_map_iteration = (collection_type && collection_type->kind == TYPE_KIND_MAP);
         bool collection_needs_temporary = false;
         char array_temporary_name[SHORT_VARIABLE_BUFFER_SIZE];
