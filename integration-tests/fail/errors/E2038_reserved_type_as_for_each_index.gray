@@ -1,0 +1,7 @@
+/*
+ * Error Test: E2038 - reserved type name used as a for_each index variable
+ */
+
+do main() {
+    for_each f64, value in {1, 2} { println(value) }
+}

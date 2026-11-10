@@ -1,0 +1,7 @@
+/*
+ * Error Test: E2038 - reserved type name used as a for_each loop variable
+ */
+
+do main() {
+    for_each Error in {1, 2} { println(Error) }
+}

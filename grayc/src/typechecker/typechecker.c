@@ -17565,6 +17565,10 @@ static void check_for_statement(TypeChecker *checker, AstNode *node) {
     Scope *loop_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
     checker->current_scope = loop_scope;
+    /* E2038: reserved type name as loop variable name */
+    if (is_reserved_type_name(node->data.for_statement.variable_name)) {
+        NODE_ERROR_FORMATTED(checker, node, "E2038", node->data.for_statement.variable_name, "a variable");
+    }
     /* E5035: stdlib module name as loop variable name */
     if (is_stdlib_module_name(node->data.for_statement.variable_name)) {
         NODE_ERROR_FORMATTED(checker, node, "E5035", node->data.for_statement.variable_name, "a variable");
@@ -17641,6 +17645,13 @@ static void check_for_each_statement(TypeChecker *checker, AstNode *node) {
     Scope *outer = checker->current_scope;
     checker->current_scope = loop_scope;
 
+    /* E2038: reserved type name as loop variable name */
+    if (node->data.for_each.variable_name && is_reserved_type_name(node->data.for_each.variable_name)) {
+        NODE_ERROR_FORMATTED(checker, node, "E2038", node->data.for_each.variable_name, "a variable");
+    }
+    if (node->data.for_each.index_name && is_reserved_type_name(node->data.for_each.index_name)) {
+        NODE_ERROR_FORMATTED(checker, node, "E2038", node->data.for_each.index_name, "a variable");
+    }
     /* E5035: stdlib module name as loop variable name */
     if (node->data.for_each.variable_name && is_stdlib_module_name(node->data.for_each.variable_name)) {
         NODE_ERROR_FORMATTED(checker, node, "E5035", node->data.for_each.variable_name, "a variable");

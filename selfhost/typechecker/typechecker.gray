@@ -8165,6 +8165,10 @@ fn check_for_statement(checker ^TypeChecker, node ^ast.AstNode) {
     outer = checker^.current_scope
     loop_scope = scope.scope_create(outer)
     checker^.current_scope = loop_scope
+    // A reserved type name as the loop variable
+    if reserved.is_reserved_type_name(node^.for_stmt^.var_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {node^.for_stmt^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     // A stdlib module name as the loop variable
     if reserved.is_stdlib_module_name(node^.for_stmt^.var_name) {
         add_diagnostic(checker, "E5035", error_registry.registry_message_formatted("E5035", {node^.for_stmt^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
@@ -11174,6 +11178,13 @@ fn check_for_each_statement(checker ^TypeChecker, node ^ast.AstNode) {
     loop_scope = scope.scope_create(outer)
     checker^.current_scope = loop_scope
 
+    // A reserved type name as a loop variable
+    if fe^.var_name != "" && reserved.is_reserved_type_name(fe^.var_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {fe^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
+    if fe^.index_name != "" && reserved.is_reserved_type_name(fe^.index_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {fe^.index_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     // A stdlib module name as a loop variable
     if fe^.var_name != "" && reserved.is_stdlib_module_name(fe^.var_name) {
         add_diagnostic(checker, "E5035", error_registry.registry_message_formatted("E5035", {fe^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
