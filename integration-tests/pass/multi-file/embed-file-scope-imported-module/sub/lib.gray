@@ -1,0 +1,1 @@
+const A string = embed("data/a.txt")

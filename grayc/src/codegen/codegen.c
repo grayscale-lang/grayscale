@@ -6727,12 +6727,16 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
         AstNode *argument = node->data.call.arguments[0];
         const char *embed_path = argument->data.string_value.value;
 
+        /* A file-scope initializer of an imported module is emitted with
+         * codegen->file still on the entry file, so the call's own token names
+         * the file the path is relative to. */
+        const char *embed_source_file = node->token.file ? normalize_path_separators(node->token.file) : codegen->file;
         char resolved[4096];
-        if (embed_path[0] != '/' && codegen->file) {
-            const char *last_slash = strrchr(codegen->file, '/');
+        if (embed_path[0] != '/' && embed_source_file) {
+            const char *last_slash = strrchr(embed_source_file, '/');
             if (last_slash) {
                 snprintf(resolved, sizeof(resolved), "%.*s%s",
-                    (int)(last_slash - codegen->file + 1), codegen->file, embed_path);
+                    (int)(last_slash - embed_source_file + 1), embed_source_file, embed_path);
             } else {
                 snprintf(resolved, sizeof(resolved), "%s", embed_path);
             }

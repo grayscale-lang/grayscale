@@ -2511,9 +2511,12 @@ fn gen_here(callee ^ast.AstNode) -> string {
 fn gen_embed(generator ^CodeGen, arg ^ast.AstNode) -> string {
     embed_path = ast.ast_string_decode(arg^.string_value)
     mut resolved = embed_path
-    slash = strings.last_index_of(generator^.file, "/")
+    // The argument's own token names the file holding the call; a file-scope
+    // initializer of an imported module is generated with generator^.file on the entry file.
+    source_file = arg^.tok.file
+    slash = strings.last_index_of(source_file, "/")
     if !strings.starts_with(embed_path, "/") && slash >= 0 {
-        resolved = "${strings.slice(generator^.file, 0, slash + 1)}${embed_path}"
+        resolved = "${strings.slice(source_file, 0, slash + 1)}${embed_path}"
     }
     data [u8], read_err = io.read_bytes(resolved)
     if read_err != nil {
