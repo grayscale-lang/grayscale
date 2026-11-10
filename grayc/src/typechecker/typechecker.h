@@ -578,4 +578,8 @@ ModuleTable *typechecker_get_modules(TypeChecker *checker);
  * Used by codegen for unqualified 'using' dispatch. */
 bool stdlib_has_function(const char *module_name, const char *function_name);
 
+/* True for a name the language itself provides (print, len, exit, ...): no
+ * user function can carry it. */
+bool typechecker_is_builtin(const char *name);
+
 #endif

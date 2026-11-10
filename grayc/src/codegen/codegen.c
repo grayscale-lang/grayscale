@@ -10575,6 +10575,12 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
     AstNode *exact = find_function(codegen, name);
     if (exact) return exact;
 
+    /* A bare builtin is never a user function. Matching it by trailing name
+     * component against a mangled name that ends in it (`print` against
+     * `value_print`) wraps the call in the caller-arena block and captures
+     * its result with __auto_type, which fails to compile for a void builtin. */
+    if (function_node->kind == NODE_LABEL && typechecker_is_builtin(name)) return NULL;
+
     size_t name_length = strlen(name);
     AstNode *match = NULL;
     for (int i = 0; i < codegen->function_count; i++) {

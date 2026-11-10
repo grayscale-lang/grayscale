@@ -4573,7 +4573,7 @@ static void typechecker_mark_type_module_used(TypeChecker *checker, const char *
     }
 }
 
-static bool typechecker_is_builtin(const char *name) {
+bool typechecker_is_builtin(const char *name) {
     static const char *const builtins[] = {
         "addr", "assert", "bool", "cast",
         "char", "char_count", "copy", "embed", "eprint", "eprintln",
