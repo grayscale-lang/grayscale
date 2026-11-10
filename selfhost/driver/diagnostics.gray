@@ -340,6 +340,12 @@ fn print_summary(diagnostics [Diagnostic]) {
     }
 }
 
+// A supervising process that owns the terminal asks for colors this process cannot detect.
+fn enable_color() {
+    colors_decided = true
+    colors_enabled = true
+}
+
 // --no-color: no escape sequences whatever the terminal.
 fn disable_color() {
     colors_decided = true

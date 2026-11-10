@@ -1131,9 +1131,125 @@ fn ambiguous_use_diagnostics() -> [diagnostics.Diagnostic] {
 
 // --- Main pipeline ---
 
+// The compile runs in a child of the process the user started, so a runtime
+// panic inside the compiler is reported as an internal compiler error instead
+// of the compiler's own source path. The environment tells the child it is one,
+// where to leave the binary of a run, and what the terminal could show.
+const CHILD_ENVIRONMENT string = "GRAY_COMPILER_CHILD"
+const CHILD_OUTPUT_ENVIRONMENT string = "GRAY_COMPILER_CHILD_OUTPUT"
+const CHILD_STDOUT_TTY_ENVIRONMENT string = "GRAY_COMPILER_CHILD_STDOUT_TTY"
+const CHILD_STDERR_TTY_ENVIRONMENT string = "GRAY_COMPILER_CHILD_STDERR_TTY"
+
+fn is_compile_child() -> bool {
+    return os.get_env(CHILD_ENVIRONMENT) != ""
+}
+
+fn stdout_is_terminal() -> bool {
+    if is_compile_child() { return os.get_env(CHILD_STDOUT_TTY_ENVIRONMENT) == "1" }
+    return os.is_tty()
+}
+
+fn mark_child_environment(output_path string, stdout_tty bool, stderr_tty bool) {
+    os.set_env(CHILD_ENVIRONMENT, "1")
+    os.set_env(CHILD_OUTPUT_ENVIRONMENT, output_path)
+    mut stdout_flag = ""
+    if stdout_tty { stdout_flag = "1" }
+    os.set_env(CHILD_STDOUT_TTY_ENVIRONMENT, stdout_flag)
+    mut stderr_flag = ""
+    if stderr_tty { stderr_flag = "1" }
+    os.set_env(CHILD_STDERR_TTY_ENVIRONMENT, stderr_flag)
+}
+
+// The first line of the compiler's stderr that is a runtime panic, or "".
+fn panic_line_of(error_text string) -> string {
+    for_each line in strings.split(error_text, "\n") {
+        if strings.starts_with(line, "panic[") || strings.starts_with(line, "panic at ") || strings.starts_with(line, "panic:") { return line }
+    }
+    return ""
+}
+
+// The code and message of a panic line, without the source location the runtime adds.
+fn panic_summary(line string) -> string {
+    mut code = ""
+    mut rest = line
+    open_bracket = strings.index_of(line, "[")
+    close_bracket = strings.index_of(line, "]")
+    if open_bracket >= 0 && close_bracket > open_bracket {
+        code = strings.slice(line, open_bracket + 1, close_bracket)
+        rest = strings.slice(line, close_bracket + 1, len(line))
+    }
+    if strings.starts_with(rest, " at ") {
+        after_location = strings.slice(rest, 4, len(rest))
+        separator = strings.index_of(after_location, ": ")
+        if separator >= 0 { rest = strings.slice(after_location, separator + 2, len(after_location)) }
+    } or strings.starts_with(rest, ": ") {
+        rest = strings.slice(rest, 2, len(rest))
+    }
+    if code == "" { return strings.trim(rest) }
+    return "${code}: ${strings.trim(rest)}"
+}
+
+// Compiles in a child process and exits with its outcome; returns only when
+// no child can be started, so the caller compiles in this process instead.
+fn supervise_compile(opts Options) {
+    self_path, self_error = os.executable_path()
+    if self_error != nil { return }
+    mut run_output string = ""
+    if opts.run_mode {
+        run_output = opts.output_file
+        if run_output == "" {
+            run_output = ccompile.temporary_path("gray_run_", "")
+            if run_output == "" {
+                eprintln("gray: cannot create a private temporary directory")
+                exit(1)
+            }
+        }
+    }
+    mark_child_environment(run_output, os.is_tty(), system("test -t 2") == 0)
+    all_arguments = os.args()
+    child_result, launch_error = os.exec(self_path, arrays.slice(all_arguments, 1, len(all_arguments)))
+    mark_child_environment("", false, false)
+    os.set_env(CHILD_ENVIRONMENT, "")
+    if launch_error != nil { return }
+
+    panic_line = panic_line_of(child_result.stderr)
+    if child_result.exit_code != 0 && panic_line != "" {
+        print(child_result.stdout)
+        for_each line in strings.split(child_result.stderr, "\n") {
+            if line != panic_line && line != "" { eprintln(line) }
+        }
+        eprintln("gray: internal compiler error while compiling '${opts.input_file}': ${panic_summary(panic_line)}")
+        eprintln("gray: this is a bug in the Grayscale compiler, not in your program; please report it")
+        exit(1)
+    }
+    print(child_result.stdout)
+    eprint(child_result.stderr)
+    flush()
+    if child_result.exit_code != 0 { exit(1) }
+    if opts.run_mode { exit(run_compiled_program(opts, run_output)) }
+    exit(0)
+}
+
+// Runs the binary of a run with the program's own arguments, then removes it.
+fn run_compiled_program(opts Options, output_path string) -> i64 {
+    mut run_command string = shell_quote(run_target(output_path))
+    for_each program_argument in opts.program_arguments { run_command = "${run_command} ${shell_quote(program_argument)}" }
+    mut compiler_status = system("${run_command}; exit $?")
+    if compiler_status < 0 {
+        eprintln("gray: cannot execute '${output_path}'")
+        compiler_status = 1
+    } or crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET) != "" {
+        eprintln("gray: program crashed: signal ${compiler_status - SIGNAL_EXIT_OFFSET} (${crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET)})")
+    }
+    remove_file(output_path)
+    return compiler_status
+}
+
 fn main() {
     opts Options = parse_args()
     start_time i64 = time.now_ms()
+    if !is_compile_child() { supervise_compile(opts) }
+    if is_compile_child() && os.get_env(CHILD_STDERR_TTY_ENVIRONMENT) == "1" { diagnostics.enable_color() }
 
     // `gray check DIR` checks the directory as the module `import "./DIR/"` merges
     mut source string = ""
@@ -1270,7 +1386,9 @@ fn main() {
     frontend_end_time i64 = time.now_ms()
 
     mut output_path string = opts.output_file
-    if opts.run_mode && output_path == "" {
+    if is_compile_child() && os.get_env(CHILD_OUTPUT_ENVIRONMENT) != "" {
+        output_path = os.get_env(CHILD_OUTPUT_ENVIRONMENT)
+    } or opts.run_mode && output_path == "" {
         output_path = ccompile.temporary_path("gray_run_", "")
         if output_path == "" {
             eprintln("gray: cannot create a private temporary directory")
@@ -1409,7 +1527,7 @@ fn main() {
         remove_file(c_path)
         if !opts.run_mode {
             out_base string = path_basename(output_path)
-            if !opts.no_color && os.is_tty() {
+            if !opts.no_color && stdout_is_terminal() {
                 println("\x1b[32mCompiled '\x1b[1m${out_base}\x1b[22m' in ${c_compiler_end_time - start_time}ms!\x1b[0m")
             } otherwise {
                 println("Compiled '${out_base}' in ${c_compiler_end_time - start_time}ms!")
@@ -1425,18 +1543,9 @@ fn main() {
 
     // Run mode: execute the binary with the program's own arguments, then remove it
     mut ran_program bool = false
-    if compiler_status == 0 && opts.run_mode {
-        mut run_command string = shell_quote(run_target(output_path))
-        for_each program_argument in opts.program_arguments { run_command = "${run_command} ${shell_quote(program_argument)}" }
-        compiler_status = system("${run_command}; exit $?")
-        if compiler_status < 0 {
-            eprintln("gray: cannot execute '${output_path}'")
-            compiler_status = 1
-        } or crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET) != "" {
-            eprintln("gray: program crashed: signal ${compiler_status - SIGNAL_EXIT_OFFSET} (${crash_signal_name(compiler_status - SIGNAL_EXIT_OFFSET)})")
-        }
+    if compiler_status == 0 && opts.run_mode && !is_compile_child() {
+        compiler_status = run_compiled_program(opts, output_path)
         ran_program = true
-        remove_file(output_path)
     }
     if ran_program { exit(compiler_status) }
     if compiler_status != 0 { exit(1) }
