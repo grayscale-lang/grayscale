@@ -1,0 +1,31 @@
+import "./types"
+
+do make_bag() -> types.Bag {
+    return types.Bag{items: {types.empty_item(), types.empty_item()}}
+}
+
+do shout(text string) -> string {
+    return "${text} and then a long string to allocate"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut bag = make_bag()
+    mut noise = shout("Slash")
+    if bag.items[0].name == "None" && bag.items[1].name == "None" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] expected None and None, got ${bag.items[0].name} and ${bag.items[1].name} (${noise})")
+        failed += 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

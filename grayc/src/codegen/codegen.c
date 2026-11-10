@@ -1162,12 +1162,19 @@ static bool type_needs_copy_walk(CodeGen *codegen, const char *gray_type_name, b
         if (strcmp(type_name_deep_copy_visiting[j], gray_type_name) == 0) return false;
     }
     if (type_name_deep_copy_depth < CYCLE_GUARD_DEPTH) type_name_deep_copy_visiting[type_name_deep_copy_depth++] = gray_type_name;
-    for (int i = 0; i < struct_declaration->data.struct_declaration.field_count; i++) {
+    /* Field types are written in the struct's own module. */
+    const char *caller_module = codegen->current_module;
+    const char *caller_file = codegen->current_file;
+    codegen_enter_node(codegen, struct_declaration);
+    bool shares = false;
+    for (int i = 0; i < struct_declaration->data.struct_declaration.field_count && !shares; i++) {
         const char *field_type = struct_declaration->data.struct_declaration.fields[i].type_name;
-        if (type_needs_copy_walk(codegen, field_type, count_strings)) { type_name_deep_copy_depth--; return true; }
+        shares = type_needs_copy_walk(codegen, field_type, count_strings);
     }
+    codegen->current_module = caller_module;
+    codegen->current_file = caller_file;
     type_name_deep_copy_depth--;
-    return false;
+    return shares;
 }
 
 static bool type_needs_deep_copy(CodeGen *codegen, const char *gray_type_name) {
@@ -1363,6 +1370,10 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
     emit_formatted(codegen,
         "({ %s _ss%d = %s; %s _sd%d = _ss%d; ",
         c_struct, unique_id, source_variable, c_struct, unique_id, unique_id);
+    /* Field types are written in the struct's own module. */
+    const char *caller_module = codegen->current_module;
+    const char *caller_file = codegen->current_file;
+    codegen_enter_node(codegen, struct_declaration);
     for (int i = 0; i < struct_declaration->data.struct_declaration.field_count; i++) {
         StructField *field = &struct_declaration->data.struct_declaration.fields[i];
         if (!field->type_name || !field->name) continue;
@@ -1373,6 +1384,8 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_type_name
         emit_value_deep_copy(codegen, field->type_name, source_field);
         emit(codegen, "; ");
     }
+    codegen->current_module = caller_module;
+    codegen->current_file = caller_file;
     emit_formatted(codegen, "_sd%d; })", unique_id);
     emit_struct_deep_copy_depth--;
 }
