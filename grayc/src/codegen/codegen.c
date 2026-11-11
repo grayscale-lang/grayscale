@@ -3493,11 +3493,11 @@ static void emit_arithmetic(CodeGen *codegen, TokenType operator, GrayType *type
     if (type->kind == TYPE_KIND_FLOATING_POINT) {
         /* Grayscale panics on a zero divisor rather than yield an IEEE inf. */
         const char *c_floating_point_type = strcmp(name, "f32") == 0 ? "float" : "double";
-        emit_formatted(codegen, "({ %s _dv = ", c_floating_point_type);
-        emit_arithmetic_operand(codegen, right, right_c, type);
-        emit_formatted(codegen, "; if (_dv == 0) { %s; } (%s)", panic_call(codegen, location_node, "P0078", ""), c_floating_point_type);
+        emit_formatted(codegen, "({ %s _dn = (%s)(", c_floating_point_type, c_floating_point_type);
         emit_arithmetic_operand(codegen, left, left_c, type);
-        emit(codegen, " / _dv; })");
+        emit_formatted(codegen, "); %s _dv = ", c_floating_point_type);
+        emit_arithmetic_operand(codegen, right, right_c, type);
+        emit_formatted(codegen, "; if (_dv == 0) { %s; } _dn / _dv; })", panic_call(codegen, location_node, "P0078", ""));
         return;
     }
     bool is_unsigned = type->kind == TYPE_KIND_UNSIGNED_INTEGER;
@@ -3505,17 +3505,16 @@ static void emit_arithmetic(CodeGen *codegen, TokenType operator, GrayType *type
     bool sized_unsigned = false;
     bool sized = name && integer_type_name_bounds(name, &source_minimum, &source_maximum, &sized_unsigned);
     if (is_division) {
-        emit(codegen, "({ __auto_type _dv = ");
+        emit(codegen, "({ __auto_type _dn = ");
+        emit_arithmetic_operand(codegen, left, left_c, type);
+        emit(codegen, "; __auto_type _dv = ");
         emit_arithmetic_operand(codegen, right, right_c, type);
         emit_formatted(codegen, "; if (!_dv) { %s; } ", panic_call(codegen, location_node, "P0078", ""));
         if (is_unsigned) {
-            emit_arithmetic_operand(codegen, left, left_c, type);
-            emit_formatted(codegen, " %s _dv; })", c_operator);
+            emit_formatted(codegen, "_dn %s _dv; })", c_operator);
         } else {
             /* TYPE_MIN / -1 overflows; in C it is undefined. */
-            emit(codegen, "__auto_type _dn = ");
-            emit_arithmetic_operand(codegen, left, left_c, type);
-            emit_formatted(codegen, "; if ((int64_t)_dn == %s && _dv == -1) { %s; } _dn %s _dv; })",
+            emit_formatted(codegen, "if ((int64_t)_dn == %s && _dv == -1) { %s; } _dn %s _dv; })",
                 source_minimum ? source_minimum : "(-9223372036854775807LL - 1)",
                 panic_call(codegen, location_node, "P0079", operator == TOKEN_SLASH ? ", \"division\"" : ", \"modulo\""),
                 c_operator);
@@ -3690,13 +3689,13 @@ static void emit_infix_expression(CodeGen *codegen, AstNode *node) {
         }
         char panic_arguments[32];
         snprintf(panic_arguments, sizeof(panic_arguments), ", (long long)_sa, %d", bits - 1);
-        emit(codegen, "({ int64_t _sa = ");
-        emit_shift_amount(codegen, node->data.infix.right, bits - 1);
-        emit_formatted(codegen, "; if (_sa < 0 || _sa >= %d) { %s; } (%s)((%s)(",
-            bits, panic_call(codegen, node, "P0092", panic_arguments), c_type,
-            operator == TOKEN_BIT_SHIFT_LEFT ? unsigned_c_type : c_type);
+        emit(codegen, "({ __auto_type _sv = (");
         emit_expression(codegen, node->data.infix.left);
-        emit_formatted(codegen, ") %s (int)_sa); })", operator_to_c_string(operator));
+        emit(codegen, "); int64_t _sa = ");
+        emit_shift_amount(codegen, node->data.infix.right, bits - 1);
+        emit_formatted(codegen, "; if (_sa < 0 || _sa >= %d) { %s; } (%s)((%s)(_sv) %s (int)_sa); })",
+            bits, panic_call(codegen, node, "P0092", panic_arguments), c_type,
+            operator == TOKEN_BIT_SHIFT_LEFT ? unsigned_c_type : c_type, operator_to_c_string(operator));
         return;
     }
 

@@ -1,0 +1,52 @@
+mut sequence string = ""
+
+do traced(tag string, value i64) -> i64 {
+    sequence = sequence + tag
+    return value
+}
+
+do traced_float(tag string, value f64) -> f64 {
+    sequence = sequence + tag
+    return value
+}
+
+do check(expected string, passed ^i64, failed ^i64) {
+    if sequence == expected {
+        passed^ += 1
+    } otherwise {
+        failed^ += 1
+    }
+    sequence = ""
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut quotient i64 = traced("a", 8) / traced("b", 2)
+    check("ab", addr(passed), addr(failed))
+
+    mut remainder i64 = traced("a", 8) % traced("b", 3)
+    check("ab", addr(passed), addr(failed))
+
+    mut shifted_left i64 = traced("a", 8) bit_shift_left traced("b", 2)
+    check("ab", addr(passed), addr(failed))
+
+    mut shifted_right i64 = traced("a", 8) bit_shift_right traced("b", 2)
+    check("ab", addr(passed), addr(failed))
+
+    mut float_quotient f64 = traced_float("a", 8.0) / traced_float("b", 2.0)
+    check("ab", addr(passed), addr(failed))
+
+    mut mixed i64 = traced("a", 1) + traced("b", 8) / traced("c", 2)
+    check("abc", addr(passed), addr(failed))
+
+    if quotient == 4 && remainder == 2 && shifted_left == 32 && shifted_right == 2 && float_quotient == 4.0 && mixed == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

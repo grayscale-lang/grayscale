@@ -1613,7 +1613,7 @@ fn gen_shift(generator ^CodeGen, node ^ast.AstNode, operator token.TokenKind) ->
     }
     mut width_type = c_name
     if operator == token.TokenKind.BIT_SHIFT_LEFT { width_type = unsigned_name }
-    return "({ int64_t _sa = ${shift_amount(generator, right_node, bits - 1)}; if (_sa < 0 || _sa >= ${bits}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0092\", \"shift amount %lld is out of range; must be in [0, %d] for this operand type\", (long long)_sa, ${bits - 1}); } (${c_name})((${width_type})(${gen_expr(generator, left_node)}) ${op_text(operator)} (int)_sa); })"
+    return "({ __auto_type _sv = (${gen_expr(generator, left_node)}); int64_t _sa = ${shift_amount(generator, right_node, bits - 1)}; if (_sa < 0 || _sa >= ${bits}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0092\", \"shift amount %lld is out of range; must be in [0, %d] for this operand type\", (long long)_sa, ${bits - 1}); } (${c_name})((${width_type})(_sv) ${op_text(operator)} (int)_sa); })"
 }
 
 // The wide integer type an operation on operands of these types runs in, or ""
@@ -1699,7 +1699,7 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
         if !is_division { return "" }
         mut float_c_name = "double"
         if type_name == "f32" { float_c_name = "float" }
-        return "({ ${float_c_name} _dv = ${right}; if (_dv == 0) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } (${float_c_name})${left} / _dv; })"
+        return "({ ${float_c_name} _dn = (${float_c_name})(${left}); ${float_c_name} _dv = ${right}; if (_dv == 0) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } _dn / _dv; })"
     }
     is_unsigned = is_unsigned_int_name(type_name) && !is_wide_name(type_name)
     is_signed = (is_signed_int_name(type_name) && !is_wide_name(type_name)) || type_name == "char"
@@ -1714,11 +1714,11 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
             c_operator = "/"
         }
         if is_unsigned {
-            return "({ __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } ${left} ${c_operator} _dv; })"
+            return "({ __auto_type _dn = ${left}; __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } _dn ${c_operator} _dv; })"
         }
         mut minimum_text = "(-9223372036854775807LL - 1)"
         if is_sized { minimum_text = sized_minimum }
-        return "({ __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } __auto_type _dn = ${left}; if ((int64_t)_dn == ${minimum_text} && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${c_operator} _dv; })"
+        return "({ __auto_type _dn = ${left}; __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } if ((int64_t)_dn == ${minimum_text} && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${c_operator} _dv; })"
     }
     mut verb = "mul"
     if operator == token.TokenKind.PLUS { verb = "add" }
@@ -1783,7 +1783,7 @@ fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
 // Division and modulo trap on a zero divisor and on MIN / -1.
 fn gen_division(generator ^CodeGen, node ^ast.AstNode, left string, right string, operator string, what string) -> string {
     line = node^.tok.line
-    return "({ __auto_type _dv = (${right}); if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } __auto_type _dn = (${left}); if ((int64_t)_dn == (-9223372036854775807LL - 1) && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${operator} _dv; })"
+    return "({ __auto_type _dn = (${left}); __auto_type _dv = (${right}); if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } if ((int64_t)_dn == (-9223372036854775807LL - 1) && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${operator} _dv; })"
 }
 
 fn gen_struct_literal(generator ^CodeGen, node ^ast.AstNode) -> string {
