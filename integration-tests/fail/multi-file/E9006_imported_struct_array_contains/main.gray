@@ -1,0 +1,7 @@
+import "./types"
+import @arrays
+
+do main() {
+    mut a [types.Outer] = {}
+    println(arrays.contains(a, types.Outer{n: 1}))
+}

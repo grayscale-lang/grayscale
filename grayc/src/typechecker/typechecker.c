@@ -762,6 +762,11 @@ static const char *type_display_name(TypeChecker *checker, GrayType *type) {
     return type_name(type);
 }
 
+/* As type_display_name, for a type spelled as a registry name string. */
+static const char *named_type_display_name(TypeChecker *checker, const char *name) {
+    return type_display_name(checker, type_from_name(name));
+}
+
 /* The file whose source is being checked: imports are file-scoped, so an alias
  * means what the current file bound it to. The entry file is the checker's own. */
 static const char *checker_current_file(TypeChecker *checker) {
@@ -7046,7 +7051,7 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
     }
 
     if (!found) {
-        NODE_ERROR_FORMATTED(checker, node, "E3047", enum_name, variant);
+        NODE_ERROR_FORMATTED(checker, node, "E3047", named_type_display_name(checker, enum_name), variant);
         return &TYPE_UNKNOWN;
     }
 
@@ -7362,7 +7367,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
             }
             if (bad_member) {
                 NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
-                    "only primitive and string element types are supported", "maps", "map values", bad_member);
+                    "only primitive and string element types are supported", "maps", "map values", named_type_display_name(checker, bad_member));
             }
         }
     }
@@ -7465,7 +7470,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool is_integer_enum = element_type->kind == TYPE_KIND_ENUM && element_type->name &&
                 !typechecker_enum_is_string(checker, element_type->name);
             if (!type_is_numeric(element_type) && !is_integer_enum) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, named_type_display_name(checker, array_type->element_type));
             }
         }
     }
@@ -7488,7 +7493,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool orderable = type_is_numeric(element_type) || element_type->kind == TYPE_KIND_STRING ||
                               element_type->kind == TYPE_KIND_BOOL || element_type->kind == TYPE_KIND_ENUM;
             if (!orderable) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9007", member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9007", member_function_name, named_type_display_name(checker, array_type->element_type));
             }
         }
     }
@@ -7503,7 +7508,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             bool is_struct = element_type->kind == TYPE_KIND_STRUCT && !is_enum_name(checker, element_name);
             if (is_struct || element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP ||
                 element_type->kind == TYPE_KIND_POINTER) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E3057", element_name);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E3057", named_type_display_name(checker, element_name));
             }
         }
     }
@@ -7516,7 +7521,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         if (array_type && array_type->kind == TYPE_KIND_ARRAY && array_type->element_type) {
             GrayType *element_type = type_from_name(array_type->element_type);
             if (!type_is_numeric(element_type)) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, array_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9002", member_function_name, named_type_display_name(checker, array_type->element_type));
             }
         }
     }
@@ -7527,7 +7532,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             GrayType *element_type = type_from_name(first_argument_type->element_type);
             if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
                 NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
-                    "only primitive and string element types are supported", "arrays", "array elements", first_argument_type->element_type);
+                    "only primitive and string element types are supported", "arrays", "array elements", named_type_display_name(checker, first_argument_type->element_type));
             }
         }
     }
@@ -7537,7 +7542,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
             if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", first_argument_type->element_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", named_type_display_name(checker, first_argument_type->element_type));
             }
         }
     }
@@ -7781,15 +7786,15 @@ static void check_format_value_is_primitive(TypeChecker *checker, const char *me
     if (!is_composite_format_value(value_type)) return;
     char type_name_buffer[TYPE_NAME_MAX];
     if (value_type->kind == TYPE_KIND_ARRAY && value_type->element_type)
-        snprintf(type_name_buffer, sizeof(type_name_buffer), "[%s]", value_type->element_type);
+        snprintf(type_name_buffer, sizeof(type_name_buffer), "[%s]", named_type_display_name(checker, value_type->element_type));
     else if (value_type->kind == TYPE_KIND_MAP)
         snprintf(type_name_buffer, sizeof(type_name_buffer), "map[%s:%s]",
-            value_type->key_type ? value_type->key_type : "?",
-            value_type->value_type ? value_type->value_type : "?");
+            value_type->key_type ? named_type_display_name(checker, value_type->key_type) : "?",
+            value_type->value_type ? named_type_display_name(checker, value_type->value_type) : "?");
     else if (value_type->kind == TYPE_KIND_POINTER && value_type->element_type)
-        snprintf(type_name_buffer, sizeof(type_name_buffer), "^%s", value_type->element_type);
+        snprintf(type_name_buffer, sizeof(type_name_buffer), "^%s", named_type_display_name(checker, value_type->element_type));
     else {
-        strncpy(type_name_buffer, type_name(value_type), sizeof(type_name_buffer) - 1);
+        strncpy(type_name_buffer, type_display_name(checker, value_type), sizeof(type_name_buffer) - 1);
         type_name_buffer[sizeof(type_name_buffer) - 1] = '\0';
     }
     NODE_ERROR_FORMATTED(checker, value, "E3017", member_function_name, type_name_buffer);
@@ -8172,7 +8177,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (!type_is_json_encodable(checker, first_argument_type)) {
                 typechecker_error_argument_type(checker, first_argument, 1, "json.encode",
                     "a primitive, a flat array of primitives, a string-keyed map of primitives, or a #json struct (or an array of one)",
-                    type_name(first_argument_type));
+                    type_display_name(checker, first_argument_type));
             }
         }
     } else if (strcmp(module_name, "csv") == 0) {
@@ -10974,7 +10979,7 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                     if (strcmp(checker->enum_values[matched_enum_index][variant_index], variant_name) == 0) { matched_variant_index = variant_index; break; }
                 }
                 if (matched_variant_index < 0) {
-                    NODE_ERROR_FORMATTED(checker, node, "E3047", expected_enum_type->name, variant_name);
+                    NODE_ERROR_FORMATTED(checker, node, "E3047", named_type_display_name(checker, expected_enum_type->name), variant_name);
                 } else if (checker->is_enum_tagged[matched_enum_index]) {
                     int expected_payload_count = checker->enum_payload_counts[matched_enum_index][matched_variant_index];
                     int provided_argument_count = node->data.call.argument_count;
@@ -11157,7 +11162,7 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                 return type_array(checker_resolve_enum_key(checker, enum_name));
             }
             if (matched_variant_index < 0) {
-                NODE_ERROR_FORMATTED(checker, node, "E3047", enum_name, variant_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", named_type_display_name(checker, enum_name), variant_name);
                 result = &TYPE_UNKNOWN;
                 return result;
             }
@@ -12065,7 +12070,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 }
             }
             if (!member_found) {
-                NODE_ERROR_FORMATTED(checker, node, "E3047", prefixed_type, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", named_type_display_name(checker, prefixed_type), member);
             }
             else reject_payload_variant_without_payload(checker, node, find_enum_index(checker, prefixed_type), member);
             /* Mark module as used */
@@ -12138,7 +12143,7 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
                 }
             }
             if (!member_found) {
-                NODE_ERROR_FORMATTED(checker, node, "E3047", resolved_object, member);
+                NODE_ERROR_FORMATTED(checker, node, "E3047", named_type_display_name(checker, resolved_object), member);
             }
             else reject_payload_variant_without_payload(checker, node, find_enum_index(checker, resolved_object), member);
             result = type_enum(checker_resolve_enum_key(checker, resolved_object));
@@ -12429,7 +12434,7 @@ static void report_missing_pointee_field(TypeChecker *checker, AstNode *node, co
     if (pointee_type && pointee_type->kind != TYPE_KIND_STRUCT && pointee_type->kind != TYPE_KIND_UNKNOWN)
         NODE_ERROR_FORMATTED(checker, node, "E3013", type_name(pointee_type));
     else
-        NODE_ERROR_FORMATTED(checker, node, "E3010", pointee, member);
+        NODE_ERROR_FORMATTED(checker, node, "E3010", named_type_display_name(checker, pointee), member);
 }
 
 /* A struct literal field value that does not fit its field: the kinds differ,
@@ -12577,7 +12582,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (!found) {
-                NODE_ERROR_FORMATTED(checker, node, "E3010", struct_name, field_name);
+                NODE_ERROR_FORMATTED(checker, node, "E3010", named_type_display_name(checker, struct_name), field_name);
             } else if (expected_type && expected_type->kind == TYPE_KIND_MAP &&
                        node->data.struct_value.field_values[i]->kind == NODE_ARRAY_VALUE) {
                 AstNode *map_initializer = node->data.struct_value.field_values[i];
@@ -13486,7 +13491,7 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             if (!parts[part_index]) continue;
             GrayType *parameter_type = check_expression_as(checker, parts[part_index], range_type);
             if (parameter_type->kind != TYPE_KIND_UNKNOWN && (!is_integer_kind(parameter_type->kind) || parameter_type->distinct)) {
-                typechecker_error_argument_type(checker, parts[part_index], part_index + 1, "range", "an integer", type_name(parameter_type));
+                typechecker_error_argument_type(checker, parts[part_index], part_index + 1, "range", "an integer", type_display_name(checker, parameter_type));
             }
         }
         LiteralValue step_value;
@@ -15791,7 +15796,7 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
         else if (key_resolved->kind == TYPE_KIND_MAP) bad_name = "map";
         else if (key_resolved->kind == TYPE_KIND_POINTER) bad_name = "pointer";
         if (bad_name) {
-            NODE_ERROR_FORMATTED(checker, node, "E3057", key_type_name);
+            NODE_ERROR_FORMATTED(checker, node, "E3057", named_type_display_name(checker, key_type_name));
         }
     }
 
@@ -18569,7 +18574,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                             if (strcmp(checker->enum_values[pattern_enum_index][variant_index], pattern_variant_name) == 0) { pattern_variant_index = variant_index; break; }
                         }
                         if (pattern_variant_index < 0) {
-                            NODE_ERROR_FORMATTED(checker, value_node, "E3047", pattern_enum_name, pattern_variant_name);
+                            NODE_ERROR_FORMATTED(checker, value_node, "E3047", named_type_display_name(checker, pattern_enum_name), pattern_variant_name);
                         } else {
                             int expected_binding_count = checker->enum_payload_counts[pattern_enum_index][pattern_variant_index];
                             int actual_binding_count = value_node->data.when_pattern.binding_count;
