@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5026 - assert() with non-bool condition
+ * Expected: E5026 "argument 1 of 'assert': expected a bool, got i64"
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+do main() {
+    assert(42)
+}
