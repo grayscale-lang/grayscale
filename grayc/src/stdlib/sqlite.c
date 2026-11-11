@@ -22,7 +22,8 @@ static void sqlite_validate_text(GrayString text) {
 
 GraySqlite *gray_sqlite_open(GrayArena *arena, GrayString path) {
     sqlite_validate_text(path);
-    GraySqlite *database = (GraySqlite *)gray_arena_alloc(arena, sizeof(GraySqlite));
+    /* A Database handle outlives the function that opens it, so it cannot live in that function's arena. */
+    GraySqlite *database = (GraySqlite *)malloc(sizeof(GraySqlite));
     sqlite3 *handle = NULL;
     int result_code =sqlite3_open(path.data, &handle);
     if (result_code !=SQLITE_OK) {
@@ -84,7 +85,7 @@ GrayResult_sqlite gray_sqlite_open_result(GrayArena *arena, GrayString path) {
     GrayResult_sqlite result;
     result.v0 = gray_sqlite_open(arena, path);
     if (!result.v0 || !result.v0->handle) {
-        if (!result.v0) result.v0 = (GraySqlite *)gray_arena_alloc(arena, sizeof(GraySqlite));
+        if (!result.v0) result.v0 = (GraySqlite *)calloc(1, sizeof(GraySqlite));
         result.v0->handle = NULL;
         result.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "cannot open database '%s'", path.data));
     } else {

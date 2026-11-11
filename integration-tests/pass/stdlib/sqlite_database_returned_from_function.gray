@@ -1,0 +1,59 @@
+/*
+ * sqlite_database_returned_from_function.gray - a Database opened inside a
+ * function stays valid in the caller after that function's memory is released.
+ */
+
+import @sqlite
+
+do open_database() -> (sqlite.Database, Error) {
+    mut database, open_err = sqlite.open(":memory:")
+    return database, open_err
+}
+
+do churn() -> string {
+    mut text string = ""
+    for index in range(0, 50) {
+        text = "${text}x${index}"
+    }
+    return text
+}
+
+do main() {
+    println("=== sqlite Database returned from a function ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut database, open_err = open_database()
+    if open_err == nil {
+        println("  [PASS] open through a wrapper")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] open through a wrapper")
+        failed += 1
+    }
+
+    if len(churn()) == 140 {
+        println("  [PASS] unrelated function reuses freed memory")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] churn length")
+        failed += 1
+    }
+
+    exec_ok, exec_err = sqlite.exec(database, "CREATE TABLE t (a INTEGER)")
+    if exec_ok && exec_err == nil {
+        println("  [PASS] exec on the returned database")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] exec on the returned database")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
