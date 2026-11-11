@@ -432,14 +432,18 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
     /* An element/field read *out of* a container that was built from a
      * literal holding addr(local) — `a[0]`, `b.p`. The container's buried
      * origin travels with the value that comes back out, but only when the
-     * slot is itself a pointer; a copied scalar field is safe. */
+     * slot is itself a pointer or a struct/array/map that can hold one; a
+     * copied scalar field is safe. */
     if (value->kind == NODE_INDEX_EXPRESSION || value->kind == NODE_MEMBER_EXPRESSION) {
         const char *root = assignment_target_root_name(value);
         if (root) {
             Symbol *symbol = scope_lookup(checker->current_scope, root);
             if (symbol && symbol->field_origin_depth) {
                 GrayType *value_type = resolve_expression(checker, value);
-                if (value_type && value_type->kind == TYPE_KIND_POINTER) {
+                if (value_type && (value_type->kind == TYPE_KIND_POINTER ||
+                                   value_type->kind == TYPE_KIND_STRUCT ||
+                                   value_type->kind == TYPE_KIND_ARRAY ||
+                                   value_type->kind == TYPE_KIND_MAP)) {
                     *out_name = symbol->field_origin_name;
                     return symbol->field_origin_depth;
                 }

@@ -1,0 +1,16 @@
+// expect-error: E3162
+// expect-error-count: 1
+// An array element that holds addr(local) carries the local's lifetime out of the function.
+
+const Holder struct { p ^i64 }
+
+do make() -> Holder {
+    mut x i64 = 7
+    mut holders [Holder] = {Holder{p: addr(x)}}
+    return holders[0]
+}
+
+do main() {
+    mut h Holder = make()
+    println(h.p^)
+}
