@@ -8102,6 +8102,9 @@ fn check_condition(checker ^TypeChecker, cond ^ast.AstNode, cond_type ^types.Gra
     // A value of a known non-bool type used as a condition. A void call is reported
     // on its own, and a C function result has no Grayscale type to check.
     k = cond_type^.kind
+    if k == types.TypeKind.C_FUNCTION {
+        add_diagnostic(checker, "E3168", error_registry.registry_message("E3168"), cond^.tok.file, cond^.tok.line, cond^.tok.col)
+    }
     if k != types.TypeKind.BOOL && k != types.TypeKind.VOID && k != types.TypeKind.UNKNOWN && k != types.TypeKind.C_FUNCTION {
         add_diagnostic(checker, "E3091", error_registry.registry_message_formatted("E3091", {shown_type(checker, cond_type)}), cond^.tok.file, cond^.tok.line, cond^.tok.col)
     }

@@ -17497,6 +17497,9 @@ static void check_if_statement(TypeChecker *checker, AstNode *node) {
         condition_type, "an 'if' condition");
     /* E3040: multi-return calls cannot be used as if condition */
     reject_multi_return_in_single_position(checker, node->data.if_statement.condition);
+    if (condition_type && condition_type->kind == TYPE_KIND_C_FUNCTION) {
+        NODE_ERROR(checker, node->data.if_statement.condition, "E3168");
+    }
     if (condition_type_is_not_bool(condition_type)) {
         AstNode *condition = node->data.if_statement.condition;
         NODE_ERROR_FORMATTED(checker, condition, "E3091", type_display_name(checker, condition_type));
@@ -17807,6 +17810,9 @@ static void check_while_statement(TypeChecker *checker, AstNode *node) {
     /* E3038 (): void function call as 'as_long_as' condition. */
     reject_void_in_context(checker, node->data.while_statement.condition,
         while_condition_type, "an 'as_long_as' condition");
+    if (while_condition_type && while_condition_type->kind == TYPE_KIND_C_FUNCTION) {
+        NODE_ERROR(checker, node->data.while_statement.condition, "E3168");
+    }
     if (condition_type_is_not_bool(while_condition_type)) {
         AstNode *condition = node->data.while_statement.condition;
         NODE_ERROR_FORMATTED(checker, condition, "E3091", type_display_name(checker, while_condition_type));
