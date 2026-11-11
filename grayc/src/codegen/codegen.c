@@ -357,8 +357,14 @@ static int keyword_compare(const void *key_pointer, const void *element) {
 static bool is_c_keyword(const char *name) {
     static const char *keywords[] = {
         "EOF", "NULL", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex",
-        "_Generic", "_Noreturn", "_Static_assert", "_Thread_local",
-        "__FUNCTION__", "__PRETTY_FUNCTION__", "__func__",
+        "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local",
+        "__FUNCTION__", "__PRETTY_FUNCTION__",
+        "__alignof", "__alignof__", "__asm", "__asm__", "__attribute",
+        "__attribute__", "__auto_type", "__complex", "__complex__", "__const",
+        "__const__", "__extension__", "__func__", "__imag__", "__inline",
+        "__inline__", "__int128", "__label__", "__real__", "__restrict",
+        "__restrict__", "__signed", "__signed__", "__thread", "__typeof",
+        "__typeof__", "__volatile", "__volatile__",
         "auto", "bool", "break", "case", "char", "const",
         "continue", "default", "defined", "do", "double", "else", "enum", "errno",
         "extern", "false", "float", "for", "goto", "if", "inline", "int",
