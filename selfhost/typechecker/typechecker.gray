@@ -5139,6 +5139,8 @@ fn check_stdlib_arguments(checker ^TypeChecker, node ^ast.AstNode, signature ^st
         }
     }
 
+    for_each argument in arguments { reject_multi_return_in_single_position(checker, argument) }
+
     // Validate argument count
     mut arg_types [^types.GrayType] = {}
     mut is_resolved [bool] = {}

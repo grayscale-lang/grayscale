@@ -1,0 +1,8 @@
+import @arrays
+
+do pair() -> (i64, Error) { return 1, nil }
+
+do main() {
+    mut values [i64] = {1}
+    arrays.append(values, pair())
+}
