@@ -1976,13 +1976,14 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     }
     if !is_imported_module_name(checker, name) && type_name_as_value(checker, name) {
         resolved_type_name = resolve_type_alias(checker, name)
+        written_name = written_function_name(node, name)
         mut value_help = ""
         if is_enum_name(checker, resolved_type_name) {
-            value_help = "use '${name}.VARIANT' to access an enum value"
+            value_help = "use '${written_name}.VARIANT' to access an enum value"
         } or is_struct_name(checker, resolved_type_name) {
-            value_help = "use '${name}{...}' or 'new(${name})' to create an instance"
+            value_help = "use '${written_name}{...}' or 'new(${written_name})' to create an instance"
         }
-        add_diagnostic_help(checker, "E3100", error_registry.registry_message_formatted("E3100", {name}), value_help, node^.tok.file, node^.tok.line, node^.tok.col)
+        add_diagnostic_help(checker, "E3100", error_registry.registry_message_formatted("E3100", {written_name}), value_help, node^.tok.file, node^.tok.line, node^.tok.col)
         return checker^.pool^.type_unknown
     }
 
