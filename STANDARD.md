@@ -1888,6 +1888,8 @@ switch x {
 
 **Allowed condition types:** integer and float types, `string`, `char`, `bool`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
 
+A value matched by more than one branch, including through overlapping `range(...)` patterns, is error E2043.
+
 **Strict mode** requires all possible values to be handled:
 
 ```gray

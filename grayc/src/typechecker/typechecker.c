@@ -18420,39 +18420,72 @@ static bool when_constant_range(TypeChecker *checker, AstNode *node, int64_t *st
     return *step != 0;
 }
 
-static bool when_range_contains(int64_t start, int64_t stop, int64_t step, int64_t value) {
-    if (step > 0)
-        return value >= start && value < stop && ((uint64_t)value - (uint64_t)start) % (uint64_t)step == 0;
-    return value <= start && value > stop && ((uint64_t)start - (uint64_t)value) % (0 - (uint64_t)step) == 0;
+/* The values a constant case matches, as the first and last value in ascending
+ * order and the distance between neighbours: a constant, or a constant range
+ * with at least one value. */
+static bool when_constant_case_values(TypeChecker *checker, AstNode *node, int64_t *first, int64_t *last, uint64_t *stride) {
+    if (node && node->kind == NODE_RANGE_EXPRESSION) {
+        int64_t start, stop, step;
+        if (!when_constant_range(checker, node, &start, &stop, &step)) return false;
+        if (step > 0 ? start >= stop : start <= stop) return false;
+        uint64_t distance = step > 0 ? (uint64_t)stop - (uint64_t)start : (uint64_t)start - (uint64_t)stop;
+        *stride = step > 0 ? (uint64_t)step : 0 - (uint64_t)step;
+        uint64_t steps_to_last = (distance - 1) / *stride;
+        int64_t last_value = (int64_t)((uint64_t)start + (step > 0 ? steps_to_last * *stride : 0 - steps_to_last * *stride));
+        *first = step > 0 ? start : last_value;
+        *last = step > 0 ? last_value : start;
+        return true;
+    }
+    int64_t point;
+    if (!when_constant_i64(checker, node, &point)) return false;
+    *first = point;
+    *last = point;
+    *stride = 1;
+    return true;
 }
 
-/* True when every value the case `value` matches is already matched by the
- * earlier range case `earlier`: a constant inside it, a constant range whose
- * first and last values are inside it and whose step is a multiple of its step,
- * or the same stored range variable. */
-static bool when_case_covered_by_range(TypeChecker *checker, AstNode *value, AstNode *earlier) {
+/* True when two arithmetic progressions share a value. The progression with
+ * the larger stride is walked through the shared interval; the residues modulo
+ * the other stride repeat after that many steps. */
+static bool when_case_values_intersect(int64_t first_a, int64_t last_a, uint64_t stride_a,
+                                       int64_t first_b, int64_t last_b, uint64_t stride_b) {
+    int64_t low = first_a > first_b ? first_a : first_b;
+    int64_t high = last_a < last_b ? last_a : last_b;
+    if (low > high) return false;
+    int64_t walked_first = first_a, small_first = first_b;
+    uint64_t walked_stride = stride_a, small_stride = stride_b;
+    if (stride_a < stride_b) {
+        walked_first = first_b; small_first = first_a;
+        walked_stride = stride_b; small_stride = stride_a;
+    }
+    uint64_t remainder = ((uint64_t)low - (uint64_t)walked_first) % walked_stride;
+    uint64_t skip = remainder == 0 ? 0 : walked_stride - remainder;
+    if (skip > (uint64_t)high - (uint64_t)low) return false;
+    int64_t candidate = (int64_t)((uint64_t)low + skip);
+    for (uint64_t walked = 0; walked < small_stride; walked++) {
+        if (((uint64_t)candidate - (uint64_t)small_first) % small_stride == 0) return true;
+        if (walked_stride > (uint64_t)high - (uint64_t)candidate) return false;
+        candidate = (int64_t)((uint64_t)candidate + walked_stride);
+    }
+    return false;
+}
+
+/* True when the case `value` matches something the earlier case `earlier`
+ * already matches through a constant or a constant range, or when both are the
+ * same stored range variable. */
+static bool when_case_overlaps_range(TypeChecker *checker, AstNode *value, AstNode *earlier) {
     if (!value || !earlier) return false;
     if (value->kind == NODE_LABEL && earlier->kind == NODE_LABEL) {
         Symbol *symbol = scope_lookup(checker->current_scope, value->data.label.value);
         return symbol && symbol->type && symbol->type->kind == TYPE_KIND_RANGE &&
                strcmp(value->data.label.value, earlier->data.label.value) == 0;
     }
-    int64_t earlier_start, earlier_stop, earlier_step;
-    if (!when_constant_range(checker, earlier, &earlier_start, &earlier_stop, &earlier_step)) return false;
-    int64_t point;
-    if (when_constant_i64(checker, value, &point))
-        return when_range_contains(earlier_start, earlier_stop, earlier_step, point);
-    int64_t start, stop, step;
-    if (!when_constant_range(checker, value, &start, &stop, &step)) return false;
-    if (step > 0 ? start >= stop : start <= stop) return false;
-    uint64_t distance = step > 0 ? (uint64_t)stop - (uint64_t)start : (uint64_t)start - (uint64_t)stop;
-    uint64_t stride = step > 0 ? (uint64_t)step : 0 - (uint64_t)step;
-    uint64_t steps_to_last = (distance - 1) / stride;
-    int64_t last = (int64_t)((uint64_t)start + (step > 0 ? steps_to_last * stride : 0 - steps_to_last * stride));
-    uint64_t earlier_stride = earlier_step > 0 ? (uint64_t)earlier_step : 0 - (uint64_t)earlier_step;
-    return stride % earlier_stride == 0 &&
-           when_range_contains(earlier_start, earlier_stop, earlier_step, start) &&
-           when_range_contains(earlier_start, earlier_stop, earlier_step, last);
+    int64_t first_value, last_value, first_earlier, last_earlier;
+    uint64_t stride_value, stride_earlier;
+    if (!when_constant_case_values(checker, earlier, &first_earlier, &last_earlier, &stride_earlier)) return false;
+    if (!when_constant_case_values(checker, value, &first_value, &last_value, &stride_value)) return false;
+    return when_case_values_intersect(first_value, last_value, stride_value,
+                                      first_earlier, last_earlier, stride_earlier);
 }
 
 static void check_when_statement(TypeChecker *checker, AstNode *node) {
@@ -18532,7 +18565,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                 for (int earlier_value_index = 0; earlier_value_index < earlier_value_limit; earlier_value_index++) {
                     AstNode *earlier_node = node->data.when_statement.cases[earlier_case_index].values[earlier_value_index];
                     if (when_case_values_equal(checker, value_node, earlier_node) ||
-                        when_case_covered_by_range(checker, value_node, earlier_node)) {
+                        when_case_overlaps_range(checker, value_node, earlier_node)) {
                         NODE_ERROR(checker, value_node, "E2043");
                         flagged = true;
                         break;

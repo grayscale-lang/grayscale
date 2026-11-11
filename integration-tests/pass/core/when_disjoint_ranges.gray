@@ -1,0 +1,25 @@
+do classify(n i64) -> i64 {
+    when n {
+        is range(0, 5) { return 1 }
+        is range(5, 10) { return 2 }
+        is range(10, 20, 2) { return 3 }
+        is range(11, 20, 2) { return 4 }
+        is range(20, 30, 4), 21 { return 5 }
+        is range(22, 30, 4) { return 6 }
+        default { return 0 }
+    }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    if classify(3) == 1 { passed += 1 } otherwise { failed += 1 }
+    if classify(5) == 2 { passed += 1 } otherwise { failed += 1 }
+    if classify(12) == 3 { passed += 1 } otherwise { failed += 1 }
+    if classify(13) == 4 { passed += 1 } otherwise { failed += 1 }
+    if classify(24) == 5 { passed += 1 } otherwise { failed += 1 }
+    if classify(21) == 5 { passed += 1 } otherwise { failed += 1 }
+    if classify(26) == 6 { passed += 1 } otherwise { failed += 1 }
+    if classify(40) == 0 { passed += 1 } otherwise { failed += 1 }
+    println("${passed} passed, ${failed} failed")
+}

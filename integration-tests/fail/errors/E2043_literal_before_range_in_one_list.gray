@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2043 - a literal followed by a range that contains it in one is list repeats that value.
+ */
+// expect-error: E2043
+// expect-error-count: 1
+
+do main() {
+    mut n i64 = 3
+    when n {
+        is 1, range(0, 3) { println("first") }
+        default { println("other") }
+    }
+}

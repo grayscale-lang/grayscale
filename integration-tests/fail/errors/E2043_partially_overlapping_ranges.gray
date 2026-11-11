@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2043 - two ranges that overlap only in part repeat the shared values.
+ */
+// expect-error: E2043
+// expect-error-count: 1
+
+do main() {
+    mut n i64 = 3
+    when n {
+        is range(0, 5) { println("first") }
+        is range(3, 8) { println("second") }
+        default { println("other") }
+    }
+}

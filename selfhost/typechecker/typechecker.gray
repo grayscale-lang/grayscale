@@ -11363,40 +11363,74 @@ fn when_constant_range(checker ^TypeChecker, node ^ast.AstNode) -> (i64, i64, i6
     return start, stop, step, step != 0
 }
 
-fn when_range_contains(start i64, stop i64, step i64, value i64) -> bool {
-    if step > 0 { return value >= start && value < stop && (value - start) % step == 0 }
-    return value <= start && value > stop && (start - value) % (0 - step) == 0
+// The values a constant case matches, as the first and last value in ascending order and the
+// distance between neighbours: a constant, or a constant range with at least one value.
+fn when_constant_case_values(checker ^TypeChecker, node ^ast.AstNode) -> (i64, i64, i64, bool) {
+    if node != nil && node^.kind == ast.NodeKind.RANGE_EXPR {
+        start, stop, step, is_constant_range = when_constant_range(checker, node)
+        if !is_constant_range { return 0, 0, 0, false }
+        if step > 0 && start >= stop { return 0, 0, 0, false }
+        if step < 0 && start <= stop { return 0, 0, 0, false }
+        mut distance i64 = start - stop
+        mut stride i64 = 0 - step
+        if step > 0 {
+            distance = stop - start
+            stride = step
+        }
+        steps_to_last = (distance - 1) / stride
+        if step > 0 { return start, start + steps_to_last * stride, stride, true }
+        return start - steps_to_last * stride, start, stride, true
+    }
+    point, is_point = when_constant_i64(checker, node)
+    if !is_point { return 0, 0, 0, false }
+    return point, point, 1, true
 }
 
-// True when every value the case `value` matches is already matched by the earlier range
-// case `earlier`: a constant inside it, a constant range whose first and last values are
-// inside it and whose step is a multiple of its step, or the same stored range variable.
-fn when_case_covered_by_range(checker ^TypeChecker, value ^ast.AstNode, earlier ^ast.AstNode) -> bool {
+// True when two arithmetic progressions share a value. The progression with the larger stride
+// is walked through the shared interval; the residues modulo the other stride repeat after that
+// many steps.
+fn when_case_values_intersect(first_a i64, last_a i64, stride_a i64, first_b i64, last_b i64, stride_b i64) -> bool {
+    mut low i64 = first_b
+    if first_a > first_b { low = first_a }
+    mut high i64 = last_b
+    if last_a < last_b { high = last_a }
+    if low > high { return false }
+    mut walked_first i64 = first_a
+    mut small_first i64 = first_b
+    mut walked_stride i64 = stride_a
+    mut small_stride i64 = stride_b
+    if stride_a < stride_b {
+        walked_first = first_b
+        small_first = first_a
+        walked_stride = stride_b
+        small_stride = stride_a
+    }
+    remainder = (low - walked_first) % walked_stride
+    mut skip i64 = 0
+    if remainder != 0 { skip = walked_stride - remainder }
+    if skip > high - low { return false }
+    mut candidate i64 = low + skip
+    for walked in range(0, small_stride) {
+        if (candidate - small_first) % small_stride == 0 { return true }
+        if walked_stride > high - candidate { return false }
+        candidate += walked_stride
+    }
+    return false
+}
+
+// True when the case `value` matches something the earlier case `earlier` already matches
+// through a constant or a constant range, or when both are the same stored range variable.
+fn when_case_overlaps_range(checker ^TypeChecker, value ^ast.AstNode, earlier ^ast.AstNode) -> bool {
     if value == nil || earlier == nil { return false }
     if value^.kind == ast.NodeKind.LABEL && earlier^.kind == ast.NodeKind.LABEL {
         label_symbol = scope.scope_lookup(checker^.current_scope, value^.label^.value)
         return label_symbol != nil && label_symbol^.sym_type^.kind == types.TypeKind.RANGE && value^.label^.value == earlier^.label^.value
     }
-    earlier_start, earlier_stop, earlier_step, is_earlier_constant = when_constant_range(checker, earlier)
+    first_earlier, last_earlier, stride_earlier, is_earlier_constant = when_constant_case_values(checker, earlier)
     if !is_earlier_constant { return false }
-    point, is_point = when_constant_i64(checker, value)
-    if is_point { return when_range_contains(earlier_start, earlier_stop, earlier_step, point) }
-    start, stop, step, is_constant_range = when_constant_range(checker, value)
-    if !is_constant_range { return false }
-    if step > 0 && start >= stop { return false }
-    if step <= 0 && start <= stop { return false }
-    mut distance i64 = start - stop
-    mut stride i64 = 0 - step
-    if step > 0 {
-        distance = stop - start
-        stride = step
-    }
-    steps_to_last = (distance - 1) / stride
-    mut last i64 = start - steps_to_last * stride
-    if step > 0 { last = start + steps_to_last * stride }
-    mut earlier_stride i64 = 0 - earlier_step
-    if earlier_step > 0 { earlier_stride = earlier_step }
-    return stride % earlier_stride == 0 && when_range_contains(earlier_start, earlier_stop, earlier_step, start) && when_range_contains(earlier_start, earlier_stop, earlier_step, last)
+    first_value, last_value, stride_value, is_value_constant = when_constant_case_values(checker, value)
+    if !is_value_constant { return false }
+    return when_case_values_intersect(first_value, last_value, stride_value, first_earlier, last_earlier, stride_earlier)
 }
 
 fn when_case_values_equal(checker ^TypeChecker, a ^ast.AstNode, b ^ast.AstNode) -> bool {
@@ -11509,7 +11543,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                 mut limit = len(earlier_values)
                 if ei == i { limit = j }
                 for ej in range(0, limit) {
-                    if when_case_values_equal(checker, values_i[j], earlier_values[ej]) || when_case_covered_by_range(checker, values_i[j], earlier_values[ej]) {
+                    if when_case_values_equal(checker, values_i[j], earlier_values[ej]) || when_case_overlaps_range(checker, values_i[j], earlier_values[ej]) {
                         add_diagnostic(checker, "E2043", "duplicate case value in when statement", values_i[j]^.tok.file, values_i[j]^.tok.line, values_i[j]^.tok.col)
                         flagged = true
                         break
