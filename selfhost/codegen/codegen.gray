@@ -4182,6 +4182,10 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
         return
     }
     if gen_pointer_assignment(generator, node) { return }
+    replaced_type = declared_target_type(generator, data^.target)
+    if data^.op == token.TokenKind.ASSIGN && maps.contains_key(generator^.structs, replaced_type) && !expression_calls_function(data^.target) {
+        emit_struct_map_iteration_checks(generator, node, data^.target, replaced_type, "", 0)
+    }
     if gen_value_assignment(generator, node) { return }
     target_type = declared_target_type(generator, data^.target)
     expect_type(data^.value, target_type)
@@ -4192,7 +4196,9 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
             whole_code = "P0035"
             whole_text = "cannot modify map during for_each iteration"
         }
-        emit_line(generator, "if (gray_atomic_load32(&(${gen_expr(generator, data^.target)}).iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${whole_code}\", \"${whole_text}\"); }")
+        mut whole_test = "gray_atomic_load32(&(${gen_expr(generator, data^.target)}).iterating) > 0"
+        if is_map_type(target_type) { whole_test = "gray_map_iterating(&(${gen_expr(generator, data^.target)}))" }
+        emit_line(generator, "if (${whole_test}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${whole_code}\", \"${whole_text}\"); }")
     }
     // the array indexes of a plain store into a field are worked out before the value
     mut hoisted_prefix = ""
@@ -4423,7 +4429,7 @@ fn gen_value_assignment(generator ^CodeGen, node ^ast.AstNode) -> bool {
             opener = "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; "
             closer = "; gray_default_arena = _esc_m; }"
         }
-        emit_line(generator, "{ GrayMap _ma${id} = ${value_text}; if (gray_atomic_load32(&${target_text}.iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); } ${opener}${target_text} = ${value_deep_copy(generator, target_type, "_ma${id}")}${closer}")
+        emit_line(generator, "{ GrayMap _ma${id} = ${value_text}; if (gray_map_iterating(&${target_text})) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); } ${opener}${target_text} = ${value_deep_copy(generator, target_type, "_ma${id}")}${closer}")
         return true
     }
     is_struct_target = maps.contains_key(generator^.structs, target_type)
@@ -5016,13 +5022,22 @@ fn gen_for_each_map(generator ^CodeGen, node ^ast.AstNode) {
     id = next_id(generator)
     mut source = gen_expr(generator, data^.collection)
     needs_snapshot = data^.collection^.kind != ast.NodeKind.LABEL
+    mut guard_source = source
     if needs_snapshot {
-        emit(generator, "{ GrayMap _gray_map${id} = ${source};\n")
+        if is_real_collection_path(data^.collection) {
+            // the guard sits on the map the caller can still reach, not on the snapshot
+            emit(generator, "{ GrayMap *_gray_mapp${id} = &(${source}); GrayMap _gray_map${id} = *_gray_mapp${id};\n")
+            guard_source = "(*_gray_mapp${id})"
+        } otherwise {
+            // a map reached through a call: the counter lives with the map's storage, where every copy finds it
+            emit(generator, "{ GrayMap _gray_map${id} = ${source};\n")
+            guard_source = "(*gray_map_guard_of(&_gray_map${id}))"
+        }
         emit_indent(generator)
         source = "_gray_map${id}"
     }
-    arrays.append(generator^.iterating, source)
-    emit(generator, "gray_atomic_add32(&${source}.iterating, 1);\n")
+    arrays.append(generator^.iterating, guard_source)
+    emit(generator, "gray_atomic_add32(&${guard_source}.iterating, 1);\n")
     emit_line(generator, "for (int32_t _gray_mi${id} = 0; _gray_mi${id} < ${source}.order_len; _gray_mi${id}++) {")
     generator^.indent = generator^.indent + 1
     emit_line(generator, "int32_t _gray_sl${id} = ${source}.order[_gray_mi${id}];")
@@ -5041,7 +5056,7 @@ fn gen_for_each_map(generator ^CodeGen, node ^ast.AstNode) {
     emit_line(generator, "}")
     end_loop(generator, node)
     mut _ = arrays.remove_last(generator^.iterating)
-    emit_line(generator, "gray_atomic_sub32(&${source}.iterating, 1);")
+    emit_line(generator, "gray_atomic_sub32(&${guard_source}.iterating, 1);")
     if needs_snapshot { emit_line(generator, "}") }
 }
 
@@ -5078,7 +5093,7 @@ fn gen_for_each_inner(generator ^CodeGen, node ^ast.AstNode) {
     needs_snapshot = collection^.kind != ast.NodeKind.LABEL
     mut guard_source = source
     if needs_snapshot {
-        if is_real_array_path(collection) {
+        if is_real_collection_path(collection) {
             // the guard sits on the array the caller can still reach, not on the snapshot
             emit(generator, "{ GrayArray *_gray_arrp${id} = &(${source}); GrayArray _gray_arr${id} = *_gray_arrp${id};\n")
             guard_source = "(*_gray_arrp${id})"
@@ -7471,8 +7486,8 @@ fn narrow_c_value(generator ^CodeGen, target string, node ^ast.AstNode) -> strin
     return "(${ctype(generator, target)})gray_cast_check(${c_value_as(generator, value, false, line)}, ${cast_bounds_arguments(generator, sized_minimum, sized_maximum, false, target, line)})"
 }
 
-// Does the expression name an array reachable from a variable (through fields, indexes, dereferences)?
-fn is_real_array_path(node ^ast.AstNode) -> bool {
+// Does the expression name an array or map reachable from a variable (through fields, indexes, dereferences)?
+fn is_real_collection_path(node ^ast.AstNode) -> bool {
     mut current ^ast.AstNode = node
     as_long_as current != nil {
         if current^.kind == ast.NodeKind.MEMBER_EXPR {
@@ -7486,6 +7501,20 @@ fn is_real_array_path(node ^ast.AstNode) -> bool {
         }
     }
     return current != nil && current^.kind == ast.NodeKind.LABEL
+}
+
+// Replacing a struct replaces every map it holds, so each map field, at any depth of by-value
+// structs, is checked the way a map assigned to directly is.
+fn emit_struct_map_iteration_checks(generator ^CodeGen, node ^ast.AstNode, target ^ast.AstNode, struct_name string, field_prefix string, depth i64) {
+    if depth >= 8 || !maps.contains_key(generator^.structs, struct_name) { return }
+    for_each field in generator^.structs[struct_name]^.struct_decl^.struct_fields {
+        field_path = "${field_prefix}.${field.name}"
+        if is_map_type(field.type_name) {
+            emit_line(generator, "if (gray_map_iterating(&((${gen_expr(generator, target)})${field_path}))) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); }")
+        } otherwise {
+            emit_struct_map_iteration_checks(generator, node, target, field.type_name, field_path, depth + 1)
+        }
+    }
 }
 
 // The containers an element write reaches through: `g` in `g[0][1] = v`. Each is checked, so a
@@ -7510,7 +7539,9 @@ fn enclosing_iteration_checks(generator ^CodeGen, node ^ast.AstNode, array_expre
                 panic_code = "P0035"
                 panic_text = "cannot modify map during for_each iteration"
             }
-            checks = "${checks}if (gray_atomic_load32(&(${gen_expr(generator, container)}).iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${panic_code}\", \"${panic_text}\"); } "
+            mut container_test = "gray_atomic_load32(&(${gen_expr(generator, container)}).iterating) > 0"
+            if is_map_type(container_type) { container_test = "gray_map_iterating(&(${gen_expr(generator, container)}))" }
+            checks = "${checks}if (${container_test}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${panic_code}\", \"${panic_text}\"); } "
             current = container
         } otherwise {
             return checks

@@ -11692,10 +11692,15 @@ static void emit_enclosing_iteration_checks(CodeGen *codegen, AstNode *node, Ast
             if (!container_type || (container_type->kind != TYPE_KIND_ARRAY && container_type->kind != TYPE_KIND_MAP)) return;
             if (container->kind != NODE_LABEL && container->kind != NODE_MEMBER_EXPRESSION &&
                 container->kind != NODE_INDEX_EXPRESSION) return;
-            emit(codegen, "if (gray_atomic_load32(&(");
-            emit_expression(codegen, container);
-            emit_formatted(codegen, ").iterating) > 0) { %s; } ",
-                panic_call(codegen, node, container_type->kind == TYPE_KIND_MAP ? "P0035" : "P0034", ""));
+            if (container_type->kind == TYPE_KIND_MAP) {
+                emit(codegen, "if (gray_map_iterating(&(");
+                emit_expression(codegen, container);
+                emit_formatted(codegen, "))) { %s; } ", panic_call(codegen, node, "P0035", ""));
+            } else {
+                emit(codegen, "if (gray_atomic_load32(&(");
+                emit_expression(codegen, container);
+                emit_formatted(codegen, ").iterating) > 0) { %s; } ", panic_call(codegen, node, "P0034", ""));
+            }
             current = container;
         } else {
             return;
@@ -12052,7 +12057,35 @@ static void emit_pointer_capture(CodeGen *codegen, AstNode *node, AstNode *point
     else emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
 }
 
+/* Replacing a struct replaces every map it holds, so each map field, at any
+ * depth of by-value structs, is checked the way a map assigned to directly is. */
+static void emit_struct_map_iteration_checks(CodeGen *codegen, AstNode *node, AstNode *target,
+                                             const char *struct_name, const char *path, int depth) {
+    AstNode *struct_declaration = depth < 8 ? find_struct_declaration(codegen, struct_name) : NULL;
+    if (!struct_declaration) return;
+    for (int i = 0; i < struct_declaration->data.struct_declaration.field_count; i++) {
+        StructField *field = &struct_declaration->data.struct_declaration.fields[i];
+        if (!field->type_name || !field->name) continue;
+        char field_path[MESSAGE_BUFFER_SIZE];
+        snprintf(field_path, sizeof(field_path), "%s.%s", path, sanitize_name(field->name));
+        if (strncmp(field->type_name, "map[", 4) == 0) {
+            emit_indent(codegen);
+            emit(codegen, "if (gray_map_iterating(&((");
+            emit_expression(codegen, target);
+            emit_formatted(codegen, ")%s))) { %s; }\n", field_path, panic_call(codegen, node, "P0035", ""));
+        } else {
+            emit_struct_map_iteration_checks(codegen, node, target, field->type_name, field_path, depth + 1);
+        }
+    }
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
+    if (!node->data.assign.is_declaration && node->data.assign.operator == TOKEN_ASSIGN &&
+        !expression_contains_call(node->data.assign.target)) {
+        GrayType *replaced_type = codegen_type_of(codegen, node->data.assign.target);
+        if (replaced_type && replaced_type->kind == TYPE_KIND_STRUCT && replaced_type->name)
+            emit_struct_map_iteration_checks(codegen, node, node->data.assign.target, replaced_type->name, "", 0);
+    }
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
         node->data.assign.target->kind == NODE_LABEL) {
@@ -12395,9 +12428,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             codegen->current_variable_type = target_type->name;
             emit_expression(codegen, node->data.assign.value);
             codegen->current_variable_type = saved_variable_type;
-            emit(codegen, "; if (gray_atomic_load32(&");
+            emit(codegen, "; if (gray_map_iterating(&(");
             emit_expression(codegen, node->data.assign.target);
-            emit_formatted(codegen, ".iterating) > 0) { %s; } ", panic_call(codegen, node, "P0035", ""));
+            emit_formatted(codegen, "))) { %s; } ", panic_call(codegen, node, "P0035", ""));
             if (codegen->loop_scope_depth > 0) {
                 emit(codegen, "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
             }
@@ -12623,10 +12656,11 @@ static void emit_iteration_guard_unwind(CodeGen *codegen) {
 }
 
 /* True for a path like b.items, a.b.items, p^.items, g[0], m["k"] or
- * ss[0].items — an lvalue naming the caller's array, rooted at a variable.
- * Iterating one of these can guard the real array instead of the by-value
- * snapshot; the path is evaluated once, into a pointer to the array header. */
-static bool is_real_array_path(AstNode *node) {
+ * ss[0].items — an lvalue naming the caller's array or map, rooted at a
+ * variable. Iterating one of these can guard the real collection instead of
+ * the by-value snapshot; the path is evaluated once, into a pointer to the
+ * collection header. */
+static bool is_real_collection_path(AstNode *node) {
     while (node) {
         if (node->kind == NODE_MEMBER_EXPRESSION) node = node->data.member.object;
         else if (node->kind == NODE_INDEX_EXPRESSION) node = node->data.index_expression.left;
@@ -13917,22 +13951,47 @@ static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
     c_value_type = c_value_type_copy;
 
     *out_map_needs_temporary = (coll->kind != NODE_LABEL);
+    /* A field, index or pointer path names a map the caller can still reach,
+     * so the guard has to sit on that map, not on the snapshot below. */
+    bool guard_real = *out_map_needs_temporary && is_real_collection_path(coll);
+    char guard_pointer[SHORT_VARIABLE_BUFFER_SIZE];
+    guard_pointer[0] = '\0';
     if (*out_map_needs_temporary) {
         snprintf(map_temporary_name, map_temporary_size, "_gray_map%d", mi_id);
-        emit_formatted(codegen, "{ GrayMap %s = ", map_temporary_name);
-        emit_expression(codegen, coll);
-        emit(codegen, ";\n");
+        if (guard_real) {
+            snprintf(guard_pointer, sizeof(guard_pointer), "_gray_mapp%d", mi_id);
+            emit_formatted(codegen, "{ GrayMap *%s = &(", guard_pointer);
+            emit_expression(codegen, coll);
+            emit_formatted(codegen, "); GrayMap %s = *%s;\n", map_temporary_name, guard_pointer);
+        } else {
+            emit_formatted(codegen, "{ GrayMap %s = ", map_temporary_name);
+            emit_expression(codegen, coll);
+            emit(codegen, ";\n");
+        }
         emit_indent(codegen);
     }
 
     char slot_name[SHORT_VARIABLE_BUFFER_SIZE];
     snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", mi_id);
     {
-        char *guard_expression = iteration_guard_expression(codegen, *out_map_needs_temporary, map_temporary_name, coll);
+        char *guard_expression;
+        if (guard_real) {
+            char message[SHORT_VARIABLE_BUFFER_SIZE + 4];
+            snprintf(message, sizeof(message), "(*%s)", guard_pointer);
+            guard_expression = strdup(message);
+        } else if (*out_map_needs_temporary) {
+            /* A map reached through a call: the snapshot is a copy of the header, so the
+             * counter lives with the map's storage, where every copy finds it. */
+            char message[SHORT_VARIABLE_BUFFER_SIZE + 32];
+            snprintf(message, sizeof(message), "(*gray_map_guard_of(&%s))", map_temporary_name);
+            guard_expression = strdup(message);
+        } else {
+            guard_expression = iteration_guard_expression(codegen, *out_map_needs_temporary, map_temporary_name, coll);
+        }
         iteration_guard_push(codegen, guard_expression);
         free(guard_expression);
     }
-    if (*out_map_needs_temporary) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", map_temporary_name);
+    if (*out_map_needs_temporary) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", iteration_guard_top(codegen));
     else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
     emit_indent(codegen);
     emit_formatted(codegen, "for (int32_t %s = 0; %s < ", mi_name, mi_name);
@@ -14050,7 +14109,7 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     /* A field, index or map-lookup path names an array the caller can still reach, so the guard
      * has to sit on that array — putting it on the snapshot below would let
      * destructive mutations through unnoticed. */
-    bool guard_real = *out_collection_needs_temporary && is_real_array_path(coll);
+    bool guard_real = *out_collection_needs_temporary && is_real_collection_path(coll);
     char guard_pointer[SHORT_VARIABLE_BUFFER_SIZE];
     guard_pointer[0] = '\0';
     if (*out_collection_needs_temporary) {
@@ -14357,9 +14416,11 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_labeled_break_target(codegen, node);
         /* Decrement map iteration guard */
         if (is_map_iteration) {
+            char guard_top[MESSAGE_BUFFER_SIZE];
+            snprintf(guard_top, sizeof(guard_top), "%s", iteration_guard_top(codegen));
             iteration_guard_pop(codegen);
             emit_indent(codegen);
-            if (map_needs_temporary) emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", map_temporary_name);
+            if (map_needs_temporary) emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", guard_top);
             else { emit(codegen, "gray_atomic_sub32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             if (map_needs_temporary) {
                 emit_indent(codegen);

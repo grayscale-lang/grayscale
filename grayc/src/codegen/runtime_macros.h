@@ -126,6 +126,7 @@
     X(GrayHttpResponse) \
     X(GrayIoFileInfo) \
     X(GrayMap) \
+    X(GrayMapGuard) \
     X(GrayMap_tag) \
     X(GrayMathModf) \
     X(GrayMiddleware) \
@@ -703,8 +704,10 @@
     X(gray_map_copy) \
     X(gray_map_get) \
     X(gray_map_get_str) \
+    X(gray_map_guard_of) \
     X(gray_map_has) \
     X(gray_map_init_seed) \
+    X(gray_map_iterating) \
     X(gray_map_key_at) \
     X(gray_map_new_kind) \
     X(gray_map_remove) \

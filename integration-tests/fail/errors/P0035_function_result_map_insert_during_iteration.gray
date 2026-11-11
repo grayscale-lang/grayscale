@@ -1,0 +1,16 @@
+// expect-contains: .gray:
+const Holder struct {
+    entries map[string:i64]
+}
+
+do entries_of(holder ^Holder) -> map[string:i64] {
+    return holder^.entries
+}
+
+do main() {
+    mut holder Holder = Holder{ entries: {"a": 1, "b": 2} }
+    mut holder_pointer ^Holder = addr(holder)
+    for_each key in entries_of(holder_pointer) {
+        holder.entries["new_${key}"] = 1
+    }
+}

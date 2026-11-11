@@ -243,8 +243,49 @@ static void map_insert_at(GrayArena *arena, GrayMap *map, int32_t slot, const vo
     map->count++;
 }
 
+#define GRAY_MAP_GUARD_SLOTS 1024
+
+static struct { const void *keys; GrayMapGuard guard; } gray_map_guards[GRAY_MAP_GUARD_SLOTS];
+static int32_t gray_map_guards_used = 0;
+static int32_t gray_map_guards_lock = 0;
+static GrayMapGuard gray_map_unallocated_guard;
+
+GrayMapGuard *gray_map_guard_of(const GrayMap *map) {
+    if (!map->keys) return &gray_map_unallocated_guard;
+    GrayMapGuard *found = NULL;
+    gray_spin_lock(&gray_map_guards_lock);
+    int32_t free_slot = -1;
+    for (int32_t i = 0; i < gray_map_guards_used; i++) {
+        if (gray_map_guards[i].keys == map->keys) { found = &gray_map_guards[i].guard; break; }
+        if (free_slot < 0 && gray_atomic_load32(&gray_map_guards[i].guard.iterating) == 0) free_slot = i;
+    }
+    if (!found) {
+        if (free_slot < 0 && gray_map_guards_used < GRAY_MAP_GUARD_SLOTS) free_slot = gray_map_guards_used++;
+        if (free_slot < 0) {
+            gray_spin_unlock(&gray_map_guards_lock);
+            gray_panic_code("P0035", "too many maps iterated at once");
+        }
+        gray_map_guards[free_slot].keys = map->keys;
+        found = &gray_map_guards[free_slot].guard;
+    }
+    gray_spin_unlock(&gray_map_guards_lock);
+    return found;
+}
+
+bool gray_map_iterating(const GrayMap *map) {
+    if (gray_atomic_load32((int32_t *)&map->iterating) > 0) return true;
+    if (!map->keys || gray_atomic_load32(&gray_map_guards_used) == 0) return false;
+    bool iterating = false;
+    gray_spin_lock(&gray_map_guards_lock);
+    for (int32_t i = 0; i < gray_map_guards_used; i++) {
+        if (gray_map_guards[i].keys == map->keys && gray_atomic_load32(&gray_map_guards[i].guard.iterating) > 0) { iterating = true; break; }
+    }
+    gray_spin_unlock(&gray_map_guards_lock);
+    return iterating;
+}
+
 void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *value, const char *file, int line) {
-    if (gray_atomic_load32(&map->iterating) > 0) {
+    if (gray_map_iterating(map)) {
         /* Updating an existing key's value leaves the key set unchanged. */
         int32_t existing = find_slot(map, key);
         if (existing < 0)
@@ -301,7 +342,7 @@ bool gray_map_has(GrayMap *map, const void *key) {
 }
 
 bool gray_map_remove(GrayMap *map, const void *key, const char *file, int line) {
-    if (gray_atomic_load32(&map->iterating) > 0)
+    if (gray_map_iterating(map))
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     int32_t index = find_slot(map, key);
     if (index < 0) return false;
@@ -319,7 +360,7 @@ bool gray_map_remove(GrayMap *map, const void *key, const char *file, int line) 
 }
 
 void gray_map_clear(GrayMap *map, const char *file, int line) {
-    if (gray_atomic_load32(&map->iterating) > 0)
+    if (gray_map_iterating(map))
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     if (map->states) memset(map->states, 0, sizeof(uint8_t) * (size_t)map->capacity);
     map->count = 0;
