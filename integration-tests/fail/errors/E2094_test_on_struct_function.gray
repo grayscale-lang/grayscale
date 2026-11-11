@@ -1,0 +1,14 @@
+// expect-error: E2094
+// expect-error-count: 1
+// #test applies only to top-level functions, not struct functions.
+
+const Counter struct {
+    count i64
+
+    #test
+    do check(self ^Counter) {
+        assert(self^.count == 0)
+    }
+}
+
+do main() {}

@@ -1,0 +1,10 @@
+// expect-error: E2094
+// expect-error-count: 1
+
+#test
+const Point struct {
+    x i64
+    y i64
+}
+
+do main() {}

@@ -1,0 +1,10 @@
+// expect-error: E5046
+// expect-error-count: 1
+// A #test function declares no return type.
+
+#test
+do check_value() -> i64 {
+    return 1
+}
+
+do main() {}

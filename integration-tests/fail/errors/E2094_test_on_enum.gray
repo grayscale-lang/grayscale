@@ -1,0 +1,10 @@
+// expect-error: E2094
+// expect-error-count: 1
+
+#test
+const Color enum {
+    RED
+    GREEN
+}
+
+do main() {}

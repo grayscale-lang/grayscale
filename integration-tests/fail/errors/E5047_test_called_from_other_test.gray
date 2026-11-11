@@ -1,0 +1,15 @@
+// expect-error: E5047
+// expect-error-count: 1
+// A #test function cannot be called from another #test function.
+
+#test
+do first() {
+    assert(true)
+}
+
+#test
+do second() {
+    first()
+}
+
+do main() {}
