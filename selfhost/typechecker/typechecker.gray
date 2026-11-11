@@ -11975,12 +11975,7 @@ fn flush_pending_literals(checker ^TypeChecker, start i64) {
     mut index = len(checker^.pending_literals) - 1
     as_long_as index >= start {
         pending = checker^.pending_literals[index]
-        if !pending^.is_literal_typed {
-            // the default type, taken without a second range check
-            mut taken = checker^.pool^.type_i64
-            if folding.literal_expression_is_decimal(pending) { taken = checker^.pool^.type_f64 }
-            literal_take_type(checker, pending, taken)
-        }
+        if !pending^.is_literal_typed { check_expression_as(checker, pending, nil) }
         index = index - 1
     }
     mut kept [^ast.AstNode] = {}
