@@ -12863,7 +12863,14 @@ fn apply_call_parameter_extern_effects(checker ^TypeChecker, node ^ast.AstNode) 
     for argument_index in range(0, len(arguments)) {
         if argument_index >= len(callee_signature^.param_types) || argument_index >= MAX_TRACKED_PARAMETERS { break }
         if callee_signature^.passes_parameter_to_extern bit_and (1 bit_shift_left argument_index) == 0 { continue }
-        origin_depth, root = expression_origin(checker, arguments[argument_index])
+        expression_depth, expression_root = expression_origin(checker, arguments[argument_index])
+        mut origin_depth i64 = expression_depth
+        mut root string = expression_root
+        // A struct value given to a pointer receiver is passed by address
+        if origin_depth == 0 && argument_index == 0 && callee_signature^.param_types[0]^.kind == types.TypeKind.POINTER && resolve_quietly(checker, arguments[0])^.kind == types.TypeKind.STRUCT {
+            root = assignment_target_root_name(arguments[0])
+            if root != "" { origin_depth = symbol_scope_depth(checker, root) }
+        }
         if origin_depth > 0 && origin_depth >= checker^.current_function_scope_depth && root != "" {
             add_diagnostic(checker, "E3154", error_registry.registry_message_formatted("E3154", {root}), arguments[argument_index]^.tok.file, arguments[argument_index]^.tok.line, arguments[argument_index]^.tok.col)
         }
