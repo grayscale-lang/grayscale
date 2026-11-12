@@ -1,16 +1,19 @@
-//
-// generate_runtime_macros.gray - Generate grayc/src/codegen/runtime_macros.h
-//
-// Lists every macro the runtime and stdlib headers define, and every
-// gray-prefixed name they declare. The generated C saves each one before the
-// headers of an `extern import` and restores it after them, so a C header
-// cannot redefine a runtime macro or turn a runtime function into a macro.
-//
-// Usage: grayc scripts/generate_runtime_macros.gray && ./generate_runtime_macros
-//        (run from the repo root)
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
+/*
+ * generate_runtime_macros.gray:  Generate grayc/src/codegen/runtime_macros.h
+ *
+ * Lists every macro the runtime and stdlib headers define, and every
+ * gray-prefixed name they declare. The generated C saves each one before the
+ * headers of an `extern import` and restores it after them, so a C header
+ * cannot redefine a runtime macro or turn a runtime function into a macro.
+ *
+ * Usage: grayc scripts/generate_runtime_macros.gray && ./generate_runtime_macros
+ *        (run from the repo root)
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @io, @strings, @arrays
 

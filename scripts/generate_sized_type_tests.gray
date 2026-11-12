@@ -1,40 +1,43 @@
-//
-// generate_sized_type_tests.gray - Generate the sized-type test grid
-//
-// Writes every sized type (i8..i256, u8..u256, f32, f64) at every slot a value
-// can be stored into (STANDARD.md, "Sized types") with each case:
-//
-//   - an in-range literal            (compiles)
-//   - an out-of-range literal        (E3036)
-//   - a widening value               (compiles)
-//   - a narrowing value              (E3155)
-//   - a signedness-crossing value    (E3019)
-//   - a binary expression with a literal (compiles)
-//   - a compound assignment at the type's maximum value (overflow panic)
-//   - a shift by a count at and beyond the type's width  (P0092)
-//
-// A range() bound or step is a slot whose target is i64, u64 when a bound is
-// u64, or the widest wide integer type among the range's bounds: each type is stored into the start,
-// the end and the step, and into a bound of a range whose other bound is i128.
-// A runtime panic file pins its panic code with an expect-contains marker.
-//
-// into integration-tests/:
-//
-//   pass/core/sized_grid_<slot>.gray            every case that compiles
-//   fail/errors/<code>_sized_grid_<slot>_<case>.gray
-//                                               every case expected to fail
-//                                               with <code>, one file per code
-//   fail/errors/<panic>_sized_grid_<shape>_<type>.gray
-//                                               one runtime panic per file
-//
-// A new slot or sized type is added here, and the grid is regenerated. The
-// generated files are checked in; CI runs them like any other test.
-//
-// Usage: grayc scripts/generate_sized_type_tests.gray && ./generate_sized_type_tests
-//        (run from the repo root)
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
+/*
+ * generate_sized_type_tests.gray:  Generate the sized-type test grid
+ *
+ * Writes every sized type (i8..i256, u8..u256, f32, f64) at every slot a value
+ * can be stored into (STANDARD.md, "Sized types") with each case:
+ *
+ *   - an in-range literal            (compiles)
+ *   - an out-of-range literal        (E3036)
+ *   - a widening value               (compiles)
+ *   - a narrowing value              (E3155)
+ *   - a signedness-crossing value    (E3019)
+ *   - a binary expression with a literal (compiles)
+ *   - a compound assignment at the type's maximum value (overflow panic)
+ *   - a shift by a count at and beyond the type's width  (P0092)
+ *
+ * A range() bound or step is a slot whose target is i64, u64 when a bound is
+ * u64, or the widest wide integer type among the range's bounds: each type is stored into the start,
+ * the end and the step, and into a bound of a range whose other bound is i128.
+ * A runtime panic file pins its panic code with an expect-contains marker.
+ *
+ * into integration-tests/:
+ *
+ *   pass/core/sized_grid_<slot>.gray            every case that compiles
+ *   fail/errors/<code>_sized_grid_<slot>_<case>.gray
+ *                                               every case expected to fail
+ *                                               with <code>, one file per code
+ *   fail/errors/<panic>_sized_grid_<shape>_<type>.gray
+ *                                               one runtime panic per file
+ *
+ * A new slot or sized type is added here, and the grid is regenerated. The
+ * generated files are checked in; CI runs them like any other test.
+ *
+ * Usage: grayc scripts/generate_sized_type_tests.gray && ./generate_sized_type_tests
+ *        (run from the repo root)
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @io, @strings, @arrays
 

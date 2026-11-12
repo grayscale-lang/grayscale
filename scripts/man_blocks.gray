@@ -1,10 +1,13 @@
-//
-// man_blocks.gray - Parse @man doc blocks out of C header comments
-//
-// Used by generate_man_data.gray.
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
+/*
+ * man_blocks.gray:  Parse @man doc blocks out of C header comments
+ *
+ * Used by generate_man_data.gray.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @strings, @arrays
 
