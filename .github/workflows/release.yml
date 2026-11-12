@@ -124,13 +124,15 @@ jobs:
           previous=$(git tag --list 'experimental-*' \
             | sed -E 's/.*-build([0-9]+)$/\1 &/' | sort -n | tail -n 1 | cut -d' ' -f2)
           range="$GITHUB_SHA"
-          [ -n "$previous" ] && range="$previous..$GITHUB_SHA"
+          if [ -n "$previous" ]; then range="$previous..$GITHUB_SHA"; fi
           git log "$range" --no-merges --format=%s > subjects.txt
 
           : > notes.md
           section() {
             lines=$(grep -E "^($2)(\([^)]*\))?!?: " subjects.txt || true)
-            [ -n "$lines" ] && printf '### %s\n%s\n\n' "$1" "$(printf '%s\n' "$lines" | sed 's/^/- /')" >> notes.md
+            if [ -n "$lines" ]; then
+              printf '### %s\n%s\n\n' "$1" "$(printf '%s\n' "$lines" | sed 's/^/- /')" >> notes.md
+            fi
           }
           section "Features" "feat"
           section "Bug Fixes" "fix"
@@ -139,9 +141,13 @@ jobs:
           section "Refactors" "refactor"
 
           other=$(grep -vE '^(feat|fix|security|perf|refactor|chore|docs|tests)(\([^)]*\))?!?: ' subjects.txt || true)
-          [ -n "$other" ] && printf '### Other\n%s\n\n' "$(printf '%s\n' "$other" | sed 's/^/- /')" >> notes.md
+          if [ -n "$other" ]; then
+            printf '### Other\n%s\n\n' "$(printf '%s\n' "$other" | sed 's/^/- /')" >> notes.md
+          fi
 
-          [ -n "$previous" ] && echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...$RELEASE_TAG" >> notes.md
+          if [ -n "$previous" ]; then
+            echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...$RELEASE_TAG" >> notes.md
+          fi
           cat notes.md
 
       - name: Create release
