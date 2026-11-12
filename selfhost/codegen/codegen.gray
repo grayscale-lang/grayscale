@@ -946,7 +946,7 @@ fn gen_postfix(generator ^CodeGen, node ^ast.AstNode) -> string {
         }
         mut step_kind = token.TokenKind.PLUS
         if node^.postfix^.op == token.TokenKind.DECREMENT { step_kind = token.TokenKind.MINUS }
-        step_result = checked_arithmetic(generator, node, expr_type(generator, inner), step_kind, "(*_lv)", "1")
+        step_result = checked_arithmetic(generator, node, expr_type(generator, inner), step_kind, "(*_lv)", "1", false)
         if step_result != "" {
             return "({ ${ctype(generator, expr_type(generator, inner))} *_lv = ${place_address(generator, inner)}; *_lv = ${step_result}; })"
         }
@@ -1691,7 +1691,7 @@ fn sized_bounds(type_name string) -> (string, string) {
 
 // `left operator right` for + - * / % computed in the number type `type_name`: overflow checks on
 // + - *, division by zero and MIN / -1 on / and %. Returns "" for a type with no check.
-fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, operator token.TokenKind, left string, right string) -> string {
+fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, operator token.TokenKind, left string, right string, sequenced bool) -> string {
     is_division = operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT
     if !is_division && operator != token.TokenKind.PLUS && operator != token.TokenKind.MINUS && operator != token.TokenKind.ASTERISK { return "" }
     line = node^.tok.line
@@ -1723,14 +1723,36 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
     mut verb = "mul"
     if operator == token.TokenKind.PLUS { verb = "add" }
     if operator == token.TokenKind.MINUS { verb = "sub" }
-    // C does not order the arguments of a call, so both operands are hoisted to run left first.
-    mut checked = "gray_${verb}_check(_ln, _rn, \"${generator^.file}\", ${line})"
-    if is_unsigned { checked = "gray_u${verb}_check(_ln, _rn, \"${generator^.file}\", ${line})" }
-    if is_sized {
-        checked = "gray_sized_${verb}_check(_ln, _rn, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
-        if is_unsigned { checked = "gray_usized_${verb}_check(_ln, _rn, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
+    // C does not order the arguments of a call, so operands that call are hoisted to run left first.
+    mut first = left
+    mut second = right
+    if sequenced {
+        first = "_ln"
+        second = "_rn"
     }
-    return "({ __auto_type _ln = ${left}; __auto_type _rn = ${right}; ${checked}; })"
+    mut checked = "gray_${verb}_check(${first}, ${second}, \"${generator^.file}\", ${line})"
+    if is_unsigned { checked = "gray_u${verb}_check(${first}, ${second}, \"${generator^.file}\", ${line})" }
+    if is_sized {
+        checked = "gray_sized_${verb}_check(${first}, ${second}, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
+        if is_unsigned { checked = "gray_usized_${verb}_check(${first}, ${second}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
+    }
+    if sequenced { return "({ __auto_type _ln = ${left}; __auto_type _rn = ${right}; ${checked}; })" }
+    return checked
+}
+
+// True when evaluating `node` can run a call, so its position in the order of evaluation is observable.
+fn contains_call(node ^ast.AstNode) -> bool {
+    if node == nil { return false }
+    when node^.kind {
+        is ast.NodeKind.CALL_EXPR { return true }
+        is ast.NodeKind.INFIX_EXPR { return contains_call(node^.infix^.left) || contains_call(node^.infix^.right) }
+        is ast.NodeKind.PREFIX_EXPR { return contains_call(node^.prefix^.right) }
+        is ast.NodeKind.POSTFIX_EXPR { return contains_call(node^.postfix^.left) }
+        is ast.NodeKind.MEMBER_EXPR { return contains_call(node^.member^.object) }
+        is ast.NodeKind.INDEX_EXPR { return contains_call(node^.index_data^.left) || contains_call(node^.index_data^.index_expr) }
+        is ast.NodeKind.CAST_EXPR { return contains_call(node^.cast_data^.value) }
+        default { return false }
+    }
 }
 
 fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
@@ -1770,7 +1792,7 @@ fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
 
     mut result_type = expr_type(generator, node)
     if result_type == "" { result_type = operand_type }
-    checked_result = checked_arithmetic(generator, node, result_type, operator, "(${left})", "(${right})")
+    checked_result = checked_arithmetic(generator, node, result_type, operator, "(${left})", "(${right})", contains_call(node^.infix^.left) || contains_call(node^.infix^.right))
     if checked_result != "" { return checked_result }
 
     if operator == token.TokenKind.PLUS || operator == token.TokenKind.MINUS || operator == token.TokenKind.ASTERISK || operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT {
@@ -4665,7 +4687,7 @@ fn compound_value(generator ^CodeGen, node ^ast.AstNode, target string, value st
         wide_result = wide_binary(wide_prefix(operand_type), operator, target, value, location_args(generator, node))
         if wide_result != "" { return wide_result }
     }
-    checked_result = checked_arithmetic(generator, node, operand_type, operator, target, "(${value})")
+    checked_result = checked_arithmetic(generator, node, operand_type, operator, target, "(${value})", false)
     if checked_result != "" { return checked_result }
     return "(${target} ${op_text(operator)} (${value}))"
 }
