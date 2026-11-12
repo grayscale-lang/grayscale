@@ -6493,6 +6493,11 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *funct
         return true;
     }
 
+    if (strcmp(function_name, "exit") == 0 && node->data.call.argument_count == 0) {
+        emit(codegen, "gray_builtin_exit(0)");
+        return true;
+    }
+
     if (strcmp(function_name, "len") == 0 && node->data.call.argument_count == 1) {
         AstNode *argument = node->data.call.arguments[0];
         GrayType *type = codegen_type_of(codegen, argument);
