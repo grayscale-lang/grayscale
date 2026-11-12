@@ -304,7 +304,8 @@ do platform_asset_url(release releases.Release) -> (string, string) {
 }
 
 // print_update_status prints the Installed, Latest release (when it is an
-// experimental build), Latest stable and Latest pre-release block in the column
+// experimental build), Latest stable and Latest pre-release block (the last
+// two only on non-experimental builds) in the column
 // layout of gray version, with a yellow arrow on whichever channel line is newer than the installed build.
 do print_update_status(version_info versions.VersionInfo, latest_stable string, latest_pre string, latest_newest string) {
     mut channel_note string = ""
@@ -328,11 +329,11 @@ do print_update_status(version_info versions.VersionInfo, latest_stable string, 
         }
         println("Latest release:      ${latest_newest}${note}")
     }
+    if version_info.channel == "experimental" {
+        return
+    }
     if latest_stable != "" {
-        mut comparison i64 = -1
-        if version_info.channel != "experimental" {
-            comparison = versions.compare_semver(latest_stable, version.VERSION)
-        }
+        comparison i64 = versions.compare_semver(latest_stable, version.VERSION)
         mut note string = ""
         if comparison > 0 {
             note = "  ${YELLOW}← update available${RESET}"
@@ -342,10 +343,7 @@ do print_update_status(version_info versions.VersionInfo, latest_stable string, 
         println("Latest stable:       ${latest_stable}${note}")
     }
     if latest_pre != "" {
-        mut comparison i64 = -1
-        if version_info.channel != "experimental" {
-            comparison = versions.compare_semver(latest_pre, version.VERSION)
-        }
+        comparison i64 = versions.compare_semver(latest_pre, version.VERSION)
         mut note string = ""
         if comparison > 0 {
             note = "  ${YELLOW}← run 'gray update --pre'${RESET}"
