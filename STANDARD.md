@@ -5792,7 +5792,7 @@ Generate a tab-completion script for `bash`, `zsh`, `fish`, or `powershell`.
 gray completion <shell>
 ```
 
-`make install`, `gray update`, and `gray install` install the script for the shell named by `$SHELL` (PowerShell on Windows), and `gray completion install` does the same on demand. No rc file is modified; when the script cannot be written, one line names the command to run instead.
+`make grayc install`, `make selfhost install`, `gray update`, and `gray install` install the script for the shell named by `$SHELL` (PowerShell on Windows), and `gray completion install` does the same on demand. No rc file is modified; when the script cannot be written, one line names the command to run instead.
 
 | Shell | Installed to |
 |-------|--------------|

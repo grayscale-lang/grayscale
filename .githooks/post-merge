@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || exit 0
+git push grayc "$(git subtree split --prefix=grayc main)":refs/heads/main

@@ -1,7 +1,8 @@
 name: Release
 
 # Every merge into main publishes experimental-YYYYMMDD-build#, where YYYYMMDD
-# is the UTC date and # counts up from 1 within that date. Run it by hand on
+# is the UTC date and # counts up across every release, never resetting with
+# the date. Run it by hand on
 # any branch to build the binaries without publishing.
 
 on:
@@ -31,7 +32,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           date_part=$(date -u +%Y%m%d)
-          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/experimental-$date_part-build" --jq '.[].ref' \
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/experimental-" --jq '.[].ref' \
             | sed -E 's|.*-build([0-9]+)$|\1|' | sort -n | tail -n 1)
           tag="experimental-$date_part-build$(( ${last:-0} + 1 ))"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -103,11 +104,45 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # Lists every commit since the previous experimental release, grouped by
+      # its conventional-commit type. GitHub's generated notes list only PR
+      # titles, which hides the commits inside a merged branch.
+      - name: Write release notes
+        run: |
+          previous=$(git tag --list 'experimental-*' \
+            | sed -E 's/.*-build([0-9]+)$/\1 &/' | sort -n | tail -n 1 | cut -d' ' -f2)
+          range="$GITHUB_SHA"
+          [ -n "$previous" ] && range="$previous..$GITHUB_SHA"
+          git log "$range" --no-merges --format=%s > subjects.txt
+
+          : > notes.md
+          section() {
+            lines=$(grep -E "^($2)(\([^)]*\))?!?: " subjects.txt || true)
+            [ -n "$lines" ] && printf '### %s\n%s\n\n' "$1" "$(printf '%s\n' "$lines" | sed 's/^/- /')" >> notes.md
+          }
+          section "Features" "feat"
+          section "Bug Fixes" "fix"
+          section "Security" "security"
+          section "Performance" "perf"
+          section "Refactors" "refactor"
+
+          other=$(grep -vE '^(feat|fix|security|perf|refactor|chore|docs|tests)(\([^)]*\))?!?: ' subjects.txt || true)
+          [ -n "$other" ] && printf '### Other\n%s\n\n' "$(printf '%s\n' "$other" | sed 's/^/- /')" >> notes.md
+
+          [ -n "$previous" ] && echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$previous...$RELEASE_TAG" >> notes.md
+          cat notes.md
 
       - name: Create release
         run: |
@@ -115,4 +150,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TAG" \
-            --generate-notes
+            --notes-file notes.md
