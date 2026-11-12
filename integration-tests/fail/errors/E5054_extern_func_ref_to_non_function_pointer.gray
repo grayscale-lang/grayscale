@@ -1,0 +1,13 @@
+// expect-error: E5054
+// expect-error-count: 2
+
+extern import "stdlib.h", "string.h"
+
+do cb() { }
+
+do main() {
+    unsafe {
+        extern.abs(()cb)
+        extern.strlen(ref(cb))
+    }
+}

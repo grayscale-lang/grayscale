@@ -789,6 +789,14 @@ fn leading_number(text string) -> i64 {
     return value
 }
 
+// Whether the C parameter type spelled `parameter_text` is a function pointer, directly or
+// through a typedef name.
+fn c_parameter_is_function_pointer(parameter_text string) -> bool {
+    if strings.contains(parameter_text, "(*)") { return true }
+    typedef_class, typedef_text = classify_c_typedef_text(parameter_text)
+    return typedef_class != CLASS_UNKNOWN && strings.contains(typedef_text, "(*)")
+}
+
 // Whether the Grayscale `callback` cannot be called through the C function pointer type
 // spelled `pointer_text`: a different number of parameters, or a parameter or return of
 // another kind or width. Anything not readable is accepted.
@@ -1069,6 +1077,20 @@ fn validate_c_extern_signatures(target_compiler string, checker ^typechecker.Typ
                 if callback_name == "" { continue }
                 callback = typechecker.find_func(checker, callback_name)
                 if callback == nil || callback^.decl == nil { continue }
+                parameter_class i64 = signature.parameter_class[argument_index]
+                is_data_parameter bool = parameter_class == CLASS_INTEGER || parameter_class == CLASS_FLOATING_POINT || (parameter_class == CLASS_POINTER && !c_parameter_is_function_pointer(signature.parameter_text[argument_index]))
+                if is_data_parameter {
+                    data_argument = arguments[argument_index]
+                    mut data_file string = data_argument^.tok.file
+                    if data_file == "" { data_file = site_file }
+                    mut argument_type_name string = "function"
+                    if argument_index < len(site.argument_types) && site.argument_types[argument_index] != nil {
+                        argument_type_name = types.type_display_name(site.argument_types[argument_index])
+                    }
+                    data_message string = error_registry.registry_message_formatted("E5054", {"${argument_index + 1}", site.function_name, argument_type_name, signature.parameter_text[argument_index]})
+                    arrays.append(found, diagnostics.Diagnostic{is_error: true, code: "E5054", message: data_message, file: data_file, line: data_argument^.tok.line, column: data_argument^.tok.col})
+                    continue
+                }
                 if !callback_mismatches_function_pointer(signature.parameter_text[argument_index], callback^) { continue }
                 argument = arguments[argument_index]
                 mut callback_file string = argument^.tok.file
