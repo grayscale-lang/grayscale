@@ -308,6 +308,12 @@ typedef struct {
                                           * current_return_count so downstream
                                           * "must return" / "return from void"
                                           * checks should also stay quiet */
+    int branch_entry_scope_depth;             /* biased scope depth (as symbol_scope_depth)
+                                           * of the scope enclosing the innermost
+                                           * if/when/loop being checked, 0 outside
+                                           * one. A pointer declared at or above it
+                                           * may or may not be reassigned there, so
+                                           * an assignment keeps its deeper origin. */
     int current_function_scope_depth;         /* Scope.depth of the body scope of the
                                            * function being checked, biased by +1
                                            * to match Symbol.origin_depth. A

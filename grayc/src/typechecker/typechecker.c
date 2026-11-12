@@ -16394,9 +16394,15 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
             Symbol *pointer_symbol = scope_lookup(checker->current_scope, pointer_name);
             if (pointer_symbol) {
                 const char *direct_origin_name = NULL;
-                pointer_symbol->origin_depth = pointer_origin_of(checker,
+                int direct_origin_depth = pointer_origin_of(checker,
                     node->data.assign.value, &direct_origin_name);
-                pointer_symbol->origin_name = direct_origin_name;
+                bool may_keep_earlier_origin = checker->branch_entry_scope_depth > 0 &&
+                    symbol_scope_depth(checker->current_scope, pointer_name) <= checker->branch_entry_scope_depth &&
+                    pointer_symbol->origin_depth > direct_origin_depth;
+                if (!may_keep_earlier_origin) {
+                    pointer_symbol->origin_depth = direct_origin_depth;
+                    pointer_symbol->origin_name = direct_origin_name;
+                }
                 const char *field_origin_name = NULL;
                 pointer_symbol->field_origin_depth = container_literal_origin(checker,
                     node->data.assign.value, &field_origin_name);
@@ -18943,7 +18949,13 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node);
  * its default type once the statement is done. */
 static void check_statement(TypeChecker *checker, AstNode *node) {
     int literal_start = checker->pending_literal_count;
+    bool is_branching = node && (node->kind == NODE_IF_STATEMENT || node->kind == NODE_WHEN_STATEMENT ||
+                                 node->kind == NODE_FOR_STATEMENT || node->kind == NODE_FOR_EACH_STATEMENT ||
+                                 node->kind == NODE_WHILE_STATEMENT || node->kind == NODE_LOOP_STATEMENT);
+    int saved_branch_entry_scope_depth = checker->branch_entry_scope_depth;
+    if (is_branching) checker->branch_entry_scope_depth = checker->current_scope->depth + 1;
     check_statement_kind(checker, node);
+    checker->branch_entry_scope_depth = saved_branch_entry_scope_depth;
     literal_flush_pending(checker, literal_start);
 }
 

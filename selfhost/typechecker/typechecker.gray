@@ -271,6 +271,10 @@ const TypeChecker struct {
     // scope: a pointer origin at least this deep dies when the function returns
     current_function ^ast.AstNode
     current_function_scope_depth i64
+    // The scope depth (biased by +1) enclosing the innermost if/when/loop being
+    // checked, 0 outside one. A pointer declared at or above it may or may not
+    // be reassigned there, so an assignment keeps its deeper origin
+    branch_entry_scope_depth i64
     // The one range() call or range-holding name allowed to appear here as a
     // value; anywhere else a range is an error
     range_use ^ast.AstNode
@@ -10627,7 +10631,12 @@ fn check_assignment_escape(checker ^TypeChecker, node ^ast.AstNode, target ^ast.
         if origin_depth > symbol_scope_depth(checker, pointer_name) {
             add_diagnostic(checker, "E3163", error_registry.registry_message_formatted("E3163", {pointer_name, origin_name}), node^.tok.file, node^.tok.line, node^.tok.col)
         } otherwise {
-            record_symbol_origin(checker, scope.scope_lookup(checker^.current_scope, pointer_name), ad^.value)
+            pointer_symbol = scope.scope_lookup(checker^.current_scope, pointer_name)
+            direct_depth, direct_name = pointer_origin_of(checker, ad^.value)
+            may_keep_earlier_origin = pointer_symbol != nil && checker^.branch_entry_scope_depth > 0 && symbol_scope_depth(checker, pointer_name) <= checker^.branch_entry_scope_depth && pointer_symbol^.origin_depth > direct_depth
+            if !may_keep_earlier_origin {
+                record_symbol_origin(checker, pointer_symbol, ad^.value)
+            }
         }
         return
     }
@@ -12003,7 +12012,12 @@ fn check_struct_declaration(checker ^TypeChecker, node ^ast.AstNode) {
 
 fn check_statement(checker ^TypeChecker, node ^ast.AstNode) {
     literal_start = len(checker^.pending_literals)
+    saved_branch_entry_scope_depth = checker^.branch_entry_scope_depth
+    if node != nil && (node^.kind == ast.NodeKind.IF_STMT || node^.kind == ast.NodeKind.WHEN_STMT || node^.kind == ast.NodeKind.FOR_STMT || node^.kind == ast.NodeKind.FOR_EACH_STMT || node^.kind == ast.NodeKind.WHILE_STMT || node^.kind == ast.NodeKind.LOOP_STMT) {
+        checker^.branch_entry_scope_depth = checker^.current_scope^.depth + 1
+    }
     check_statement_kind(checker, node)
+    checker^.branch_entry_scope_depth = saved_branch_entry_scope_depth
     flush_pending_literals(checker, literal_start)
 }
 
