@@ -10233,7 +10233,8 @@ fn pointer_origin_of(checker ^TypeChecker, value ^ast.AstNode) -> (i64, string) 
         if root != "" {
             symbol = scope.scope_lookup(checker^.current_scope, root)
             if symbol != nil && symbol^.field_origin_depth != 0 {
-                if resolve_quietly(checker, value)^.kind == types.TypeKind.POINTER {
+                value_kind = resolve_quietly(checker, value)^.kind
+                if value_kind == types.TypeKind.POINTER || value_kind == types.TypeKind.STRUCT || value_kind == types.TypeKind.ARRAY || value_kind == types.TypeKind.MAP {
                     return symbol^.field_origin_depth, symbol^.field_origin_name
                 }
             }
