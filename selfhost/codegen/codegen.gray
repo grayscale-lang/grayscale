@@ -2696,7 +2696,7 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
                 if write_back_id < 0 { write_back_id = id_for_write_back(generator) }
                 local_name = "_gray_wb${write_back_id}_${write_back_index}"
                 write_back_index = write_back_index + 1
-                hoisted_declarations, hoisted_nodes, hoisted_originals = hoist_target_indexes(generator, arguments[i], false)
+                hoisted_declarations, hoisted_nodes, hoisted_originals = hoist_target_indexes(generator, arguments[i], false, true)
                 write_back_declarations = "${write_back_declarations}${hoisted_declarations}"
                 if is_array_type(left_kind_type) {
                     element_c = ctype(generator, array_element_type(left_kind_type))
@@ -4232,7 +4232,7 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
     mut hoisted_nodes [^ast.AstNode] = {}
     mut hoisted_originals [^ast.AstNode] = {}
     if data^.op == token.TokenKind.ASSIGN && data^.target^.kind == ast.NodeKind.MEMBER_EXPR {
-        prefix_text, indexed_nodes, original_indexes = hoist_target_indexes(generator, data^.target, true)
+        prefix_text, indexed_nodes, original_indexes = hoist_target_indexes(generator, data^.target, true, false)
         hoisted_prefix = prefix_text
         hoisted_nodes = indexed_nodes
         hoisted_originals = original_indexes
@@ -6533,16 +6533,20 @@ fn is_rvalue_container(node ^ast.AstNode) -> bool {
 // Binds each non-literal array index in `target` to a temporary, left to right, so the
 // indexes run once and before whatever the statement evaluates next. The index nodes are
 // replaced by labels naming the temporaries; the caller puts `originals` back into `nodes`
-// once the target has been generated. Returns the declarations (each opening a `{` when
+// once the target has been generated. A map key is bound too when `include_map_keys`. Returns the declarations (each opening a `{` when
 // `scoped`), the index-holding nodes and their original index expressions.
-fn hoist_target_indexes(generator ^CodeGen, target ^ast.AstNode, scoped bool) -> (string, [^ast.AstNode], [^ast.AstNode]) {
+fn hoist_target_indexes(generator ^CodeGen, target ^ast.AstNode, scoped bool, include_map_keys bool) -> (string, [^ast.AstNode], [^ast.AstNode]) {
     mut indexed [^ast.AstNode] = {}
     mut walk = target
     as_long_as walk != nil {
         if walk^.kind == ast.NodeKind.MEMBER_EXPR {
             walk = walk^.member^.object
         } or walk^.kind == ast.NodeKind.INDEX_EXPR {
-            if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE { arrays.append(indexed, walk) }
+            if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE {
+                arrays.append(indexed, walk)
+            } or include_map_keys && is_map_type(expr_type(generator, walk^.index_data^.left)) {
+                arrays.append(indexed, walk)
+            }
             walk = walk^.index_data^.left
         } otherwise {
             break
@@ -6557,12 +6561,19 @@ fn hoist_target_indexes(generator ^CodeGen, target ^ast.AstNode, scoped bool) ->
         hoisted_name = "_gray_ix${hoisted_id}"
         opener = ""
         if scoped { opener = "{ " }
-        declarations = "${declarations}${opener}int64_t ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
+        indexed_container_type = expr_type(generator, indexed[position]^.index_data^.left)
+        mut hoisted_type = "i64"
+        mut hoisted_c_type = "int64_t"
+        if is_map_type(indexed_container_type) {
+            hoisted_type = map_key_type(indexed_container_type)
+            hoisted_c_type = "__auto_type"
+        }
+        declarations = "${declarations}${opener}${hoisted_c_type} ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
         index_label = ast.ast_alloc(ast.NodeKind.LABEL, indexed[position]^.index_data^.index_expr^.tok)
         index_label_data = new(ast.LabelData)
         index_label_data^.value = hoisted_name
         index_label^.label = index_label_data
-        index_label^.resolved_type = "i64"
+        index_label^.resolved_type = hoisted_type
         arrays.append(nodes, indexed[position])
         arrays.append(originals, indexed[position]^.index_data^.index_expr)
         indexed[position]^.index_data^.index_expr = index_label
