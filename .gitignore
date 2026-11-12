@@ -10,6 +10,27 @@
 *.d
 # GCC response files written by scripts/build.ps1 and scripts/test.ps1
 *.rsp
+
+# Archives and installers
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
+*.zip
+*.7z
+*.rar
+*.gz
+*.bz2
+*.xz
+*.dmg
+*.pkg
+*.msi
+*.deb
+*.rpm
+*.jar
+*.whl
+*.iso
 /gray
 /grayc/grayc
 /generate_errors
