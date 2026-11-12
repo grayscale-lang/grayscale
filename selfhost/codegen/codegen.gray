@@ -1723,12 +1723,14 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
     mut verb = "mul"
     if operator == token.TokenKind.PLUS { verb = "add" }
     if operator == token.TokenKind.MINUS { verb = "sub" }
+    // C does not order the arguments of a call, so both operands are hoisted to run left first.
+    mut checked = "gray_${verb}_check(_ln, _rn, \"${generator^.file}\", ${line})"
+    if is_unsigned { checked = "gray_u${verb}_check(_ln, _rn, \"${generator^.file}\", ${line})" }
     if is_sized {
-        if is_unsigned { return "gray_usized_${verb}_check(${left}, ${right}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
-        return "gray_sized_${verb}_check(${left}, ${right}, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
+        checked = "gray_sized_${verb}_check(_ln, _rn, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
+        if is_unsigned { checked = "gray_usized_${verb}_check(_ln, _rn, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
     }
-    if is_unsigned { return "gray_u${verb}_check(${left}, ${right}, \"${generator^.file}\", ${line})" }
-    return "gray_${verb}_check(${left}, ${right}, \"${generator^.file}\", ${line})"
+    return "({ __auto_type _ln = ${left}; __auto_type _rn = ${right}; ${checked}; })"
 }
 
 fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {

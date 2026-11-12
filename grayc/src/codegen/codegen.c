@@ -3528,17 +3528,31 @@ static void emit_arithmetic(CodeGen *codegen, TokenType operator, GrayType *type
         return;
     }
     const char *verb = operator == TOKEN_PLUS ? "add" : operator == TOKEN_MINUS ? "sub" : "mul";
+    /* C does not order the arguments of a call; hoist both operands so the
+     * left one runs first. */
+    bool sequenced = expression_contains_call(left) || expression_contains_call(right);
+    if (sequenced) {
+        emit(codegen, "({ __auto_type _ln = ");
+        emit_arithmetic_operand(codegen, left, left_c, type);
+        emit(codegen, "; __auto_type _rn = ");
+        emit_arithmetic_operand(codegen, right, right_c, type);
+        emit(codegen, "; ");
+    }
     if (sized)
         emit_formatted(codegen, "gray_%ssized_%s_check(", sized_unsigned ? "u" : "", verb);
     else
         emit_formatted(codegen, "gray_%s%s_check(", is_unsigned ? "u" : "", verb);
-    emit_arithmetic_operand(codegen, left, left_c, type);
-    emit(codegen, ", ");
-    emit_arithmetic_operand(codegen, right, right_c, type);
-    emit(codegen, ", ");
+    if (sequenced) {
+        emit(codegen, "_ln, _rn, ");
+    } else {
+        emit_arithmetic_operand(codegen, left, left_c, type);
+        emit(codegen, ", ");
+        emit_arithmetic_operand(codegen, right, right_c, type);
+        emit(codegen, ", ");
+    }
     if (sized) emit_sized_bounds_arguments(codegen, source_minimum, source_maximum, sized_unsigned, name, location_node->token.line);
     else emit_formatted(codegen, "\"%s\", %d", codegen_file_literal(codegen), location_node->token.line);
-    emit(codegen, ")");
+    emit(codegen, sequenced ? "); })" : ")");
 }
 
 /* wrap_add, wrap_sub, wrap_mult and wrap_div. Narrow types compute in
