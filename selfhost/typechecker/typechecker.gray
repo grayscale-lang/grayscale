@@ -3923,6 +3923,14 @@ fn resolve_named_arguments(checker ^TypeChecker, node ^ast.AstNode, function_dat
         slots[slot] = arguments[i]
     }
 
+    // A required parameter that no argument supplies
+    for parameter_index in range(0, parameter_count) {
+        required_parameter = params_local[parameter_index + first_param]
+        if slots[parameter_index] != nil || required_parameter.default_value != nil || required_parameter.is_type_param { continue }
+        add_diagnostic(checker, "E5071", error_registry.registry_message_formatted("E5071", {required_parameter.name, display_name}), node^.tok.file, node^.tok.line, node^.tok.col)
+        return
+    }
+
     // Everything up to the last filled slot is passed on; unfilled interior
     // slots take the parameter's default value expression
     mut filled i64 = 0

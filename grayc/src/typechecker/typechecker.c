@@ -4685,6 +4685,15 @@ static void typechecker_resolve_named_arguments(TypeChecker *checker, AstNode *n
         new_arguments[slot] = node->data.call.arguments[i];
     }
 
+    /* E5071: a required parameter that no argument supplies. */
+    for (int i = 0; i < parameter_count; i++) {
+        if (new_arguments[i] || parameters[i].default_value || parameters[i].is_type_parameter) continue;
+        diagnostic_error_code_formatted(checker->diagnostics, "E5071",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            parameters[i].name, display_name);
+        return;
+    }
+
     /* Count how many slots are actually filled (positional + named).
      * Unfilled slots will be handled by the existing default-value logic. */
     int filled = 0;
