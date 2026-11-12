@@ -2696,6 +2696,8 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
                 if write_back_id < 0 { write_back_id = id_for_write_back(generator) }
                 local_name = "_gray_wb${write_back_id}_${write_back_index}"
                 write_back_index = write_back_index + 1
+                hoisted_declarations, hoisted_nodes, hoisted_originals = hoist_target_indexes(generator, arguments[i], false)
+                write_back_declarations = "${write_back_declarations}${hoisted_declarations}"
                 if is_array_type(left_kind_type) {
                     element_c = ctype(generator, array_element_type(left_kind_type))
                     write_back_declarations = "${write_back_declarations}__auto_type ${local_name} = ${gen_expr(generator, arguments[i])}; "
@@ -2706,6 +2708,7 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
                     write_back_declarations = "${write_back_declarations}__auto_type ${local_name} = ${gen_expr(generator, arguments[i])}; "
                     write_back_stores = "${write_back_stores}${strings.repeat("    ", generator^.indent)}{ ${key_c} _mk = ${gen_coerced(generator, map_key_type(left_kind_type), arguments[i]^.index_data^.index_expr)}; ${value_c} _mv = ${local_name}; gray_map_set(gray_default_arena, &${gen_expr(generator, element_left)}, &_mk, &_mv, ${location_args(generator, node)}); }\n"
                 }
+                for restore in range(0, len(hoisted_nodes)) { hoisted_nodes[restore]^.index_data^.index_expr = hoisted_originals[restore] }
                 pieces[piece_cursor] = "&${local_name}"
             }
         }
@@ -4229,33 +4232,10 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
     mut hoisted_nodes [^ast.AstNode] = {}
     mut hoisted_originals [^ast.AstNode] = {}
     if data^.op == token.TokenKind.ASSIGN && data^.target^.kind == ast.NodeKind.MEMBER_EXPR {
-        mut indexed [^ast.AstNode] = {}
-        mut walk = data^.target
-        as_long_as walk != nil {
-            if walk^.kind == ast.NodeKind.MEMBER_EXPR {
-                walk = walk^.member^.object
-            } or walk^.kind == ast.NodeKind.INDEX_EXPR {
-                if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE { arrays.append(indexed, walk) }
-                walk = walk^.index_data^.left
-            } otherwise {
-                break
-            }
-        }
-        mut position = len(indexed) - 1
-        as_long_as position >= 0 {
-            hoisted_id = next_id(generator)
-            hoisted_name = "_gray_ix${hoisted_id}"
-            hoisted_prefix = "${hoisted_prefix}{ int64_t ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
-            index_label = ast.ast_alloc(ast.NodeKind.LABEL, indexed[position]^.index_data^.index_expr^.tok)
-            index_label_data = new(ast.LabelData)
-            index_label_data^.value = hoisted_name
-            index_label^.label = index_label_data
-            index_label^.resolved_type = "i64"
-            arrays.append(hoisted_nodes, indexed[position])
-            arrays.append(hoisted_originals, indexed[position]^.index_data^.index_expr)
-            indexed[position]^.index_data^.index_expr = index_label
-            position = position - 1
-        }
+        prefix_text, indexed_nodes, original_indexes = hoist_target_indexes(generator, data^.target, true)
+        hoisted_prefix = prefix_text
+        hoisted_nodes = indexed_nodes
+        hoisted_originals = original_indexes
     }
     target = gen_expr(generator, data^.target)
     mut value = gen_stored(generator, target_type, data^.value)
@@ -6548,6 +6528,47 @@ fn is_rvalue_container(node ^ast.AstNode) -> bool {
     if node^.kind == ast.NodeKind.INDEX_EXPR { return is_rvalue_container(node^.index_data^.left) }
     if node^.kind == ast.NodeKind.MEMBER_EXPR { return is_rvalue_container(node^.member^.object) }
     return node^.kind == ast.NodeKind.CALL_EXPR || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE || node^.kind == ast.NodeKind.INTERPOLATED_STRING
+}
+
+// Binds each non-literal array index in `target` to a temporary, left to right, so the
+// indexes run once and before whatever the statement evaluates next. The index nodes are
+// replaced by labels naming the temporaries; the caller puts `originals` back into `nodes`
+// once the target has been generated. Returns the declarations (each opening a `{` when
+// `scoped`), the index-holding nodes and their original index expressions.
+fn hoist_target_indexes(generator ^CodeGen, target ^ast.AstNode, scoped bool) -> (string, [^ast.AstNode], [^ast.AstNode]) {
+    mut indexed [^ast.AstNode] = {}
+    mut walk = target
+    as_long_as walk != nil {
+        if walk^.kind == ast.NodeKind.MEMBER_EXPR {
+            walk = walk^.member^.object
+        } or walk^.kind == ast.NodeKind.INDEX_EXPR {
+            if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE { arrays.append(indexed, walk) }
+            walk = walk^.index_data^.left
+        } otherwise {
+            break
+        }
+    }
+    mut declarations = ""
+    mut nodes [^ast.AstNode] = {}
+    mut originals [^ast.AstNode] = {}
+    mut position = len(indexed) - 1
+    as_long_as position >= 0 {
+        hoisted_id = next_id(generator)
+        hoisted_name = "_gray_ix${hoisted_id}"
+        opener = ""
+        if scoped { opener = "{ " }
+        declarations = "${declarations}${opener}int64_t ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
+        index_label = ast.ast_alloc(ast.NodeKind.LABEL, indexed[position]^.index_data^.index_expr^.tok)
+        index_label_data = new(ast.LabelData)
+        index_label_data^.value = hoisted_name
+        index_label^.label = index_label_data
+        index_label^.resolved_type = "i64"
+        arrays.append(nodes, indexed[position])
+        arrays.append(originals, indexed[position]^.index_data^.index_expr)
+        indexed[position]^.index_data^.index_expr = index_label
+        position = position - 1
+    }
+    return declarations, nodes, originals
 }
 
 // A number that keeps the locals of one write-back call apart from those of another.
