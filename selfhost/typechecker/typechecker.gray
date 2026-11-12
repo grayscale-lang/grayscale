@@ -3194,17 +3194,24 @@ fn resolve_array_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
         // With no array type to take, the elements are one type: the first element that has
         // one, which every literal element takes too; i64 (f64 with a decimal literal) when
         // all are literals
+        // An empty `{}` element has no type of its own and takes the others'
         mut first ^types.GrayType = nil
         mut any_decimal = false
+        mut empty_count i64 = 0
         for_each element in elements {
             element_kind_type = resolve_untyped(checker, element)
             reject_multi_return_in_single_position(checker, element)
             reject_void_in_context(checker, element, element_kind_type, "array element")
-            if element_kind_type^.kind == types.TypeKind.LITERAL {
+            if element^.kind == ast.NodeKind.ARRAY_VALUE && len(element^.array_value^.elements) == 0 {
+                empty_count += 1
+            } or element_kind_type^.kind == types.TypeKind.LITERAL {
                 any_decimal = any_decimal || element_kind_type^.is_decimal
             } or first == nil {
                 first = element_kind_type
             }
+        }
+        if first == nil && empty_count == len(elements) {
+            first = types.type_array(checker^.pool, "i64")
         }
         if first == nil {
             first = checker^.pool^.type_i64
@@ -3219,7 +3226,7 @@ fn resolve_array_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
 
         for_each element in elements {
             mut element_resolved = checker^.pool^.type_unknown
-            if folding.is_literal_expression(element) {
+            if folding.is_literal_expression(element) || (first^.kind == types.TypeKind.ARRAY && element^.kind == ast.NodeKind.ARRAY_VALUE && len(element^.array_value^.elements) == 0) {
                 element_resolved = check_expression_as(checker, element, first)
             } otherwise {
                 element_resolved = resolve_expression(checker, element)
