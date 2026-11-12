@@ -12057,6 +12057,10 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
         char prefixed_type[MESSAGE_BUFFER_SIZE];
         module_member_key(checker, module_name, chain_type,
                           prefixed_type, sizeof(prefixed_type));
+        /* An alias of an enum names the enum it stands for */
+        const char *aliased_type = resolve_type_alias(checker, prefixed_type);
+        if (aliased_type != prefixed_type && is_enum_name(checker, aliased_type))
+            snprintf(prefixed_type, sizeof(prefixed_type), "%s", checker_resolve_enum_key(checker, aliased_type));
         /* Check if it's a module-qualified enum access */
         if (is_enum_name(checker, prefixed_type)) {
             /* Validate variant exists */
