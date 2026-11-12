@@ -1,0 +1,10 @@
+// expect-contains: .gray:
+import @maps
+
+do main() {
+    mut entries map[string:i64] = {"a": 1, "b": 2}
+    mut entries_pointer ^map[string:i64] = addr(entries)
+    for_each key in entries_pointer^ {
+        maps.clear(entries_pointer^)
+    }
+}

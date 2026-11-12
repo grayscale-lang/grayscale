@@ -1,0 +1,13 @@
+/*
+ * E1026_nul_byte_in_source.gray - placeholder for the E1026 diagnostic
+ * ("NUL byte in source file").
+ *
+ * E1026 can only be triggered by a source file that contains a raw NUL byte.
+ * The repository's sanity check treats any file containing a NUL byte as
+ * binary and blocks the pull request, so such a file cannot be committed.
+ * This file therefore contains no NUL byte and always passes.
+ */
+
+do main() {
+    println("ALL TESTS PASSED")
+}

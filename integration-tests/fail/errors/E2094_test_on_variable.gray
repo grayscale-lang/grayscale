@@ -1,0 +1,7 @@
+// expect-error: E2094
+// expect-error-count: 1
+
+#test
+const LIMIT i64 = 10
+
+do main() {}

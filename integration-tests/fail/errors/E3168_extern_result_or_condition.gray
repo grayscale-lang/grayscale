@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3168 - a C call result has no Grayscale type, so it cannot be
+ * the condition of an or.
+ */
+// expect-error: E3168
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    unsafe {
+        if false { println("f") } or extern.abs(3) { println("t") }
+    }
+}

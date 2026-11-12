@@ -1,10 +1,15 @@
-// test_markers.gray — Finds the #test markers in a source file for "gray test".
-// A marker is a line whose first non-blank content is the #test attribute,
-// stacked (#test) or inside a single-line list (#[test], #[doc("x"), test]).
+/*
+ * test_markers.gray:  Finds the #test markers in a source file for "gray test".
+ * A marker is a line whose first non-blank content is the #test attribute,
+ * stacked (#test) or inside a single-line list (#[test], #[doc("x"), test]).
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @strings
-import @arrays
-import @chars
+import @strings, @arrays, @chars
 import "./scanner"
 
 // TestMarker is one #test attribute and the function it applies to.

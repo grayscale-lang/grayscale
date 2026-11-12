@@ -1,11 +1,14 @@
-// new.gray — "gray new": scaffold a project from the embedded templates,
-// optionally prepending the quick-reference comment block to the entry file.
+/*
+ * new.gray:  "gray new": scaffold a project from the embedded templates,
+ * optionally prepending the quick-reference comment block to the entry file.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @maps
-import @path
-import @strings
-import @arrays
+import @io, @maps, @path, @strings, @arrays
 import "./args"
 import "./templates"
 

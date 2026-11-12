@@ -1,0 +1,11 @@
+/*
+ * println_eprintln_exit_no_arguments.gray - println() and eprintln() with no
+ * arguments print a bare newline, and exit() with no arguments compiles.
+ */
+
+do main() {
+    println()
+    eprintln()
+    println("  [PASS] println() and eprintln() with no arguments")
+    exit()
+}

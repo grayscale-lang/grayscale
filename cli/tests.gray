@@ -1,5 +1,5 @@
 /*
- * tests.gray - Grayscale language verification test suite
+ * tests.gray:  Grayscale language verification test suite.
  *
  * Covers: primitives, strings, control flow, loops, functions,
  * structs, enums, arrays, maps, casting, pointers, error handling,
@@ -16,6 +16,11 @@
  * Run with:
  *   gray verify
  *   ./grayc/grayc cli/tests.gray -o /tmp/out && /tmp/out
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
  */
 
 import @math, @strings, @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv, @crypto, @regex, @binary, @uuid, @mem, @csv, @runtime, @chars

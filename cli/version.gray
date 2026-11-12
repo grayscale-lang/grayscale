@@ -1,5 +1,12 @@
-// version.gray — The gray CLI version. Releases set it at build time with
-// -define:VERSION=...; a build without the flag reports the default.
+/*
+ * version.gray:  The gray CLI version. Releases set it at build time with
+ * -define:VERSION=...; a build without the flag reports the default.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @os
 

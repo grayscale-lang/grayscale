@@ -1,0 +1,4 @@
+do helper(counter ^i64, text string) -> string {
+    counter^ += 1
+    return "lib:${text}"
+}

@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5008 - input() called with an argument
+ * Expected: "'input()' expects 0 argument(s), got 1" error
+ */
+
+do main() {
+    line string = input("name: ")
+    println(line)
+}

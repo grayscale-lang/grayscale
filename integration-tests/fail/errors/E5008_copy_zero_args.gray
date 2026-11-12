@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - copy() called with no arguments
+ * Expected: "'copy()' expects 1 argument(s), got 0" error
+ */
+
+do main() {
+    copy()
+}

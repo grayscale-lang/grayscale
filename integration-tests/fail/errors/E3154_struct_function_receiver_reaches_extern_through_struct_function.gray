@@ -1,0 +1,15 @@
+// expect-error: E3154
+// expect-error-count: 1
+
+extern import "string.h"
+
+const Ctr struct {
+    n i64
+    do clear(self ^Ctr) { unsafe { extern.memset(self, 0, 8) } }
+    do twice(self ^Ctr) { self.clear() }
+}
+
+do main() {
+    mut c Ctr = Ctr{ n: 1 }
+    c.twice()
+}

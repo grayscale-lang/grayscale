@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3001 - void call assigned to an existing numeric variable
+ */
+
+do v() { println("v") }
+
+do main() {
+    mut x i64 = 0
+    x = v()
+}

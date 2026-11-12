@@ -124,7 +124,7 @@ make selfhost build
 make selfhost install
 ```
 
-The compiler is written in Grayscale, so building it needs a `gray` that is already installed. Download a release from the [Releases page](https://github.com/grayscale-lang/grayscale/releases) first, and either put `gray` on your `PATH` or in the repository root, or pass `GRAY=/path/to/gray` to `make`.
+The compiler is written in Grayscale. `make selfhost build` builds `grayc` from source first and uses it to build the compiler, so no installed `gray` is needed.
 
 `make install`, `gray update`, and `gray install` also install tab completion
 for your shell (bash, zsh, fish, or PowerShell) when its completion directory

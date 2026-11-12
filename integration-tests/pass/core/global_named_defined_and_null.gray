@@ -1,0 +1,19 @@
+/*
+ * global_named_defined_and_null.gray - file-scope variables named after the
+ * preprocessor operator `defined` and the C macro NULL must compile and run.
+ */
+
+const defined i64 = 1
+mut NULL i64 = 5
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if defined == 1 { passed += 1 } otherwise { failed += 1 }
+
+    NULL += 1
+    if NULL == 6 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3040 - multi-value call passed to fields()
+ */
+
+const Point struct {
+    x i64
+}
+
+do f() -> (Point, Error) { return Point{x: 1}, nil }
+
+do main() {
+    println(fields(f()))
+}

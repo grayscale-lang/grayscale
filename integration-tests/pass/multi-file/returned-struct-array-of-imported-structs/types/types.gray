@@ -1,0 +1,11 @@
+const Item struct {
+    name string
+}
+
+const Bag struct {
+    items [Item]
+}
+
+do empty_item() -> Item {
+    return Item{name: "None"}
+}

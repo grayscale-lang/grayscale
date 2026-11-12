@@ -3,11 +3,7 @@
  * Exercises: map[string:string] insert/lookup/delete, string splitting.
  */
 
-import @io
-import @os
-import @path
-import @strings
-import @maps
+import @io, @os, @path, @strings, @maps
 
 // The runner exports BENCH_GEN; running a workload by hand falls back to
 // benchmarks/.gen next to this file's directory.

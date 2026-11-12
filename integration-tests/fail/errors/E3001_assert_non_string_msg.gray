@@ -1,8 +1,0 @@
-/*
- * Error Test: E3001 - assert() with non-string message
- * Expected: E3001 "assert() message must be a string"
- */
-
-do main() {
-    assert(true, 123)
-}

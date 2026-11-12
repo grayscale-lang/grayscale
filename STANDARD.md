@@ -1888,6 +1888,8 @@ switch x {
 
 **Allowed condition types:** integer and float types, `string`, `char`, `bool`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
 
+A value matched by more than one branch, including through overlapping `range(...)` patterns, is error E2043.
+
 **Strict mode** requires all possible values to be handled:
 
 ```gray
@@ -1918,6 +1920,8 @@ do process_file() {
     // cleanup() will be called when function ends
 }
 ```
+
+A runtime panic, including a failed `assert`, does not run pending `defer`/`ensure` calls.
 
 `defer` is an alias for `ensure`. Both are valid, user's choice.
 
@@ -2577,7 +2581,8 @@ gray test ./src/...      Run the #test functions in every .gray file under a dir
 A failed `assert` — or any runtime panic — inside a `#test` function is
 reported as a test failure; the runner records it and continues with the
 remaining tests rather than aborting. `gray test` exits non-zero if any test
-fails or any file fails to compile.
+fails or any file fails to compile. A test that fails by `assert` or panic is
+abandoned at that point; its pending `defer`/`ensure` calls do not run.
 
 **Rules:**
 
@@ -3494,6 +3499,7 @@ assert(connected)  // message is optional
 **Rules:**
 - The condition must be a `bool`. Passing a non-bool is a compile-time error.
 - The optional message must be a `string`. Passing any other type is a compile-time error.
+- Both arguments are evaluated before `assert` runs, so the message expression is evaluated whether or not the condition holds.
 - If the condition is `true`, the program continues normally. `assert()` has no return value.
 
 #### Sleep Functions

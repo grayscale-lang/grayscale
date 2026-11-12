@@ -1,0 +1,77 @@
+/*
+ * c_reserved_names_variable_and_field.gray - names the C compiler reserves
+ * (defined, __func__, _Bool, the C11 keywords) work as variable and struct
+ * field names.
+ */
+
+const Reserved struct {
+    defined i64
+    __func__ i64
+    __FUNCTION__ i64
+    __PRETTY_FUNCTION__ i64
+    _Bool i64
+    _Complex i64
+    _Atomic i64
+    _Alignas i64
+    _Alignof i64
+    _Generic i64
+    _Noreturn i64
+    _Static_assert i64
+    _Thread_local i64
+}
+
+do check(label string, actual i64) {
+    if actual == 1 {
+        println("  [PASS] ${label}")
+    } else {
+        println("  [FAIL] ${label}: ${actual}")
+    }
+}
+
+do main() {
+    defined i64 = 1
+    __func__ i64 = 1
+    __FUNCTION__ i64 = 1
+    __PRETTY_FUNCTION__ i64 = 1
+    _Bool i64 = 1
+    _Complex i64 = 1
+    _Atomic i64 = 1
+    _Alignas i64 = 1
+    _Alignof i64 = 1
+    _Generic i64 = 1
+    _Noreturn i64 = 1
+    _Static_assert i64 = 1
+    _Thread_local i64 = 1
+    check("variable defined", defined)
+    check("variable __func__", __func__)
+    check("variable __FUNCTION__", __FUNCTION__)
+    check("variable __PRETTY_FUNCTION__", __PRETTY_FUNCTION__)
+    check("variable _Bool", _Bool)
+    check("variable _Complex", _Complex)
+    check("variable _Atomic", _Atomic)
+    check("variable _Alignas", _Alignas)
+    check("variable _Alignof", _Alignof)
+    check("variable _Generic", _Generic)
+    check("variable _Noreturn", _Noreturn)
+    check("variable _Static_assert", _Static_assert)
+    check("variable _Thread_local", _Thread_local)
+
+    item Reserved = Reserved{
+        defined: 1, __func__: 1, __FUNCTION__: 1, __PRETTY_FUNCTION__: 1,
+        _Bool: 1, _Complex: 1, _Atomic: 1, _Alignas: 1, _Alignof: 1,
+        _Generic: 1, _Noreturn: 1, _Static_assert: 1, _Thread_local: 1
+    }
+    check("field defined", item.defined)
+    check("field __func__", item.__func__)
+    check("field __FUNCTION__", item.__FUNCTION__)
+    check("field __PRETTY_FUNCTION__", item.__PRETTY_FUNCTION__)
+    check("field _Bool", item._Bool)
+    check("field _Complex", item._Complex)
+    check("field _Atomic", item._Atomic)
+    check("field _Alignas", item._Alignas)
+    check("field _Alignof", item._Alignof)
+    check("field _Generic", item._Generic)
+    check("field _Noreturn", item._Noreturn)
+    check("field _Static_assert", item._Static_assert)
+    check("field _Thread_local", item._Thread_local)
+}

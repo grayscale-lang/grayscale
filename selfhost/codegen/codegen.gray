@@ -458,26 +458,15 @@ fn table_type(generator ^CodeGen, node ^ast.AstNode) -> string {
 fn expr_type(generator ^CodeGen, node ^ast.AstNode) -> string {
     if node^.resolved_type == "" {
         // code the checker never reached (after a return) still has a literal's own type
-        #strict
         when node^.kind {
             is ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING { return "string" }
             is ast.NodeKind.INT_VALUE { return "i64" }
             is ast.NodeKind.FLOAT_VALUE { return "f64" }
             is ast.NodeKind.BOOL_VALUE { return "bool" }
             is ast.NodeKind.CHAR_VALUE { return "char" }
-            is ast.NodeKind.LABEL, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-            ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-            ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-            ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-            ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-            ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-            ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-            ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-            ast.NodeKind.PROGRAM {}
+            // These kinds are not plain literals, so they have no literal type
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
     }
     if len(generator^.generics.names) > 0 && (node^.resolved_type == "unknown" || strings.starts_with(node^.resolved_type, "?")) {
@@ -957,7 +946,7 @@ fn gen_postfix(generator ^CodeGen, node ^ast.AstNode) -> string {
         }
         mut step_kind = token.TokenKind.PLUS
         if node^.postfix^.op == token.TokenKind.DECREMENT { step_kind = token.TokenKind.MINUS }
-        step_result = checked_arithmetic(generator, node, expr_type(generator, inner), step_kind, "(*_lv)", "1")
+        step_result = checked_arithmetic(generator, node, expr_type(generator, inner), step_kind, "(*_lv)", "1", false)
         if step_result != "" {
             return "({ ${ctype(generator, expr_type(generator, inner))} *_lv = ${place_address(generator, inner)}; *_lv = ${step_result}; })"
         }
@@ -1624,7 +1613,7 @@ fn gen_shift(generator ^CodeGen, node ^ast.AstNode, operator token.TokenKind) ->
     }
     mut width_type = c_name
     if operator == token.TokenKind.BIT_SHIFT_LEFT { width_type = unsigned_name }
-    return "({ int64_t _sa = ${shift_amount(generator, right_node, bits - 1)}; if (_sa < 0 || _sa >= ${bits}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0092\", \"shift amount %lld is out of range; must be in [0, %d] for this operand type\", (long long)_sa, ${bits - 1}); } (${c_name})((${width_type})(${gen_expr(generator, left_node)}) ${op_text(operator)} (int)_sa); })"
+    return "({ __auto_type _sv = (${gen_expr(generator, left_node)}); int64_t _sa = ${shift_amount(generator, right_node, bits - 1)}; if (_sa < 0 || _sa >= ${bits}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0092\", \"shift amount %lld is out of range; must be in [0, %d] for this operand type\", (long long)_sa, ${bits - 1}); } (${c_name})((${width_type})(_sv) ${op_text(operator)} (int)_sa); })"
 }
 
 // The wide integer type an operation on operands of these types runs in, or ""
@@ -1702,7 +1691,7 @@ fn sized_bounds(type_name string) -> (string, string) {
 
 // `left operator right` for + - * / % computed in the number type `type_name`: overflow checks on
 // + - *, division by zero and MIN / -1 on / and %. Returns "" for a type with no check.
-fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, operator token.TokenKind, left string, right string) -> string {
+fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, operator token.TokenKind, left string, right string, sequenced bool) -> string {
     is_division = operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT
     if !is_division && operator != token.TokenKind.PLUS && operator != token.TokenKind.MINUS && operator != token.TokenKind.ASTERISK { return "" }
     line = node^.tok.line
@@ -1710,7 +1699,7 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
         if !is_division { return "" }
         mut float_c_name = "double"
         if type_name == "f32" { float_c_name = "float" }
-        return "({ ${float_c_name} _dv = ${right}; if (_dv == 0) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } (${float_c_name})${left} / _dv; })"
+        return "({ ${float_c_name} _dn = (${float_c_name})(${left}); ${float_c_name} _dv = ${right}; if (_dv == 0) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } _dn / _dv; })"
     }
     is_unsigned = is_unsigned_int_name(type_name) && !is_wide_name(type_name)
     is_signed = (is_signed_int_name(type_name) && !is_wide_name(type_name)) || type_name == "char"
@@ -1725,21 +1714,45 @@ fn checked_arithmetic(generator ^CodeGen, node ^ast.AstNode, type_name string, o
             c_operator = "/"
         }
         if is_unsigned {
-            return "({ __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } ${left} ${c_operator} _dv; })"
+            return "({ __auto_type _dn = ${left}; __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } _dn ${c_operator} _dv; })"
         }
         mut minimum_text = "(-9223372036854775807LL - 1)"
         if is_sized { minimum_text = sized_minimum }
-        return "({ __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } __auto_type _dn = ${left}; if ((int64_t)_dn == ${minimum_text} && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${c_operator} _dv; })"
+        return "({ __auto_type _dn = ${left}; __auto_type _dv = ${right}; if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } if ((int64_t)_dn == ${minimum_text} && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${c_operator} _dv; })"
     }
     mut verb = "mul"
     if operator == token.TokenKind.PLUS { verb = "add" }
     if operator == token.TokenKind.MINUS { verb = "sub" }
-    if is_sized {
-        if is_unsigned { return "gray_usized_${verb}_check(${left}, ${right}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
-        return "gray_sized_${verb}_check(${left}, ${right}, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
+    // C does not order the arguments of a call, so operands that call are hoisted to run left first.
+    mut first = left
+    mut second = right
+    if sequenced {
+        first = "_ln"
+        second = "_rn"
     }
-    if is_unsigned { return "gray_u${verb}_check(${left}, ${right}, \"${generator^.file}\", ${line})" }
-    return "gray_${verb}_check(${left}, ${right}, \"${generator^.file}\", ${line})"
+    mut checked = "gray_${verb}_check(${first}, ${second}, \"${generator^.file}\", ${line})"
+    if is_unsigned { checked = "gray_u${verb}_check(${first}, ${second}, \"${generator^.file}\", ${line})" }
+    if is_sized {
+        checked = "gray_sized_${verb}_check(${first}, ${second}, ${sized_minimum}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})"
+        if is_unsigned { checked = "gray_usized_${verb}_check(${first}, ${second}, ${sized_maximum}, \"${type_name}\", \"${generator^.file}\", ${line})" }
+    }
+    if sequenced { return "({ __auto_type _ln = ${left}; __auto_type _rn = ${right}; ${checked}; })" }
+    return checked
+}
+
+// True when evaluating `node` can run a call, so its position in the order of evaluation is observable.
+fn contains_call(node ^ast.AstNode) -> bool {
+    if node == nil { return false }
+    when node^.kind {
+        is ast.NodeKind.CALL_EXPR { return true }
+        is ast.NodeKind.INFIX_EXPR { return contains_call(node^.infix^.left) || contains_call(node^.infix^.right) }
+        is ast.NodeKind.PREFIX_EXPR { return contains_call(node^.prefix^.right) }
+        is ast.NodeKind.POSTFIX_EXPR { return contains_call(node^.postfix^.left) }
+        is ast.NodeKind.MEMBER_EXPR { return contains_call(node^.member^.object) }
+        is ast.NodeKind.INDEX_EXPR { return contains_call(node^.index_data^.left) || contains_call(node^.index_data^.index_expr) }
+        is ast.NodeKind.CAST_EXPR { return contains_call(node^.cast_data^.value) }
+        default { return false }
+    }
 }
 
 fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
@@ -1779,7 +1792,7 @@ fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
 
     mut result_type = expr_type(generator, node)
     if result_type == "" { result_type = operand_type }
-    checked_result = checked_arithmetic(generator, node, result_type, operator, "(${left})", "(${right})")
+    checked_result = checked_arithmetic(generator, node, result_type, operator, "(${left})", "(${right})", contains_call(node^.infix^.left) || contains_call(node^.infix^.right))
     if checked_result != "" { return checked_result }
 
     if operator == token.TokenKind.PLUS || operator == token.TokenKind.MINUS || operator == token.TokenKind.ASTERISK || operator == token.TokenKind.SLASH || operator == token.TokenKind.PERCENT {
@@ -1794,7 +1807,7 @@ fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
 // Division and modulo trap on a zero divisor and on MIN / -1.
 fn gen_division(generator ^CodeGen, node ^ast.AstNode, left string, right string, operator string, what string) -> string {
     line = node^.tok.line
-    return "({ __auto_type _dv = (${right}); if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } __auto_type _dn = (${left}); if ((int64_t)_dn == (-9223372036854775807LL - 1) && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${operator} _dv; })"
+    return "({ __auto_type _dn = (${left}); __auto_type _dv = (${right}); if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } if ((int64_t)_dn == (-9223372036854775807LL - 1) && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${operator} _dv; })"
 }
 
 fn gen_struct_literal(generator ^CodeGen, node ^ast.AstNode) -> string {
@@ -2123,7 +2136,7 @@ fn address_of_arg(generator ^CodeGen, arg ^ast.AstNode) -> string {
 
 fn gen_args(generator ^CodeGen, arguments [^ast.AstNode]) -> string {
     mut pieces [string] = {}
-    for_each arg in arguments { arrays.append(pieces, gen_expr(generator, arg)) }
+    for_each argument in arguments { arrays.append(pieces, gen_expr(generator, argument)) }
     return strings.join(pieces, ", ")
 }
 
@@ -2396,22 +2409,22 @@ fn indent_print_block(generator ^CodeGen, text string, extra_level i64) -> strin
 }
 
 // The runtime print function for a value of this type.
-fn print_call(generator ^CodeGen, variant string, arg string, type_name string) -> string {
-    if type_name == "Error" { return "gray_builtin_${variant}_str((${arg}) ? (${arg})->msg : gray_string_lit(\"nil\"))" }
-    if is_error_code_type(generator, type_name) { return "gray_builtin_${variant}_str(gray_string_lit(gray_error_code_name((int64_t)(${arg}))))" }
-    if is_string_enum(generator, type_name) { return "gray_builtin_${variant}_str(${arg})" }
+fn print_call(generator ^CodeGen, variant string, argument string, type_name string) -> string {
+    if type_name == "Error" { return "gray_builtin_${variant}_str((${argument}) ? (${argument})->msg : gray_string_lit(\"nil\"))" }
+    if is_error_code_type(generator, type_name) { return "gray_builtin_${variant}_str(gray_string_lit(gray_error_code_name((int64_t)(${argument}))))" }
+    if is_string_enum(generator, type_name) { return "gray_builtin_${variant}_str(${argument})" }
     if type_name == "UUID" { return "gray_builtin_${variant}_str(gray_string_lit(\"UUID{}\"))" }
-    if is_wide_name(type_name) { return "gray_builtin_${variant}_str(${wide_prefix(type_name)}_to_string(gray_default_arena, ${arg}))" }
-    if type_name == "string" { return "gray_builtin_${variant}_str(${arg})" }
-    if type_name == "bool" { return "gray_builtin_${variant}_bool(${arg})" }
-    if type_name == "char" { return "gray_builtin_${variant}_char(${arg})" }
+    if is_wide_name(type_name) { return "gray_builtin_${variant}_str(${wide_prefix(type_name)}_to_string(gray_default_arena, ${argument}))" }
+    if type_name == "string" { return "gray_builtin_${variant}_str(${argument})" }
+    if type_name == "bool" { return "gray_builtin_${variant}_bool(${argument})" }
+    if type_name == "char" { return "gray_builtin_${variant}_char(${argument})" }
     if is_float_name(type_name) {
         bits = F64_BITS
         if type_name == "f32" { bits = F32_BITS }
-        return "gray_builtin_${variant}_floating_point(${arg}, ${bits})"
+        return "gray_builtin_${variant}_floating_point(${argument}, ${bits})"
     }
-    if is_unsigned_int_name(type_name) { return "gray_builtin_${variant}_u64(${arg})" }
-    return "gray_builtin_${variant}_i64(${arg})"
+    if is_unsigned_int_name(type_name) { return "gray_builtin_${variant}_u64(${argument})" }
+    return "gray_builtin_${variant}_i64(${argument})"
 }
 
 // The instantiation a call to generic function `callee_decl` selects: the type
@@ -2511,9 +2524,12 @@ fn gen_here(callee ^ast.AstNode) -> string {
 fn gen_embed(generator ^CodeGen, arg ^ast.AstNode) -> string {
     embed_path = ast.ast_string_decode(arg^.string_value)
     mut resolved = embed_path
-    slash = strings.last_index_of(generator^.file, "/")
+    // The argument's own token names the file holding the call; a file-scope
+    // initializer of an imported module is generated with generator^.file on the entry file.
+    source_file = arg^.tok.file
+    slash = strings.last_index_of(source_file, "/")
     if !strings.starts_with(embed_path, "/") && slash >= 0 {
-        resolved = "${strings.slice(generator^.file, 0, slash + 1)}${embed_path}"
+        resolved = "${strings.slice(source_file, 0, slash + 1)}${embed_path}"
     }
     data [u8], read_err = io.read_bytes(resolved)
     if read_err != nil {
@@ -2740,6 +2756,8 @@ fn gen_call(generator ^CodeGen, node ^ast.AstNode) -> string {
     if callee^.kind == ast.NodeKind.LABEL {
         name = callee^.label^.value
         if name == "println" || name == "print" || name == "eprintln" || name == "eprint" {
+            if len(arguments) == 0 && name == "println" { return "putchar('\\n')" }
+            if len(arguments) == 0 { return "fputc('\\n', stderr)" }
             if arguments[0]^.kind == ast.NodeKind.NIL_VALUE { return "gray_builtin_${name}_str(gray_string_lit(\"nil\"))" }
             if (is_composite_print_type(generator, expr_type(generator, arguments[0])) || expr_type(generator, arguments[0]) == "UUID") && !maps.contains_key(generator^.enums, expr_type(generator, arguments[0])) {
                 return composite_print(generator, name, arguments[0])
@@ -2764,6 +2782,7 @@ fn gen_call(generator ^CodeGen, node ^ast.AstNode) -> string {
             if is_map_type(expr_type(generator, arguments[0])) { return "(int64_t)(${gen_expr(generator, arguments[0])}).count" }
             return "(int64_t)(${gen_expr(generator, arguments[0])}).len"
         }
+        if name == "exit" && len(arguments) == 0 { return "gray_builtin_exit(0)" }
         if name == "exit" || name == "system" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" || name == "char_count" {
             return "gray_builtin_${name}(${gen_args(generator, arguments)})"
         }
@@ -3120,8 +3139,8 @@ fn format_segmented(generator ^CodeGen, node ^ast.AstNode, values FormatValues, 
     mut stream = "stdout"
     if prefix == "fprintf(stderr, " { stream = "stderr" }
     unique_id = next_id(generator)
-    mut out string = "({ "
-    if to_string { out = "({ GrayFmtOut _gray_fs${unique_id} = {0}; " }
+    mut output string = "({ "
+    if to_string { output = "({ GrayFmtOut _gray_fs${unique_id} = {0}; " }
     mut segment_start i64 = 0
     mut segment_first_value i64 = 0
     mut value_index i64 = 0
@@ -3138,25 +3157,25 @@ fn format_segmented(generator ^CodeGen, node ^ast.AstNode, values FormatValues, 
         if segment_end > segment_start || (is_last && newline) {
             segment = strings.slice(text, segment_start, segment_end)
             if to_string {
-                out = "${out}gray_fmt_out_printf(&_gray_fs${unique_id}, "
+                output = "${output}gray_fmt_out_printf(&_gray_fs${unique_id}, "
             } otherwise {
-                out = "${out}fprintf(${stream}, "
+                output = "${output}fprintf(${stream}, "
             }
-            out = "${out}${format_normalized(generator, values, segment, is_last && newline, segment_first_value)}${format_arguments(generator, node, values, segment, true, segment_first_value)}); "
+            output = "${output}${format_normalized(generator, values, segment, is_last && newline, segment_first_value)}${format_arguments(generator, node, values, segment, true, segment_first_value)}); "
         }
         if is_last { break }
-        out = "${out}{ GrayString _gray_fv = ${format_string_value(generator, node, values, directives[index], value_index)}"
+        output = "${output}{ GrayString _gray_fv = ${format_string_value(generator, node, values, directives[index], value_index)}"
         if to_string {
-            out = "${out}; gray_fmt_out_write(_gray_fv.data, 1, (size_t)_gray_fv.len, &_gray_fs${unique_id}); } "
+            output = "${output}; gray_fmt_out_write(_gray_fv.data, 1, (size_t)_gray_fv.len, &_gray_fs${unique_id}); } "
         } otherwise {
-            out = "${out}; fwrite(_gray_fv.data, 1, (size_t)_gray_fv.len, ${stream}); } "
+            output = "${output}; fwrite(_gray_fv.data, 1, (size_t)_gray_fv.len, ${stream}); } "
         }
         value_index = value_index + 1
         segment_start = directives[index].end
         segment_first_value = value_index
     }
-    if to_string { return "${out}gray_fmt_out_finish(gray_default_arena, &_gray_fs${unique_id}); })" }
-    return "${out}(void)0; })"
+    if to_string { return "${output}gray_fmt_out_finish(gray_default_arena, &_gray_fs${unique_id}); })" }
+    return "${output}(void)0; })"
 }
 
 fn gen_format_call(generator ^CodeGen, node ^ast.AstNode, prefix string, newline bool) -> string {
@@ -4187,6 +4206,10 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
         return
     }
     if gen_pointer_assignment(generator, node) { return }
+    replaced_type = declared_target_type(generator, data^.target)
+    if data^.op == token.TokenKind.ASSIGN && maps.contains_key(generator^.structs, replaced_type) && !expression_calls_function(data^.target) {
+        emit_struct_map_iteration_checks(generator, node, data^.target, replaced_type, "", 0)
+    }
     if gen_value_assignment(generator, node) { return }
     target_type = declared_target_type(generator, data^.target)
     expect_type(data^.value, target_type)
@@ -4197,7 +4220,9 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
             whole_code = "P0035"
             whole_text = "cannot modify map during for_each iteration"
         }
-        emit_line(generator, "if (gray_atomic_load32(&(${gen_expr(generator, data^.target)}).iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${whole_code}\", \"${whole_text}\"); }")
+        mut whole_test = "gray_atomic_load32(&(${gen_expr(generator, data^.target)}).iterating) > 0"
+        if is_map_type(target_type) { whole_test = "gray_map_iterating(&(${gen_expr(generator, data^.target)}))" }
+        emit_line(generator, "if (${whole_test}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${whole_code}\", \"${whole_text}\"); }")
     }
     // the array indexes of a plain store into a field are worked out before the value
     mut hoisted_prefix = ""
@@ -4428,7 +4453,7 @@ fn gen_value_assignment(generator ^CodeGen, node ^ast.AstNode) -> bool {
             opener = "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; "
             closer = "; gray_default_arena = _esc_m; }"
         }
-        emit_line(generator, "{ GrayMap _ma${id} = ${value_text}; if (gray_atomic_load32(&${target_text}.iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); } ${opener}${target_text} = ${value_deep_copy(generator, target_type, "_ma${id}")}${closer}")
+        emit_line(generator, "{ GrayMap _ma${id} = ${value_text}; if (gray_map_iterating(&${target_text})) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); } ${opener}${target_text} = ${value_deep_copy(generator, target_type, "_ma${id}")}${closer}")
         return true
     }
     is_struct_target = maps.contains_key(generator^.structs, target_type)
@@ -4662,7 +4687,7 @@ fn compound_value(generator ^CodeGen, node ^ast.AstNode, target string, value st
         wide_result = wide_binary(wide_prefix(operand_type), operator, target, value, location_args(generator, node))
         if wide_result != "" { return wide_result }
     }
-    checked_result = checked_arithmetic(generator, node, operand_type, operator, target, "(${value})")
+    checked_result = checked_arithmetic(generator, node, operand_type, operator, target, "(${value})", false)
     if checked_result != "" { return checked_result }
     return "(${target} ${op_text(operator)} (${value}))"
 }
@@ -5021,13 +5046,22 @@ fn gen_for_each_map(generator ^CodeGen, node ^ast.AstNode) {
     id = next_id(generator)
     mut source = gen_expr(generator, data^.collection)
     needs_snapshot = data^.collection^.kind != ast.NodeKind.LABEL
+    mut guard_source = source
     if needs_snapshot {
-        emit(generator, "{ GrayMap _gray_map${id} = ${source};\n")
+        if is_real_collection_path(data^.collection) {
+            // the guard sits on the map the caller can still reach, not on the snapshot
+            emit(generator, "{ GrayMap *_gray_mapp${id} = &(${source}); GrayMap _gray_map${id} = *_gray_mapp${id};\n")
+            guard_source = "(*_gray_mapp${id})"
+        } otherwise {
+            // a map reached through a call: the counter lives with the map's storage, where every copy finds it
+            emit(generator, "{ GrayMap _gray_map${id} = ${source};\n")
+            guard_source = "(*gray_map_guard_of(&_gray_map${id}))"
+        }
         emit_indent(generator)
         source = "_gray_map${id}"
     }
-    arrays.append(generator^.iterating, source)
-    emit(generator, "gray_atomic_add32(&${source}.iterating, 1);\n")
+    arrays.append(generator^.iterating, guard_source)
+    emit(generator, "gray_atomic_add32(&${guard_source}.iterating, 1);\n")
     emit_line(generator, "for (int32_t _gray_mi${id} = 0; _gray_mi${id} < ${source}.order_len; _gray_mi${id}++) {")
     generator^.indent = generator^.indent + 1
     emit_line(generator, "int32_t _gray_sl${id} = ${source}.order[_gray_mi${id}];")
@@ -5046,7 +5080,7 @@ fn gen_for_each_map(generator ^CodeGen, node ^ast.AstNode) {
     emit_line(generator, "}")
     end_loop(generator, node)
     mut _ = arrays.remove_last(generator^.iterating)
-    emit_line(generator, "gray_atomic_sub32(&${source}.iterating, 1);")
+    emit_line(generator, "gray_atomic_sub32(&${guard_source}.iterating, 1);")
     if needs_snapshot { emit_line(generator, "}") }
 }
 
@@ -5083,7 +5117,7 @@ fn gen_for_each_inner(generator ^CodeGen, node ^ast.AstNode) {
     needs_snapshot = collection^.kind != ast.NodeKind.LABEL
     mut guard_source = source
     if needs_snapshot {
-        if is_real_array_path(collection) {
+        if is_real_collection_path(collection) {
             // the guard sits on the array the caller can still reach, not on the snapshot
             emit(generator, "{ GrayArray *_gray_arrp${id} = &(${source}); GrayArray _gray_arr${id} = *_gray_arrp${id};\n")
             guard_source = "(*_gray_arrp${id})"
@@ -5443,7 +5477,7 @@ fn gen_function(generator ^CodeGen, node ^ast.AstNode, concrete string, owner st
         generator^.generics = ast.generic_bindings_init(function_data, concrete)
     }
     mut eff_returns [string] = {}
-    for_each rt in function_data^.return_types { arrays.append(eff_returns, eff(generator, rt)) }
+    for_each return_type in function_data^.return_types { arrays.append(eff_returns, eff(generator, return_type)) }
     generator^.return_types = eff_returns
     generator^.multi_name = multi_return_type_name(function_data, fn_name)
     generator^.ref_params = {}
@@ -6072,7 +6106,10 @@ fn generate_program(program ^ast.AstNode, file string) -> string {
     // The names the program uses as written may be macros in the C headers
     mut undefines string = ""
     identifiers = identifiers_in_emission_order(generator, undefine_index + 1, main_index)
-    for_each identifier in identifiers { undefines = "${undefines}#undef ${identifier}\n" }
+    // `defined` is a preprocessor operator that #undef rejects, and the generated code itself uses the NULL macro
+    for_each identifier in identifiers {
+        if identifier != "defined" && identifier != "NULL" { undefines = "${undefines}#undef ${identifier}\n" }
+    }
     generator^.out[collection_include_index] = "${generator^.out[collection_include_index]}${collection_includes}"
     generator^.out[undefine_index] = "${generator^.out[undefine_index]}${undefines}"
     return strings.join(generator^.out, "")
@@ -7473,8 +7510,8 @@ fn narrow_c_value(generator ^CodeGen, target string, node ^ast.AstNode) -> strin
     return "(${ctype(generator, target)})gray_cast_check(${c_value_as(generator, value, false, line)}, ${cast_bounds_arguments(generator, sized_minimum, sized_maximum, false, target, line)})"
 }
 
-// Does the expression name an array reachable from a variable (through fields, indexes, dereferences)?
-fn is_real_array_path(node ^ast.AstNode) -> bool {
+// Does the expression name an array or map reachable from a variable (through fields, indexes, dereferences)?
+fn is_real_collection_path(node ^ast.AstNode) -> bool {
     mut current ^ast.AstNode = node
     as_long_as current != nil {
         if current^.kind == ast.NodeKind.MEMBER_EXPR {
@@ -7488,6 +7525,20 @@ fn is_real_array_path(node ^ast.AstNode) -> bool {
         }
     }
     return current != nil && current^.kind == ast.NodeKind.LABEL
+}
+
+// Replacing a struct replaces every map it holds, so each map field, at any depth of by-value
+// structs, is checked the way a map assigned to directly is.
+fn emit_struct_map_iteration_checks(generator ^CodeGen, node ^ast.AstNode, target ^ast.AstNode, struct_name string, field_prefix string, depth i64) {
+    if depth >= 8 || !maps.contains_key(generator^.structs, struct_name) { return }
+    for_each field in generator^.structs[struct_name]^.struct_decl^.struct_fields {
+        field_path = "${field_prefix}.${field.name}"
+        if is_map_type(field.type_name) {
+            emit_line(generator, "if (gray_map_iterating(&((${gen_expr(generator, target)})${field_path}))) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"P0035\", \"cannot modify map during for_each iteration\"); }")
+        } otherwise {
+            emit_struct_map_iteration_checks(generator, node, target, field.type_name, field_path, depth + 1)
+        }
+    }
 }
 
 // The containers an element write reaches through: `g` in `g[0][1] = v`. Each is checked, so a
@@ -7512,7 +7563,9 @@ fn enclosing_iteration_checks(generator ^CodeGen, node ^ast.AstNode, array_expre
                 panic_code = "P0035"
                 panic_text = "cannot modify map during for_each iteration"
             }
-            checks = "${checks}if (gray_atomic_load32(&(${gen_expr(generator, container)}).iterating) > 0) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${panic_code}\", \"${panic_text}\"); } "
+            mut container_test = "gray_atomic_load32(&(${gen_expr(generator, container)}).iterating) > 0"
+            if is_map_type(container_type) { container_test = "gray_map_iterating(&(${gen_expr(generator, container)}))" }
+            checks = "${checks}if (${container_test}) { gray_panic_code_at(\"${generator^.file}\", ${node^.tok.line}, \"${panic_code}\", \"${panic_text}\"); } "
             current = container
         } otherwise {
             return checks

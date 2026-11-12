@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2043 - two stepped ranges that reach the same value repeat it.
+ */
+// expect-error: E2043
+// expect-error-count: 1
+
+do main() {
+    mut n i64 = 3
+    when n {
+        is range(0, 20, 4) { println("first") }
+        is range(2, 30, 6) { println("second") }
+        default { println("other") }
+    }
+}

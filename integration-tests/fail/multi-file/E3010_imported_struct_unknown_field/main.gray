@@ -1,0 +1,6 @@
+import "./types"
+import @arrays
+
+do main() {
+    mut o types.Outer = types.Outer{zz: 1}
+}

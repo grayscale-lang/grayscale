@@ -1,7 +1,14 @@
-// completion_scripts.gray — The shell scripts behind `gray completion <shell>`.
-// Each one asks `gray @@REQUEST@@` for the choices on every Tab press;
-// completion_script() in args.gray fills @@REQUEST@@ in. A raw string cannot
-// hold a backtick, so PowerShell's escape character is written @@TICK@@.
+/*
+ * completion_scripts.gray:  The shell scripts behind `gray completion <shell>`.
+ * Each one asks `gray @@REQUEST@@` for the choices on every Tab press;
+ * completion_script() in args.gray fills @@REQUEST@@ in. A raw string cannot
+ * hold a backtick, so PowerShell's escape character is written @@TICK@@.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 const COMPLETION_BASH string = `# bash completion V2 for gray                                 -*- shell-script -*-
 

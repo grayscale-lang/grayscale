@@ -1,12 +1,17 @@
-// fmt.gray — Self-hosted `gray fmt`. Runs `grayc --fmt` on each file, then
-// normalizes the text: leading tabs become four spaces, trailing whitespace is
-// stripped, runs of blank lines collapse to two, and the file ends in exactly
-// one newline. CRLF line endings are kept. `--check` formats a temporary copy
-// and reports `would format: <path>` for each file that differs.
+/*
+ * fmt.gray:  Self-hosted `gray fmt`. Runs `grayc --fmt` on each file, then
+ * normalizes the text: leading tabs become four spaces, trailing whitespace is
+ * stripped, runs of blank lines collapse to two, and the file ends in exactly
+ * one newline. CRLF line endings are kept. `--check` formats a temporary copy
+ * and reports `would format: <path>` for each file that differs.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @strings
-import @arrays
+import @io, @strings, @arrays
 import "./driver"
 import "./scanner"
 import "./sources"

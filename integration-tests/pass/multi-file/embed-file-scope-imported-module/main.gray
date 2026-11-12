@@ -1,0 +1,21 @@
+import "./sub"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if sub.A == "embedded\n" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] expected the embedded file contents, got ${sub.A}")
+        failed += 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

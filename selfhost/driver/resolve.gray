@@ -142,7 +142,6 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
         mut name string = ""
         mut is_private = false
         mut is_alias = false
-        #strict
         when statement^.kind {
             is ast.NodeKind.FUNC_DECL {
                 name = statement^.func_decl^.name
@@ -165,19 +164,9 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
                 is_private = statement^.alias_decl^.is_private
                 is_alias = true
             }
-            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-            ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-            ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-            ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-            ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-            ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-            ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-            ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-            ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+            // Expressions and statements declare no top-level name
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
         if !is_private { continue }
         mangled string = mangle(module_name, name)
@@ -232,7 +221,7 @@ fn qualify_word(qualifier ^Qualifier, word string) -> string {
 // `map[string:Bar]`.
 fn qualify_type(qualifier ^Qualifier, type_name string) -> string {
     if type_name == "" { return type_name }
-    mut out string = ""
+    mut output string = ""
     mut i i64 = 0
     n i64 = len(type_name)
     as_long_as i < n {
@@ -242,13 +231,13 @@ fn qualify_type(qualifier ^Qualifier, type_name string) -> string {
             as_long_as i < n && (is_ident_byte(strings.char_at(type_name, i)) || strings.char_at(type_name, i) == '.') {
                 i = i + 1
             }
-            out = "${out}${qualify_word(qualifier, strings.slice(type_name, start, i))}"
+            output = "${output}${qualify_word(qualifier, strings.slice(type_name, start, i))}"
         } otherwise {
-            out = "${out}${strings.slice(type_name, i, i + 1)}"
+            output = "${output}${strings.slice(type_name, i, i + 1)}"
             i = i + 1
         }
     }
-    return out
+    return output
 }
 
 fn qualify_types(qualifier ^Qualifier, names [string]) -> [string] {
@@ -271,7 +260,6 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
     outer_column i64 = qualifier^.outer_column
     qualifier^.outer_line = 0
     qualifier^.outer_column = 0
-    #strict
     when node^.kind {
         is ast.NodeKind.LABEL {
             if maps.contains_key(qualifier^.locals, node^.label^.value) {
@@ -477,11 +465,9 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
             }
             node^.enum_decl^.values = new_values
         }
-        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL,
-        ast.NodeKind.PROGRAM {}
+        // These kinds have no child nodes to qualify
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -519,26 +505,15 @@ fn qualify_program(program ^ast.AstNode, module_name string, file string, aliase
     qualifier^.used_decls = used_decls
     mut decls [string:bool] = {:}
     for_each statement in program^.program^.stmts {
-        #strict
         when statement^.kind {
             is ast.NodeKind.FUNC_DECL { decls[statement^.func_decl^.name] = true }
             is ast.NodeKind.STRUCT_DECL { decls[statement^.struct_decl^.name] = true }
             is ast.NodeKind.ENUM_DECL { decls[statement^.enum_decl^.name] = true }
             is ast.NodeKind.VAR_DECL { decls[statement^.var_decl^.name] = true }
             is ast.NodeKind.ALIAS_DECL { decls[statement^.alias_decl^.name] = true }
-            is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE,
-            ast.NodeKind.STRING_VALUE, ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE,
-            ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE,
-            ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR,
-            ast.NodeKind.INFIX_EXPR, ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR,
-            ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR,
-            ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-            ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-            ast.NodeKind.USING_STMT, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+            // Every other node kind is an expression or statement that only appears inside a function body
+            // If a new NodeKind can declare a top-level name, add a branch for it above
+            default {}
         }
     }
     // Names only another file of the same directory module declares
@@ -559,7 +534,7 @@ fn bind_local(qualifier ^Qualifier, name string) {
 
 // Names C reserves or the C headers define; the generated code spells them `_gray_NAME`.
 fn is_c_keyword(name string) -> bool {
-    return arrays.contains({"EOF", "NULL", "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "errno", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "stderr", "stdin", "stdout", "struct", "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while"}, name)
+    return arrays.contains({"EOF", "NULL", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic", "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local", "__FUNCTION__", "__PRETTY_FUNCTION__", "__alignof", "__alignof__", "__asm", "__asm__", "__attribute", "__attribute__", "__auto_type", "__complex", "__complex__", "__const", "__const__", "__extension__", "__func__", "__imag__", "__inline", "__inline__", "__int128", "__label__", "__real__", "__restrict", "__restrict__", "__signed", "__signed__", "__thread", "__typeof", "__typeof__", "__volatile", "__volatile__", "auto", "bool", "break", "case", "char", "const", "continue", "default", "defined", "do", "double", "else", "enum", "errno", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof", "static", "stderr", "stdin", "stdout", "struct", "switch", "true", "typedef", "union", "unsigned", "void", "volatile", "while"}, name)
 }
 
 // A local, parameter or loop variable under the name the generated C uses.

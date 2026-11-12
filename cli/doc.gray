@@ -1,12 +1,15 @@
-// doc.gray — Documentation generator for Grayscale source files ("gray doc").
-// Extracts #doc attributes from functions, structs, enums and file-scope
-// variables, then emits a structured Markdown reference file.
+/*
+ * doc.gray:  Documentation generator for Grayscale source files ("gray doc").
+ * Extracts #doc attributes from functions, structs, enums and file-scope
+ * variables, then emits a structured Markdown reference file.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @strings
-import @arrays
-import @path
+import @io, @os, @strings, @arrays, @path
 import "./scanner"
 import "./sources"
 

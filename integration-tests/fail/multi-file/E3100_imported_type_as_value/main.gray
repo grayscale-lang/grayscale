@@ -1,0 +1,5 @@
+import "./types"
+
+do main() {
+    println(types.Outer)
+}

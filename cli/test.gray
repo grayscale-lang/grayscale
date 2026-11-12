@@ -1,23 +1,24 @@
-// test.gray — "gray test": discover #test functions, compile each source file
-// with `grayc build --test`, run the resulting binary, and render the results.
-//
-// The test binary speaks a small line protocol on stdout, each line prefixed
-// with a per-run nonce passed in through GRAY_TEST_PROTOCOL_NONCE:
-//
-//     <nonce>GRAYTEST PASS <name>
-//     <nonce>GRAYTEST FAIL <name>\t<file>:<line>\t<message>
-//     <nonce>GRAYTEST DONE <passed> <failed>
-//
-// Everything else the binary prints is passed through. The nonce keeps test
-// output that happens to contain "GRAYTEST ..." from forging protocol lines.
+/*
+ * test.gray:  "gray test": discover #test functions, compile each source file
+ * with `grayc build --test`, run the resulting binary, and render the results.
+ *
+ * The test binary speaks a small line protocol on stdout, each line prefixed
+ * with a per-run nonce passed in through GRAY_TEST_PROTOCOL_NONCE:
+ *
+ *     <nonce>GRAYTEST PASS <name>
+ *     <nonce>GRAYTEST FAIL <name>\t<file>:<line>\t<message>
+ *     <nonce>GRAYTEST DONE <passed> <failed>
+ *
+ * Everything else the binary prints is passed through. The nonce keeps test
+ * output that happens to contain "GRAYTEST ..." from forging protocol lines.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @strings
-import @arrays
-import @strconv
-import @crypto
+import @io, @os, @path, @strings, @arrays, @strconv, @crypto
 import "./args"
 import "./commands"
 import "./sources"

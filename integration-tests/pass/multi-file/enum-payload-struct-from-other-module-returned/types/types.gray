@@ -1,0 +1,13 @@
+const Item struct {
+    name string
+}
+
+const Slot enum {
+    Empty,
+    Filled(Item),
+    Many([Item])
+}
+
+do empty_item() -> Item {
+    return Item{name: "None"}
+}

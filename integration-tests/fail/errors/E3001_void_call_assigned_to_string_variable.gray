@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3001 - void call assigned to an existing string variable
+ */
+
+do v() { println("v") }
+
+do main() {
+    mut s string = "a"
+    s = v()
+}

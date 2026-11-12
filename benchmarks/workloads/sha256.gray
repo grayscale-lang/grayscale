@@ -3,11 +3,7 @@
  * Exercises: crypto, io, string slicing.
  */
 
-import @crypto
-import @io
-import @os
-import @path
-import @strings
+import @crypto, @io, @os, @path, @strings
 
 const CHUNK i64 = 4096
 

@@ -1,12 +1,14 @@
-// info.gray — "gray version" and "gray report": what is installed, what is
-// newest, and the system details to paste into a bug report.
+/*
+ * info.gray:  "gray version" and "gray report": what is installed, what is
+ * newest, and the system details to paste into a bug report.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @strings
-import @arrays
-import @strconv
+import @io, @os, @path, @strings, @arrays, @strconv
 import "./releases"
 import "./versions"
 import "./version"
@@ -44,6 +46,27 @@ do channel_tag(channel string) -> string {
     return ""
 }
 
+// experimental_release_text is the Latest release line of gray version on an
+// experimental build, empty when GitHub cannot be reached.
+do experimental_release_text() -> string {
+    all, fetch_err = releases.fetch_all_releases(releases.CHECK_TIMEOUT_SECONDS)
+    if fetch_err != nil {
+        return "\nCopyright (c) 2025-Present Marshall A Burns\n"
+    }
+    newest, has_newest = releases.pick_newest(all)
+    mut text string = "\n"
+    if has_newest {
+        text = text + "Latest release:      ${newest.tag_name}"
+        if versions.compare_release_versions(newest.tag_name, version.VERSION) > 0 {
+            text = text + "  \x1b[33m← run 'gray update'\x1b[0m"
+        } otherwise {
+            text = text + "  \x1b[33m← up to date\x1b[0m"
+        }
+        text = text + "\n"
+    }
+    return text + "\nCopyright (c) 2025-Present Marshall A Burns\n"
+}
+
 // version_text is the output of gray version: the installed version, then the
 // newest stable and pre-release when GitHub can be reached or a cached stable
 // is known.
@@ -54,6 +77,10 @@ do version_text() -> string {
         text = text + "Commit:              ${info.commit}\n"
     }
     text = text + "Built:               ${strings.replace(version.BUILD_TIME, "_", " ")}\n"
+
+    if info.channel == "experimental" {
+        return text + experimental_release_text()
+    }
 
     mut latest_stable string = ""
     mut latest_pre string = ""

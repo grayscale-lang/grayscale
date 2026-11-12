@@ -1,0 +1,43 @@
+/*
+ * assert_condition_evaluated_once.gray - the condition of a passing assert()
+ * is evaluated exactly once, whether or not a message is given.
+ */
+
+mut calls i64 = 0
+
+do next_call() -> i64 {
+    calls += 1
+    return calls
+}
+
+do main() {
+    println("=== assert condition evaluation ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    assert(next_call() == 1)
+    if calls == 1 {
+        println("  [PASS] no message: evaluated once")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] no message: evaluated ${calls} times")
+        failed += 1
+    }
+
+    assert(next_call() == 2, "second call")
+    if calls == 2 {
+        println("  [PASS] with message: evaluated once")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] with message: evaluated ${calls - 1} times")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

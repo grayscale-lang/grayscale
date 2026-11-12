@@ -1,14 +1,16 @@
-// embedded.gray — Extracts the grayc binary, libgrayrt.a and the runtime and
-// stdlib sources embedded in the gray CLI to ~/.gray/runtime/<tag>/ on first
-// use. The tag names the directory by content, so a new gray binary never
-// reuses a stale extraction.
+/*
+ * embedded.gray:  Extracts the grayc binary, libgrayrt.a and the runtime and
+ * stdlib sources embedded in the gray CLI to ~/.gray/runtime/<tag>/ on first
+ * use. The tag names the directory by content, so a new gray binary never
+ * reuses a stale extraction.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @strings
-import @arrays
-import @crypto
+import @io, @os, @path, @strings, @arrays, @crypto
 import "./embedded_assets"
 
 // Releases set the tag at build time with -define:EMBED_TAG=... (make

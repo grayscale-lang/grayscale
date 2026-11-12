@@ -1,0 +1,81 @@
+const Extension struct {
+    __alignof i64
+    __asm i64
+    __asm__ i64
+    __attribute i64
+    __auto_type i64
+    __complex i64
+    __complex__ i64
+    __const i64
+    __const__ i64
+    __extension__ i64
+    __inline__ i64
+    __restrict__ i64
+    __signed i64
+    __signed__ i64
+    __thread i64
+    __typeof i64
+    __typeof__ i64
+    __volatile i64
+    _Imaginary i64
+}
+
+do sum_parameters(__typeof i64, __asm__ i64, __attribute i64, __thread i64, _Imaginary i64) -> i64 {
+    return __typeof + __asm__ + __attribute + __thread + _Imaginary
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut __alignof i64 = 1
+    mut __alignof__ i64 = 1
+    mut __asm i64 = 1
+    mut __asm__ i64 = 1
+    mut __attribute i64 = 1
+    mut __attribute__ i64 = 1
+    mut __auto_type i64 = 1
+    mut __complex i64 = 1
+    mut __complex__ i64 = 1
+    mut __const i64 = 1
+    mut __const__ i64 = 1
+    mut __extension__ i64 = 1
+    mut __imag__ i64 = 1
+    mut __inline i64 = 1
+    mut __inline__ i64 = 1
+    mut __int128 i64 = 1
+    mut __label__ i64 = 1
+    mut __real__ i64 = 1
+    mut __restrict i64 = 1
+    mut __restrict__ i64 = 1
+    mut __signed i64 = 1
+    mut __signed__ i64 = 1
+    mut __thread i64 = 1
+    mut __typeof i64 = 1
+    mut __typeof__ i64 = 1
+    mut __volatile i64 = 1
+    mut __volatile__ i64 = 1
+    mut _Imaginary i64 = 1
+
+    mut variable_total i64 = __alignof + __alignof__ + __asm + __asm__ + __attribute + __attribute__ + __auto_type
+    variable_total += __complex + __complex__ + __const + __const__ + __extension__ + __imag__ + __inline
+    variable_total += __inline__ + __int128 + __label__ + __real__ + __restrict + __restrict__ + __signed
+    variable_total += __signed__ + __thread + __typeof + __typeof__ + __volatile + __volatile__ + _Imaginary
+    if variable_total == 28 { passed += 1 } otherwise { failed += 1 }
+
+    if sum_parameters(1, 2, 3, 4, 5) == 15 { passed += 1 } otherwise { failed += 1 }
+
+    item Extension = Extension{
+        __alignof: 1, __asm: 1, __asm__: 1, __attribute: 1, __auto_type: 1, __complex: 1,
+        __complex__: 1, __const: 1, __const__: 1, __extension__: 1, __inline__: 1,
+        __restrict__: 1, __signed: 1, __signed__: 1, __thread: 1, __typeof: 1,
+        __typeof__: 1, __volatile: 1, _Imaginary: 1
+    }
+    mut field_total i64 = item.__alignof + item.__asm + item.__asm__ + item.__attribute + item.__auto_type
+    field_total += item.__complex + item.__complex__ + item.__const + item.__const__ + item.__extension__
+    field_total += item.__inline__ + item.__restrict__ + item.__signed + item.__signed__ + item.__thread
+    field_total += item.__typeof + item.__typeof__ + item.__volatile + item._Imaginary
+    if field_total == 19 { passed += 1 } otherwise { failed += 1 }
+
+    println("${passed} passed, ${failed} failed")
+}

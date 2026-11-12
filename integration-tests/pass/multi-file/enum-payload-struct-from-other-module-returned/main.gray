@@ -1,0 +1,35 @@
+import "./types"
+
+do make_slot() -> types.Slot {
+    return types.Slot.Filled(types.empty_item())
+}
+
+do make_many() -> types.Slot {
+    return types.Slot.Many({types.empty_item(), types.empty_item()})
+}
+
+do shout(text string) -> string {
+    return "${text} and then a long string to allocate"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    slot = make_slot()
+    many = make_many()
+    noise = shout("Slash")
+    when slot {
+        is .Filled(item) {
+            if item.name == "None" { passed += 1 } otherwise { failed += 1 }
+        }
+        default { failed += 1 }
+    }
+    when many {
+        is .Many(items) {
+            if items[0].name == "None" && items[1].name == "None" { passed += 1 } otherwise { failed += 1 }
+        }
+        default { failed += 1 }
+    }
+    if noise == "Slash and then a long string to allocate" { passed += 1 } otherwise { failed += 1 }
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -1,15 +1,16 @@
-// watch.gray — "gray watch": run a program, then run it again whenever it or a
-// file it imports changes. There is no file-notification API, so the watched
-// files are polled: a change in the set of files, or in any file's
-// modification time or size, triggers the next run.
+/*
+ * watch.gray:  "gray watch": run a program, then run it again whenever it or a
+ * file it imports changes. There is no file-notification API, so the watched
+ * files are polled: a change in the set of files, or in any file's
+ * modification time or size, triggers the next run.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @maps
-import @time
-import @strings
-import @arrays
+import @io, @os, @path, @maps, @time, @strings, @arrays
 import "./args"
 import "./commands"
 import "./driver"

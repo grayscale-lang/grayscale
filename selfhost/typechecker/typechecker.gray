@@ -1976,13 +1976,14 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     }
     if !is_imported_module_name(checker, name) && type_name_as_value(checker, name) {
         resolved_type_name = resolve_type_alias(checker, name)
+        written_name = written_function_name(node, name)
         mut value_help = ""
         if is_enum_name(checker, resolved_type_name) {
-            value_help = "use '${name}.VARIANT' to access an enum value"
+            value_help = "use '${written_name}.VARIANT' to access an enum value"
         } or is_struct_name(checker, resolved_type_name) {
-            value_help = "use '${name}{...}' or 'new(${name})' to create an instance"
+            value_help = "use '${written_name}{...}' or 'new(${written_name})' to create an instance"
         }
-        add_diagnostic_help(checker, "E3100", error_registry.registry_message_formatted("E3100", {name}), value_help, node^.tok.file, node^.tok.line, node^.tok.col)
+        add_diagnostic_help(checker, "E3100", error_registry.registry_message_formatted("E3100", {written_name}), value_help, node^.tok.file, node^.tok.line, node^.tok.col)
         return checker^.pool^.type_unknown
     }
 
@@ -2800,7 +2801,6 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
 
     mut result = checker^.pool^.type_unknown
 
-    #strict
     when node^.kind {
         is ast.NodeKind.INT_VALUE { result = checker^.pool^.type_i64 }
         is ast.NodeKind.FLOAT_VALUE { result = checker^.pool^.type_f64 }
@@ -2840,13 +2840,9 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
         is ast.NodeKind.FUNC_REF { result = resolve_func_ref(checker, node) }
         is ast.NodeKind.CALL_EXPR { result = resolve_call_expr(checker, node) }
         is ast.NodeKind.IMPLICIT_ENUM { result = resolve_implicit_enum(checker, node) }
-        is ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-        ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-        ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // Statements and declarations have no expression type
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 
     if !checker^.suppress_type_writes { node^.resolved_type = types.type_display_name(result) }
@@ -4567,6 +4563,7 @@ fn resolve_type_of_call(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayT
         }
     }
     argument_type = resolve_expression(checker, argument)
+    reject_multi_return_in_single_position(checker, argument)
     if argument_type^.kind == types.TypeKind.VOID {
         add_diagnostic(checker, "E3187", error_registry.registry_message_formatted("E3187", {"the argument of type_of()"}), node^.tok.file, node^.tok.line, node^.tok.col)
     }
@@ -4641,13 +4638,20 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
     count i64 = len(arguments)
     arity i64 = -1
     if name == "to_char" { arity = 2 }
-    if name == "char_count" || name == "to_c_string" || name == "system" || name == "char" { arity = 1 }
+    if name == "char_count" || name == "to_c_string" || name == "system" || name == "char" || name == "panic" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" { arity = 1 }
     mut result ^types.GrayType = checker^.pool^.type_void
     if name == "to_char" || name == "char" { result = checker^.pool^.type_char }
     if name == "char_count" || name == "system" { result = checker^.pool^.type_i64 }
     if name == "to_c_string" { result = types.type_pointer(checker^.pool, "u8") }
     if arity >= 0 && count != arity {
         add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "${arity}", "${count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+        for_each argument in arguments { resolve_expression(checker, argument) }
+        return result
+    }
+    if (name == "exit" && count > 1) || (name == "assert" && (count < 1 || count > 2)) {
+        mut expected_count = "0 or 1"
+        if name == "assert" { expected_count = "1 or 2" }
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, expected_count, "${count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
         for_each argument in arguments { resolve_expression(checker, argument) }
         return result
     }
@@ -4661,6 +4665,7 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
             }
         }
         argument_type = resolve_expression(checker, arguments[0])
+        reject_multi_return_in_single_position(checker, arguments[0])
         if !is_int_kind(argument_type^.kind) && argument_type^.kind != types.TypeKind.CHAR {
             report_argument_type(checker, node, 1, "char", "an integer codepoint", shown_type(checker, argument_type))
         }
@@ -4668,6 +4673,7 @@ fn resolve_scalar_argument_builtin(checker ^TypeChecker, node ^ast.AstNode, name
     }
     if name == "exit" || name == "sleep_s" || name == "sleep_ms" || name == "sleep_ns" {
         argument_type = check_expression_as(checker, arguments[0], checker^.pool^.type_i64)
+        reject_multi_return_in_single_position(checker, arguments[0])
         check_scalar_argument(checker, node, argument_type, 1, name, "integer", "an integer")
         return result
     }
@@ -4758,6 +4764,11 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         }
         return checker^.pool^.type_i64
     }
+    if (name == "addr" || name == "raw" || name == "ref" || name == "copy") && len(node^.call^.args) != 1 {
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+        resolve_call_args_only(checker, node)
+        return checker^.pool^.type_unknown
+    }
     // `ref(place)` is a transparent reference: it has the place's own type
     if name == "ref" && len(node^.call^.args) == 1 {
         place = node^.call^.args[0]
@@ -4828,6 +4839,7 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
             }
         }
         mut argument_type = resolve_expression(checker, fields_argument)
+        reject_multi_return_in_single_position(checker, fields_argument)
         // A pointer to a struct reads through
         if argument_type^.kind == types.TypeKind.POINTER && argument_type^.element_type != "" && is_struct_name(checker, argument_type^.element_type) {
             argument_type = checker_type_from_name(checker, argument_type^.element_type)
@@ -4839,6 +4851,7 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
     }
     if name == "copy" && len(node^.call^.args) == 1 {
         copied_type = resolve_expression(checker, node^.call^.args[0])
+        reject_multi_return_in_single_position(checker, node^.call^.args[0])
         if copied_type^.kind == types.TypeKind.FUNCTION {
             add_diagnostic(checker, "E5029", error_registry.registry_message("E5029"), node^.tok.file, node^.tok.line, node^.tok.col)
             return checker^.pool^.type_unknown
@@ -4862,7 +4875,19 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         resolve_call_args_only(checker, node)
         return checker^.pool^.type_void
     }
-    if (name == "print" || name == "println" || name == "eprint" || name == "eprintln") && len(node^.call^.args) == 1 {
+    if name == "print" || name == "println" || name == "eprint" || name == "eprintln" {
+        print_argument_count = len(node^.call^.args)
+        if (name == "println" || name == "eprintln") && print_argument_count > 1 {
+            add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "0 or 1", "${print_argument_count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            resolve_call_args_only(checker, node)
+            return checker^.pool^.type_void
+        }
+        if (name == "print" || name == "eprint") && print_argument_count != 1 {
+            add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "1", "${print_argument_count}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            resolve_call_args_only(checker, node)
+            return checker^.pool^.type_void
+        }
+        if print_argument_count == 0 { return checker^.pool^.type_void }
         print_type = resolve_expression(checker, node^.call^.args[0])
         reject_multi_return_in_single_position(checker, node^.call^.args[0])
         if print_type^.kind == types.TypeKind.C_FUNCTION {
@@ -4884,6 +4909,9 @@ fn resolve_builtin_call(checker ^TypeChecker, node ^ast.AstNode, name string) ->
         return checker^.pool^.type_void
     }
     if name == "embed" { return resolve_embed_call(checker, node) }
+    if name == "input" && len(node^.call^.args) != 0 {
+        add_diagnostic(checker, "E5008", error_registry.registry_message_formatted("E5008", {name, "0", "${len(node^.call^.args)}"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     resolve_call_args_only(checker, node)
     if name == "len" || name == "char_count" || name == "size_of" { return checker^.pool^.type_i64 }
     if name == "type_of" || name == "input" { return checker^.pool^.type_string }
@@ -5110,6 +5138,8 @@ fn check_stdlib_arguments(checker ^TypeChecker, node ^ast.AstNode, signature ^st
             break
         }
     }
+
+    for_each argument in arguments { reject_multi_return_in_single_position(checker, argument) }
 
     // Validate argument count
     mut arg_types [^types.GrayType] = {}
@@ -5767,6 +5797,7 @@ fn resolve_len_call(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType 
     }
     allow_range_use(checker, arguments[0])
     argument_type = resolve_expression(checker, arguments[0])
+    reject_multi_return_in_single_position(checker, arguments[0])
     reject_void_in_context(checker, arguments[0], argument_type, "'len()' argument")
     kind = argument_type^.kind
     mut is_measurable = kind == types.TypeKind.STRING || kind == types.TypeKind.ARRAY || kind == types.TypeKind.MAP || kind == types.TypeKind.RANGE
@@ -6218,7 +6249,6 @@ fn length_changing_call_on_name(checker ^TypeChecker, node ^ast.AstNode, paramet
 fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, parameter_name string) -> string {
     if node == nil { return "" }
     mut children [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             found = length_changing_call_on_name(checker, node, parameter_name)
@@ -6243,16 +6273,9 @@ fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, paramet
         is ast.NodeKind.EXPR_STMT { arrays.append(children, node^.expr_stmt^.expr) }
         is ast.NodeKind.ENSURE_STMT { arrays.append(children, node^.ensure_stmt^.expr) }
         is ast.NodeKind.RETURN_STMT { children = node^.return_stmt^.values }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no child nodes to collect
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     for_each child in children {
         found_in_child = body_mutates_array_parameter(checker, child, parameter_name)
@@ -6851,7 +6874,6 @@ fn restore_arena_state(checker ^TypeChecker, snapshot [ArenaLifetime]) {
 // iteration is caught. A handle declared inside the body is fresh each iteration.
 fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -6910,17 +6932,9 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
         is ast.NodeKind.FOR_EACH_STMT { premark_loop_body(checker, node^.for_each_stmt^.body, body) }
         is ast.NodeKind.WHILE_STMT { premark_loop_body(checker, node^.while_stmt^.body, body) }
         is ast.NodeKind.LOOP_STMT { premark_loop_body(checker, node^.loop_stmt^.body, body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -6928,7 +6942,6 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
 // escape check does not depend on statement order.
 fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -6978,16 +6991,9 @@ fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
         is ast.NodeKind.FOR_EACH_STMT { premark_function_destroys(checker, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { premark_function_destroys(checker, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { premark_function_destroys(checker, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -7069,7 +7075,6 @@ fn record_mem_parameter_field(signature ^FuncSig, index i64, suffix string) {
 
 fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
     if node == nil || signature^.decl == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.CALL_EXPR {
             function_name, arena, is_mem_call = mem_call_parts(checker, node)
@@ -7140,16 +7145,9 @@ fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values { mem_walk(checker, signature, value) }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR,
-        ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF,
-        ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -7167,24 +7165,13 @@ fn return_expression_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^as
         return 0, 0
     }
     mut buried_parts [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.STRUCT_VALUE { buried_parts = node^.struct_value^.field_values }
         is ast.NodeKind.ARRAY_VALUE { buried_parts = node^.array_value^.elements }
         is ast.NodeKind.MAP_VALUE { buried_parts = node^.map_value^.values }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no nested element values
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     if node^.kind == ast.NodeKind.STRUCT_VALUE || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE {
         mut field_bits i64 = 0
@@ -7244,7 +7231,6 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
     mut direct_bits i64 = 0
     mut field_bits i64 = 0
     mut children [^ast.AstNode] = {}
-    #strict
     when node^.kind {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values {
@@ -7266,17 +7252,9 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
         is ast.NodeKind.FOR_EACH_STMT { arrays.append(children, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { arrays.append(children, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { arrays.append(children, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds have no child statements
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     for_each child in children {
         child_direct, child_field = return_statement_mem_bits(checker, signature, child)
@@ -8124,6 +8102,9 @@ fn check_condition(checker ^TypeChecker, cond ^ast.AstNode, cond_type ^types.Gra
     // A value of a known non-bool type used as a condition. A void call is reported
     // on its own, and a C function result has no Grayscale type to check.
     k = cond_type^.kind
+    if k == types.TypeKind.C_FUNCTION {
+        add_diagnostic(checker, "E3168", error_registry.registry_message("E3168"), cond^.tok.file, cond^.tok.line, cond^.tok.col)
+    }
     if k != types.TypeKind.BOOL && k != types.TypeKind.VOID && k != types.TypeKind.UNKNOWN && k != types.TypeKind.C_FUNCTION {
         add_diagnostic(checker, "E3091", error_registry.registry_message_formatted("E3091", {shown_type(checker, cond_type)}), cond^.tok.file, cond^.tok.line, cond^.tok.col)
     }
@@ -8196,6 +8177,10 @@ fn check_for_statement(checker ^TypeChecker, node ^ast.AstNode) {
     outer = checker^.current_scope
     loop_scope = scope.scope_create(outer)
     checker^.current_scope = loop_scope
+    // A reserved type name as the loop variable
+    if reserved.is_reserved_type_name(node^.for_stmt^.var_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {node^.for_stmt^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     // A stdlib module name as the loop variable
     if reserved.is_stdlib_module_name(node^.for_stmt^.var_name) {
         add_diagnostic(checker, "E5035", error_registry.registry_message_formatted("E5035", {node^.for_stmt^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
@@ -8962,7 +8947,6 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
     // A file-scope or struct-scope const of a primitive type needs an annotation
     if !variable_data^.is_mutable && variable_data^.type_name == "" && value != nil && (checker^.function_depth == 0 || checker^.current_struct_name != "") && !is_temporary && !is_or_temporary && value^.kind != ast.NodeKind.STRUCT_VALUE && value^.kind != ast.NodeKind.FUNC_REF && value^.kind != ast.NodeKind.ARRAY_VALUE && value^.kind != ast.NodeKind.MAP_VALUE {
         mut suggested = "<type>"
-        #strict
         when value^.kind {
             is ast.NodeKind.INT_VALUE { suggested = "i64" }
             is ast.NodeKind.FLOAT_VALUE { suggested = "f64" }
@@ -8970,19 +8954,9 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
             is ast.NodeKind.INTERPOLATED_STRING { suggested = "string" }
             is ast.NodeKind.CHAR_VALUE { suggested = "char" }
             is ast.NodeKind.BOOL_VALUE { suggested = "bool" }
-            is ast.NodeKind.LABEL, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-            ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-            ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-            ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-            ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-            ast.NodeKind.WHEN_PATTERN, ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT,
-            ast.NodeKind.RETURN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-            ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT, ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT,
-            ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT, ast.NodeKind.LOOP_STMT,
-            ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-            ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-            ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-            ast.NodeKind.PROGRAM {}
+            // Not a plain literal, so there is no type to suggest
+            // If a new NodeKind needs handling here, add a branch for it above
+            default {}
         }
         add_diagnostic(checker, "E3131", error_registry.registry_message_formatted("E3131", {display, suggested}), file, line, col)
     }
@@ -9606,7 +9580,6 @@ fn return_expression_parameter_bits(checker ^TypeChecker, signature ^FuncSig, no
 fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) -> i64 {
     if node == nil { return 0 }
     mut bits i64 = 0
-    #strict
     when node^.kind {
         is ast.NodeKind.RETURN_STMT {
             for_each value in node^.return_stmt^.values { bits = bits bit_or return_expression_parameter_bits(checker, signature, value) }
@@ -9625,17 +9598,9 @@ fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, nod
         is ast.NodeKind.FOR_EACH_STMT { bits = return_statement_parameter_bits(checker, signature, node^.for_each_stmt^.body) }
         is ast.NodeKind.WHILE_STMT { bits = return_statement_parameter_bits(checker, signature, node^.while_stmt^.body) }
         is ast.NodeKind.LOOP_STMT { bits = return_statement_parameter_bits(checker, signature, node^.loop_stmt^.body) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL,
-        ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL,
-        ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds yield no parameter bits
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
     return bits
 }
@@ -9794,7 +9759,6 @@ fn pointer_writer_parameter(checker ^TypeChecker, call ^ast.AstNode) -> (string,
 // escapes the argument.
 fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node ^ast.AstNode) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.ASSIGN_STMT {
             signature^.writes_through_parameter = signature^.writes_through_parameter bit_or write_target_parameter_bit(signature, body, node^.assign^.target)
@@ -9919,16 +9883,9 @@ fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node
                 escape_walk(checker, signature, body, value)
             }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.INDEX_EXPR, ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR,
-        ast.NodeKind.CAST_EXPR, ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM,
-        ast.NodeKind.WHEN_PATTERN, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds are not walked
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -10276,7 +10233,8 @@ fn pointer_origin_of(checker ^TypeChecker, value ^ast.AstNode) -> (i64, string) 
         if root != "" {
             symbol = scope.scope_lookup(checker^.current_scope, root)
             if symbol != nil && symbol^.field_origin_depth != 0 {
-                if resolve_quietly(checker, value)^.kind == types.TypeKind.POINTER {
+                value_kind = resolve_quietly(checker, value)^.kind
+                if value_kind == types.TypeKind.POINTER || value_kind == types.TypeKind.STRUCT || value_kind == types.TypeKind.ARRAY || value_kind == types.TypeKind.MAP {
                     return symbol^.field_origin_depth, symbol^.field_origin_name
                 }
             }
@@ -10397,6 +10355,10 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
     // Implicit declaration: `x = expr` where `x` is not in scope
     if target^.kind == ast.NodeKind.LABEL && ad^.op == token.TokenKind.ASSIGN && target^.label^.value != "_" {
         name = target^.label^.value
+        if scope.scope_lookup(checker^.current_scope, name) == nil && !strings.starts_with(name, "_") && reserved.is_reserved_type_name(name) {
+            add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+            return
+        }
         if scope.scope_lookup(checker^.current_scope, name) == nil && !reserved.is_reserved_builtin_func_name(name) && !is_struct_name(checker, name) && !is_enum_name(checker, name) && find_func(checker, name) == nil {
             allow_range_use(checker, ad^.value)
             value_type = resolve_expression(checker, ad^.value)
@@ -10543,7 +10505,7 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
     // A direct variable whose value does not fit it
     if target^.kind == ast.NodeKind.LABEL {
         target_symbol = scope.scope_lookup(checker^.current_scope, target^.label^.value)
-        if target_symbol != nil && target_symbol^.sym_type^.kind != types.TypeKind.UNKNOWN && assigned_value_type^.kind != types.TypeKind.UNKNOWN && target_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, target_type, assigned_value_type) && !(target_type^.kind == types.TypeKind.ENUM && is_int_kind(assigned_value_type^.kind)) && !(target_type^.kind == types.TypeKind.POINTER && is_ref_variable(checker, ad^.value)) && !(assigned_value_type^.kind == types.TypeKind.NIL_TYPE && (target_type^.kind == types.TypeKind.POINTER || target_type^.kind == types.TypeKind.ERROR)) && assigned_value_type^.kind != types.TypeKind.VOID {
+        if target_symbol != nil && target_symbol^.sym_type^.kind != types.TypeKind.UNKNOWN && assigned_value_type^.kind != types.TypeKind.UNKNOWN && target_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, target_type, assigned_value_type) && !(target_type^.kind == types.TypeKind.ENUM && is_int_kind(assigned_value_type^.kind)) && !(target_type^.kind == types.TypeKind.POINTER && is_ref_variable(checker, ad^.value)) && !(assigned_value_type^.kind == types.TypeKind.NIL_TYPE && (target_type^.kind == types.TypeKind.POINTER || target_type^.kind == types.TypeKind.ERROR)) {
             report_assign_mismatch(checker, node, assigned_value_type, target_type)
         }
         // Struct-to-struct name mismatch
@@ -10947,7 +10909,6 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
         add_diagnostic(checker, "E3070", error_registry.registry_message("E3070"), node^.tok.file, node^.tok.line, node^.tok.col)
         return
     }
-    #strict
     when node^.kind {
         is ast.NodeKind.BLOCK_STMT {
             for_each statement in node^.block^.stmts {
@@ -10967,18 +10928,9 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
             for_each case_entry in node^.when_stmt^.cases { check_no_nested_ensure(checker, case_entry.body, true) }
             check_no_nested_ensure(checker, node^.when_stmt^.default_body, true)
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BREAK_STMT,
-        ast.NodeKind.CONTINUE_STMT, ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds cannot contain a nested ensure
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -11239,6 +11191,13 @@ fn check_for_each_statement(checker ^TypeChecker, node ^ast.AstNode) {
     loop_scope = scope.scope_create(outer)
     checker^.current_scope = loop_scope
 
+    // A reserved type name as a loop variable
+    if fe^.var_name != "" && reserved.is_reserved_type_name(fe^.var_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {fe^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
+    if fe^.index_name != "" && reserved.is_reserved_type_name(fe^.index_name) {
+        add_diagnostic(checker, "E2038", error_registry.registry_message_formatted("E2038", {fe^.index_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
+    }
     // A stdlib module name as a loop variable
     if fe^.var_name != "" && reserved.is_stdlib_module_name(fe^.var_name) {
         add_diagnostic(checker, "E5035", error_registry.registry_message_formatted("E5035", {fe^.var_name, "a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
@@ -11405,40 +11364,74 @@ fn when_constant_range(checker ^TypeChecker, node ^ast.AstNode) -> (i64, i64, i6
     return start, stop, step, step != 0
 }
 
-fn when_range_contains(start i64, stop i64, step i64, value i64) -> bool {
-    if step > 0 { return value >= start && value < stop && (value - start) % step == 0 }
-    return value <= start && value > stop && (start - value) % (0 - step) == 0
+// The values a constant case matches, as the first and last value in ascending order and the
+// distance between neighbours: a constant, or a constant range with at least one value.
+fn when_constant_case_values(checker ^TypeChecker, node ^ast.AstNode) -> (i64, i64, i64, bool) {
+    if node != nil && node^.kind == ast.NodeKind.RANGE_EXPR {
+        start, stop, step, is_constant_range = when_constant_range(checker, node)
+        if !is_constant_range { return 0, 0, 0, false }
+        if step > 0 && start >= stop { return 0, 0, 0, false }
+        if step < 0 && start <= stop { return 0, 0, 0, false }
+        mut distance i64 = start - stop
+        mut stride i64 = 0 - step
+        if step > 0 {
+            distance = stop - start
+            stride = step
+        }
+        steps_to_last = (distance - 1) / stride
+        if step > 0 { return start, start + steps_to_last * stride, stride, true }
+        return start - steps_to_last * stride, start, stride, true
+    }
+    point, is_point = when_constant_i64(checker, node)
+    if !is_point { return 0, 0, 0, false }
+    return point, point, 1, true
 }
 
-// True when every value the case `value` matches is already matched by the earlier range
-// case `earlier`: a constant inside it, a constant range whose first and last values are
-// inside it and whose step is a multiple of its step, or the same stored range variable.
-fn when_case_covered_by_range(checker ^TypeChecker, value ^ast.AstNode, earlier ^ast.AstNode) -> bool {
+// True when two arithmetic progressions share a value. The progression with the larger stride
+// is walked through the shared interval; the residues modulo the other stride repeat after that
+// many steps.
+fn when_case_values_intersect(first_a i64, last_a i64, stride_a i64, first_b i64, last_b i64, stride_b i64) -> bool {
+    mut low i64 = first_b
+    if first_a > first_b { low = first_a }
+    mut high i64 = last_b
+    if last_a < last_b { high = last_a }
+    if low > high { return false }
+    mut walked_first i64 = first_a
+    mut small_first i64 = first_b
+    mut walked_stride i64 = stride_a
+    mut small_stride i64 = stride_b
+    if stride_a < stride_b {
+        walked_first = first_b
+        small_first = first_a
+        walked_stride = stride_b
+        small_stride = stride_a
+    }
+    remainder = (low - walked_first) % walked_stride
+    mut skip i64 = 0
+    if remainder != 0 { skip = walked_stride - remainder }
+    if skip > high - low { return false }
+    mut candidate i64 = low + skip
+    for walked in range(0, small_stride) {
+        if (candidate - small_first) % small_stride == 0 { return true }
+        if walked_stride > high - candidate { return false }
+        candidate += walked_stride
+    }
+    return false
+}
+
+// True when the case `value` matches something the earlier case `earlier` already matches
+// through a constant or a constant range, or when both are the same stored range variable.
+fn when_case_overlaps_range(checker ^TypeChecker, value ^ast.AstNode, earlier ^ast.AstNode) -> bool {
     if value == nil || earlier == nil { return false }
     if value^.kind == ast.NodeKind.LABEL && earlier^.kind == ast.NodeKind.LABEL {
         label_symbol = scope.scope_lookup(checker^.current_scope, value^.label^.value)
         return label_symbol != nil && label_symbol^.sym_type^.kind == types.TypeKind.RANGE && value^.label^.value == earlier^.label^.value
     }
-    earlier_start, earlier_stop, earlier_step, is_earlier_constant = when_constant_range(checker, earlier)
+    first_earlier, last_earlier, stride_earlier, is_earlier_constant = when_constant_case_values(checker, earlier)
     if !is_earlier_constant { return false }
-    point, is_point = when_constant_i64(checker, value)
-    if is_point { return when_range_contains(earlier_start, earlier_stop, earlier_step, point) }
-    start, stop, step, is_constant_range = when_constant_range(checker, value)
-    if !is_constant_range { return false }
-    if step > 0 && start >= stop { return false }
-    if step <= 0 && start <= stop { return false }
-    mut distance i64 = start - stop
-    mut stride i64 = 0 - step
-    if step > 0 {
-        distance = stop - start
-        stride = step
-    }
-    steps_to_last = (distance - 1) / stride
-    mut last i64 = start - steps_to_last * stride
-    if step > 0 { last = start + steps_to_last * stride }
-    mut earlier_stride i64 = 0 - earlier_step
-    if earlier_step > 0 { earlier_stride = earlier_step }
-    return stride % earlier_stride == 0 && when_range_contains(earlier_start, earlier_stop, earlier_step, start) && when_range_contains(earlier_start, earlier_stop, earlier_step, last)
+    first_value, last_value, stride_value, is_value_constant = when_constant_case_values(checker, value)
+    if !is_value_constant { return false }
+    return when_case_values_intersect(first_value, last_value, stride_value, first_earlier, last_earlier, stride_earlier)
 }
 
 fn when_case_values_equal(checker ^TypeChecker, a ^ast.AstNode, b ^ast.AstNode) -> bool {
@@ -11551,7 +11544,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                 mut limit = len(earlier_values)
                 if ei == i { limit = j }
                 for ej in range(0, limit) {
-                    if when_case_values_equal(checker, values_i[j], earlier_values[ej]) || when_case_covered_by_range(checker, values_i[j], earlier_values[ej]) {
+                    if when_case_values_equal(checker, values_i[j], earlier_values[ej]) || when_case_overlaps_range(checker, values_i[j], earlier_values[ej]) {
                         add_diagnostic(checker, "E2043", "duplicate case value in when statement", values_i[j]^.tok.file, values_i[j]^.tok.line, values_i[j]^.tok.col)
                         flagged = true
                         break
@@ -12020,12 +12013,7 @@ fn flush_pending_literals(checker ^TypeChecker, start i64) {
     mut index = len(checker^.pending_literals) - 1
     as_long_as index >= start {
         pending = checker^.pending_literals[index]
-        if !pending^.is_literal_typed {
-            // the default type, taken without a second range check
-            mut taken = checker^.pool^.type_i64
-            if folding.literal_expression_is_decimal(pending) { taken = checker^.pool^.type_f64 }
-            literal_take_type(checker, pending, taken)
-        }
+        if !pending^.is_literal_typed { check_expression_as(checker, pending, nil) }
         index = index - 1
     }
     mut kept [^ast.AstNode] = {}
@@ -12042,7 +12030,6 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
             add_diagnostic(checker, "E2056", error_registry.registry_message("E2056"), node^.tok.file, node^.tok.line, node^.tok.col)
         }
     }
-    #strict
     when node^.kind {
         is ast.NodeKind.FUNC_DECL { check_function_declaration(checker, node) }
         is ast.NodeKind.STRUCT_DECL { check_struct_declaration(checker, node) }
@@ -12131,14 +12118,9 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
             if node^.block^.is_unsafe { report_unused_in_scope(checker, checker^.current_scope) }
             checker^.current_scope = outer_scope
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // Expressions need no declaration check at file scope
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -12433,7 +12415,6 @@ fn check_alias_block(checker ^TypeChecker, block ^ast.AstNode, state ^AliasState
 // Scans an expression tree for the !in / not_in membership operator.
 fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^AliasState, file string) {
     if expression == nil { return }
-    #strict
     when expression^.kind {
         is ast.NodeKind.INFIX_EXPR {
             if expression^.infix^.op == token.TokenKind.NOT_IN {
@@ -12484,22 +12465,14 @@ fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^
                 check_alias_expression(checker, part, state, file)
             }
         }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.NEW_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.VAR_DECL, ast.NodeKind.ASSIGN_STMT, ast.NodeKind.RETURN_STMT,
-        ast.NodeKind.ENSURE_STMT, ast.NodeKind.EXPR_STMT, ast.NodeKind.BLOCK_STMT, ast.NodeKind.IF_STMT,
-        ast.NodeKind.WHEN_STMT, ast.NodeKind.FOR_STMT, ast.NodeKind.FOR_EACH_STMT, ast.NodeKind.WHILE_STMT,
-        ast.NodeKind.LOOP_STMT, ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT,
-        ast.NodeKind.FUNC_DECL, ast.NodeKind.IMPORT_STMT, ast.NodeKind.USING_STMT,
-        ast.NodeKind.STRUCT_DECL, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL,
-        ast.NodeKind.MODULE_DECL, ast.NodeKind.PROGRAM {}
+        // These kinds hold no alias expression
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
 fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, file string) {
     if node == nil { return }
-    #strict
     when node^.kind {
         is ast.NodeKind.WHILE_STMT {
             note_alias_form(checker, state^.loop_form, node^.tok.literal, "as_long_as", "while", node^.tok.line, node^.tok.col, file)
@@ -12567,16 +12540,9 @@ fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, 
             check_alias_expression(checker, node^.ensure_stmt^.expr, state, file)
         }
         is ast.NodeKind.EXPR_STMT { check_alias_expression(checker, node^.expr_stmt^.expr, state, file) }
-        is ast.NodeKind.LABEL, ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE,
-        ast.NodeKind.INTERPOLATED_STRING, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE,
-        ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE,
-        ast.NodeKind.STRUCT_VALUE, ast.NodeKind.PREFIX_EXPR, ast.NodeKind.INFIX_EXPR,
-        ast.NodeKind.POSTFIX_EXPR, ast.NodeKind.CALL_EXPR, ast.NodeKind.INDEX_EXPR,
-        ast.NodeKind.MEMBER_EXPR, ast.NodeKind.NEW_EXPR, ast.NodeKind.RANGE_EXPR, ast.NodeKind.CAST_EXPR,
-        ast.NodeKind.FUNC_REF, ast.NodeKind.IMPLICIT_ENUM, ast.NodeKind.WHEN_PATTERN,
-        ast.NodeKind.BREAK_STMT, ast.NodeKind.CONTINUE_STMT, ast.NodeKind.IMPORT_STMT,
-        ast.NodeKind.USING_STMT, ast.NodeKind.ENUM_DECL, ast.NodeKind.ALIAS_DECL, ast.NodeKind.MODULE_DECL,
-        ast.NodeKind.PROGRAM {}
+        // These kinds hold no alias block
+        // If a new NodeKind needs handling here, add a branch for it above
+        default {}
     }
 }
 
@@ -12898,7 +12864,14 @@ fn apply_call_parameter_extern_effects(checker ^TypeChecker, node ^ast.AstNode) 
     for argument_index in range(0, len(arguments)) {
         if argument_index >= len(callee_signature^.param_types) || argument_index >= MAX_TRACKED_PARAMETERS { break }
         if callee_signature^.passes_parameter_to_extern bit_and (1 bit_shift_left argument_index) == 0 { continue }
-        origin_depth, root = expression_origin(checker, arguments[argument_index])
+        expression_depth, expression_root = expression_origin(checker, arguments[argument_index])
+        mut origin_depth i64 = expression_depth
+        mut root string = expression_root
+        // A struct value given to a pointer receiver is passed by address
+        if origin_depth == 0 && argument_index == 0 && callee_signature^.param_types[0]^.kind == types.TypeKind.POINTER && resolve_quietly(checker, arguments[0])^.kind == types.TypeKind.STRUCT {
+            root = assignment_target_root_name(arguments[0])
+            if root != "" { origin_depth = symbol_scope_depth(checker, root) }
+        }
         if origin_depth > 0 && origin_depth >= checker^.current_function_scope_depth && root != "" {
             add_diagnostic(checker, "E3154", error_registry.registry_message_formatted("E3154", {root}), arguments[argument_index]^.tok.file, arguments[argument_index]^.tok.line, arguments[argument_index]^.tok.col)
         }

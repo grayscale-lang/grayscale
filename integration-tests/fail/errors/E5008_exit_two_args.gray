@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - exit() called with two arguments
+ * Expected: "'exit()' expects 0 or 1 argument(s), got 2" error
+ */
+
+do main() {
+    exit(0, 1)
+}

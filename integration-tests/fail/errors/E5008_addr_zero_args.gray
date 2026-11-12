@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5008 - addr() called with no arguments
+ * Expected: "'addr()' expects 1 argument(s), got 0" error
+ */
+
+do main() {
+    addr()
+}

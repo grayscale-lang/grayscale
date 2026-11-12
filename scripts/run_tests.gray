@@ -1,16 +1,18 @@
-//
-// Grayscale Integration Test Runner
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
-//
-// This script runs all integration tests and reports results.
-// - Tests in pass/ should execute successfully
-// - Tests in fail/ should fail with expected errors
-//
-// Usage (run from the repo root):
-//   grayc scripts/run_tests.gray && ./run_tests
-//
+/*
+ * run_tests.gray:  Grayscale Integration Test Runner
+ *
+ * This script runs all integration tests and reports results.
+ * - Tests in pass/ should execute successfully
+ * - Tests in fail/ should fail with expected errors
+ *
+ * Usage (run from the repo root):
+ *   grayc scripts/run_tests.gray && ./run_tests
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @io, @os, @strings, @arrays
 

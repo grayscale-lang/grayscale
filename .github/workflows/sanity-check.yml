@@ -26,7 +26,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
 
           # Block by extension
-          BLOCKED=$(echo "$CHANGED_FILES" | grep -E '\.(exe|dll|out|db|sqlite|sqlite3|sh)$' || true)
+          BLOCKED=$(echo "$CHANGED_FILES" | grep -E '\.(exe|dll|out|db|sqlite|sqlite3|sh|tar|tar\.gz|tgz|tar\.bz2|tar\.xz|zip|7z|rar|gz|bz2|xz|dmg|pkg|msi|deb|rpm|jar|whl|iso)$' || true)
           if [ -n "$BLOCKED" ]; then
             echo "::error::Disallowed file extensions detected: $BLOCKED"
             exit 1

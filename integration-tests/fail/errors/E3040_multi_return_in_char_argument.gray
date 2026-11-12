@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3040 - multi-value call passed to char()
+ */
+
+do f() -> (i64, Error) { return 65, nil }
+
+do main() {
+    println(char(f()))
+}

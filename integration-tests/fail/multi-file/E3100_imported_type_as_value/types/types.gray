@@ -1,0 +1,8 @@
+const Outer struct {
+    n i64
+}
+
+const Kind enum {
+    A
+    B
+}

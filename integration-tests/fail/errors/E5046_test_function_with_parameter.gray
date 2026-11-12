@@ -1,0 +1,10 @@
+// expect-error: E5046
+// expect-error-count: 1
+// A #test function takes no parameters.
+
+#test
+do check_value(value i64) {
+    assert(value == 1)
+}
+
+do main() {}

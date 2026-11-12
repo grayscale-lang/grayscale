@@ -1,0 +1,19 @@
+/*
+ * for_each_index_named_c_reserved_word.gray - the index variable of a
+ * two-variable for_each over an array may be named after a C reserved word.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut total i64 = 0
+    for_each int, v in {7, 8} { total += int * 10 + v }
+    if total == 25 { passed += 1 } otherwise { failed += 1 }
+
+    mut seen i64 = 0
+    for_each NULL, v in {7, 8} { seen += NULL }
+    if seen == 1 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -1,0 +1,3 @@
+do main() {
+    println("${1 bit_shift_left 300}")
+}

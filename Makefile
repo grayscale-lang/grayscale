@@ -96,7 +96,7 @@ endif
 define HELP_build
 make build - Build the gray binary (compiler embedded)
 
-  With grayc: builds the C compiler and the runtime. With selfhost: builds the compiler with an existing gray (GRAY=/path/to/gray, default ./gray or gray on PATH). Embeds the compiler and runtime into the gray CLI and writes
+  With grayc: builds the C compiler and the runtime. With selfhost: builds grayc, then the self-hosted compiler with it. Embeds the compiler and runtime into the gray CLI and writes
   ./gray (./gray.exe on Windows).
 
   Variables:
@@ -477,22 +477,19 @@ build: stubs $(COMPILER_PREREQ)
 	@echo "Build complete: ./$(BINARY_NAME)"
 	@echo "Run with: ./$(BINARY_NAME) <file.gray>"
 
-# The shipped compiler is the self-hosted one; the C compiler is not built. A previous `gray`
-# (GRAY, default: ./gray, else the one on PATH; releases publish it) builds stage 1, stage 1
-# builds stage 2, and stage 2 is what gets embedded. Only the C runtime library is compiled here.
-GRAY ?= $(shell if [ -x ./$(BINARY_NAME) ]; then echo ./$(BINARY_NAME); else command -v gray; fi)
+# The shipped compiler is the self-hosted one. grayc, built from source here, builds stage 1,
+# stage 1 builds stage 2, and stage 2 is what gets embedded.
 
 compiler-grayc:
 	@echo "Building compiler..."
 	@"$(MAKE)" -C grayc build
 
 compiler-selfhost:
-	@test -n "$(GRAY)" || { echo "No gray found: download a release of gray from GitHub, or run make with GRAY=/path/to/gray"; exit 1; }
-	@echo "Building runtime library..."
-	@"$(MAKE)" -C grayc libgrayrt.a
+	@echo "Building grayc..."
+	@"$(MAKE)" -C grayc build
 	@mkdir -p $(SELFHOST_BUILD)
-	@echo "Building compiler with $(GRAY)..."
-	@$(GRAY) build selfhost/driver/main.gray -o $(SELFHOST_BUILD)/selfhost_grayc_stage1.bin -q all
+	@echo "Building compiler with grayc..."
+	@./grayc/grayc build selfhost/driver/main.gray -o $(SELFHOST_BUILD)/selfhost_grayc_stage1.bin --quiet
 	@$(SELFHOST_BUILD)/selfhost_grayc_stage1.bin build selfhost/driver/main.gray -o $(SELFHOST_DRIVER) -q all
 
 install: build

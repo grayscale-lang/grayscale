@@ -1,0 +1,12 @@
+// expect-error: E5047
+// expect-error-count: 1
+// A #test function cannot be called from other code.
+
+#test
+do check_value() {
+    assert(true)
+}
+
+do main() {
+    check_value()
+}

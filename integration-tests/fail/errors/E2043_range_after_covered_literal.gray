@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2043 - a range that follows a literal it contains repeats that value.
+ */
+// expect-error: E2043
+// expect-error-count: 1
+
+do main() {
+    mut n i64 = 3
+    when n {
+        is 3 { println("literal") }
+        is range(0, 5) { println("range") }
+        default { println("other") }
+    }
+}

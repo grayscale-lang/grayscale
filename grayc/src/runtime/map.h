@@ -47,6 +47,17 @@ typedef struct {
 GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_capacity,
                           int8_t key_kind, int8_t value_kind);
 
+/* The iteration counter shared by every copy of `map`: a for_each over a map
+ * reached through a call holds a copy of its header, so the counter that
+ * stops a write to the real map lives in a table keyed by the map's storage. */
+typedef struct GrayMapGuard {
+    int32_t iterating;
+} GrayMapGuard;
+GrayMapGuard *gray_map_guard_of(const GrayMap *map);
+
+/* True while a for_each is walking `map`, through this header or a copy of it. */
+bool gray_map_iterating(const GrayMap *map);
+
 /* Get a pointer to the value for a key, or NULL if not found */
 void *gray_map_get(GrayMap *map, const void *key);
 

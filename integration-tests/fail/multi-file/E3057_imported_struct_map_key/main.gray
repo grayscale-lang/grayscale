@@ -1,0 +1,6 @@
+import "./types"
+import @arrays
+
+do main() {
+    mut m map[types.Outer:i64] = {:}
+}

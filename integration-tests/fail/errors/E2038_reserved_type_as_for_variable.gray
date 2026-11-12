@@ -1,0 +1,7 @@
+/*
+ * Error Test: E2038 - reserved type name used as a for loop variable
+ */
+
+do main() {
+    for string in range(0, 2) { println(string) }
+}

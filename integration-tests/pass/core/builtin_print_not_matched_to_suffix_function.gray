@@ -1,0 +1,34 @@
+/*
+ * builtin_print_not_matched_to_suffix_function.gray - a bare print() call
+ * inside a block that has its own arena is the builtin, not a function whose
+ * name merely ends in "_print".
+ */
+
+import @strings
+
+do value_print(counter ^i64, text string) -> string {
+    counter^ += 1
+    return "[${text}]"
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    text string = "a,b"
+    if len(text) > 0 {
+        print("  [PASS] ")
+        print(text)
+        println("")
+        for_each part in strings.split(text, ",") {
+            println(part)
+        }
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    mut counter i64 = 0
+    if value_print(addr(counter), "x") == "[x]" && counter == 1 { passed += 1 } otherwise { failed += 1 }
+    println("passed: ${passed}, failed: ${failed}")
+}

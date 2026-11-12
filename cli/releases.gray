@@ -1,15 +1,15 @@
-// releases.gray — Release information for gray version, update and install:
-// the GitHub release list fetched with curl, the once-a-day update check and
-// its cache file, and the changelog shown before an upgrade.
+/*
+ * releases.gray:  Release information for gray version, update and install:
+ * the GitHub release list fetched with curl, the once-a-day update check and
+ * its cache file, and the changelog shown before an upgrade.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @json
-import @time
-import @strings
-import @arrays
-import @strconv
+import @io, @os, @path, @json, @time, @strings, @arrays, @strconv
 import "./changelog"
 import "./versions"
 

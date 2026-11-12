@@ -1,13 +1,16 @@
-//
-// gen.gray - write deterministic benchmark fixtures into benchmarks/.gen/.
-// The fixtures are deterministic; running this again just rewrites them.
-// run.gray wipes .gen/ before calling this.
-//
-// Usage (run from the repo root):
-//   grayc benchmarks/gen.gray -o gen && ./gen
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
+/*
+ * gen.gray:  write deterministic benchmark fixtures into benchmarks/.gen/.
+ * The fixtures are deterministic; running this again just rewrites them.
+ * run.gray wipes .gen/ before calling this.
+ *
+ * Usage (run from the repo root):
+ *   grayc benchmarks/gen.gray -o gen && ./gen
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @io, @os, @strings
 

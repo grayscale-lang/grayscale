@@ -1,21 +1,24 @@
-//
-// run.gray - build the workloads, time their compile and run phases, print a
-// table, and write benchmarks/results.json.
-//
-// Grayscale-only absolute numbers: no cross-language baseline, no regression
-// gate. POSIX only; the Makefile target skips this on Windows.
-//
-// Usage (run from the repo root):
-//   grayc benchmarks/run.gray -o run && ./run
-//
-//   BENCH_RUNS=N            run-phase iterations   (default 5)
-//   BENCH_COMPILE_RUNS=N    compile-phase iters    (default 3)
-//   GRAY=/path/to/gray      compiler to benchmark  (default ./gray)
-//   GRAY_CC=<compiler>      C compiler gray and the stopwatch build with
-//                           (default: $CC, then cc)
-//
-// Copyright (c) 2025-Present Marshall A Burns
-// Licensed under the MIT License. See LICENSE for details.
+/*
+ * run.gray:  build the workloads, time their compile and run phases, print a
+ * table, and write benchmarks/results.json.
+ *
+ * Grayscale-only absolute numbers: no cross-language baseline, no regression
+ * gate. POSIX only; the Makefile target skips this on Windows.
+ *
+ * Usage (run from the repo root):
+ *   grayc benchmarks/run.gray -o run && ./run
+ *
+ *   BENCH_RUNS=N            run-phase iterations   (default 5)
+ *   BENCH_COMPILE_RUNS=N    compile-phase iters    (default 3)
+ *   GRAY=/path/to/gray      compiler to benchmark  (default ./gray)
+ *   GRAY_CC=<compiler>      C compiler gray and the stopwatch build with
+ *                           (default: $CC, then cc)
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @io, @os, @strings, @arrays, @strconv, @time, @fmt
 

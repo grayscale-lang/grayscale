@@ -1,0 +1,9 @@
+// expect-error: E5026
+// expect-error-count: 1
+// assert() requires a bool condition; a void call is not one.
+
+do nothing() {}
+
+do main() {
+    assert(nothing())
+}

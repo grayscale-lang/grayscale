@@ -1,6 +1,17 @@
 #!/bin/sh
-# Block the commit if any staged .gray file under cli/, scripts/ or benchmarks/
-# is not formatted. Fix with: gray fmt <file>
+# Block the commit if any staged file has a disallowed extension, or if any staged
+# .gray file under cli/, scripts/ or benchmarks/ is not formatted.
+
+# Reject disallowed file extensions (executables, archives, installers)
+blocked_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(exe|dll|out|db|sqlite|sqlite3|sh|tar|tar\.gz|tgz|tar\.bz2|tar\.xz|zip|7z|rar|gz|bz2|xz|dmg|pkg|msi|deb|rpm|jar|whl|iso)$' || true)
+if [ -n "$blocked_files" ]; then
+  echo "pre-commit: Disallowed file extensions detected:" >&2
+  echo "$blocked_files" >&2
+  exit 1
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACM -- 'cli/*.gray' 'scripts/*.gray' 'benchmarks/*.gray')
+[ -z "$files" ] && exit 0
 
 if [ -x ./gray ]; then
   gray_bin=./gray
@@ -10,9 +21,6 @@ else
   echo "pre-commit: gray binary not found; run 'make selfhost build' first" >&2
   exit 1
 fi
-
-files=$(git diff --cached --name-only --diff-filter=ACM -- 'cli/*.gray' 'scripts/*.gray' 'benchmarks/*.gray')
-[ -z "$files" ] && exit 0
 
 status=0
 for file in $files; do
