@@ -3,9 +3,7 @@
  * Exercises: char/u8 scanning, string indexing, tight loops, string building.
  */
 
-import @io
-import @os
-import @path
+import @io, @os, @path
 
 do is_alpha(c i64) -> bool {
     return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
