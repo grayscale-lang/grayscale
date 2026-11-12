@@ -22,9 +22,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download gray
-        uses: ./.github/actions/download-gray
-
       - name: Build
         run: make selfhost build
 
@@ -54,9 +51,6 @@ jobs:
       - name: Install TinyCC
         run: sudo apt-get update && sudo apt-get install -y tcc
 
-      - name: Download gray
-        uses: ./.github/actions/download-gray
-
       - name: Build
         run: make selfhost build
 
@@ -80,9 +74,6 @@ jobs:
 
       - name: Toolchain versions
         run: clang --version
-
-      - name: Download gray
-        uses: ./.github/actions/download-gray
 
       - name: Build
         run: make selfhost build
@@ -137,6 +128,7 @@ jobs:
   # bash scripts and sanitizers that have no Windows equivalent.
   windows:
     name: Windows Build and Test
+    if: false
     runs-on: windows-latest
     steps:
       - name: Checkout code

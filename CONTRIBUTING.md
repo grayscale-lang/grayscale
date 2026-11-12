@@ -32,7 +32,6 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 
 - **C compiler** (gcc or clang)
 - Git
-- **An installed `gray`.** The compiler is written in Grayscale, so building it needs a `gray` that already works. Download a release from the [Releases page](https://github.com/grayscale-lang/grayscale/releases) and put it on your `PATH` or in the repository root. To use one somewhere else, pass `GRAY=/path/to/gray` to `make`.
 
 Grayscale has two languages to contribute in: the compiler and the `gray` CLI are written in **Grayscale** (`selfhost/`, `cli/`), and the runtime and standard library that every compiled program links against are written in **C** (`grayc/src/runtime/`, `grayc/src/stdlib/`).
 
