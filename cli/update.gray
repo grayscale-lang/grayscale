@@ -1,14 +1,15 @@
-// update.gray — "gray update" and "gray install": download a release archive
-// from GitHub with curl, check it against the published SHA-256, unpack the
-// gray binary with tar and put it in place of the running one.
+/*
+ * update.gray:  "gray update" and "gray install": download a release archive
+ * from GitHub with curl, check it against the published SHA-256, unpack the
+ * gray binary with tar and put it in place of the running one.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @crypto
-import @encoding
-import @strings
-import @arrays
+import @io, @os, @path, @crypto, @encoding, @strings, @arrays
 import "./args"
 import "./changelog"
 import "./completion_install"

@@ -1,5 +1,12 @@
-// templates.gray — The project templates of "gray new", embedded one file at a
-// time because embed() takes a single literal path.
+/*
+ * templates.gray:  The project templates of "gray new", embedded one file at a
+ * time because embed() takes a single literal path.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 const BASIC_MAIN string = embed("templates/basic/main.gray")
 

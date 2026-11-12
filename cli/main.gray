@@ -1,10 +1,15 @@
-// main.gray — Entry point of the gray CLI: lifts the -define flags out of the
-// arguments, parses the rest (help, completion and argument errors are answered
-// by args.parse_args) and runs the command that was asked for.
+/*
+ * main.gray:  Entry point of the gray CLI: lifts the -define flags out of the
+ * arguments, parses the rest (help, completion and argument errors are answered
+ * by args.parse_args) and runs the command that was asked for.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @os
-import @arrays
-import @maps
+import @os, @arrays, @maps
 import "./args"
 import "./commands"
 import "./completion_install"

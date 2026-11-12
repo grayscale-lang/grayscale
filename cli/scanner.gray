@@ -1,6 +1,13 @@
-// scanner.gray — Source scanner shared by `gray fmt` and `gray doc`. Tracks
-// comments, strings, char literals, interpolation depth and raw strings so a
-// caller can tell which lines begin inside a raw string or a block comment.
+/*
+ * scanner.gray:  Source scanner shared by `gray fmt` and `gray doc`. Tracks
+ * comments, strings, char literals, interpolation depth and raw strings so a
+ * caller can tell which lines begin inside a raw string or a block comment.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @arrays
 

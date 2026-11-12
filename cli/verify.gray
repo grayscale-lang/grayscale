@@ -1,9 +1,14 @@
-// verify.gray — "gray verify": compile and run the embedded language
-// verification program to confirm the installation works.
+/*
+ * verify.gray:  "gray verify": compile and run the embedded language
+ * verification program to confirm the installation works.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
+import @io, @os, @path
 import "./driver"
 
 const VERIFY_SOURCE string = embed("tests.gray")

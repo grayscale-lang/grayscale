@@ -1,5 +1,12 @@
-// lang_man.gray — The language reference of gray man: keywords, types, symbols and
-// attributes, each with its syntax, description and an example.
+/*
+ * lang_man.gray:  The language reference of gray man: keywords, types, symbols and
+ * attributes, each with its syntax, description and an example.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
 import @strings
 

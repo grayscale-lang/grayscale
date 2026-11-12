@@ -1,8 +1,13 @@
-// compiler.gray — Locates the grayc binary for the gray commands that invoke it.
+/*
+ * compiler.gray:  Locates the grayc binary for the gray commands that invoke it.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
+import @io, @os, @path
 import "./embedded"
 
 do compiler_binary_name() -> string {

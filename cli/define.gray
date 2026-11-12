@@ -1,10 +1,15 @@
-// define.gray — The -define:NAME=VALUE flag. The CLI lifts these arguments out
-// of its argument list before parsing the rest, and the commands that compile a
-// program forward them to grayc as --define=NAME=VALUE.
+/*
+ * define.gray:  The -define:NAME=VALUE flag. The CLI lifts these arguments out
+ * of its argument list before parsing the rest, and the commands that compile a
+ * program forward them to grayc as --define=NAME=VALUE.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @arrays
-import @maps
-import @strings
+import @arrays, @maps, @strings
 
 const DEFINE_FLAG_PREFIX string = "-define:"
 

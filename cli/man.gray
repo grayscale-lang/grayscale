@@ -1,8 +1,13 @@
-// man.gray — "gray man": builtin, stdlib and language reference documentation.
+/*
+ * man.gray:  "gray man": builtin, stdlib and language reference documentation.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @maps
-import @strings
-import @arrays
+import @maps, @strings, @arrays
 import "./args"
 import "./commands"
 import "./lang_man"

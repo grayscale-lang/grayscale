@@ -1,13 +1,15 @@
-// driver.gray — Runs the grayc compiler for the gray commands: build, run,
-// check, fmt and version. Commands that stream (build, run, check) hand the
-// terminal to grayc through system(); the others capture its output.
+/*
+ * driver.gray:  Runs the grayc compiler for the gray commands: build, run,
+ * check, fmt and version. Commands that stream (build, run, check) hand the
+ * terminal to grayc through system(); the others capture its output.
+ *
+ * Author:  Marshall A Burns <marshallbcodes@gmail.com>
+ * GitHub: @SchoolyB
+ * Copyright (c) 2026-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
 
-import @io
-import @os
-import @path
-import @strings
-import @arrays
-import @encoding
+import @io, @os, @path, @strings, @arrays, @encoding
 import "./compiler"
 
 // BuildOptions configures a build. An empty string, 0 or false leaves the
