@@ -12113,8 +12113,26 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     if (!node->data.assign.is_declaration && node->data.assign.operator == TOKEN_ASSIGN &&
         !expression_contains_call(node->data.assign.target)) {
         GrayType *replaced_type = codegen_type_of(codegen, node->data.assign.target);
-        if (replaced_type && replaced_type->kind == TYPE_KIND_STRUCT && replaced_type->name)
-            emit_struct_map_iteration_checks(codegen, node, node->data.assign.target, replaced_type->name, "", 0);
+        if (replaced_type && replaced_type->kind == TYPE_KIND_STRUCT && replaced_type->name) {
+            AstNode *target = node->data.assign.target;
+            GrayType *container_type = target->kind == NODE_INDEX_EXPRESSION
+                ? codegen_type_of(codegen, target->data.index_expression.left) : NULL;
+            /* A key not yet in the map has no old value, so nothing to check. */
+            bool is_map_slot = container_type && container_type->kind == TYPE_KIND_MAP && container_type->key_type;
+            if (is_map_slot) {
+                emit_indent(codegen);
+                emit_formatted(codegen, "{ GrayMap _mt = ");
+                emit_expression(codegen, target->data.index_expression.left);
+                emit_formatted(codegen, "; %s _mk = ", gray_map_element_c_type(codegen, container_type->key_type));
+                emit_map_slot_value(codegen, container_type->key_type, target->data.index_expression.index);
+                emit(codegen, "; if (gray_map_has(&_mt, &_mk)) {\n");
+            }
+            emit_struct_map_iteration_checks(codegen, node, target, replaced_type->name, "", 0);
+            if (is_map_slot) {
+                emit_indent(codegen);
+                emit(codegen, "} }\n");
+            }
+        }
     }
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
