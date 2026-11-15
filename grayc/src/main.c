@@ -1739,6 +1739,12 @@ static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char 
                 append_format_to_buffer(&probe,
                     "_Static_assert(__builtin_classify_type(*(%s *)0) != %d, \"gray_td_%d_%d_\");\n",
                     typedef_names[index], C_TYPE_CLASSES[character].type_class, index, character);
+        /* A function pointer and a pointer to a pointer both classify as 5; only
+         * dereferencing a function pointer yields a size-1 pointer-class value. */
+        for (int index = 0; index < typedef_count; index++)
+            append_format_to_buffer(&probe,
+                "_Static_assert(__builtin_classify_type(*(%s)0) != 5 || sizeof(*(%s)0) != 1, \"gray_fp_%d_\");\n",
+                typedef_names[index], typedef_names[index], index);
 
         const char *no_flags[] = { NULL };
         char *error_output = NULL;
@@ -1749,8 +1755,14 @@ static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char 
                 char marker[32];
                 snprintf(marker, sizeof(marker), "gray_td_%d_%d_", index, character);
                 if (!strstr(error_output, marker)) continue;
-                append_format_to_buffer(&dump, "TypedefDecl %s '%s'\n", typedef_names[index],
-                                        C_TYPE_CLASSES[character].spelling);
+                /* A non-pointer typedef makes the probe a hard error that echoes its
+                 * message text, so only the assertion's own failure line counts. */
+                char function_pointer_marker[64];
+                snprintf(function_pointer_marker, sizeof(function_pointer_marker), "assertion failed: \"gray_fp_%d_\"", index);
+                /* "(*)" without a parameter list: the parameters are unreadable, so
+                 * callback_mismatches_function_pointer accepts it. */
+                const char *spelling = strstr(error_output, function_pointer_marker) ? "void (*)" : C_TYPE_CLASSES[character].spelling;
+                append_format_to_buffer(&dump, "TypedefDecl %s '%s'\n", typedef_names[index], spelling);
                 break;
             }
         }
