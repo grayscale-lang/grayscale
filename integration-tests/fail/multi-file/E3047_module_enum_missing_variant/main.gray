@@ -1,0 +1,8 @@
+// expect-error: E3047
+// expect-contains: enum 'Color' has no member
+// expect-not: lib_Color
+import "./lib.gray"
+
+do main() {
+    mut a lib.Color = lib.Color.Blue
+}

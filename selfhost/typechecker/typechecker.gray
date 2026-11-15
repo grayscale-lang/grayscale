@@ -3614,7 +3614,7 @@ fn resolve_member_expr(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
             ei = find_enum(checker, obj_name)
             warn_if_enum_deprecated(checker, node, ei)
             if ei == nil || !enum_has_variant(ei, member) {
-                message = fmt.sprintf("enum '%s' has no member '%s'", {obj_name, member})
+                message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, obj_name), member})
                 add_diagnostic(checker, "E3047", message, node^.tok.file, node^.tok.line, node^.tok.col)
             } otherwise {
                 reject_payload_variant_without_payload(checker, node, ei, member)
@@ -11619,7 +11619,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                     pd^.enum_name = when_type^.name
                     vi = enum_variant_index(subject_enum, pd^.variant)
                     if vi < 0 {
-                        message = fmt.sprintf("enum '%s' has no member '%s'", {when_type^.name, pd^.variant})
+                        message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, when_type^.name), pd^.variant})
                         add_diagnostic(checker, "E3047", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)
                     } otherwise {
                         expected_bindings = len(subject_enum^.variant_payload_types[vi])
@@ -11636,7 +11636,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                 if subject_enum != nil {
                     value_node^.implicit_enum^.resolved_enum = when_type^.name
                     if enum_variant_index(subject_enum, value_node^.implicit_enum^.variant) < 0 {
-                        message = fmt.sprintf("enum '%s' has no member '%s'", {when_type^.name, value_node^.implicit_enum^.variant})
+                        message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, when_type^.name), value_node^.implicit_enum^.variant})
                         add_diagnostic(checker, "E3047", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)
                     }
                 }
