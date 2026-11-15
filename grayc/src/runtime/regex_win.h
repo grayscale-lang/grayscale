@@ -53,8 +53,8 @@ typedef struct {
  *
  * A pattern compiles to a tree of alternatives, each a sequence of quantified
  * atoms. Matching walks it recursively, which keeps the code small; the
- * quantifier loops bound their own backtracking so a pathological pattern
- * costs time rather than stack. */
+ * matcher bounds its recursion depth and its step count, so a pathological
+ * pattern or text stops with an error instead of overflowing the stack. */
 
 typedef enum {
     GRAY_REGEX_CHARACTER,  /* one literal character */
@@ -403,7 +403,14 @@ typedef struct {
     const char *begin; /* start of subject, for '^' */
     bool is_not_beginning_of_line; /* '^' must not match at begin */
     GrayRegexSpan *captures; /* indexed by group number; NULL when nobody reads groups */
+    int depth; /* quantified atoms and groups currently being matched */
+    long steps; /* atom attempts so far in this search */
+    bool is_exhausted; /* the depth or step budget ran out */
 } GrayRegexContext;
+
+/* A search that recurses deeper or tries more atoms than this stops. The depth
+ * keeps a thread's small stack safe; the step count stops runaway backtracking. */
+enum { GRAY_REGEX_MAX_DEPTH = 1000, GRAY_REGEX_MAX_STEPS = 10000000 };
 
 /* Mark groups first..last as not participating. */
 static void gray_regex_clear_captures(GrayRegexContext *context, int first, int last) {
@@ -444,67 +451,97 @@ static const char *gray_regex_match_one(GrayRegexContext *context, GrayRegexNode
 
 /* Match seq->nodes[idx..] at scan_position. Greedy, with backtracking on the quantifier. */
 static const char *gray_regex_match_sequence(GrayRegexContext *context, GrayRegexSequence *sequence, int index, const char *scan_position) {
+    if (context->is_exhausted) return NULL;
+
+    /* Fixed single occurrences that record no capture: the common case, a loop
+     * rather than a frame per atom. */
+    while (index < sequence->count) {
+        GrayRegexNode *fixed = &sequence->nodes[index];
+        if (fixed->minimum_repeat != 1 || fixed->maximum_repeat != 1) break;
+        if (fixed->kind == GRAY_REGEX_GROUP && context->captures) break;
+        if (++context->steps > GRAY_REGEX_MAX_STEPS) { context->is_exhausted = true; return NULL; }
+        const char *next = gray_regex_match_one(context, fixed, scan_position);
+        if (!next) return NULL;
+        scan_position = next;
+        index++;
+    }
     if (index == sequence->count) return scan_position;
 
     GrayRegexNode *node = &sequence->nodes[index];
 
-    /* Fixed single occurrence: the common case, kept allocation-free. */
+    if (context->depth >= GRAY_REGEX_MAX_DEPTH) { context->is_exhausted = true; return NULL; }
+    context->depth++;
+    const char *result = NULL;
+
     if (node->minimum_repeat == 1 && node->maximum_repeat == 1) {
+        /* A capturing group, exactly once. */
         const char *next = gray_regex_match_one(context, node, scan_position);
-        if (!next) return NULL;
-        if (node->kind != GRAY_REGEX_GROUP || !context->captures) {
-            return gray_regex_match_sequence(context, sequence, index + 1, next);
+        if (next) {
+            GrayRegexSpan previous = context->captures[node->group_index];
+            context->captures[node->group_index].rm_so = (long)(scan_position - context->begin);
+            context->captures[node->group_index].rm_eo = (long)(next - context->begin);
+            result = gray_regex_match_sequence(context, sequence, index + 1, next);
+            if (!result) {
+                gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+                context->captures[node->group_index] = previous;
+            }
         }
-        GrayRegexSpan previous = context->captures[node->group_index];
-        context->captures[node->group_index].rm_so = (long)(scan_position - context->begin);
-        context->captures[node->group_index].rm_eo = (long)(next - context->begin);
-        const char *rest = gray_regex_match_sequence(context, sequence, index + 1, next);
-        if (!rest) {
-            gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
-            context->captures[node->group_index] = previous;
-        }
-        return rest;
+        context->depth--;
+        return result;
     }
 
     /* Record how far the atom can repeat, then give ground from the longest
      * run back to the minimum until the rest of the sequence fits. */
     enum { GRAY_REGEX_MAX_REPEAT = 8192 };
-    const char *stack[GRAY_REGEX_MAX_REPEAT + 1];
-    int depth = 0;
+    int capacity = 16;
+    const char **stack = (const char **)malloc((size_t)capacity * sizeof(const char *));
+    if (!stack) { context->is_exhausted = true; context->depth--; return NULL; }
+    int repeat_count = 0;
     stack[0] = scan_position;
     const char *cursor = scan_position;
-    while ((node->maximum_repeat < 0 || depth < node->maximum_repeat) && depth < GRAY_REGEX_MAX_REPEAT) {
+    while ((node->maximum_repeat < 0 || repeat_count < node->maximum_repeat) && repeat_count < GRAY_REGEX_MAX_REPEAT) {
+        if (++context->steps > GRAY_REGEX_MAX_STEPS) { context->is_exhausted = true; break; }
         const char *next = gray_regex_match_one(context, node, cursor);
         if (!next || next == cursor) break; /* no progress: stop, or '*' spins */
-        cursor = next;
-        stack[++depth] = cursor;
-    }
-
-    bool records_captures = node->kind == GRAY_REGEX_GROUP && context->captures;
-    GrayRegexSpan previous = {-1, -1};
-    if (records_captures) previous = context->captures[node->group_index];
-
-    for (int take = depth; take >= node->minimum_repeat; take--) {
-        if (records_captures) {
-            /* The group reports its last iteration: rerun that iteration so
-             * groups nested inside it match it, not a later or failed one. */
-            gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
-            if (take == 0) {
-                context->captures[node->group_index] = previous;
-            } else {
-                gray_regex_match_one(context, node, stack[take - 1]);
-                context->captures[node->group_index].rm_so = (long)(stack[take - 1] - context->begin);
-                context->captures[node->group_index].rm_eo = (long)(stack[take] - context->begin);
-            }
+        if (repeat_count + 1 >= capacity) {
+            capacity *= 2;
+            const char **grown = (const char **)realloc(stack, (size_t)capacity * sizeof(const char *));
+            if (!grown) { context->is_exhausted = true; break; }
+            stack = grown;
         }
-        const char *rest = gray_regex_match_sequence(context, sequence, index + 1, stack[take]);
-        if (rest) return rest;
+        cursor = next;
+        stack[++repeat_count] = cursor;
     }
-    if (records_captures) {
-        gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
-        context->captures[node->group_index] = previous;
+
+    if (!context->is_exhausted) {
+        bool records_captures = node->kind == GRAY_REGEX_GROUP && context->captures;
+        GrayRegexSpan previous = {-1, -1};
+        if (records_captures) previous = context->captures[node->group_index];
+
+        for (int take = repeat_count; take >= node->minimum_repeat; take--) {
+            if (records_captures) {
+                /* The group reports its last iteration: rerun that iteration so
+                 * groups nested inside it match it, not a later or failed one. */
+                gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+                if (take == 0) {
+                    context->captures[node->group_index] = previous;
+                } else {
+                    gray_regex_match_one(context, node, stack[take - 1]);
+                    context->captures[node->group_index].rm_so = (long)(stack[take - 1] - context->begin);
+                    context->captures[node->group_index].rm_eo = (long)(stack[take] - context->begin);
+                }
+            }
+            result = gray_regex_match_sequence(context, sequence, index + 1, stack[take]);
+            if (result || context->is_exhausted) break;
+        }
+        if (!result && records_captures) {
+            gray_regex_clear_captures(context, node->group->first_group, node->group->last_group);
+            context->captures[node->group_index] = previous;
+        }
     }
-    return NULL;
+    free(stack);
+    context->depth--;
+    return result;
 }
 
 static const char *gray_regex_match_alternation(GrayRegexContext *context, GrayRegexAlternation *alternation, const char *scan_position) {
@@ -535,8 +572,9 @@ static int gray_regex_engine_compile(GrayRegexEngine *engine, const char *patter
     return 0;
 }
 
-/* Search `string` for a match. Returns 0 on a match, non-zero otherwise.
- * A match may only start at a character boundary. */
+/* Search `string` for a match. Returns 0 on a match, 1 on no match, and 2 when
+ * the search ran past its depth or step budget. A match may only start at a
+ * character boundary. */
 static int gray_regex_engine_execute(const GrayRegexEngine *engine, const char *string, size_t nmatch,
                                      GrayRegexSpan *spans, bool is_not_beginning_of_line) {
     if (!engine->root) return 1;
@@ -545,6 +583,9 @@ static int gray_regex_engine_execute(const GrayRegexEngine *engine, const char *
     context.begin = string;
     context.is_not_beginning_of_line = is_not_beginning_of_line;
     context.captures = NULL;
+    context.depth = 0;
+    context.steps = 0;
+    context.is_exhausted = false;
     if (nmatch > 1 && spans && engine->group_count > 0) {
         context.captures = (GrayRegexSpan *)malloc((engine->group_count + 1) * sizeof(GrayRegexSpan));
         if (!context.captures) return 1;
@@ -569,6 +610,10 @@ static int gray_regex_engine_execute(const GrayRegexEngine *engine, const char *
             }
             free(context.captures);
             return 0;
+        }
+        if (context.is_exhausted) {
+            free(context.captures);
+            return 2;
         }
         if (*start == '\0') break;
         int32_t codepoint;
