@@ -1796,6 +1796,8 @@ fn reject_multi_value_call(checker ^TypeChecker, call_expression ^ast.AstNode, r
     if callee^.kind == ast.NodeKind.LABEL {
         name = callee^.label^.value
         signature = find_func(checker, name)
+        // A module call the resolver rewrote to its mangled label is named as written
+        if callee^.label^.qualifier != "" { name = callee^.label^.qualified_member }
         // A bare call carries no module qualifier; resolve it through the
         // using-modules so the stdlib checks below consult the module that
         // actually supplies it.
@@ -8103,7 +8105,9 @@ fn check_discarded_call_result(checker ^TypeChecker, node ^ast.AstNode, expressi
         if !is_side_effect_call(name) {
             signature = find_func(checker, name)
             if signature == nil || !signature^.is_discard {
-                add_diagnostic_help(checker, "E5011", "return value of '${name}()' is not used", "assign the result to a variable, or use 'mut _ = ...' to discard it", node^.tok.file, node^.tok.line, node^.tok.col)
+                mut called_name = name
+                if callee^.label^.qualifier != "" { called_name = "${callee^.label^.qualifier}.${callee^.label^.qualified_member}" }
+                add_diagnostic_help(checker, "E5011", "return value of '${called_name}()' is not used", "assign the result to a variable, or use 'mut _ = ...' to discard it", node^.tok.file, node^.tok.line, node^.tok.col)
             }
         }
     } or callee^.kind == ast.NodeKind.MEMBER_EXPR && callee^.member^.object^.kind == ast.NodeKind.LABEL {
