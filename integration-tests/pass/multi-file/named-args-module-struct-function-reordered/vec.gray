@@ -1,0 +1,8 @@
+const Vec struct {
+    x i64
+    y i64
+
+    do scale(self Vec, factor i64) -> Vec {
+        return Vec{x: self.x * factor, y: self.y * factor}
+    }
+}

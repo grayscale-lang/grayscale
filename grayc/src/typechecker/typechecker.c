@@ -11061,6 +11061,11 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                 }
             }
             result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
+            if (signature->declaration) {
+                char display[MESSAGE_BUFFER_SIZE];
+                snprintf(display, sizeof(display), "%s.%s.%s", module_name, struct_name, chained_function_name);
+                typechecker_resolve_named_arguments(checker, node, signature->declaration, display);
+            }
             /* Check argument count */
             {
                 int minimum_arguments = signature_minimum_arguments(signature);
