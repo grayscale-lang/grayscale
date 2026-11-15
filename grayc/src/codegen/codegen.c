@@ -2684,7 +2684,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node);
 /* Array literal: its element type is the one the type checker resolved for
  * it — the slot it is stored into, or its own elements' type. */
 static void emit_array_value(CodeGen *codegen, AstNode *node) {
-    GrayType *literal_type = codegen_type_of(codegen, node);
+    GrayType *literal_type = codegen_effective_type(codegen, codegen_type_of(codegen, node));
     const char *saved_variable_type = codegen->current_variable_type;
     if (literal_type && literal_type->kind == TYPE_KIND_ARRAY && literal_type->element_type &&
         !strchr(literal_type->element_type, '?')) {
