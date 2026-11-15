@@ -15966,6 +15966,23 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
                  * unresolved initializer already drew its own error, and only
                  * a call or member access still binds the name so later reads
                  * do not add an undefined-variable error apiece. */
+                /* A named return value takes nil only if its type is nullable. */
+                if (value_type && value_type->kind == TYPE_KIND_NIL && checker->current_return_names) {
+                    for (int i = 0; i < checker->current_return_count; i++) {
+                        if (!checker->current_return_names[i] || strcmp(checker->current_return_names[i], name) != 0) continue;
+                        const char *slot_type_name = checker->current_return_type_names[i];
+                        GrayType *slot_type = checker->current_return_types[i];
+                        if (!checker->should_suppress_type_table_writes && slot_type_name &&
+                            type_name_has_unbound_generic(checker_substitute_generics(checker, slot_type_name))) {
+                            NODE_ERROR(checker, node->data.assign.value, "E3071");
+                        } else if (slot_type && slot_type->kind != TYPE_KIND_POINTER && slot_type->kind != TYPE_KIND_ERROR &&
+                                   slot_type->kind != TYPE_KIND_UNKNOWN && slot_type->kind != TYPE_KIND_NIL &&
+                                   slot_type->kind != TYPE_KIND_VOID) {
+                            typechecker_error_assign_type(checker, node->data.assign.value, "nil", type_display_name(checker, slot_type));
+                        }
+                        break;
+                    }
+                }
                 bool unresolved = !value_type || value_type->kind == TYPE_KIND_UNKNOWN;
                 AstNode *initializer = node->data.assign.value;
                 if (unresolved && initializer->kind != NODE_CALL_EXPRESSION && initializer->kind != NODE_MEMBER_EXPRESSION)
@@ -16533,7 +16550,6 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
      * a `generic` parameter's name is unsound; nil isn't a value for every
      * binding (i64, string, etc.). The codegen would otherwise emit `NULL` and
      * let clang reject the result as an int/struct conversion error.
-     * Allow nil in non-primary return slots (e.g. (kind, Error)).
      * Skip during the per-instantiation re-check so we only emit once. */
     if (!checker->should_suppress_type_table_writes &&
         checker->current_return_count > 0 && node->data.return_statement.count > 0) {
@@ -16542,7 +16558,7 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
         for (int i = 0; i < slots; i++) {
             AstNode *return_value = node->data.return_statement.values[i];
             if (return_value->kind != NODE_NIL_VALUE) continue;
-            const char *type_name_text = (i == 0 && checker->current_return_type_names)
+            const char *type_name_text = checker->current_return_type_names
                 ? checker->current_return_type_names[i] : NULL;
             if (type_name_text && type_name_has_unbound_generic(checker_substitute_generics(checker, type_name_text))) {
                 NODE_ERROR(checker, return_value, "E3071");
@@ -16550,13 +16566,15 @@ static void check_return_statement(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E3072: `return nil` from a function returning a non-nullable type
-     * (struct, i64, string, array, etc.). nil is only valid for pointer
-     * and error return types. */
+    /* E3072: `return nil` into a slot of a non-nullable type (struct, i64,
+     * string, array, etc.). nil is only valid for pointer and error slots. */
     if (checker->current_return_count > 0 && node->data.return_statement.count > 0) {
-        AstNode *return_value = node->data.return_statement.values[0];
-        if (return_value->kind == NODE_NIL_VALUE) {
-            GrayType *expected = checker->current_return_types[0];
+        int count = node->data.return_statement.count;
+        int slots = count < checker->current_return_count ? count : checker->current_return_count;
+        for (int i = 0; i < slots; i++) {
+            AstNode *return_value = node->data.return_statement.values[i];
+            if (return_value->kind != NODE_NIL_VALUE) continue;
+            GrayType *expected = checker->current_return_types[i];
             if (expected && expected->kind != TYPE_KIND_POINTER &&
                 expected->kind != TYPE_KIND_ERROR && expected->kind != TYPE_KIND_UNKNOWN &&
                 expected->kind != TYPE_KIND_NIL && expected->kind != TYPE_KIND_VOID) {

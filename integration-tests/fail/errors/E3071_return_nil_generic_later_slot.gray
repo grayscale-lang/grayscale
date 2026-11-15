@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3071 - return nil into a generic slot after the first
+ * Expected: "'return nil' from a function whose return type contains a 'generic' parameter's name"
+ */
+
+do foo(kind generic) -> (i64, kind) {
+    return 0, nil
+}
+
+do main() {}

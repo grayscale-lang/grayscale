@@ -10391,6 +10391,20 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
             if value_type^.kind == types.TypeKind.VOID {
                 add_diagnostic(checker, "E3187", error_registry.registry_message_formatted("E3187", {"the value of a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
             }
+            // A named return value takes nil only if its type is nullable
+            if value_type^.kind == types.TypeKind.NIL_TYPE && checker^.has_named_returns {
+                for slot in range(0, len(checker^.current_return_names)) {
+                    if checker^.current_return_names[slot] != name || slot >= len(checker^.current_return_types) { continue }
+                    slot_type = checker^.current_return_types[slot]
+                    k = slot_type^.kind
+                    if k == types.TypeKind.UNKNOWN && strings.contains(slot_type^.name, "?") {
+                        add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), ad^.value^.tok.file, ad^.value^.tok.line, ad^.value^.tok.col)
+                    } or k != types.TypeKind.POINTER && k != types.TypeKind.ERROR && k != types.TypeKind.UNKNOWN && k != types.TypeKind.NIL_TYPE && k != types.TypeKind.VOID {
+                        add_diagnostic(checker, "E3001", error_registry.registry_message_formatted("E3001", {"nil", shown_type(checker, slot_type)}), ad^.value^.tok.file, ad^.value^.tok.line, ad^.value^.tok.col)
+                    }
+                    break
+                }
+            }
             scope.scope_define(checker^.current_scope, name, value_type, true)
             symbol = scope.scope_lookup_local(checker^.current_scope, name)
             symbol^.def_line = node^.tok.line
@@ -10847,17 +10861,18 @@ fn check_return_statement(checker ^TypeChecker, node ^ast.AstNode) {
         check_mem_escape(checker, returned, returned)
     }
 
-    // Nil only fits pointer and error return types
-    if len(expected_types) > 0 && len(values) > 0 && values[0]^.kind == ast.NodeKind.NIL_VALUE {
-        k = expected_types[0]^.kind
+    // Nil only fits pointer and error return slots
+    for slot in range(0, len(values)) {
+        if slot >= len(expected_types) { break }
+        if values[slot]^.kind != ast.NodeKind.NIL_VALUE { continue }
+        k = expected_types[slot]^.kind
         if k != types.TypeKind.POINTER && k != types.TypeKind.ERROR && k != types.TypeKind.UNKNOWN && k != types.TypeKind.NIL_TYPE && k != types.TypeKind.VOID {
-            add_diagnostic(checker, "E3072", error_registry.registry_message_formatted("E3072", {shown_type(checker, expected_types[0])}), values[0]^.tok.file, values[0]^.tok.line, values[0]^.tok.col)
+            add_diagnostic(checker, "E3072", error_registry.registry_message_formatted("E3072", {shown_type(checker, expected_types[slot])}), values[slot]^.tok.file, values[slot]^.tok.line, values[slot]^.tok.col)
         }
-    }
-
-    // Nil cannot stand for a type parameter that no call has bound
-    if len(expected_types) > 0 && len(values) > 0 && values[0]^.kind == ast.NodeKind.NIL_VALUE && expected_types[0]^.kind == types.TypeKind.UNKNOWN && strings.contains(expected_types[0]^.name, "?") {
-        add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), values[0]^.tok.file, values[0]^.tok.line, values[0]^.tok.col)
+        // Nil cannot stand for a type parameter that no call has bound
+        if k == types.TypeKind.UNKNOWN && strings.contains(expected_types[slot]^.name, "?") {
+            add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), values[slot]^.tok.file, values[slot]^.tok.line, values[slot]^.tok.col)
+        }
     }
 
     if len(expected_types) == 0 && len(values) > 0 {

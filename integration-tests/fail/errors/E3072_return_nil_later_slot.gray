@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3072 - return nil into a non-nullable slot after the first
+ * Expected: "cannot return 'nil' from a function that returns 'i64'"
+ */
+
+do foo() -> (i64, i64) {
+    return 0, nil
+}
+
+do main() {
+    mut a, b = foo()
+}
