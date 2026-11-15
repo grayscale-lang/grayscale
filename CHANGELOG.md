@@ -1,5 +1,19 @@
 # Changelog
 
+## experimental-20261115-build3 (2026-11-15)
+
+### Bug Fixes
+
+* fix(typechecker): reject nil in a non-first return slot or a named return variable (#3439)
+* fix(codegen): evaluate defer/ensure arguments and receiver at the statement (#3440)
+* fix(typechecker): type an empty map element of an array literal from its siblings (#3429)
+* fix(typechecker): type an empty element of an array literal from its siblings (#3428)
+* fix(typechecker): report a required parameter that named arguments omit (#3426)
+* fix(codegen): evaluate the key of a map value passed to a & parameter once (#3425)
+* fix(codegen): evaluate the subscript of an element passed to a & parameter once (#3424)
+* fix(typechecker): reject a function reference passed to a C parameter that is not a function pointer (#3423)
+* fix(typechecker): keep a pointer's deeper origin across branch assignments (#3422)
+
 ## experimental-20261112-build2 (2026-11-12)
 
 ### Bug Fixes
