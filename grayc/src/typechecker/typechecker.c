@@ -12122,7 +12122,11 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             return &TYPE_UNKNOWN;
         }
     }
-    if (!is_object_type_name) resolve_expression(checker, object);
+    /* An imported module's name qualifies a member; it is not a value. */
+    bool is_object_module = object->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, object->data.label.value) &&
+        typechecker_is_imported_module(checker, object->data.label.value);
+    if (!is_object_type_name && !is_object_module) resolve_expression(checker, object);
 
     if (object->kind == NODE_LABEL) {
         const char *object_name = object->data.label.value;
@@ -13138,7 +13142,6 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         } else if (strncmp(name, GRAY_SYNTHETIC_PREFIX, strlen(GRAY_SYNTHETIC_PREFIX)) != 0 &&
                    !is_enum_name(checker, name) &&
                    !is_struct_name(checker, name) &&
-                   !typechecker_is_imported_module(checker, name) &&
                    !is_enum_name(checker, resolve_type_alias(checker, name)) &&
                    !is_struct_name(checker, resolve_type_alias(checker, name)) &&
                    (checker->is_in_file_scope_initializer ||
@@ -13146,7 +13149,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 NODE_ERROR_FORMATTED(checker, node, "E1012", name + 1);
-            } else if (is_unimported_user_module(checker, name,
+            } else if (!typechecker_is_imported_module(checker, name) &&
+                       is_unimported_user_module(checker, name,
                                                  typechecker_resolve_alias(checker, name))) {
                 NODE_ERROR_FORMATTED_HELP(checker, node, "E4033", "add an import for it at the top of the file", name);
             } else {

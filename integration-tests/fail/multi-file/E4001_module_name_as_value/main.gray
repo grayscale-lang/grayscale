@@ -1,0 +1,7 @@
+// expect-error: E4001
+// expect-not: C compilation failed
+import "./lib.gray"
+
+do main() {
+    println(lib)
+}
