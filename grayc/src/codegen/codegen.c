@@ -3179,7 +3179,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     const char *struct_name_text = node->data.struct_value.name;
     int generic_index = generic_bindings_find(&codegen->generics, struct_name_text);
     if (generic_index >= 0 && codegen->generics.types[generic_index]) {
-        struct_name_text = codegen->generics.types[generic_index];
+        struct_name_text = codegen_resolve_type(codegen, codegen->generics.types[generic_index]);
     } else if (node->resolved_declaration) {
         struct_name_text = module_mangle(codegen->modules, node->resolved_declaration);
     } else {

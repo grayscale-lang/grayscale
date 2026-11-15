@@ -1,0 +1,14 @@
+/*
+ * Test: a generic function in an imported module builds, with T{}, a struct
+ * declared in the calling file
+ */
+import "./lib.gray"
+
+const Local struct {
+    n i64
+}
+
+do main() {
+    mut l Local = lib.fresh(Local)
+    assert(l.n == 0, "T{} builds a struct declared in the calling file")
+}

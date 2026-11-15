@@ -5044,7 +5044,11 @@ static DeclarationEntry *checker_cache_resolution(TypeChecker *checker, AstNode 
 static DeclarationEntry *checker_resolve_entry(TypeChecker *checker, const char *written) {
     if (!written || !checker->modules) return NULL;
     ResolveScope scope = checker_scope(checker);
-    DeclarationEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    /* A leading '.' names the entry module's declaration, whichever module the
+     * lookup runs in. */
+    DeclarationEntry *entry = written[0] == '.'
+        ? module_scope_lookup(module_table_find(checker->modules, ""), written + 1)
+        : module_resolve_written(checker->modules, &scope, written);
     /* A bare name that reached its declaration through `using` names a member
      * of that module exactly as a qualified reference does, so it counts as
      * using the import. Only qualified access marked it before, and a file

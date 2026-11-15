@@ -1,0 +1,3 @@
+do fresh(T generic) -> T {
+    return T{}
+}
