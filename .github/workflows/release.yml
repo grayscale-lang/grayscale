@@ -2,17 +2,21 @@ name: Release
 
 # Every merge into main publishes experimental-YYYYMMDD-build#, where YYYYMMDD
 # is the UTC date and # counts up across every release, never resetting with
-# the date. Run it by hand on
-# any branch to build the binaries without publishing.
+# the date. A pull request adds each release's notes to CHANGELOG.md, and
+# merging a change to only that file does not cut another release. Run it by
+# hand on any branch to build the binaries without publishing.
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - CHANGELOG.md
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 # Two merges close together must not pick the same build number.
 concurrency:
@@ -140,7 +144,7 @@ jobs:
           section "Performance" "perf"
           section "Refactors" "refactor"
 
-          other=$(grep -vE '^(feat|fix|security|perf|refactor|chore|docs|tests)(\([^)]*\))?!?: ' subjects.txt || true)
+          other=$(grep -vE '^(feat|fix|security|perf|refactor|chore|docs|test|tests|ci|build|style)(\([^)]*\))?!?: ' subjects.txt || true)
           if [ -n "$other" ]; then
             printf '### Other\n%s\n\n' "$(printf '%s\n' "$other" | sed 's/^/- /')" >> notes.md
           fi
@@ -157,3 +161,26 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TAG" \
             --notes-file notes.md
+
+      # Puts this release's notes at the top of CHANGELOG.md on a branch and
+      # opens a pull request for it. A release with no listed changes adds
+      # nothing.
+      - name: Open changelog pull request
+        run: |
+          grep -q '^### ' notes.md || exit 0
+          branch="chore/changelog-$RELEASE_TAG"
+          {
+            printf '## %s (%s)\n\n' "$RELEASE_TAG" "$(date -u +%Y-%m-%d)"
+            grep -v '^\*\*Full Changelog' notes.md | sed -E 's/^- /* /; /^### /{G;}'
+          } > entry.md
+          { head -n 2 CHANGELOG.md; cat entry.md; tail -n +3 CHANGELOG.md; } > CHANGELOG.new
+          mv CHANGELOG.new CHANGELOG.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): add $RELEASE_TAG"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "docs(changelog): add $RELEASE_TAG" \
+            --body "Adds the notes for $RELEASE_TAG to the changelog."

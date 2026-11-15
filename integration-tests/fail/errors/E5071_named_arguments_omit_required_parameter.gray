@@ -1,0 +1,21 @@
+// expect-error: E5071
+// expect-error-count: 5
+
+const Box struct {
+    n i64
+    do add(self ^Box, x i64, y i64 = 1) -> i64 { return self^.n + x + y }
+    do make(x i64, y i64 = 1) -> i64 { return x + y }
+}
+
+do plus(a i64, b i64 = 2) -> i64 { return a + b }
+do three(a i64, b i64, c i64 = 0) -> i64 { return a + b + c }
+do show(a i64, b i64 = 2) { println("${a} ${b}") }
+
+do main() {
+    mut bx Box = Box{ n: 1 }
+    println(plus(b: 2))
+    println(three(a: 1, c: 1))
+    println(bx.add(y: 1))
+    println(Box.make(y: 1))
+    show(b: 3)
+}

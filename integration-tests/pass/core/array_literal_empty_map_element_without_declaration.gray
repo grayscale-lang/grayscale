@@ -1,0 +1,33 @@
+/*
+ * array_literal_empty_map_element_without_declaration.gray
+ * An array literal of maps with an empty {:} element takes the map type from
+ * the non-empty elements when no declaration fixes it.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if len({{"a": 1}, {:}}) == 2 && len({{:}, {"a": 1}}) == 2 {
+        println("  [PASS] len of a literal with an empty map element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len")
+        failed += 1
+    }
+
+    if "${{{"a": 1}, {:}}}" == "{{\"a\": 1}, {:}}" {
+        println("  [PASS] interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] interpolation")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

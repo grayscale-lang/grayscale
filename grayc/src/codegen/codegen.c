@@ -84,7 +84,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node);
 static void emit_assign_statement(CodeGen *codegen, AstNode *node);
 #define MAX_ASSIGN_TARGET_INDEXES 8
 static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
-                                       AstNode **saved_indexes, bool is_scoped);
+                                       AstNode **saved_indexes, bool is_scoped, bool include_map_keys);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name);
@@ -10697,7 +10697,7 @@ static bool emit_element_write_back_call(CodeGen *codegen, AstNode *node, AstNod
     for (int s = 0; s < slot_count; s++) {
         AstNode *argument = node->data.call.arguments[slots[s]];
         originals[s] = argument;
-        hoisted_counts[s] = hoist_assign_target_indexes(codegen, argument, hoisted_nodes[s], hoisted_originals[s], false);
+        hoisted_counts[s] = hoist_assign_target_indexes(codegen, argument, hoisted_nodes[s], hoisted_originals[s], false, true);
         char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
         snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_wb%d_%d", unique_id, s);
         emit_formatted(codegen, "__auto_type %s = ", name);
@@ -12032,7 +12032,7 @@ static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left
  * opened (each opens one `{` when `is_scoped`); `saved_indexes` receives the original index
  * nodes, which the caller restores with restore_assign_target_indexes. */
 static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNode **index_nodes,
-                                       AstNode **saved_indexes, bool is_scoped) {
+                                       AstNode **saved_indexes, bool is_scoped, bool include_map_keys) {
     AstNode *indexed[MAX_ASSIGN_TARGET_INDEXES];
     int count = 0;
     AstNode *current = target;
@@ -12044,6 +12044,8 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
             AstNode *index = current->data.index_expression.index;
             if (left_type && left_type->kind == TYPE_KIND_ARRAY && index->kind != NODE_INTEGER_LITERAL)
                 indexed[count++] = current;
+            else if (include_map_keys && left_type && left_type->kind == TYPE_KIND_MAP)
+                indexed[count++] = current;
             current = current->data.index_expression.left;
         } else {
             break;
@@ -12054,7 +12056,10 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
         int temporary_id = codegen_next_id(codegen);
         char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
         snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_ix%d", temporary_id);
-        emit(codegen, is_scoped ? "{ int64_t " : "int64_t ");
+        GrayType *indexed_type = codegen_type_of(codegen, indexed[i]->data.index_expression.left);
+        bool is_map_key = indexed_type && indexed_type->kind == TYPE_KIND_MAP;
+        emit(codegen, is_scoped ? "{ " : "");
+        emit(codegen, is_map_key ? "__auto_type " : "int64_t ");
         emit(codegen, name);
         emit(codegen, " = ");
         emit_expression(codegen, indexed[i]->data.index_expression.index);
@@ -12063,6 +12068,7 @@ static int hoist_assign_target_indexes(CodeGen *codegen, AstNode *target, AstNod
         label->kind = NODE_LABEL;
         label->token = indexed[i]->data.index_expression.index->token;
         label->data.label.value = name;
+        if (is_map_key) type_table_put(codegen->type_table, label, codegen_type_of(codegen, indexed[i]->data.index_expression.index));
         index_nodes[slot] = indexed[i];
         saved_indexes[slot] = indexed[i]->data.index_expression.index;
         indexed[i]->data.index_expression.index = label;
@@ -12560,7 +12566,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     AstNode *hoisted_originals[MAX_ASSIGN_TARGET_INDEXES];
     int hoisted_count = 0;
     if (node->data.assign.operator == TOKEN_ASSIGN && node->data.assign.target->kind == NODE_MEMBER_EXPRESSION)
-        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals, true);
+        hoisted_count = hoist_assign_target_indexes(codegen, node->data.assign.target, hoisted_nodes, hoisted_originals, true, false);
     emit_expression(codegen, node->data.assign.target);
     emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.operator));
     /* A plain scalar / integer literal (of any width) assigned to a wide integer
@@ -12612,6 +12618,100 @@ static void collect_ensures(AstNode *block, AstNode ***ensures, int *count, int 
     }
 }
 
+/* A defer/ensure call's arguments, and the struct value a struct function is
+ * called on, are evaluated when the statement runs and kept until the function
+ * exits. Each captured one lives in a temporary named by the statement's
+ * position and its slot (the receiver is slot -1). Literals carry no state, so
+ * they stay in the call. */
+static bool ensure_value_is_captured(CodeGen *codegen, AstNode *value) {
+    switch (value->kind) {
+        case NODE_INTEGER_LITERAL: case NODE_FLOATING_POINT_LITERAL: case NODE_STRING_VALUE:
+        case NODE_CHAR_VALUE: case NODE_BOOL_VALUE: case NODE_NIL_VALUE:
+        case NODE_ARRAY_VALUE: case NODE_MAP_VALUE: case NODE_STRUCT_VALUE:
+            return false;
+        default:
+            break;
+    }
+    GrayType *type = codegen_type_of(codegen, value);
+    return type && type->kind != TYPE_KIND_FUNCTION;
+}
+
+static AstNode *ensure_receiver(CodeGen *codegen, AstNode *call) {
+    AstNode *function = call->data.call.function;
+    if (!function || function->kind != NODE_MEMBER_EXPRESSION) return NULL;
+    AstNode *object = function->data.member.object;
+    GrayType *type = object ? codegen_type_of(codegen, object) : NULL;
+    return type && type->kind == TYPE_KIND_STRUCT ? object : NULL;
+}
+
+static char *ensure_temporary_name(AstNode *statement, int slot) {
+    char *name = xmalloc(VARIABLE_NAME_BUFFER_SIZE);
+    snprintf(name, VARIABLE_NAME_BUFFER_SIZE, "_gray_df%d_%d_%d", statement->token.line, statement->token.column, slot + 1);
+    return name;
+}
+
+/* Evaluate the statement's receiver and arguments now, into their temporaries. */
+static void emit_ensure_capture(CodeGen *codegen, AstNode *statement) {
+    AstNode *call = statement->data.ensure_statement.expression;
+    if (!call || call->kind != NODE_CALL_EXPRESSION) return;
+    AstNode *receiver = ensure_receiver(codegen, call);
+    if (receiver && ensure_value_is_captured(codegen, receiver)) {
+        emit_indent(codegen);
+        emit_formatted(codegen, "__auto_type %s = ", ensure_temporary_name(statement, -1));
+        emit_expression(codegen, receiver);
+        emit(codegen, ";\n");
+    }
+    for (int i = 0; i < call->data.call.argument_count; i++) {
+        AstNode *argument = call->data.call.arguments[i];
+        if (!ensure_value_is_captured(codegen, argument)) continue;
+        emit_indent(codegen);
+        emit_formatted(codegen, "__auto_type %s = ", ensure_temporary_name(statement, i));
+        emit_expression(codegen, argument);
+        emit(codegen, ";\n");
+    }
+}
+
+/* Emit the deferred call reading the temporaries the statement captured. */
+static void emit_ensure_call(CodeGen *codegen, AstNode *statement) {
+    AstNode *call = statement->data.ensure_statement.expression;
+    if (!call || call->kind != NODE_CALL_EXPRESSION) {
+        emit_expression(codegen, call);
+        return;
+    }
+    AstNode *receiver = ensure_receiver(codegen, call);
+    AstNode *saved_object = NULL;
+    if (receiver && ensure_value_is_captured(codegen, receiver)) {
+        saved_object = receiver;
+        call->data.call.function->data.member.object =
+            make_temporary_label(codegen, receiver, ensure_temporary_name(statement, -1));
+    }
+    int argument_count = call->data.call.argument_count;
+    AstNode **saved_arguments = xmalloc(sizeof(AstNode *) * (size_t)(argument_count + 1));
+    AstNode **saved_written = NULL;
+    int written_count = call->data.call.written_argument_count;
+    if (call->data.call.written_arguments) {
+        saved_written = xmalloc(sizeof(AstNode *) * (size_t)(written_count + 1));
+        memcpy(saved_written, call->data.call.written_arguments, sizeof(AstNode *) * (size_t)written_count);
+    }
+    for (int i = 0; i < argument_count; i++) {
+        AstNode *argument = call->data.call.arguments[i];
+        saved_arguments[i] = argument;
+        if (!ensure_value_is_captured(codegen, argument)) continue;
+        AstNode *label = make_temporary_label(codegen, argument, ensure_temporary_name(statement, i));
+        call->data.call.arguments[i] = label;
+        for (int k = 0; k < written_count; k++)
+            if (saved_written[k] == argument) call->data.call.written_arguments[k] = label;
+    }
+    emit_expression(codegen, call);
+    memcpy(call->data.call.arguments, saved_arguments, sizeof(AstNode *) * (size_t)argument_count);
+    if (saved_written) {
+        memcpy(call->data.call.written_arguments, saved_written, sizeof(AstNode *) * (size_t)written_count);
+        free(saved_written);
+    }
+    if (saved_object) call->data.call.function->data.member.object = saved_object;
+    free(saved_arguments);
+}
+
 /* Emit ensure cleanup calls in LIFO order */
 static void emit_ensure_cleanup(CodeGen *codegen) {
     if (!codegen->current_function || !codegen->current_function->data.function_declaration.body) return;
@@ -12631,7 +12731,7 @@ static void emit_ensure_cleanup(CodeGen *codegen) {
     /* Emit in reverse (LIFO) order */
     for (int i = reached - 1; i >= 0; i--) {
         emit_indent(codegen);
-        emit_expression(codegen, ensures[i]->data.ensure_statement.expression);
+        emit_ensure_call(codegen, ensures[i]);
         emit(codegen, ";\n");
     }
 
@@ -14754,6 +14854,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
     case NODE_ENSURE_STATEMENT:
         /* Ensure is emitted at return/function-exit; record that control flow
          * has now reached this one so earlier returns don't run it. */
+        emit_ensure_capture(codegen, node);
         codegen->ensure_reached++;
         break;
     case NODE_STRUCT_DECLARATION:

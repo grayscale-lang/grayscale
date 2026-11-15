@@ -1,8 +1,8 @@
 /*
  * Test: defer (alias of ensure) execution semantics —
  *  - multiple defers in one function run in last-in-first-out order
- *  - a deferred call's arguments are evaluated when it fires, not when
- *    it is registered
+ *  - a deferred call's arguments are evaluated when it is registered,
+ *    not when it fires
  *  - return expressions are evaluated before deferred calls run
  *  - defers fire before control returns to the caller, on both the
  *    normal-exit and early-return paths
@@ -39,7 +39,7 @@ do lifo() {
     rec(0)
 }
 
-do late_capture() {
+do early_capture() {
     mut x i64 = 1
     defer rec(x)
     x = 99
@@ -78,11 +78,11 @@ do main() {
     }
 
     trace = {}
-    late_capture()
-    if len(trace) == 1 && trace[0] == 99 {
+    early_capture()
+    if len(trace) == 1 && trace[0] == 1 {
         passed += 1
     } otherwise {
-        println("[FAIL] deferred argument captured too early: ${trace[0]}")
+        println("[FAIL] deferred argument captured too late: ${trace[0]}")
         failed += 1
     }
 

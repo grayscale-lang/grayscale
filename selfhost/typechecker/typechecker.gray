@@ -271,6 +271,10 @@ const TypeChecker struct {
     // scope: a pointer origin at least this deep dies when the function returns
     current_function ^ast.AstNode
     current_function_scope_depth i64
+    // The scope depth (biased by +1) enclosing the innermost if/when/loop being
+    // checked, 0 outside one. A pointer declared at or above it may or may not
+    // be reassigned there, so an assignment keeps its deeper origin
+    branch_entry_scope_depth i64
     // The one range() call or range-holding name allowed to appear here as a
     // value; anywhere else a range is an error
     range_use ^ast.AstNode
@@ -3183,6 +3187,13 @@ fn resolve_map_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType
 }
 
 // Array literal.
+// An array literal `{}` or a map literal `{:}` with nothing in it.
+fn is_empty_container_literal(node ^ast.AstNode) -> bool {
+    if node^.kind == ast.NodeKind.ARRAY_VALUE { return len(node^.array_value^.elements) == 0 }
+    if node^.kind == ast.NodeKind.MAP_VALUE { return len(node^.map_value^.keys) == 0 }
+    return false
+}
+
 fn resolve_array_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     mut result = checker^.pool^.type_unknown
     elements = node^.array_value^.elements
@@ -3190,17 +3201,24 @@ fn resolve_array_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
         // With no array type to take, the elements are one type: the first element that has
         // one, which every literal element takes too; i64 (f64 with a decimal literal) when
         // all are literals
+        // An empty `{}` or `{:}` element has no type of its own and takes the others'
         mut first ^types.GrayType = nil
         mut any_decimal = false
+        mut empty_count i64 = 0
         for_each element in elements {
             element_kind_type = resolve_untyped(checker, element)
             reject_multi_return_in_single_position(checker, element)
             reject_void_in_context(checker, element, element_kind_type, "array element")
-            if element_kind_type^.kind == types.TypeKind.LITERAL {
+            if is_empty_container_literal(element) {
+                empty_count += 1
+            } or element_kind_type^.kind == types.TypeKind.LITERAL {
                 any_decimal = any_decimal || element_kind_type^.is_decimal
             } or first == nil {
                 first = element_kind_type
             }
+        }
+        if first == nil && empty_count == len(elements) {
+            first = types.type_array(checker^.pool, "i64")
         }
         if first == nil {
             first = checker^.pool^.type_i64
@@ -3215,7 +3233,7 @@ fn resolve_array_value(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
 
         for_each element in elements {
             mut element_resolved = checker^.pool^.type_unknown
-            if folding.is_literal_expression(element) {
+            if folding.is_literal_expression(element) || (is_empty_container_literal(element) && (first^.kind == types.TypeKind.ARRAY || first^.kind == types.TypeKind.MAP)) {
                 element_resolved = check_expression_as(checker, element, first)
             } otherwise {
                 element_resolved = resolve_expression(checker, element)
@@ -3917,6 +3935,14 @@ fn resolve_named_arguments(checker ^TypeChecker, node ^ast.AstNode, function_dat
             return
         }
         slots[slot] = arguments[i]
+    }
+
+    // A required parameter that no argument supplies
+    for parameter_index in range(0, parameter_count) {
+        required_parameter = params_local[parameter_index + first_param]
+        if slots[parameter_index] != nil || required_parameter.default_value != nil || required_parameter.is_type_param { continue }
+        add_diagnostic(checker, "E5071", error_registry.registry_message_formatted("E5071", {required_parameter.name, display_name}), node^.tok.file, node^.tok.line, node^.tok.col)
+        return
     }
 
     // Everything up to the last filled slot is passed on; unfilled interior
@@ -10365,6 +10391,20 @@ fn check_assign_statement(checker ^TypeChecker, node ^ast.AstNode) {
             if value_type^.kind == types.TypeKind.VOID {
                 add_diagnostic(checker, "E3187", error_registry.registry_message_formatted("E3187", {"the value of a variable"}), node^.tok.file, node^.tok.line, node^.tok.col)
             }
+            // A named return value takes nil only if its type is nullable
+            if value_type^.kind == types.TypeKind.NIL_TYPE && checker^.has_named_returns {
+                for slot in range(0, len(checker^.current_return_names)) {
+                    if checker^.current_return_names[slot] != name || slot >= len(checker^.current_return_types) { continue }
+                    slot_type = checker^.current_return_types[slot]
+                    k = slot_type^.kind
+                    if k == types.TypeKind.UNKNOWN && strings.contains(slot_type^.name, "?") {
+                        add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), ad^.value^.tok.file, ad^.value^.tok.line, ad^.value^.tok.col)
+                    } or k != types.TypeKind.POINTER && k != types.TypeKind.ERROR && k != types.TypeKind.UNKNOWN && k != types.TypeKind.NIL_TYPE && k != types.TypeKind.VOID {
+                        add_diagnostic(checker, "E3001", error_registry.registry_message_formatted("E3001", {"nil", shown_type(checker, slot_type)}), ad^.value^.tok.file, ad^.value^.tok.line, ad^.value^.tok.col)
+                    }
+                    break
+                }
+            }
             scope.scope_define(checker^.current_scope, name, value_type, true)
             symbol = scope.scope_lookup_local(checker^.current_scope, name)
             symbol^.def_line = node^.tok.line
@@ -10627,7 +10667,12 @@ fn check_assignment_escape(checker ^TypeChecker, node ^ast.AstNode, target ^ast.
         if origin_depth > symbol_scope_depth(checker, pointer_name) {
             add_diagnostic(checker, "E3163", error_registry.registry_message_formatted("E3163", {pointer_name, origin_name}), node^.tok.file, node^.tok.line, node^.tok.col)
         } otherwise {
-            record_symbol_origin(checker, scope.scope_lookup(checker^.current_scope, pointer_name), ad^.value)
+            pointer_symbol = scope.scope_lookup(checker^.current_scope, pointer_name)
+            direct_depth, direct_name = pointer_origin_of(checker, ad^.value)
+            may_keep_earlier_origin = pointer_symbol != nil && checker^.branch_entry_scope_depth > 0 && symbol_scope_depth(checker, pointer_name) <= checker^.branch_entry_scope_depth && pointer_symbol^.origin_depth > direct_depth
+            if !may_keep_earlier_origin {
+                record_symbol_origin(checker, pointer_symbol, ad^.value)
+            }
         }
         return
     }
@@ -10816,17 +10861,18 @@ fn check_return_statement(checker ^TypeChecker, node ^ast.AstNode) {
         check_mem_escape(checker, returned, returned)
     }
 
-    // Nil only fits pointer and error return types
-    if len(expected_types) > 0 && len(values) > 0 && values[0]^.kind == ast.NodeKind.NIL_VALUE {
-        k = expected_types[0]^.kind
+    // Nil only fits pointer and error return slots
+    for slot in range(0, len(values)) {
+        if slot >= len(expected_types) { break }
+        if values[slot]^.kind != ast.NodeKind.NIL_VALUE { continue }
+        k = expected_types[slot]^.kind
         if k != types.TypeKind.POINTER && k != types.TypeKind.ERROR && k != types.TypeKind.UNKNOWN && k != types.TypeKind.NIL_TYPE && k != types.TypeKind.VOID {
-            add_diagnostic(checker, "E3072", error_registry.registry_message_formatted("E3072", {shown_type(checker, expected_types[0])}), values[0]^.tok.file, values[0]^.tok.line, values[0]^.tok.col)
+            add_diagnostic(checker, "E3072", error_registry.registry_message_formatted("E3072", {shown_type(checker, expected_types[slot])}), values[slot]^.tok.file, values[slot]^.tok.line, values[slot]^.tok.col)
         }
-    }
-
-    // Nil cannot stand for a type parameter that no call has bound
-    if len(expected_types) > 0 && len(values) > 0 && values[0]^.kind == ast.NodeKind.NIL_VALUE && expected_types[0]^.kind == types.TypeKind.UNKNOWN && strings.contains(expected_types[0]^.name, "?") {
-        add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), values[0]^.tok.file, values[0]^.tok.line, values[0]^.tok.col)
+        // Nil cannot stand for a type parameter that no call has bound
+        if k == types.TypeKind.UNKNOWN && strings.contains(expected_types[slot]^.name, "?") {
+            add_diagnostic(checker, "E3071", error_registry.registry_message("E3071"), values[slot]^.tok.file, values[slot]^.tok.line, values[slot]^.tok.col)
+        }
     }
 
     if len(expected_types) == 0 && len(values) > 0 {
@@ -12003,7 +12049,12 @@ fn check_struct_declaration(checker ^TypeChecker, node ^ast.AstNode) {
 
 fn check_statement(checker ^TypeChecker, node ^ast.AstNode) {
     literal_start = len(checker^.pending_literals)
+    saved_branch_entry_scope_depth = checker^.branch_entry_scope_depth
+    if node != nil && (node^.kind == ast.NodeKind.IF_STMT || node^.kind == ast.NodeKind.WHEN_STMT || node^.kind == ast.NodeKind.FOR_STMT || node^.kind == ast.NodeKind.FOR_EACH_STMT || node^.kind == ast.NodeKind.WHILE_STMT || node^.kind == ast.NodeKind.LOOP_STMT) {
+        checker^.branch_entry_scope_depth = checker^.current_scope^.depth + 1
+    }
     check_statement_kind(checker, node)
+    checker^.branch_entry_scope_depth = saved_branch_entry_scope_depth
     flush_pending_literals(checker, literal_start)
 }
 

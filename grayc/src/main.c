@@ -1790,6 +1790,13 @@ static bool callback_scalar_mismatch(CReturnClass c_class, int c_bits, const Gra
  * pointer type spelled `pointer_text` ("int (*)(const void *, const void *)"):
  * a different number of parameters, or a parameter or return of another kind
  * or width. Anything this cannot read is accepted. */
+static bool c_parameter_is_function_pointer(const char *dump, const char *parameter_text) {
+    char resolved[256];
+    if (strstr(parameter_text, "(*)")) return true;
+    return classify_c_typedef_text(dump, parameter_text, resolved, sizeof(resolved)) != C_RETURN_UNKNOWN &&
+           strstr(resolved, "(*)") != NULL;
+}
+
 static bool callback_mismatches_function_pointer(const char *dump, const char *pointer_text, const FunctionSignature *callback) {
     /* A parameter declared through a typedef name ("__compar_fn_t") stands for
      * the function pointer type its TypedefDecl spells. */
@@ -1953,9 +1960,21 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
             for (int argument_index = 0; argument_index < actual && argument_index < signature.parameter_count &&
                                          argument_index < EXTERN_CALLBACK_ARGUMENTS; argument_index++) {
                 const FunctionSignature *callback = calls[i].callback_signatures[argument_index];
-                if (!callback || !callback->declaration ||
-                    !callback_mismatches_function_pointer(dump, signature.parameter_text[argument_index], callback)) continue;
+                if (!callback || !callback->declaration) continue;
                 AstNode *argument = calls[i].node->data.call.arguments[argument_index];
+                CReturnClass parameter_class = signature.parameter_class[argument_index];
+                bool is_data_parameter = parameter_class == C_RETURN_INTEGER || parameter_class == C_RETURN_FLOATING_POINT ||
+                    (parameter_class == C_RETURN_POINTER && !c_parameter_is_function_pointer(dump, signature.parameter_text[argument_index]));
+                if (is_data_parameter) {
+                    GrayType *argument_type = type_table ? type_table_get(type_table, argument) : NULL;
+                    diagnostic_error_code_formatted(diagnostics, "E5054",
+                        argument->token.file ? argument->token.file : (calls[i].file ? calls[i].file : entry_file),
+                        argument->token.line, argument->token.column, 0,
+                        argument_index + 1, calls[i].function_name,
+                        argument_type ? type_name(argument_type) : "function", signature.parameter_text[argument_index]);
+                    continue;
+                }
+                if (!callback_mismatches_function_pointer(dump, signature.parameter_text[argument_index], callback)) continue;
                 diagnostic_error_code_formatted(diagnostics, "E5067",
                     argument->token.file ? argument->token.file : (calls[i].file ? calls[i].file : entry_file),
                     argument->token.line, argument->token.column, 0,

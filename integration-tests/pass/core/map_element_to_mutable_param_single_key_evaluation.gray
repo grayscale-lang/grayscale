@@ -1,0 +1,69 @@
+/*
+ * map_element_to_mutable_param_single_key_evaluation.gray
+ * The key of a map value passed to a & parameter is evaluated once, and the
+ * update lands on the value it names.
+ */
+
+const Item struct {
+    x i64
+    xs [i64]
+}
+
+mut calls i64 = 0
+
+do key() -> string {
+    calls = calls + 1
+    return "k"
+}
+
+do next() -> i64 {
+    calls = calls + 1
+    return 0
+}
+
+do inc(&n i64) {
+    n = n + 1
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut counts map[string:i64] = {"k": 5}
+    inc(counts[key()])
+    if calls == 1 && counts["k"] == 6 {
+        println("  [PASS] one key evaluation for a map value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${counts}")
+        failed += 1
+    }
+
+    calls = 0
+    mut items map[string:Item] = {"k": Item{ x: 1, xs: {1, 2} }}
+    inc(items[key()].x)
+    if calls == 1 && items["k"].x == 2 {
+        println("  [PASS] one key evaluation for a struct field of a map value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${items["k"].x}")
+        failed += 1
+    }
+
+    calls = 0
+    inc(items[key()].xs[next()])
+    if calls == 2 && items["k"].xs[0] == 2 && items["k"].xs[1] == 2 {
+        println("  [PASS] key and subscript each evaluated once")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${items["k"].xs}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

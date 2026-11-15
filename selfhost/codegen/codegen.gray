@@ -2696,6 +2696,8 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
                 if write_back_id < 0 { write_back_id = id_for_write_back(generator) }
                 local_name = "_gray_wb${write_back_id}_${write_back_index}"
                 write_back_index = write_back_index + 1
+                hoisted_declarations, hoisted_nodes, hoisted_originals = hoist_target_indexes(generator, arguments[i], false, true)
+                write_back_declarations = "${write_back_declarations}${hoisted_declarations}"
                 if is_array_type(left_kind_type) {
                     element_c = ctype(generator, array_element_type(left_kind_type))
                     write_back_declarations = "${write_back_declarations}__auto_type ${local_name} = ${gen_expr(generator, arguments[i])}; "
@@ -2706,6 +2708,7 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
                     write_back_declarations = "${write_back_declarations}__auto_type ${local_name} = ${gen_expr(generator, arguments[i])}; "
                     write_back_stores = "${write_back_stores}${strings.repeat("    ", generator^.indent)}{ ${key_c} _mk = ${gen_coerced(generator, map_key_type(left_kind_type), arguments[i]^.index_data^.index_expr)}; ${value_c} _mv = ${local_name}; gray_map_set(gray_default_arena, &${gen_expr(generator, element_left)}, &_mk, &_mv, ${location_args(generator, node)}); }\n"
                 }
+                for restore in range(0, len(hoisted_nodes)) { hoisted_nodes[restore]^.index_data^.index_expr = hoisted_originals[restore] }
                 pieces[piece_cursor] = "&${local_name}"
             }
         }
@@ -3919,7 +3922,10 @@ fn gen_statement(generator ^CodeGen, node ^ast.AstNode) {
         is ast.NodeKind.ASSIGN_STMT { gen_module_aware(generator, node) }
         is ast.NodeKind.RETURN_STMT { gen_return(generator, node) }
         is ast.NodeKind.EXPR_STMT { gen_module_aware(generator, node) }
-        is ast.NodeKind.ENSURE_STMT { generator^.ensure_reached = generator^.ensure_reached + 1 }
+        is ast.NodeKind.ENSURE_STMT {
+            ensure_capture(generator, node)
+            generator^.ensure_reached = generator^.ensure_reached + 1
+        }
         is ast.NodeKind.IF_STMT {
             saved_raw_names = generator^.raw_names
             gen_if(generator, node)
@@ -4229,33 +4235,10 @@ fn gen_assign(generator ^CodeGen, node ^ast.AstNode) {
     mut hoisted_nodes [^ast.AstNode] = {}
     mut hoisted_originals [^ast.AstNode] = {}
     if data^.op == token.TokenKind.ASSIGN && data^.target^.kind == ast.NodeKind.MEMBER_EXPR {
-        mut indexed [^ast.AstNode] = {}
-        mut walk = data^.target
-        as_long_as walk != nil {
-            if walk^.kind == ast.NodeKind.MEMBER_EXPR {
-                walk = walk^.member^.object
-            } or walk^.kind == ast.NodeKind.INDEX_EXPR {
-                if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE { arrays.append(indexed, walk) }
-                walk = walk^.index_data^.left
-            } otherwise {
-                break
-            }
-        }
-        mut position = len(indexed) - 1
-        as_long_as position >= 0 {
-            hoisted_id = next_id(generator)
-            hoisted_name = "_gray_ix${hoisted_id}"
-            hoisted_prefix = "${hoisted_prefix}{ int64_t ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
-            index_label = ast.ast_alloc(ast.NodeKind.LABEL, indexed[position]^.index_data^.index_expr^.tok)
-            index_label_data = new(ast.LabelData)
-            index_label_data^.value = hoisted_name
-            index_label^.label = index_label_data
-            index_label^.resolved_type = "i64"
-            arrays.append(hoisted_nodes, indexed[position])
-            arrays.append(hoisted_originals, indexed[position]^.index_data^.index_expr)
-            indexed[position]^.index_data^.index_expr = index_label
-            position = position - 1
-        }
+        prefix_text, indexed_nodes, original_indexes = hoist_target_indexes(generator, data^.target, true, false)
+        hoisted_prefix = prefix_text
+        hoisted_nodes = indexed_nodes
+        hoisted_originals = original_indexes
     }
     target = gen_expr(generator, data^.target)
     mut value = gen_stored(generator, target_type, data^.value)
@@ -4954,6 +4937,91 @@ fn function_needs_scope_mark(generator ^CodeGen, function_node ^ast.AstNode) -> 
     return !block_allocation_free(generator, function_node^.func_decl^.body)
 }
 
+// A `defer` / `ensure` call's arguments, and the struct value a struct function is called on, are
+// evaluated when the statement runs and kept until the function exits. Each one lives in a
+// temporary named by the statement's position and its slot (the receiver is slot 0, argument i is
+// slot i + 1). Literals carry no state, so they stay in the call.
+fn ensure_value_is_captured(generator ^CodeGen, value ^ast.AstNode) -> bool {
+    when value^.kind {
+        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE { return false }
+        default {}
+    }
+    value_type = expr_type(generator, value)
+    return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
+}
+
+fn ensure_receiver(generator ^CodeGen, call ^ast.AstNode) -> ^ast.AstNode {
+    callee = call^.call^.function
+    if callee == nil || callee^.kind != ast.NodeKind.MEMBER_EXPR { return nil }
+    object = callee^.member^.object
+    if object == nil || !maps.contains_key(generator^.structs, expr_type(generator, object)) { return nil }
+    return object
+}
+
+fn ensure_temporary_name(statement ^ast.AstNode, slot i64) -> string {
+    return "_gray_df${statement^.tok.line}_${statement^.tok.col}_${slot}"
+}
+
+fn ensure_temporary_label(statement ^ast.AstNode, original ^ast.AstNode, slot i64) -> ^ast.AstNode {
+    label = ast.ast_alloc(ast.NodeKind.LABEL, original^.tok)
+    label_data = new(ast.LabelData)
+    label_data^.value = ensure_temporary_name(statement, slot)
+    label^.label = label_data
+    label^.resolved_type = original^.resolved_type
+    return label
+}
+
+// The declarations that evaluate the statement's receiver and arguments now.
+fn ensure_capture(generator ^CodeGen, statement ^ast.AstNode) {
+    call = statement^.ensure_stmt^.expr
+    if call^.kind != ast.NodeKind.CALL_EXPR { return }
+    receiver = ensure_receiver(generator, call)
+    if receiver != nil && ensure_value_is_captured(generator, receiver) {
+        emit_line(generator, "__auto_type ${ensure_temporary_name(statement, 0)} = ${gen_expr(generator, receiver)};")
+    }
+    for slot in range(0, len(call^.call^.args)) {
+        argument = call^.call^.args[slot]
+        if !ensure_value_is_captured(generator, argument) { continue }
+        emit_line(generator, "__auto_type ${ensure_temporary_name(statement, slot + 1)} = ${gen_expr(generator, argument)};")
+    }
+}
+
+// The deferred call, reading the temporaries the statement captured.
+fn ensure_call(generator ^CodeGen, statement ^ast.AstNode) -> string {
+    call = statement^.ensure_stmt^.expr
+    if call^.kind != ast.NodeKind.CALL_EXPR { return gen_expr(generator, call) }
+    receiver = ensure_receiver(generator, call)
+    original_arguments = call^.call^.args
+    original_written = call^.call^.written_arguments
+    mut rewritten_arguments [^ast.AstNode] = {}
+    mut rewritten_written [^ast.AstNode] = {}
+    for_each written in original_written { arrays.append(rewritten_written, written) }
+    for slot in range(0, len(original_arguments)) {
+        argument = original_arguments[slot]
+        if !ensure_value_is_captured(generator, argument) {
+            arrays.append(rewritten_arguments, argument)
+            continue
+        }
+        label = ensure_temporary_label(statement, argument, slot + 1)
+        arrays.append(rewritten_arguments, label)
+        for position in range(0, len(rewritten_written)) {
+            if rewritten_written[position] == argument { rewritten_written[position] = label }
+        }
+    }
+    call^.call^.args = rewritten_arguments
+    call^.call^.written_arguments = rewritten_written
+    mut original_object ^ast.AstNode = nil
+    if receiver != nil && ensure_value_is_captured(generator, receiver) {
+        original_object = receiver
+        call^.call^.function^.member^.object = ensure_temporary_label(statement, receiver, 0)
+    }
+    text = gen_expr(generator, call)
+    if original_object != nil { call^.call^.function^.member^.object = original_object }
+    call^.call^.args = original_arguments
+    call^.call^.written_arguments = original_written
+    return text
+}
+
 // The calls of the `ensure` / `defer` statements control flow has reached, last first.
 fn ensure_cleanup(generator ^CodeGen) -> string {
     mut text = ""
@@ -4961,7 +5029,7 @@ fn ensure_cleanup(generator ^CodeGen) -> string {
     if index > len(generator^.ensures) { index = len(generator^.ensures) }
     as_long_as index > 0 {
         index = index - 1
-        text = "${text}${strings.repeat("    ", generator^.indent)}${gen_expr(generator, generator^.ensures[index]^.ensure_stmt^.expr)};\n"
+        text = "${text}${strings.repeat("    ", generator^.indent)}${ensure_call(generator, generator^.ensures[index])};\n"
     }
     return text
 }
@@ -6548,6 +6616,58 @@ fn is_rvalue_container(node ^ast.AstNode) -> bool {
     if node^.kind == ast.NodeKind.INDEX_EXPR { return is_rvalue_container(node^.index_data^.left) }
     if node^.kind == ast.NodeKind.MEMBER_EXPR { return is_rvalue_container(node^.member^.object) }
     return node^.kind == ast.NodeKind.CALL_EXPR || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE || node^.kind == ast.NodeKind.INTERPOLATED_STRING
+}
+
+// Binds each non-literal array index in `target` to a temporary, left to right, so the
+// indexes run once and before whatever the statement evaluates next. The index nodes are
+// replaced by labels naming the temporaries; the caller puts `originals` back into `nodes`
+// once the target has been generated. A map key is bound too when `include_map_keys`. Returns the declarations (each opening a `{` when
+// `scoped`), the index-holding nodes and their original index expressions.
+fn hoist_target_indexes(generator ^CodeGen, target ^ast.AstNode, scoped bool, include_map_keys bool) -> (string, [^ast.AstNode], [^ast.AstNode]) {
+    mut indexed [^ast.AstNode] = {}
+    mut walk = target
+    as_long_as walk != nil {
+        if walk^.kind == ast.NodeKind.MEMBER_EXPR {
+            walk = walk^.member^.object
+        } or walk^.kind == ast.NodeKind.INDEX_EXPR {
+            if is_array_type(expr_type(generator, walk^.index_data^.left)) && walk^.index_data^.index_expr^.kind != ast.NodeKind.INT_VALUE {
+                arrays.append(indexed, walk)
+            } or include_map_keys && is_map_type(expr_type(generator, walk^.index_data^.left)) {
+                arrays.append(indexed, walk)
+            }
+            walk = walk^.index_data^.left
+        } otherwise {
+            break
+        }
+    }
+    mut declarations = ""
+    mut nodes [^ast.AstNode] = {}
+    mut originals [^ast.AstNode] = {}
+    mut position = len(indexed) - 1
+    as_long_as position >= 0 {
+        hoisted_id = next_id(generator)
+        hoisted_name = "_gray_ix${hoisted_id}"
+        opener = ""
+        if scoped { opener = "{ " }
+        indexed_container_type = expr_type(generator, indexed[position]^.index_data^.left)
+        mut hoisted_type = "i64"
+        mut hoisted_c_type = "int64_t"
+        if is_map_type(indexed_container_type) {
+            hoisted_type = map_key_type(indexed_container_type)
+            hoisted_c_type = "__auto_type"
+        }
+        declarations = "${declarations}${opener}${hoisted_c_type} ${hoisted_name} = ${gen_expr(generator, indexed[position]^.index_data^.index_expr)}; "
+        index_label = ast.ast_alloc(ast.NodeKind.LABEL, indexed[position]^.index_data^.index_expr^.tok)
+        index_label_data = new(ast.LabelData)
+        index_label_data^.value = hoisted_name
+        index_label^.label = index_label_data
+        index_label^.resolved_type = hoisted_type
+        arrays.append(nodes, indexed[position])
+        arrays.append(originals, indexed[position]^.index_data^.index_expr)
+        indexed[position]^.index_data^.index_expr = index_label
+        position = position - 1
+    }
+    return declarations, nodes, originals
 }
 
 // A number that keeps the locals of one write-back call apart from those of another.

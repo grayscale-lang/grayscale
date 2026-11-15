@@ -1,0 +1,68 @@
+/*
+ * defer_evaluates_at_statement.gray - defer evaluates the call's arguments
+ * and the struct value a struct function is called on when the statement runs
+ */
+
+mut n i64 = 0
+mut log string = ""
+
+do next() -> i64 {
+    n = n + 1
+    return n
+}
+
+do record(v i64) {
+    log = "${log}${v},"
+}
+
+do record_text(text string) {
+    log = "${log}${text},"
+}
+
+const Handle struct {
+    id i64
+    do close(self Handle) { log = "${log}close${self.id}," }
+}
+
+do arguments_are_captured() {
+    mut x i64 = 7
+    defer record(x)
+    defer record(next())
+    x = 8
+    log = "${log}body${n},"
+}
+
+do receiver_and_text_are_captured() {
+    mut handle Handle = Handle{id: 1}
+    mut label string = "a"
+    defer handle.close()
+    defer record_text("lbl ${label}")
+    handle = Handle{id: 2}
+    label = "b"
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    arguments_are_captured()
+    if log == "body1,1,7," {
+        println("  [PASS] arguments evaluated at the statement")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arguments: ${log}")
+        failed += 1
+    }
+
+    log = ""
+    receiver_and_text_are_captured()
+    if log == "lbl a,close1," {
+        println("  [PASS] receiver and interpolated string evaluated at the statement")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] receiver: ${log}")
+        failed += 1
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

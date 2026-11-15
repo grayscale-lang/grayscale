@@ -389,6 +389,7 @@ fn error_registry() -> map[string:string] {
         "E5068": "'%s' wraps integers only; got %s and %s",
         "E5069": "'size_of()' requires a type, not a value",
         "E5070": "'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value",
+        "E5071": "missing required parameter '%s' in call to '%s'",
         "E6001": "unknown module '@%s'",
         "E6002": "cannot find file or directory '%s'",
         "E6003": "directory '%s' contains no source files",

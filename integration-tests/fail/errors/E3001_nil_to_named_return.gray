@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3001 - nil assigned to a non-nullable named return value
+ * Expected: "cannot assign nil to i64"
+ */
+
+do foo() -> (result i64) {
+    result = nil
+    return result
+}
+
+do main() {
+    mut a = foo()
+}

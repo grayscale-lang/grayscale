@@ -1,0 +1,15 @@
+// expect-error: E3154
+// expect-error-count: 1
+
+extern import "string.h"
+
+mut g_val i64 = 5
+
+do main() {
+    mut v i64 = 1
+    unsafe {
+        mut p ^i64 = nil
+        if true { p = addr(v) } otherwise { p = addr(g_val) }
+        extern.memset(p, 0, 8)
+    }
+}

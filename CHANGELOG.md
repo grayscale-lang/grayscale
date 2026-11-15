@@ -1,5 +1,99 @@
 # Changelog
 
+## experimental-20261112-build2 (2026-11-12)
+
+### Bug Fixes
+
+* fix(ci): keep the release notes step from exiting when a commit type has no entries
+* fix(selfhost): hoist the operands of checked arithmetic only when one of them calls
+* fix(codegen): evaluate the left operand of checked addition, subtraction and multiplication first
+* fix(codegen): exit with no arguments exits with status 0
+* fix(typechecker): resolve a module-qualified enum alias to its enum for variant access
+* fix(selfhost): report E3154 when a local struct's address reaches an extern call through a struct function (#3421)
+* fix(typechecker): report E2043 for every when branch that shares a value with an earlier branch (#3427)
+* fix(typechecker): reject an extern call result as an if, or or as_long_as condition (#3420)
+* fix(codegen): rename variables, parameters and fields named after GNU and Clang C extension keywords (#3419)
+* fix(codegen): evaluate the left operand of division, modulo and shifts first (#3418)
+* fix(codegen): guard a map reached through a field, pointer, index or call during for_each (#3417)
+* fix(selfhost): enforce the 256-bit limit on literal-only expressions that take their default type (#3416)
+* fix(selfhost): report E3040 for a multi-value call passed to a stdlib module function (#3415)
+* fix(selfhost): print the written name of an imported type in the E3100 diagnostic (#3414)
+* fix(typechecker): print the written name of a type from an imported module in diagnostics (#3413)
+* fix(typechecker): reject a type from an imported module used as a value (#3412)
+* fix(selfhost): report E3001 when a void call is assigned to a variable (#3411)
+* fix(selfhost): report E3040 for a multi-value call passed to len, copy, exit, char, sleep_ms, type_of or fields (#3410)
+* fix(codegen): rename a when payload binding named after a C reserved word (#3409)
+* fix(typechecker): reject a reserved type name as a loop variable (#3408)
+* fix(codegen): rename a for_each index variable named after a C reserved word (#3407)
+* fix(selfhost): build file-scope variables named defined or NULL (#3406)
+* fix(codegen): deep-copy a tagged enum's cross-module struct payload on return (#3405)
+* fix(codegen): stop matching a func-typed parameter call to a module function (#3404)
+* fix(selfhost): stop reporting W2014 for a required import in a directory-module file (#3403)
+* fix(codegen): stop matching a bare builtin call to a function ending in its name
+* fix(selfhost): report a compiler panic as an internal compiler error (#3402)
+* fix(typechecker): check argument counts of assert, exit, panic, sleep_s, sleep_ms, sleep_ns, input, copy, raw and ref
+* fix(selfhost): check argument counts of println, print, eprintln, eprint, addr and exit (#3401)
+* fix(codegen): deep-copy strings in a returned struct's array of imported structs (#3395)
+* fix(codegen): resolve file-scope embed() in an imported module against its own file (#3394)
+* fix(typechecker): report E2038 for a reserved type name used as an implicit declaration (#3393)
+* fix(codegen): rename variables and struct fields named defined, __func__, _Bool and other C-reserved names (#3392)
+
+### Security
+
+* security(selfhost): reject returning an array element that holds addr(local) (#3430)
+* security(stdlib): allocate sqlite.Database on the heap so a returned handle outlives its function (#3431)
+* security(typechecker): reject returning an array element that holds addr(local) (#3430)
+
+### Refactors
+
+* refactor(selfhost): spell out abbreviated variable names
+* refactor(selfhost): replace enumerated no-op NodeKind lists with default
+
+### Other
+
+* test(lexer): add E1026 placeholder test
+* test(typechecker): relabel assert() fail tests as E5026
+* test(typechecker): cover #test and assert() diagnostics
+
+## experimental-20261109-build1 (2026-11-09)
+
+### Bug Fixes
+
+* fix(cli): update to the newest release, including experimental builds
+* fix(selfhost): read extern C signatures under gcc and TinyCC
+* fix(regex): match non-ASCII bracket ranges by codepoint on every platform
+* fix(ci): extract ./gray from the released archive
+* fix(typechecker): accept an empty map literal as an http header map (#3368)
+* fix(typechecker): check http header maps, csv.filter_rows predicate and arrays.map return type (#3368)
+* fix(codegen): copy arrays.append elements into the heap arena for module-level arrays (#3379)
+* fix(time): make %s and %z in format and parse UTC (#3371)
+* fix(man): escape backslashes in generated man entries (#3376)
+* fix(codegen): stage pointer and function elements in arrays.prepend (#3377)
+
+### Other
+
+* ci: release as experimental-YYYYMMDD-build#
+* ci: build and test with the self-hosted compiler
+
+## Experimental Builds
+
+Grayscale releases are now date-named experimental builds, published as
+experimental-YYYYMMDD-build#. Numbered releases end at 0.14.1.
+
+The compiler shipped inside gray is now the self-hosted compiler, written in
+Grayscale.
+
+- The self-hosted compiler (selfhost/) is the compiler embedded in gray
+- grayc, the compiler written in C, remains the reference compiler: it builds
+  the self-hosted compiler and continues to be improved
+- Behavior lands in grayc first and is then ported to the self-hosted compiler
+- A native backend is being built in Grayscale; as it lands, grayc's role
+  shrinks until grayc is retired
+
+See tag grayscale-v0.14.1 for the last numbered release.
+
+---
+
 ## [0.14.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.14.0...grayscale-v0.14.1) (2026-11-02)
 
 

@@ -1,0 +1,72 @@
+/*
+ * element_to_mutable_param_single_subscript_evaluation.gray
+ * The subscript of an array element passed to a & parameter is evaluated
+ * once, and the update lands on the element it names.
+ */
+
+import @arrays
+
+mut calls i64 = 0
+
+do next() -> i64 {
+    calls = calls + 1
+    return calls - 1
+}
+
+do inc(&n i64) {
+    n = n + 1
+}
+
+do swap(&a i64, &b i64) {
+    held i64 = a
+    a = b
+    b = held
+}
+
+do append_seven(&row [i64]) {
+    arrays.append(row, 7)
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut xs [i64] = {10, 20, 30, 40}
+    inc(xs[next()])
+    if calls == 1 && xs[0] == 11 && xs[1] == 20 {
+        println("  [PASS] one subscript evaluation for one element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${xs}")
+        failed += 1
+    }
+
+    calls = 0
+    swap(xs[next()], xs[next()])
+    if calls == 2 && xs[0] == 20 && xs[1] == 11 {
+        println("  [PASS] swap of two subscripted elements")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${xs}")
+        failed += 1
+    }
+
+    calls = 0
+    mut grid [[i64]] = {{1, 2}, {3, 4}}
+    append_seven(grid[next()])
+    inc(grid[next()][next() - 1])
+    if calls == 3 && len(grid[0]) == 3 && len(grid[1]) == 2 && grid[1][0] == 3 && grid[1][1] == 5 {
+        println("  [PASS] nested subscripts evaluated once each")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${calls} ${grid}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
