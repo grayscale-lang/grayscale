@@ -1995,6 +1995,11 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
 
     // The parser's own temporaries are never reported by name
     if strings.starts_with(name, "_gray_") { return checker^.pool^.type_unknown }
+    // `module.name` where the module declares no such name
+    if node^.label^.qualifier != "" {
+        add_diagnostic(checker, "E4024", error_registry.registry_message_formatted("E4024", {node^.label^.qualifier, node^.label^.qualified_member}), node^.tok.file, node^.tok.line, node^.tok.col)
+        return checker^.pool^.type_unknown
+    }
     if report_misspelled_statement(checker, node, node, name) { return checker^.pool^.type_unknown }
     // A leading underscore on a number: `_1000`
     if len(name) > 1 && strings.char_at(name, 0) == '_' && strings.char_at(name, 1) >= '0' && strings.char_at(name, 1) <= '9' {
