@@ -2038,6 +2038,8 @@ do main() {
 - At the call site, pass the variable directly — no `&` prefix: `f(val)`.
 - Only `mut` variables can be passed to `&` parameters. A `const` variable cannot be passed.
 - `&` parameters also accept struct fields (`increment(point.x)`), array elements (`increment(arr[0])`), and map values (`increment(map["key"])`).
+- Passing the same location to two `&` parameters of one call (for example `f(x, x)` or `f(arr[0], arr[0])`) is not diagnosed. A variable or struct field passed twice aliases one storage location, so both parameters see each other's writes. For an array element or map value passed twice, each argument is a separate copy written back after the call, so the second write-back overwrites the first and the first parameter's update is lost.
+- When the locations are only equal at runtime (for example `addto(arr[i], arr[j])` with `i == j`), the same loss of an update occurs. Do not rely on either outcome.
 
 #### 7.2.3 Grouped Parameters
 
