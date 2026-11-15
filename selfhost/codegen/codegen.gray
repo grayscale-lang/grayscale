@@ -3922,7 +3922,10 @@ fn gen_statement(generator ^CodeGen, node ^ast.AstNode) {
         is ast.NodeKind.ASSIGN_STMT { gen_module_aware(generator, node) }
         is ast.NodeKind.RETURN_STMT { gen_return(generator, node) }
         is ast.NodeKind.EXPR_STMT { gen_module_aware(generator, node) }
-        is ast.NodeKind.ENSURE_STMT { generator^.ensure_reached = generator^.ensure_reached + 1 }
+        is ast.NodeKind.ENSURE_STMT {
+            ensure_capture(generator, node)
+            generator^.ensure_reached = generator^.ensure_reached + 1
+        }
         is ast.NodeKind.IF_STMT {
             saved_raw_names = generator^.raw_names
             gen_if(generator, node)
@@ -4934,6 +4937,91 @@ fn function_needs_scope_mark(generator ^CodeGen, function_node ^ast.AstNode) -> 
     return !block_allocation_free(generator, function_node^.func_decl^.body)
 }
 
+// A `defer` / `ensure` call's arguments, and the struct value a struct function is called on, are
+// evaluated when the statement runs and kept until the function exits. Each one lives in a
+// temporary named by the statement's position and its slot (the receiver is slot 0, argument i is
+// slot i + 1). Literals carry no state, so they stay in the call.
+fn ensure_value_is_captured(generator ^CodeGen, value ^ast.AstNode) -> bool {
+    when value^.kind {
+        is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE { return false }
+        default {}
+    }
+    value_type = expr_type(generator, value)
+    return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
+}
+
+fn ensure_receiver(generator ^CodeGen, call ^ast.AstNode) -> ^ast.AstNode {
+    callee = call^.call^.function
+    if callee == nil || callee^.kind != ast.NodeKind.MEMBER_EXPR { return nil }
+    object = callee^.member^.object
+    if object == nil || !maps.contains_key(generator^.structs, expr_type(generator, object)) { return nil }
+    return object
+}
+
+fn ensure_temporary_name(statement ^ast.AstNode, slot i64) -> string {
+    return "_gray_df${statement^.tok.line}_${statement^.tok.col}_${slot}"
+}
+
+fn ensure_temporary_label(statement ^ast.AstNode, original ^ast.AstNode, slot i64) -> ^ast.AstNode {
+    label = ast.ast_alloc(ast.NodeKind.LABEL, original^.tok)
+    label_data = new(ast.LabelData)
+    label_data^.value = ensure_temporary_name(statement, slot)
+    label^.label = label_data
+    label^.resolved_type = original^.resolved_type
+    return label
+}
+
+// The declarations that evaluate the statement's receiver and arguments now.
+fn ensure_capture(generator ^CodeGen, statement ^ast.AstNode) {
+    call = statement^.ensure_stmt^.expr
+    if call^.kind != ast.NodeKind.CALL_EXPR { return }
+    receiver = ensure_receiver(generator, call)
+    if receiver != nil && ensure_value_is_captured(generator, receiver) {
+        emit_line(generator, "__auto_type ${ensure_temporary_name(statement, 0)} = ${gen_expr(generator, receiver)};")
+    }
+    for slot in range(0, len(call^.call^.args)) {
+        argument = call^.call^.args[slot]
+        if !ensure_value_is_captured(generator, argument) { continue }
+        emit_line(generator, "__auto_type ${ensure_temporary_name(statement, slot + 1)} = ${gen_expr(generator, argument)};")
+    }
+}
+
+// The deferred call, reading the temporaries the statement captured.
+fn ensure_call(generator ^CodeGen, statement ^ast.AstNode) -> string {
+    call = statement^.ensure_stmt^.expr
+    if call^.kind != ast.NodeKind.CALL_EXPR { return gen_expr(generator, call) }
+    receiver = ensure_receiver(generator, call)
+    original_arguments = call^.call^.args
+    original_written = call^.call^.written_arguments
+    mut rewritten_arguments [^ast.AstNode] = {}
+    mut rewritten_written [^ast.AstNode] = {}
+    for_each written in original_written { arrays.append(rewritten_written, written) }
+    for slot in range(0, len(original_arguments)) {
+        argument = original_arguments[slot]
+        if !ensure_value_is_captured(generator, argument) {
+            arrays.append(rewritten_arguments, argument)
+            continue
+        }
+        label = ensure_temporary_label(statement, argument, slot + 1)
+        arrays.append(rewritten_arguments, label)
+        for position in range(0, len(rewritten_written)) {
+            if rewritten_written[position] == argument { rewritten_written[position] = label }
+        }
+    }
+    call^.call^.args = rewritten_arguments
+    call^.call^.written_arguments = rewritten_written
+    mut original_object ^ast.AstNode = nil
+    if receiver != nil && ensure_value_is_captured(generator, receiver) {
+        original_object = receiver
+        call^.call^.function^.member^.object = ensure_temporary_label(statement, receiver, 0)
+    }
+    text = gen_expr(generator, call)
+    if original_object != nil { call^.call^.function^.member^.object = original_object }
+    call^.call^.args = original_arguments
+    call^.call^.written_arguments = original_written
+    return text
+}
+
 // The calls of the `ensure` / `defer` statements control flow has reached, last first.
 fn ensure_cleanup(generator ^CodeGen) -> string {
     mut text = ""
@@ -4941,7 +5029,7 @@ fn ensure_cleanup(generator ^CodeGen) -> string {
     if index > len(generator^.ensures) { index = len(generator^.ensures) }
     as_long_as index > 0 {
         index = index - 1
-        text = "${text}${strings.repeat("    ", generator^.indent)}${gen_expr(generator, generator^.ensures[index]^.ensure_stmt^.expr)};\n"
+        text = "${text}${strings.repeat("    ", generator^.indent)}${ensure_call(generator, generator^.ensures[index])};\n"
     }
     return text
 }
