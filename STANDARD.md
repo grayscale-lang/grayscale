@@ -1744,9 +1744,7 @@ for_each key in ages {
 }
 ```
 
-Map iteration order is undefined (maps are unordered).
-
-> 💡 **Tip:** Never rely on map iteration order. It is different every run by design.
+Maps iterate in insertion order: `for_each` visits entries in the order their keys were first added. Overwriting an existing key keeps its position. A removed key that is added again goes to the end.
 
 **Mutation during iteration:**
 
