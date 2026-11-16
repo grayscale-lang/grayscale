@@ -8113,7 +8113,16 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
              * and codegen has no C type named after the alias. A name that
              * reaches no type was already reported; stay unknown so the
              * assignment does not report it a second time. */
-            if (type_argument->kind == NODE_LABEL &&
+            int generic_index = type_argument->kind == NODE_LABEL
+                ? generic_bindings_find(&checker->generics, type_argument->data.label.value) : -1;
+            if (generic_index >= 0) {
+                /* A type parameter stands for the type bound in this
+                 * instantiation; the node keeps the parameter's name for the
+                 * next one. */
+                const char *bound = checker->generics.types[generic_index];
+                result = type_pointer(bound ? bound : typechecker_format(checker, "?%s",
+                    type_argument->data.label.value));
+            } else if (type_argument->kind == NODE_LABEL &&
                 type_argument_names_a_type(checker, type_argument->data.label.value)) {
                 const char *target = resolve_type_alias(checker,
                     checker_resolve_type_name(checker, type_argument->data.label.value));
@@ -8264,6 +8273,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
 static bool type_argument_names_a_type(TypeChecker *checker, const char *name) {
     if (!name) return false;
     if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    if (generic_bindings_find(&checker->generics, name) >= 0) return true;
     if (typechecker_is_builtin(name) && type_from_name(name) != &TYPE_UNKNOWN)
         return true;
     const char *resolved = resolve_type_alias(checker,
