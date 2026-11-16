@@ -1,0 +1,19 @@
+/*
+ * Test: an http request URL with an embedded NUL byte is rejected as invalid
+ * instead of being cut short and sent to a different host
+ */
+
+import @http
+
+do main() {
+    mut first, _ = http.get("http://127.0.0.1:1\0zzz/")
+    mut second, _ = http.get("http://127.0.0.1\0.example.com:1/")
+
+    if first.body == "invalid URL: contains a space or control character" && second.body == "invalid URL: contains a space or control character" {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("[FAIL] first: ${first.body}")
+        println("[FAIL] second: ${second.body}")
+        exit(1)
+    }
+}
