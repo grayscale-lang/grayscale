@@ -22,7 +22,7 @@
 
 import @io, @os, @strings, @arrays, @strconv, @time, @fmt
 
-const WORKLOADS [string, 7] = {"micro", "json_roundtrip", "raytracer", "lexer", "life", "kvstore", "sha256"}
+const WORKLOADS [string, 6] = {"json_roundtrip", "raytracer", "lexer", "life", "kvstore", "sha256"}
 
 // Prior is one workload's row from the saved results.json.
 const Prior struct {
