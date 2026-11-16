@@ -1,5 +1,24 @@
 # Changelog
 
+## experimental-20261116-build5 (2026-11-16)
+
+### Bug Fixes
+
+* fix(selfhost): port the generic type parameter, distinct alias cast, and tagged enum checks from grayc
+* fix(codegen): resolve a distinct alias cast target to its underlying type
+* fix(typechecker): reject a tagged enum in array and map comparison helpers (#3483)
+* fix(typechecker): reject a tagged enum as a map key (#3481)
+* fix(typechecker): reset arena lifetimes before checking a generic instantiation (#3489)
+* fix(typechecker): accept a generic type parameter as the mem.init type argument (#3480)
+* fix(typechecker): keep a distinct alias as the cast target inside a generic function (#3471)
+* fix(typechecker): limit the struct function name conflict check to the struct's own module (#3477)
+* fix(codegen): copy a generic-typed arrays.append value into the outer arena (#3472)
+* fix(typechecker): print the written enum name in the sorted_keys key-type diagnostic (#3473)
+
+### Performance
+
+* perf(benchmarks): add a vm workload to the benchmark suite (#3487)
+
 ## experimental-20261116-build4 (2026-11-16)
 
 ### Bug Fixes
