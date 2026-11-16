@@ -1,0 +1,20 @@
+/*
+ * Test: html_unescape decodes a numeric entity for NUL or a surrogate to
+ * U+FFFD, so the result holds no NUL byte and is valid UTF-8
+ */
+
+import @encoding
+
+do main() {
+    mut nul string = encoding.html_unescape("x&#0;y")
+    mut hex_nul string = encoding.html_unescape("x&#x0;y")
+    mut low_surrogate string = encoding.html_unescape("&#xD800;")
+    mut high_surrogate string = encoding.html_unescape("&#57343;")
+
+    if nul == "x\u{FFFD}y" && hex_nul == "x\u{FFFD}y" && low_surrogate == "\u{FFFD}" && high_surrogate == "\u{FFFD}" {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("[FAIL] ${encoding.to_hex(encoding.from_string(nul))} ${encoding.to_hex(encoding.from_string(low_surrogate))}")
+        exit(1)
+    }
+}

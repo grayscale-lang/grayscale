@@ -1,0 +1,14 @@
+/*
+ * Test: named arguments written out of parameter order in a module-qualified
+ * static struct function call
+ */
+import "./vec.gray"
+
+do main() {
+    mut v vec.Vec = vec.Vec{x: 2, y: 3}
+    mut b vec.Vec = vec.Vec.scale(factor: 5, self: v)
+    assert(b.x == 10, "reordered named arguments bind by name")
+    assert(b.y == 15, "reordered named arguments bind by name for every field")
+    mut c vec.Vec = vec.Vec.scale(self: v, factor: 2)
+    assert(c.x == 4, "in-order named arguments still bind")
+}

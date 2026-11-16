@@ -1,0 +1,50 @@
+/*
+ * map_new_key_struct_with_map_field.gray - Assigning a new key of a map whose
+ * value struct holds a map field inserts the key
+ */
+
+const WithMap struct {
+    weights map[string:i64]
+}
+
+const Outer struct {
+    inner WithMap
+}
+
+do main() {
+    println("=== Map New Key Struct With Map Field Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut m map[string:WithMap] = {:}
+    m["k"] = WithMap{weights: {:}}
+    if len(m) == 1 {
+        println("  [PASS] new key inserted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new key not inserted")
+        failed += 1
+    }
+
+    m["k"] = WithMap{weights: {"a": 1}}
+    if len(m["k"].weights) == 1 {
+        println("  [PASS] existing key replaced")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] existing key not replaced")
+        failed += 1
+    }
+
+    mut nested map[string:Outer] = {:}
+    nested["k"] = Outer{inner: WithMap{weights: {:}}}
+    if len(nested) == 1 {
+        println("  [PASS] new key with nested struct inserted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new key with nested struct not inserted")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

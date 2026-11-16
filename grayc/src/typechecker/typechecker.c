@@ -337,6 +337,16 @@ static const char *assignment_target_root_name(AstNode *expression) {
     }
 }
 
+static bool typechecker_is_imported_module(TypeChecker *checker, const char *name);
+
+/* True when `node` is an imported module's name used as a qualifier. It is not
+ * a value, so resolving it as an expression would report an undefined variable. */
+static bool node_is_module_qualifier(TypeChecker *checker, AstNode *node) {
+    return node && node->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, node->data.label.value) &&
+        typechecker_is_imported_module(checker, node->data.label.value);
+}
+
 /* True when an assignment target is, or is a field or element of, a value with
  * no storage of its own: a call result or a literal. Writing to it changes
  * nothing the program can read, and the generated C takes the address of an
@@ -351,7 +361,9 @@ static bool assignment_target_is_temporary(TypeChecker *checker, AstNode *target
     case NODE_STRUCT_VALUE:
         return true;
     case NODE_MEMBER_EXPRESSION: {
-        GrayType *object_type = resolve_expression(checker, target->data.member.object);
+        AstNode *object = target->data.member.object;
+        if (node_is_module_qualifier(checker, object)) return false;
+        GrayType *object_type = resolve_expression(checker, object);
         if (object_type && object_type->kind == TYPE_KIND_POINTER) return false;
         return assignment_target_is_temporary(checker, target->data.member.object);
     }
@@ -5044,7 +5056,11 @@ static DeclarationEntry *checker_cache_resolution(TypeChecker *checker, AstNode 
 static DeclarationEntry *checker_resolve_entry(TypeChecker *checker, const char *written) {
     if (!written || !checker->modules) return NULL;
     ResolveScope scope = checker_scope(checker);
-    DeclarationEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    /* A leading '.' names the entry module's declaration, whichever module the
+     * lookup runs in. */
+    DeclarationEntry *entry = written[0] == '.'
+        ? module_scope_lookup(module_table_find(checker->modules, ""), written + 1)
+        : module_resolve_written(checker->modules, &scope, written);
     /* A bare name that reached its declaration through `using` names a member
      * of that module exactly as a qualified reference does, so it counts as
      * using the import. Only qualified access marked it before, and a file
@@ -8032,8 +8048,12 @@ static GrayType *resolve_wrapping_call(TypeChecker *checker, AstNode *node, cons
         ? type_binary_result(TOKEN_PLUS, left, right) : NULL;
     if (common) {
         if (left->kind == TYPE_KIND_LITERAL && right->kind == TYPE_KIND_LITERAL) {
-            left = check_expression_as(checker, left_node, NULL);
-            right = check_expression_as(checker, right_node, NULL);
+            GrayType *literal_target = checker->expected_type;
+            if (!literal_target || (literal_target->kind != TYPE_KIND_SIGNED_INTEGER &&
+                                    literal_target->kind != TYPE_KIND_UNSIGNED_INTEGER))
+                literal_target = NULL;
+            left = check_expression_as(checker, left_node, literal_target);
+            right = check_expression_as(checker, right_node, literal_target);
         } else if (left->kind == TYPE_KIND_LITERAL) {
             left = check_expression_as(checker, left_node, right);
         } else if (right->kind == TYPE_KIND_LITERAL) {
@@ -8266,15 +8286,32 @@ static GrayType *typechecker_type_with_generics(TypeChecker *checker, const Gene
 
 /* True when the type written for parameter `index` of `declaration` names one of
  * its own `generic` parameters, so its type depends on the call. */
-static bool parameter_type_depends_on_generic(const AstNode *declaration, int index) {
+static bool type_text_depends_on_generic(const AstNode *declaration, const char *type_text) {
     GenericBindings unbound;
     generic_bindings_init(&unbound, declaration, NULL);
-    char *substituted = generic_bindings_substitute(&unbound,
-        declaration->data.function_declaration.parameters[index].type_name);
+    char *substituted = generic_bindings_substitute(&unbound, type_text);
     bool depends = substituted && strchr(substituted, '?') != NULL;
     free(substituted);
     generic_bindings_clear(&unbound);
     return depends;
+}
+
+static bool parameter_type_depends_on_generic(const AstNode *declaration, int index) {
+    return type_text_depends_on_generic(declaration,
+        declaration->data.function_declaration.parameters[index].type_name);
+}
+
+/* The type of return slot `index` of a call to a generic function. A slot that
+ * names no type parameter is already resolved, in the declaring module's scope,
+ * on the signature; writing it out again here would look its name up in the
+ * caller's file, where a module's own type is not visible. */
+static GrayType *generic_return_slot_type(TypeChecker *checker, const FunctionSignature *signature,
+                                          const GenericBindings *bindings, int index) {
+    const AstNode *declaration = signature->declaration;
+    const char *type_text = declaration->data.function_declaration.return_types[index];
+    if (index < signature->return_count && !type_text_depends_on_generic(declaration, type_text))
+        return signature->return_types[index];
+    return typechecker_type_with_generics(checker, bindings, type_text);
 }
 
 /* True when argument `index` of a call to `signature` is a type argument or is
@@ -8484,8 +8521,7 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             }
         }
         if (declaration->data.function_declaration.return_type_count > 0) {
-            generic_return_type = typechecker_type_with_generics(checker, call_bindings,
-                declaration->data.function_declaration.return_types[0]);
+            generic_return_type = generic_return_slot_type(checker, signature, call_bindings, 0);
         } else {
             generic_return_type = &TYPE_VOID;
         }
@@ -8989,7 +9025,17 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     struct_function_signature->was_used = true;
                     symbol->was_used = true;
                     warn_if_function_deprecated(checker, node, struct_function_signature);
-                    result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
+                    bool is_generic_call = false;
+                    GenericBindings call_bindings;
+                    GrayType *generic_return_type = resolve_generic_call(checker, node, struct_function_signature,
+                        typechecker_format(checker, "%s.%s", display_struct_name, member_function_name), true,
+                        &call_bindings, &is_generic_call);
+                    generic_bindings_clear(&call_bindings);
+                    if (is_generic_call && generic_return_type) {
+                        result = generic_return_type;
+                    } else {
+                        result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
+                    }
                     /* Validate argument count */
                     {
                         int minimum_parameters = signature_minimum_arguments(struct_function_signature);
@@ -9010,6 +9056,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         char callee[MESSAGE_BUFFER_SIZE];
                         snprintf(callee, sizeof(callee), "%s.%s", display_struct_name, member_function_name);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                            if (argument_is_checked_by_generic_call(struct_function_signature, argument_index)) continue;
                             GrayType *parameter_type = struct_function_signature->parameter_types[argument_index];
                             GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
                             AstNode *argument_node = node->data.call.arguments[argument_index];
@@ -9139,6 +9186,7 @@ static bool array_spelling_is_fixed(const char *spelling) {
  * (`o.inner.items`). */
 static int member_expression_fixed_array_field_size(TypeChecker *checker, AstNode *expression) {
     if (!expression || expression->kind != NODE_MEMBER_EXPRESSION) return 0;
+    if (node_is_module_qualifier(checker, expression->data.member.object)) return 0;
     GrayType *object_type = resolve_expression(checker, expression->data.member.object);
     if (!object_type) return 0;
     /* The dot operator auto-derefs pointers to structs (p.field == p^.field),
@@ -10553,7 +10601,17 @@ static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node,
                     checker_resolve_declaration_into(checker, struct_name, struct_key, sizeof(struct_key)),
                     function_node->data.member.member);
                 signature = find_function(checker, prefixed);
-                if (signature && receiver) *leading_parameters = 1;
+                if (signature && receiver && signature->declaration &&
+                    signature->declaration->kind == NODE_FUNCTION_DECLARATION &&
+                    signature->declaration->data.function_declaration.parameter_count > 0) {
+                    const char *first_parameter_type_name =
+                        signature->declaration->data.function_declaration.parameters[0].type_name;
+                    if (first_parameter_type_name &&
+                        (self_parameter_names_struct(checker, signature->declaration, first_parameter_type_name, struct_name) ||
+                         (first_parameter_type_name[0] == '^' &&
+                          self_parameter_names_struct(checker, signature->declaration, first_parameter_type_name + 1, struct_name))))
+                        *leading_parameters = 1;
+                }
             }
         }
         /* mod.Struct.func(...): the struct function, namespaced under its module. */
@@ -11057,6 +11115,11 @@ static GrayType *resolve_call_expression_once(TypeChecker *checker, AstNode *nod
                 }
             }
             result = signature->return_count > 0 ? signature->return_types[0] : &TYPE_VOID;
+            if (signature->declaration) {
+                char display[MESSAGE_BUFFER_SIZE];
+                snprintf(display, sizeof(display), "%s.%s.%s", module_name, struct_name, chained_function_name);
+                typechecker_resolve_named_arguments(checker, node, signature->declaration, display);
+            }
             /* Check argument count */
             {
                 int minimum_arguments = signature_minimum_arguments(signature);
@@ -12113,7 +12176,11 @@ static GrayType *resolve_member_expression(TypeChecker *checker, AstNode *node) 
             return &TYPE_UNKNOWN;
         }
     }
-    if (!is_object_type_name) resolve_expression(checker, object);
+    /* An imported module's name qualifies a member; it is not a value. */
+    bool is_object_module = object->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, object->data.label.value) &&
+        typechecker_is_imported_module(checker, object->data.label.value);
+    if (!is_object_type_name && !is_object_module) resolve_expression(checker, object);
 
     if (object->kind == NODE_LABEL) {
         const char *object_name = object->data.label.value;
@@ -13129,7 +13196,6 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         } else if (strncmp(name, GRAY_SYNTHETIC_PREFIX, strlen(GRAY_SYNTHETIC_PREFIX)) != 0 &&
                    !is_enum_name(checker, name) &&
                    !is_struct_name(checker, name) &&
-                   !typechecker_is_imported_module(checker, name) &&
                    !is_enum_name(checker, resolve_type_alias(checker, name)) &&
                    !is_struct_name(checker, resolve_type_alias(checker, name)) &&
                    (checker->is_in_file_scope_initializer ||
@@ -13137,7 +13203,8 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 NODE_ERROR_FORMATTED(checker, node, "E1012", name + 1);
-            } else if (is_unimported_user_module(checker, name,
+            } else if (!typechecker_is_imported_module(checker, name) &&
+                       is_unimported_user_module(checker, name,
                                                  typechecker_resolve_alias(checker, name))) {
                 NODE_ERROR_FORMATTED_HELP(checker, node, "E4033", "add an import for it at the top of the file", name);
             } else {
@@ -15288,8 +15355,8 @@ static void apply_call_return_slots(TypeChecker *checker, Symbol *symbol, Functi
         int return_count = declaration->data.function_declaration.return_type_count;
         GrayType **substituted_return_types = xmalloc(sizeof(GrayType *) * (size_t)return_count);
         for (int return_index = 0; return_index < return_count; return_index++) {
-            substituted_return_types[return_index] = typechecker_type_with_generics(checker,
-                &call_bindings, declaration->data.function_declaration.return_types[return_index]);
+            substituted_return_types[return_index] = generic_return_slot_type(checker, signature,
+                &call_bindings, return_index);
         }
         generic_bindings_clear(&call_bindings);
         slots = substituted_return_types;
@@ -15650,10 +15717,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 if (signature && signature->return_count > 1) {
                     Symbol *symbol = scope_lookup_local(checker->current_scope,
                         node->data.variable_declaration.name);
-                    if (symbol) {
-                        symbol->return_types = signature->return_types;
-                        symbol->return_count = signature->return_count;
-                    }
+                    if (symbol) apply_call_return_slots(checker, symbol, signature, node->data.variable_declaration.value);
                 }
             }
         }
@@ -15887,7 +15951,8 @@ static bool assign_target_outlives_locals(TypeChecker *checker, AstNode *target)
     while (base) {
         if (base->kind == NODE_MEMBER_EXPRESSION) {
             /* `.` on a pointer reads through it exactly as `^.` does. */
-            GrayType *object_type = resolve_expression(checker, base->data.member.object);
+            GrayType *object_type = node_is_module_qualifier(checker, base->data.member.object)
+                ? NULL : resolve_expression(checker, base->data.member.object);
             if (object_type && object_type->kind == TYPE_KIND_POINTER) through_deref = true;
             base = base->data.member.object;
         }
@@ -16205,7 +16270,8 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
      * never sees this — a plain `w.items = <expr>` is an ordinary
      * assignment statement, not a struct-literal node — so this is a
      * second, independent call site for the same shared check. */
-    if (target->kind == NODE_MEMBER_EXPRESSION && node->data.assign.value) {
+    if (target->kind == NODE_MEMBER_EXPRESSION && node->data.assign.value &&
+        !node_is_module_qualifier(checker, target->data.member.object)) {
         GrayType *object_type = resolve_expression(checker, target->data.member.object);
         const char *struct_name = NULL;
         if (object_type) {

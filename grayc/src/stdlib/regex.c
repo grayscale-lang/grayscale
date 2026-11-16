@@ -257,7 +257,9 @@ static bool regex_execute(const RegexProgram *regex, const char *text, size_t nm
 #if !GRAY_RUNTIME_WINDOWS
     if (regex->is_libc) return regexec(&regex->libc, text, nmatch, spans, is_after_start ? REG_NOTBOL : 0) == 0;
 #endif
-    return gray_regex_engine_execute(&regex->engine, text, nmatch, spans, is_after_start) == 0;
+    int result_code = gray_regex_engine_execute(&regex->engine, text, nmatch, spans, is_after_start);
+    if (result_code == 2) gray_panic_code("P0174", "regex: the pattern needs more nesting or work than the matcher allows");
+    return result_code == 0;
 }
 
 static size_t regex_group_count(const RegexProgram *regex) {

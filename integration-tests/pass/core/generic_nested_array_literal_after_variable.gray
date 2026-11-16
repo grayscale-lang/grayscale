@@ -1,0 +1,36 @@
+/*
+ * generic_nested_array_literal_after_variable.gray - A [[T]] literal whose
+ * first element is a variable and a later element is an array literal of T
+ */
+
+do rows(T generic, x T) -> [[T]] {
+    mut first [T] = {x}
+    return {first, {x}}
+}
+
+do main() {
+    println("=== Generic Nested Array Literal Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut ints [[i64]] = rows(i64, 2)
+    if len(ints) == 2 && ints[1][0] == 2 {
+        println("  [PASS] [[i64]] literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [[i64]] literal")
+        failed += 1
+    }
+
+    mut words [[string]] = rows(string, "a")
+    if len(words) == 2 && words[1][0] == "a" {
+        println("  [PASS] [[string]] literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [[string]] literal")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

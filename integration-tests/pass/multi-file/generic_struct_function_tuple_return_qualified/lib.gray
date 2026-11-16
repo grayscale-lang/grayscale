@@ -1,0 +1,6 @@
+const Util struct {
+    n i64
+
+    do pair(A generic, B generic, a A, b B) -> (B, A) { return b, a }
+    do swap_pair(self Util, A generic, B generic, a A, b B) -> (B, A) { return b, a }
+}

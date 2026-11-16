@@ -1,0 +1,23 @@
+/*
+ * Test: a module-qualified generic struct function returning a tuple types each
+ * destructured variable by its own slot, called on the type, a value and a pointer.
+ */
+
+import "./lib"
+
+do main() {
+    mut number, text = lib.Util.pair(string, i64, "s", 9)
+    assert(number == 9)
+    assert(text == "s")
+
+    mut value lib.Util = lib.Util{n: 1}
+    mut value_number, value_text = value.swap_pair(string, i64, "s", 9)
+    assert(value_number == 9)
+    assert(value_text == "s")
+
+    mut pointer ^lib.Util = new(lib.Util)
+    mut pointer_number, pointer_text = pointer.swap_pair(string, i64, "s", 9)
+    assert(pointer_number == 9)
+    assert(pointer_text == "s")
+    println("ok")
+}

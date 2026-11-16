@@ -1,0 +1,34 @@
+/*
+ * c_interop_typedef_fn_ptr_param.gray - a function reference passed to a C
+ * parameter declared through a function-pointer typedef is accepted, whichever
+ * C compiler the program is built with.
+ */
+
+extern import "./c_interop_typedef_fn_ptr_param.h"
+
+do triple(value i32) -> i32 {
+    return value * 3
+}
+
+unsafe do main() {
+    println("=== C Interop Typedef Function Pointer Parameter Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut result i32 = extern.ctf_apply(14, ()triple)
+    if result == 42 {
+        println("  [PASS] extern.ctf_apply(14, triple) == 42")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] extern.ctf_apply(14, triple)")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

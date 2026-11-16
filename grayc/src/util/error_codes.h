@@ -607,7 +607,8 @@
     GRAY_PANIC("P0170", "threads",    "threads.%s on a thread handle that was never returned by threads.spawn() or was already joined or detached") \
     GRAY_PANIC("P0171", "mem",        "mem.%s on an arena that was never created with mem.arena() or was already destroyed") \
     GRAY_PANIC("P0172", "channels",   "channels.send on a closed channel") \
-    GRAY_PANIC("P0173", "channels",   "channels.open capacity %lld is below 1")
+    GRAY_PANIC("P0173", "channels",   "channels.open capacity %lld is below 1") \
+    GRAY_PANIC("P0174", "regex",      "regex: the pattern needs more nesting or work than the matcher allows")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

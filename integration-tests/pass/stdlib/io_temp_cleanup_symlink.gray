@@ -1,0 +1,35 @@
+/*
+ * Test: the exit-time temp cleanup unlinks a symlink planted at a registered
+ * temp path instead of deleting the contents of its target
+ */
+
+import @io
+import @path
+import @os
+
+do main() {
+    mut argv = os.args()
+    if len(argv) > 2 {
+        // Child: plant a symlink at the removed temp path, then exit
+        mut dir, _ = io.temp_dir()
+        mut _removed, _ = io.remove_dir_all(dir)
+        mut _result, _ = os.exec("ln", {"-s", argv[2], dir})
+        exit(0)
+    }
+
+    mut victim, _ = io.temp_dir()
+    mut precious = path.join_parts({victim, "precious.txt"})
+    mut _ok, _ = io.write_file(precious, "keep")
+
+    mut _child, _ = os.exec(argv[0], {"child", victim})
+
+    mut survived = io.file_exists(precious)
+    mut _cleanup, _ = io.remove_dir_all(victim)
+
+    if survived {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("[FAIL] the target of a planted symlink was deleted at exit")
+        exit(1)
+    }
+}

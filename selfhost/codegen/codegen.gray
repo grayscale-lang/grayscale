@@ -4728,9 +4728,28 @@ fn gen_return(generator ^CodeGen, node ^ast.AstNode) {
         emit_line(generator, "{ __auto_type _ret = ${copied_value}; ${ensure_cleanup(generator)}${exit_text}gray_exit_func(); return _ret; }")
         return
     }
+    // a `&` parameter, or a value held by one, shares the caller's storage: the result is a copy of it
+    if len(generator^.return_types) == 1 && names_existing_storage(values[0]) && held_by_reference_parameter(generator, values[0]) && type_shares_storage(generator, generator^.return_types[0]) {
+        copied_value = deep_copy_of(generator, generator^.return_types[0], values[0])
+        exit_text = single_return_escape(generator, release, runs_in_caller_arena, runs_on_watermark)
+        emit_line(generator, "{ __auto_type _ret = ${copied_value}; ${ensure_cleanup(generator)}${exit_text}gray_exit_func(); return _ret; }")
+        return
+    }
     plain_value = gen_expr(generator, values[0])
     exit_text = single_return_escape(generator, release, runs_in_caller_arena, runs_on_watermark)
     emit_line(generator, "{ __auto_type _ret = ${plain_value}; ${ensure_cleanup(generator)}${exit_text}gray_exit_func(); return _ret; }")
+}
+
+// True when the expression is a `&` parameter or a field or element reached through one.
+fn held_by_reference_parameter(generator ^CodeGen, node ^ast.AstNode) -> bool {
+    mut root = node
+    as_long_as root != nil {
+        if root^.kind == ast.NodeKind.MEMBER_EXPR { root = root^.member^.object }
+        or root^.kind == ast.NodeKind.INDEX_EXPR { root = root^.index_data^.left }
+        or root^.kind == ast.NodeKind.POSTFIX_EXPR && root^.postfix^.op == token.TokenKind.CARET { root = root^.postfix^.left }
+        otherwise { break }
+    }
+    return root != nil && root^.kind == ast.NodeKind.LABEL && arrays.contains(generator^.ref_params, root^.label^.value)
 }
 
 // What a single-valued return does with the function's memory: copy the result out of

@@ -1229,11 +1229,7 @@ fn check_declaration_name(checker ^TypeChecker, name string, display string, rol
 
 fn check_reserved_name(checker ^TypeChecker, name string, file string, line i64, col i64) {
     if name == "" { return }
-    mut reserved_prefix = false
-    if strings.starts_with(name, "gray_") { reserved_prefix = true }
-    if strings.starts_with(name, "_gray_") { reserved_prefix = true }
-    if strings.starts_with(name, "Gray") { reserved_prefix = true }
-    if reserved_prefix {
+    if reserved.has_reserved_prefix(name) {
         message = error_registry.registry_message_formatted("E4006", {name})
         add_diagnostic(checker, "E4006", message, file, line, col)
     }
@@ -1284,7 +1280,9 @@ fn register_decl_functions(checker ^TypeChecker, program ^ast.AstNode) {
             add_diagnostic(checker, "E5046", error_registry.registry_message_formatted("E5046", {fn_name}), file, line, col)
         }
 
-        check_reserved_name(checker, function_data^.name, file, line, col)
+        mut declared_function_name = function_data^.name
+        if function_data^.original_name != "" { declared_function_name = function_data^.original_name }
+        check_reserved_name(checker, declared_function_name, file, line, col)
 
         // A global variable of another file of the same module already holds the name
         for_each earlier in stmts {
@@ -1796,6 +1794,8 @@ fn reject_multi_value_call(checker ^TypeChecker, call_expression ^ast.AstNode, r
     if callee^.kind == ast.NodeKind.LABEL {
         name = callee^.label^.value
         signature = find_func(checker, name)
+        // A module call the resolver rewrote to its mangled label is named as written
+        if callee^.label^.qualifier != "" { name = callee^.label^.qualified_member }
         // A bare call carries no module qualifier; resolve it through the
         // using-modules so the stdlib checks below consult the module that
         // actually supplies it.
@@ -1993,6 +1993,11 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
 
     // The parser's own temporaries are never reported by name
     if strings.starts_with(name, "_gray_") { return checker^.pool^.type_unknown }
+    // `module.name` where the module declares no such name
+    if node^.label^.qualifier != "" {
+        add_diagnostic(checker, "E4024", error_registry.registry_message_formatted("E4024", {node^.label^.qualifier, node^.label^.qualified_member}), node^.tok.file, node^.tok.line, node^.tok.col)
+        return checker^.pool^.type_unknown
+    }
     if report_misspelled_statement(checker, node, node, name) { return checker^.pool^.type_unknown }
     // A leading underscore on a number: `_1000`
     if len(name) > 1 && strings.char_at(name, 0) == '_' && strings.char_at(name, 1) >= '0' && strings.char_at(name, 1) <= '9' {
@@ -3612,7 +3617,7 @@ fn resolve_member_expr(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayTy
             ei = find_enum(checker, obj_name)
             warn_if_enum_deprecated(checker, node, ei)
             if ei == nil || !enum_has_variant(ei, member) {
-                message = fmt.sprintf("enum '%s' has no member '%s'", {obj_name, member})
+                message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, obj_name), member})
                 add_diagnostic(checker, "E3047", message, node^.tok.file, node^.tok.line, node^.tok.col)
             } otherwise {
                 reject_payload_variant_without_payload(checker, node, ei, member)
@@ -3981,6 +3986,11 @@ fn resolve_type_argument(checker ^TypeChecker, type_argument ^ast.AstNode) -> st
         return "?${label_text}"
     }
     if scope.scope_lookup(checker^.current_scope, label_text) != nil {
+        add_diagnostic(checker, "E3128", "a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'", type_argument^.tok.file, type_argument^.tok.line, type_argument^.tok.col)
+        return ""
+    }
+    // A module-qualified name that names no type is an expression, as for grayc
+    if type_argument^.label^.qualifier != "" && !type_argument_names_a_type(checker, label_text) {
         add_diagnostic(checker, "E3128", "a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'", type_argument^.tok.file, type_argument^.tok.line, type_argument^.tok.col)
         return ""
     }
@@ -4449,8 +4459,10 @@ fn resolve_wrapping_call(checker ^TypeChecker, node ^ast.AstNode, display_name s
     if left_is_number && right_is_number { common = types.type_binary_result(checker^.pool, token.TokenKind.PLUS, left, right) }
     if common != nil {
         if left^.kind == types.TypeKind.LITERAL && right^.kind == types.TypeKind.LITERAL {
-            left = check_expression_as(checker, left_node, nil)
-            right = check_expression_as(checker, right_node, nil)
+            mut literal_target = checker^.expected_type
+            if literal_target != nil && literal_target^.kind != types.TypeKind.INT && literal_target^.kind != types.TypeKind.UINT { literal_target = nil }
+            left = check_expression_as(checker, left_node, literal_target)
+            right = check_expression_as(checker, right_node, literal_target)
         } or left^.kind == types.TypeKind.LITERAL {
             left = check_expression_as(checker, left_node, right)
         } or right^.kind == types.TypeKind.LITERAL {
@@ -7885,7 +7897,7 @@ fn resolve_call_expr_unchecked(checker ^TypeChecker, node ^ast.AstNode) -> ^type
         if symbol == nil && is_struct_name(checker, obj_name) {
             signature = find_func(checker, fmt.sprintf("%s_%s", {obj_name, member}))
             reject_private_struct_function(checker, node, signature, obj_name, member)
-            if signature != nil { return check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {obj_name, member}), signature, 0) }
+            if signature != nil { return check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {written_struct_name(callee^.member^.object, obj_name), member}), signature, 0) }
             if signature == nil && !struct_has_field(checker, obj_name, member) {
                 add_diagnostic(checker, "E4018", error_registry.registry_message_formatted("E4018", {struct_display_name(checker, obj_name), member}), node^.tok.file, node^.tok.line, node^.tok.col)
                 resolve_call_args_only(checker, node)
@@ -8103,7 +8115,9 @@ fn check_discarded_call_result(checker ^TypeChecker, node ^ast.AstNode, expressi
         if !is_side_effect_call(name) {
             signature = find_func(checker, name)
             if signature == nil || !signature^.is_discard {
-                add_diagnostic_help(checker, "E5011", "return value of '${name}()' is not used", "assign the result to a variable, or use 'mut _ = ...' to discard it", node^.tok.file, node^.tok.line, node^.tok.col)
+                mut called_name = name
+                if callee^.label^.qualifier != "" { called_name = "${callee^.label^.qualifier}.${callee^.label^.qualified_member}" }
+                add_diagnostic_help(checker, "E5011", "return value of '${called_name}()' is not used", "assign the result to a variable, or use 'mut _ = ...' to discard it", node^.tok.file, node^.tok.line, node^.tok.col)
             }
         }
     } or callee^.kind == ast.NodeKind.MEMBER_EXPR && callee^.member^.object^.kind == ast.NodeKind.LABEL {
@@ -8637,13 +8651,8 @@ fn declare_variable_symbol(checker ^TypeChecker, node ^ast.AstNode, declared ^ty
     value = node^.var_decl^.value
     if value != nil && value^.kind == ast.NodeKind.CALL_EXPR && value^.call^.function^.kind == ast.NodeKind.LABEL {
         signature = find_func(checker, value^.call^.function^.label^.value)
-        if signature != nil && signature^.is_generic && len(signature^.decl^.return_types) > 1 {
-            call_bindings = generic_call_bindings(checker, signature, value)
-            for_each slot_text in signature^.decl^.return_types {
-                arrays.append(symbol^.ret_types, checker_type_with_generics(checker, call_bindings, slot_text))
-            }
-        } or signature != nil && len(signature^.return_types) > 1 {
-            symbol^.ret_types = signature^.return_types
+        if signature != nil && (len(signature^.return_types) > 1 || signature^.is_generic && len(signature^.decl^.return_types) > 1) {
+            symbol^.ret_types = call_return_slots(checker, signature, value)
         }
         if signature == nil {
             callee_sym = scope.scope_lookup(checker^.current_scope, value^.call^.function^.label^.value)
@@ -8752,7 +8761,7 @@ fn record_struct_function_return_slots(checker ^TypeChecker, symbol ^scope.Symbo
         qualifier = callee^.member^.object^.label^.value
         if !is_struct_name(checker, qualifier) { return }
         qualified_signature = find_func(checker, "${qualifier}_${callee^.member^.member}")
-        if qualified_signature != nil && len(qualified_signature^.return_types) > 1 { symbol^.ret_types = qualified_signature^.return_types }
+        if qualified_signature != nil && len(qualified_signature^.return_types) > 1 { symbol^.ret_types = call_return_slots(checker, qualified_signature, value) }
         return
     }
     mut struct_name = ""
@@ -8760,7 +8769,19 @@ fn record_struct_function_return_slots(checker ^TypeChecker, symbol ^scope.Symbo
     if receiver^.sym_type^.kind == types.TypeKind.POINTER { struct_name = receiver^.sym_type^.element_type }
     if struct_name == "" { return }
     signature = find_func(checker, "${struct_name}_${callee^.member^.member}")
-    if signature != nil && len(signature^.return_types) > 1 { symbol^.ret_types = signature^.return_types }
+    if signature != nil && len(signature^.return_types) > 1 { symbol^.ret_types = call_return_slots(checker, signature, value) }
+}
+
+// The slot types a call to `signature` returns: for a generic function, each
+// declared slot with the type arguments the call names substituted in.
+fn call_return_slots(checker ^TypeChecker, signature ^FuncSig, call ^ast.AstNode) -> [^types.GrayType] {
+    if !signature^.is_generic { return signature^.return_types }
+    call_bindings = generic_call_bindings(checker, signature, call)
+    mut slots [^types.GrayType] = {}
+    for_each slot_text in signature^.decl^.return_types {
+        arrays.append(slots, checker_type_with_generics(checker, call_bindings, slot_text))
+    }
+    return slots
 }
 
 // True when a call appears anywhere inside `node`. Builtins that map directly to
@@ -11615,7 +11636,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                     pd^.enum_name = when_type^.name
                     vi = enum_variant_index(subject_enum, pd^.variant)
                     if vi < 0 {
-                        message = fmt.sprintf("enum '%s' has no member '%s'", {when_type^.name, pd^.variant})
+                        message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, when_type^.name), pd^.variant})
                         add_diagnostic(checker, "E3047", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)
                     } otherwise {
                         expected_bindings = len(subject_enum^.variant_payload_types[vi])
@@ -11632,7 +11653,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
                 if subject_enum != nil {
                     value_node^.implicit_enum^.resolved_enum = when_type^.name
                     if enum_variant_index(subject_enum, value_node^.implicit_enum^.variant) < 0 {
-                        message = fmt.sprintf("enum '%s' has no member '%s'", {when_type^.name, value_node^.implicit_enum^.variant})
+                        message = fmt.sprintf("enum '%s' has no member '%s'", {enum_display_name(checker, when_type^.name), value_node^.implicit_enum^.variant})
                         add_diagnostic(checker, "E3047", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)
                     }
                 }
@@ -13313,6 +13334,12 @@ fn written_function_name(node ^ast.AstNode, name string) -> string {
 
 // A function as a diagnostic names it: `module.name` for a function of a module (its registry name
 // is `module_name`), else the name the call used.
+// A struct as the program wrote it: `module.Type` through a module, else its name.
+fn written_struct_name(label ^ast.AstNode, fallback string) -> string {
+    if label^.label^.qualifier != "" { return "${label^.label^.qualifier}.${label^.label^.qualified_member}" }
+    return fallback
+}
+
 fn shown_function_name(signature ^FuncSig, as_called string) -> string {
     if signature == nil || signature^.decl == nil || as_called != signature^.name { return as_called }
     if signature^.decl^.runtime_name != "" { return signature^.decl^.runtime_name }

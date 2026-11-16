@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0174 - a pattern of many quantified atoms exceeds the matcher's depth budget */
+import @regex, @strings
+
+do main() {
+    println(regex.is_match(strings.repeat("a*", 2000) + "|[à-ü]", "aaaaab"))
+}

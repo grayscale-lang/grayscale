@@ -1,0 +1,31 @@
+/*
+ * Test: a when over a module-qualified call to a generic function binds the
+ * variant payload, and a tuple return mixing a module type with a type
+ * parameter types each destructured variable.
+ */
+
+import "./lib"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    when lib.shape(i64, 1) {
+        is lib.Shape.Ring(radius) { if radius == 3.5 { passed += 1 } otherwise { failed += 1 } }
+        default { failed += 1 }
+    }
+
+    when lib.Util.make(string, "s") {
+        is lib.Shape.Ring(radius) { if radius == 3.5 { passed += 1 } otherwise { failed += 1 } }
+        default { failed += 1 }
+    }
+
+    mut shape, number = lib.shape_and_value(i64, 7)
+    when shape {
+        is lib.Shape.Ring(radius) { if radius == 1.5 && number == 7 { passed += 1 } otherwise { failed += 1 } }
+        default { failed += 1 }
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    assert(failed == 0)
+}

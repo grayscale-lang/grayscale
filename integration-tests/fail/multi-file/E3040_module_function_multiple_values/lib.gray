@@ -1,0 +1,2 @@
+do compute(n i64) -> i64 { return n }
+do pair(n i64) -> (i64, string) { return n, "x" }

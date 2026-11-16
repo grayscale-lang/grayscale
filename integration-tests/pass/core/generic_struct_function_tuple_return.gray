@@ -1,0 +1,47 @@
+/*
+ * Test: a generic struct function returning a tuple types each destructured
+ * variable by its own slot.
+ */
+
+const Util struct {
+    n i64
+
+    do swap_pair(A generic, B generic, a A, b B) -> (B, A) { return b, a }
+    do keep_pair(A generic, B generic, a A, b B) -> (A, B) { return a, b }
+    do twin(T generic, a T, b T) -> (T, T) { return b, a }
+    do instance_pair(self Util, A generic, B generic, a A, b B) -> (B, A) { return b, a }
+    do instance_twin(self Util, T generic, a T, b T) -> (T, T) { return b, a }
+}
+
+do plain_pair(A generic, B generic, a A, b B) -> (B, A) { return b, a }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut swapped_number, swapped_text = Util.swap_pair(string, i64, "s", 9)
+    if swapped_number == 9 && swapped_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    mut kept_number, kept_text = Util.keep_pair(i64, string, 9, "s")
+    if kept_number == 9 && kept_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    mut first, second = Util.twin(string, "x", "y")
+    if first == "y" && second == "x" { passed += 1 } otherwise { failed += 1 }
+
+    mut plain_number, plain_text = plain_pair(string, i64, "s", 9)
+    if plain_number == 9 && plain_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    mut value Util = Util{n: 1}
+    mut value_number, value_text = value.instance_pair(string, i64, "s", 9)
+    if value_number == 9 && value_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    mut value_first, value_second = value.instance_twin(string, "x", "y")
+    if value_first == "y" && value_second == "x" { passed += 1 } otherwise { failed += 1 }
+
+    mut pointer ^Util = new(Util)
+    mut pointer_number, pointer_text = pointer.instance_pair(string, i64, "s", 9)
+    if pointer_number == 9 && pointer_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+    assert(failed == 0)
+}

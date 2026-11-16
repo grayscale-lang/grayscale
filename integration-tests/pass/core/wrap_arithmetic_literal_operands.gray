@@ -1,0 +1,17 @@
+/*
+ * Test: a wrap call with two literal operands takes the declared integer type.
+ */
+
+do main() {
+    unsafe {
+        mut sum u8 = wrap_add(250, 10)
+        mut difference u8 = wrap_sub(5, 10)
+        mut hash u32 = wrap_mult(2166136261, 16777619)
+        mut quotient i32 = wrap_div(100, 7)
+        assert(sum == 4)
+        assert(difference == 251)
+        assert(hash == 84696351)
+        assert(quotient == 14)
+    }
+    println("ok")
+}

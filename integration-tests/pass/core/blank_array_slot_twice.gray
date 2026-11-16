@@ -1,0 +1,11 @@
+do pair() -> ([string], i64) { return {"a"}, 2 }
+
+do main() {
+    mut _, a = pair()
+    mut _, b = pair()
+    if a == 2 && b == 2 {
+        println("passed")
+    } otherwise {
+        println("failed")
+    }
+}

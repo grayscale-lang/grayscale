@@ -367,7 +367,7 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString string, int64_t coun
  *@module strings
  *@group Transformation
  *@sig reverse(s string) -> string
- *@desc Returns a copy of s with the bytes in reverse order.
+ *@desc Returns a copy of s with its codepoints in reverse order. Each UTF-8 sequence keeps its byte order, so the result is valid UTF-8.
  *@example
  *   import @strings
  *   println(strings.reverse("hello"))

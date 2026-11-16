@@ -2684,7 +2684,7 @@ static void emit_array_value_as_declared(CodeGen *codegen, AstNode *node);
 /* Array literal: its element type is the one the type checker resolved for
  * it — the slot it is stored into, or its own elements' type. */
 static void emit_array_value(CodeGen *codegen, AstNode *node) {
-    GrayType *literal_type = codegen_type_of(codegen, node);
+    GrayType *literal_type = codegen_effective_type(codegen, codegen_type_of(codegen, node));
     const char *saved_variable_type = codegen->current_variable_type;
     if (literal_type && literal_type->kind == TYPE_KIND_ARRAY && literal_type->element_type &&
         !strchr(literal_type->element_type, '?')) {
@@ -3179,7 +3179,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     const char *struct_name_text = node->data.struct_value.name;
     int generic_index = generic_bindings_find(&codegen->generics, struct_name_text);
     if (generic_index >= 0 && codegen->generics.types[generic_index]) {
-        struct_name_text = codegen->generics.types[generic_index];
+        struct_name_text = codegen_resolve_type(codegen, codegen->generics.types[generic_index]);
     } else if (node->resolved_declaration) {
         struct_name_text = module_mangle(codegen->modules, node->resolved_declaration);
     } else {
@@ -11390,6 +11390,17 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         node->data.variable_declaration.shadows_own_initializer = true;
         return;
     }
+    /* Skip blank identifiers (_) */
+    if (strcmp(node->data.variable_declaration.name, "_") == 0) {
+        if (node->data.variable_declaration.value) {
+            emit_indent(codegen);
+            emit(codegen, "(void)(");
+            emit_expression(codegen, node->data.variable_declaration.value);
+            emit(codegen, ");\n");
+        }
+        return;
+    }
+
     emit_indent(codegen);
 
     char inferred_type_name[TYPE_NAME_MAX];
@@ -11436,17 +11447,6 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         if (wide_integer_name) {
             register_wide_integer_variable(codegen, node->data.variable_declaration.name, wide_integer_name);
         }
-    }
-
-    /* Skip blank identifiers (_) */
-    if (strcmp(node->data.variable_declaration.name, "_") == 0) {
-        if (node->data.variable_declaration.value) {
-            emit_indent(codegen);
-            emit(codegen, "(void)(");
-            emit_expression(codegen, node->data.variable_declaration.value);
-            emit(codegen, ");\n");
-        }
-        return;
     }
 
     /* If no type annotation, try to infer from value */
@@ -12113,8 +12113,26 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     if (!node->data.assign.is_declaration && node->data.assign.operator == TOKEN_ASSIGN &&
         !expression_contains_call(node->data.assign.target)) {
         GrayType *replaced_type = codegen_type_of(codegen, node->data.assign.target);
-        if (replaced_type && replaced_type->kind == TYPE_KIND_STRUCT && replaced_type->name)
-            emit_struct_map_iteration_checks(codegen, node, node->data.assign.target, replaced_type->name, "", 0);
+        if (replaced_type && replaced_type->kind == TYPE_KIND_STRUCT && replaced_type->name) {
+            AstNode *target = node->data.assign.target;
+            GrayType *container_type = target->kind == NODE_INDEX_EXPRESSION
+                ? codegen_type_of(codegen, target->data.index_expression.left) : NULL;
+            /* A key not yet in the map has no old value, so nothing to check. */
+            bool is_map_slot = container_type && container_type->kind == TYPE_KIND_MAP && container_type->key_type;
+            if (is_map_slot) {
+                emit_indent(codegen);
+                emit_formatted(codegen, "{ GrayMap _mt = ");
+                emit_expression(codegen, target->data.index_expression.left);
+                emit_formatted(codegen, "; %s _mk = ", gray_map_element_c_type(codegen, container_type->key_type));
+                emit_map_slot_value(codegen, container_type->key_type, target->data.index_expression.index);
+                emit(codegen, "; if (gray_map_has(&_mt, &_mk)) {\n");
+            }
+            emit_struct_map_iteration_checks(codegen, node, target, replaced_type->name, "", 0);
+            if (is_map_slot) {
+                emit_indent(codegen);
+                emit(codegen, "} }\n");
+            }
+        }
     }
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_declaration &&
@@ -12965,6 +12983,31 @@ static bool function_needs_scope_mark(CodeGen *codegen, AstNode *node) {
     return !block_allocation_free(codegen, node->data.function_declaration.body);
 }
 
+/* True when a returned value is, or is held by, a `&` parameter. The function
+ * runs in the caller's arena and returns no private copy, so the result would
+ * share the caller's storage unless it is copied. */
+static bool returned_value_aliases_reference_parameter(CodeGen *codegen, AstNode *value) {
+    AstNode *root = value;
+    while (root) {
+        if (root->kind == NODE_MEMBER_EXPRESSION) root = root->data.member.object;
+        else if (root->kind == NODE_INDEX_EXPRESSION) root = root->data.index_expression.left;
+        else if (root->kind == NODE_POSTFIX_EXPRESSION && root->data.postfix.operator == TOKEN_CARET)
+            root = root->data.postfix.left;
+        else break;
+    }
+    return root && root->kind == NODE_LABEL && is_mutable_parameter(codegen, root->data.label.value);
+}
+
+/* Emit a returned value, copied when it shares a `&` parameter's storage. */
+static void emit_returned_value(CodeGen *codegen, const char *return_type_name, AstNode *value) {
+    if (return_type_name && names_existing_storage(value) && type_shares_storage(codegen, return_type_name) &&
+        returned_value_aliases_reference_parameter(codegen, value)) {
+        emit_deep_copy_operand(codegen, return_type_name, value);
+        return;
+    }
+    emit_declared_value(codegen, return_type_name, value);
+}
+
 static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     /* Caller-arena functions have no _scope_mark to restore. */
     bool caller_arena = codegen->current_function &&
@@ -13000,7 +13043,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             const char *return_wide_integer = (i < codegen->current_function->data.function_declaration.return_type_count)
                 ? codegen_effective_type_string(codegen, codegen->current_function->data.function_declaration.return_types[i]) : NULL;
             if (!emit_wide_integer_coerced(codegen, return_wide_integer, node->data.return_statement.values[i]))
-                emit_declared_value(codegen, return_wide_integer, node->data.return_statement.values[i]);
+                emit_returned_value(codegen, return_wide_integer, node->data.return_statement.values[i]);
         }
         emit(codegen, "}; ");
         emit_ensure_cleanup(codegen);
@@ -13032,7 +13075,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             const char *return_wide_integer = codegen_effective_type_string(codegen,
                 codegen->current_function->data.function_declaration.return_types[return_count - 1]);
             if (!emit_wide_integer_coerced(codegen, return_wide_integer, node->data.return_statement.values[0]))
-                emit_declared_value(codegen, return_wide_integer, node->data.return_statement.values[0]);
+                emit_returned_value(codegen, return_wide_integer, node->data.return_statement.values[0]);
         }
         emit(codegen, "}; ");
         emit_ensure_cleanup(codegen);
@@ -13058,7 +13101,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             codegen->current_function->data.function_declaration.return_type_count == 1)
             ? codegen_effective_type_string(codegen, codegen->current_function->data.function_declaration.return_types[0]) : NULL;
         if (!emit_wide_integer_coerced(codegen, return_wide_integer_type, node->data.return_statement.values[0]))
-            emit_declared_value(codegen, return_wide_integer_type, node->data.return_statement.values[0]);
+            emit_returned_value(codegen, return_wide_integer_type, node->data.return_statement.values[0]);
         emit(codegen, "; ");
         emit_ensure_cleanup(codegen);
         if (codegen->current_function && codegen->current_function->data.function_declaration.return_type_count > 0) {

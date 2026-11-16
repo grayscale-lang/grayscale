@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `make grayc generate-errors` to regenerate.
 
-**Total: 580 codes** (407 errors, 17 warnings, 156 panics)
+**Total: 581 codes** (407 errors, 17 warnings, 157 panics)
 
 ---
 
@@ -607,6 +607,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0171` | mem | mem.%s on an arena that was never created with mem.arena() or was already destroyed |
 | `P0172` | channels | channels.send on a closed channel |
 | `P0173` | channels | channels.open capacity %lld is below 1 |
+| `P0174` | regex | regex: the pattern needs more nesting or work than the matcher allows |
 
 ---
 
@@ -631,4 +632,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-11-12 17:58:33 UTC*
+*Generated on 2026-11-15 23:07:07 UTC*

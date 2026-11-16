@@ -285,6 +285,12 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
     error_response.body = (GrayString){"", 0};
     error_response.headers = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), 4, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
 
+    /* The URL is handled as a C string below, so a NUL would cut it short and
+     * send the request to a different host than the full URL names. */
+    if (url.len > 0 && memchr(url.data, '\0', (size_t)url.len))
+        return request_failure(arena, error_response, error_code, GRAY_ERR_InvalidInput,
+            "invalid URL: contains a space or control character");
+
     char url_buffer[GRAY_HTTP_URL_BUFFER_SIZE];
     gray_cstr(url, url_buffer, sizeof(url_buffer));
 

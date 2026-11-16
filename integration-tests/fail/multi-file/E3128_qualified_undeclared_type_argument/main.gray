@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3128 - a module-qualified name that declares no type as a generic argument
+ */
+
+import "./lib"
+
+do main() {
+    mut b i64 = lib.ident(lib.Nope, 1)
+}

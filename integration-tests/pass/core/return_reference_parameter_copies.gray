@@ -1,0 +1,74 @@
+/*
+ * return_reference_parameter_copies.gray - Returning a & parameter, or a value
+ * held by one, returns an independent copy
+ */
+
+const Bag struct {
+    items [i64]
+    names map[string:i64]
+}
+
+const Store struct {
+    name string
+    entries [Bag]
+
+    do rename(&self Store, name string) -> Store {
+        self.name = name
+        return self
+    }
+}
+
+do whole(&bag Bag) -> Bag { return bag }
+do field(&bag Bag) -> [i64] { return bag.items }
+do arr_ref(&items [i64]) -> [i64] { return items }
+
+do main() {
+    println("=== Return Reference Parameter Copies Test ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut bag Bag = Bag{items: {1, 2, 3}, names: {"a": 1}}
+    mut a [i64] = field(bag)
+    mut b Bag = whole(bag)
+    mut items [i64] = {7, 8}
+    mut c [i64] = arr_ref(items)
+    bag.items[0] = 99
+    bag.names["a"] = 5
+    items[0] = 55
+
+    if a[0] == 1 {
+        println("  [PASS] returned array field is a copy")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned array field tracks the original")
+        failed += 1
+    }
+    if b.items[0] == 1 && b.names["a"] == 1 {
+        println("  [PASS] returned struct is a copy")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned struct tracks the original")
+        failed += 1
+    }
+    if c[0] == 7 {
+        println("  [PASS] returned array parameter is a copy")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned array parameter tracks the original")
+        failed += 1
+    }
+
+    mut store Store = Store{name: "x", entries: {Bag{items: {1}, names: {:}}}}
+    mut renamed Store = store.rename("y")
+    store.entries[0].items = {}
+    if len(renamed.entries[0].items) == 1 {
+        println("  [PASS] returned &self is a copy")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned &self tracks the original")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 { exit(1) }
+}

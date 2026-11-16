@@ -1,0 +1,9 @@
+// expect-error: E4024
+// expect-not: E4001
+// expect-not: lib_Missing
+import "./lib.gray"
+
+do main() {
+    mut b i64 = lib.Missing
+    println(b)
+}

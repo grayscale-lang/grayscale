@@ -1,0 +1,14 @@
+const Shape enum {
+    Dot
+    Ring(f64)
+}
+
+const Util struct {
+    n i64
+
+    do make(T generic, x T) -> Shape { return Shape.Ring(3.5) }
+}
+
+do shape(T generic, x T) -> Shape { return Shape.Ring(3.5) }
+
+do shape_and_value(T generic, x T) -> (Shape, T) { return Shape.Ring(1.5), x }

@@ -9,7 +9,7 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @arrays
+import @arrays, @strings
 
 fn reserved_type_names() -> [string] {
     names [string] = {
@@ -72,4 +72,9 @@ fn reserved_stdlib_struct_names() -> [string] {
 
 fn is_reserved_stdlib_struct_name(name string) -> bool {
     return arrays.contains(reserved_stdlib_struct_names(), name)
+}
+
+// True when `name` starts with a prefix reserved for the compiler.
+fn has_reserved_prefix(name string) -> bool {
+    return strings.starts_with(name, "gray_") || strings.starts_with(name, "_gray_") || strings.starts_with(name, "Gray")
 }

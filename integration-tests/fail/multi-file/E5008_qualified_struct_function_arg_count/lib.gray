@@ -1,0 +1,8 @@
+const Pt struct {
+    x i64
+    y i64
+
+    do len2(self Pt) -> i64 { return self.x * self.x + self.y * self.y }
+}
+
+do ident(T generic, x T) -> T { return x }
