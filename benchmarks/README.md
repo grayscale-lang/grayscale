@@ -28,16 +28,16 @@ POSIX only; the `make` target prints a notice and exits 0 on Windows.
 
 ## Workloads
 
-| Name | What it does | Exercises |
-|------|--------------|-----------|
-| `json_roundtrip` | Decode a large JSON object to a map, re-encode, repeat | json, maps, strings, arenas |
-| `raytracer` | Render a small fixed scene to an in-memory buffer | float math, structs, recursion |
-| `lexer` | Tokenize a large generated source file | char/byte scanning, string building |
-| `life` | N generations of Game of Life on a fixed grid | integer arrays, tight loops, copy semantics |
-| `kvstore` | Replay a generated SET/GET/DEL log against a map | `map[string:string]`, string splitting |
-| `sha256` | Hash a large generated blob in chunks, many times | crypto, io, string slicing |
-| `vm` | Run the dillo64 stack VM through a multiply-accumulate loop split across three modules | distinct aliases, `when` dispatch, `(T, Error)` returns, multi-module calls, struct functions, maps |
-| `compile_stress` | Time `gray build` on a large generated `.gray` file | full `grayc` pipeline (compile phase only) |
+| Name | Bound by | What it does | Exercises |
+|------|----------|--------------|-----------|
+| `json_roundtrip` | stdlib | Decode a large JSON object to a map, re-encode, repeat | json, maps, strings, arenas |
+| `raytracer` | language | Render a small fixed scene to an in-memory buffer | float math, structs, recursion |
+| `lexer` | language | Tokenize a large generated source file | char/byte scanning, string building |
+| `life` | language | N generations of Game of Life on a fixed grid | integer arrays, tight loops, copy semantics |
+| `kvstore` | stdlib | Replay a generated SET/GET/DEL log against a map | `map[string:string]`, string splitting |
+| `sha256` | stdlib | Hash a large generated blob in chunks, many times | crypto, io, string slicing |
+| `vm` | language | Run the dillo64 stack VM through a multiply-accumulate loop split across three modules | distinct aliases, `when` dispatch, `(T, Error)` returns, multi-module calls, struct functions, maps |
+| `compile_stress` | language | Time `gray build` on a large generated `.gray` file | full `grayc` pipeline (compile phase only) |
 
 ## Layout
 
