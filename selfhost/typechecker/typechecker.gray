@@ -1556,8 +1556,7 @@ fn is_distinct_primitive_name(name string) -> bool {
 
 fn is_int_kind(k types.TypeKind) -> bool {
     if k == types.TypeKind.INT { return true }
-    if k == types.TypeKind.UINT { return true }
-    return false
+    return k == types.TypeKind.UINT
 }
 
 // Best-effort constant-fold of a literal integer expression (including
@@ -1903,8 +1902,7 @@ fn types_assignable(checker ^TypeChecker, dest ^types.GrayType, src ^types.GrayT
         return types.type_conversion(src, dest) != types.Conversion.MISMATCH
     }
     if dest^.kind == types.TypeKind.RANGE && src^.kind == types.TypeKind.RANGE { return dest^.name == src^.name }
-    if dest^.kind == src^.kind { return true }
-    return false
+    return dest^.kind == src^.kind
 }
 
 fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {

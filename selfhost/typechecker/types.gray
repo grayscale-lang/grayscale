@@ -310,8 +310,7 @@ fn is_builtin_type_name(name string) -> bool {
     if name == "i128" || name == "i256" { return true }
     if name == "u8" || name == "u16" || name == "u32" || name == "u64" { return true }
     if name == "u128" || name == "u256" { return true }
-    if name == "f32" || name == "f64" { return true }
-    return false
+    return name == "f32" || name == "f64"
 }
 
 // --- Func signature parsing helpers ---
