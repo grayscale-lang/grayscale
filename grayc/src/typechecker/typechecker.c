@@ -7406,7 +7406,8 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
         GrayType *first_map_type = type_table_get(checker->type_table, first_argument);
         if (first_map_type && first_map_type->kind == TYPE_KIND_MAP && first_map_type->value_type) {
             GrayType *value_type = type_from_name(first_map_type->value_type);
-            if (value_type->kind == TYPE_KIND_ARRAY || value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_STRUCT) {
+            if (value_type->kind == TYPE_KIND_ARRAY || value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_map_type->value_type))) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E12007", member_function_name, first_map_type->value_type);
             }
         }
@@ -7521,6 +7522,8 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             GrayType *element_type = type_from_name(array_type->element_type);
             bool orderable = type_is_numeric(element_type) || element_type->kind == TYPE_KIND_STRING ||
                               element_type->kind == TYPE_KIND_BOOL || element_type->kind == TYPE_KIND_ENUM;
+            if (typechecker_enum_is_tagged(checker, resolve_type_alias(checker, array_type->element_type)))
+                orderable = false;
             if (!orderable) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E9007", member_function_name, named_type_display_name(checker, array_type->element_type));
             }
@@ -7559,7 +7562,8 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
-            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
+            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
                 NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
                     "only primitive and string element types are supported", "arrays", "array elements", named_type_display_name(checker, first_argument_type->element_type));
             }
@@ -7570,9 +7574,20 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
-            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", named_type_display_name(checker, first_argument_type->element_type));
+            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", member_function_name, named_type_display_name(checker, first_argument_type->element_type));
             }
+        }
+    }
+    /* E9006: index_of and count compare elements by their bytes, as contains does. */
+    if ((strcmp(member_function_name, "index_of") == 0 || strcmp(member_function_name, "count") == 0) &&
+        node->data.call.argument_count >= 1) {
+        AstNode *first_argument = node->data.call.arguments[0];
+        GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
+        if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type &&
+            typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
+            NODE_ERROR_FORMATTED(checker, first_argument, "E9006", member_function_name, named_type_display_name(checker, first_argument_type->element_type));
         }
     }
     /* E9003/E9004: map/filter/reduce callback validation */

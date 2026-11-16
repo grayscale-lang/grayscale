@@ -438,8 +438,8 @@
     GRAY_ERROR("E9003", "stdlib", "'arrays.%s()' requires a function reference; use '()func_name' to pass a function") \
     GRAY_ERROR("E9004", "stdlib", "'arrays.%s()' callback signature mismatch; %s") \
     GRAY_ERROR("E9005", "stdlib", "invalid range: start (%s) must be %s end (%s)") \
-    GRAY_ERROR("E9006", "stdlib", "'arrays.contains()' does not support arrays of '%s'; only primitive and string element types are supported") \
-    GRAY_ERROR("E9007", "stdlib", "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s'") \
+    GRAY_ERROR("E9006", "stdlib", "'arrays.%s()' does not support arrays of '%s'; only primitive and string element types are supported") \
+    GRAY_ERROR("E9007", "stdlib", "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum without payloads), got array of '%s'") \
     GRAY_ERROR("E12001", "stdlib", "'maps.%s()' requires a map argument, got an array") \
     GRAY_ERROR("E12006", "stdlib", "duplicate key in map literal") \
     GRAY_ERROR("E12007", "stdlib", "'maps.%s()' does not support maps with '%s' values; only primitive and string value types are supported") \

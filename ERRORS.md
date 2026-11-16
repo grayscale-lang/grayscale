@@ -410,8 +410,8 @@
 | `E9003` | stdlib | 'arrays.%s()' requires a function reference; use '()func_name' to pass a function |
 | `E9004` | stdlib | 'arrays.%s()' callback signature mismatch; %s |
 | `E9005` | stdlib | invalid range: start (%s) must be %s end (%s) |
-| `E9006` | stdlib | 'arrays.contains()' does not support arrays of '%s'; only primitive and string element types are supported |
-| `E9007` | stdlib | 'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s' |
+| `E9006` | stdlib | 'arrays.%s()' does not support arrays of '%s'; only primitive and string element types are supported |
+| `E9007` | stdlib | 'arrays.%s()' requires a comparable array (numeric, string, bool, or enum without payloads), got array of '%s' |
 | `E12001` | stdlib | 'maps.%s()' requires a map argument, got an array |
 | `E12006` | stdlib | duplicate key in map literal |
 | `E12007` | stdlib | 'maps.%s()' does not support maps with '%s' values; only primitive and string value types are supported |
@@ -632,4 +632,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-11-16 17:46:23 UTC*
+*Generated on 2026-11-16 17:48:16 UTC*

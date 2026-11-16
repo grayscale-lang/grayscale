@@ -1,0 +1,17 @@
+/*
+ * Error Test: E12007 - maps.contains_value does not support tagged enum values
+ */
+
+// expect-error: E12007
+
+import @maps
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events map[string:Event] = {"a": Event.Quit}
+    println(maps.contains_value(events, Event.Quit))
+}

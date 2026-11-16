@@ -1,0 +1,17 @@
+/*
+ * Error Test: E9006 - arrays.index_of does not support a tagged enum array
+ */
+
+// expect-error: E9006
+
+import @arrays
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events [Event] = {Event.Quit}
+    println(arrays.index_of(events, Event.Quit))
+}
