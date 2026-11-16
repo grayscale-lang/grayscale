@@ -36,6 +36,7 @@ POSIX only; the `make` target prints a notice and exits 0 on Windows.
 | `life` | N generations of Game of Life on a fixed grid | integer arrays, tight loops, copy semantics |
 | `kvstore` | Replay a generated SET/GET/DEL log against a map | `map[string:string]`, string splitting |
 | `sha256` | Hash a large generated blob in chunks, many times | crypto, io, string slicing |
+| `vm` | Run the dillo64 stack VM through a multiply-accumulate loop split across three modules | distinct aliases, `when` dispatch, `(T, Error)` returns, multi-module calls, struct functions, maps |
 | `compile_stress` | Time `gray build` on a large generated `.gray` file | full `grayc` pipeline (compile phase only) |
 
 ## Layout

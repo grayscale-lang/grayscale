@@ -1,0 +1,38 @@
+/*
+ * vm/memory - sparse cell memory of the dillo64 VM.
+ * Exercises: struct functions, maps, (T, Error) returns.
+ */
+
+import @maps
+import "./cell"
+
+const Memory struct {
+    cells map[i64:cell.Cell]
+    limit i64
+    reads i64
+    writes i64
+
+    do create(limit i64) -> Memory {
+        return Memory{limit: limit}
+    }
+
+    do store(&ram Memory, address i64, value cell.Cell) -> Error {
+        if address < 0 || address >= ram.limit {
+            return error(.BAD_ADDRESS, "store at ${address}")
+        }
+        ram.cells[address] = value
+        ram.writes += 1
+        return nil
+    }
+
+    do load(&ram Memory, address i64) -> (cell.Cell, Error) {
+        if address < 0 || address >= ram.limit {
+            return cast(0, cell.Cell), error(.BAD_ADDRESS, "load at ${address}")
+        }
+        ram.reads += 1
+        if maps.contains_key(ram.cells, address) {
+            return ram.cells[address], nil
+        }
+        return cast(0, cell.Cell), nil
+    }
+}

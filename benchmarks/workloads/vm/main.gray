@@ -1,0 +1,41 @@
+/*
+ * vm - run the dillo64 stack VM through a multiply-accumulate loop across
+ * three modules: cell, memory and cpu.
+ * Exercises: distinct aliases, enum dispatch with when, mutable struct
+ * aliases, (T, Error) returns, multi-module calls, struct functions.
+ */
+
+import "./cell"
+import "./cpu"
+
+const ITERATIONS i64 = 20000000
+
+do main() {
+    // mem[0] counts down from ITERATIONS, mem[1] is the accumulator: acc = acc * 31 + counter.
+    mut code [cell.Instr] = {
+        cell.Instr.make(cell.Op.PUSH, ITERATIONS),
+        cell.Instr.make(cell.Op.STORE, 0),
+        cell.Instr.make(cell.Op.PUSH, 1),
+        cell.Instr.make(cell.Op.STORE, 1),
+        cell.Instr.make(cell.Op.LOAD, 1),
+        cell.Instr.make(cell.Op.PUSH, 31),
+        cell.Instr.make(cell.Op.MUL),
+        cell.Instr.make(cell.Op.LOAD, 0),
+        cell.Instr.make(cell.Op.ADD),
+        cell.Instr.make(cell.Op.STORE, 1),
+        cell.Instr.make(cell.Op.LOAD, 0),
+        cell.Instr.make(cell.Op.DEC),
+        cell.Instr.make(cell.Op.DUP),
+        cell.Instr.make(cell.Op.STORE, 0),
+        cell.Instr.make(cell.Op.JNZ, 4),
+        cell.Instr.make(cell.Op.LOAD, 1),
+        cell.Instr.make(cell.Op.OUT),
+        cell.Instr.make(cell.Op.HALT)
+    }
+    mut core cpu.Cpu = cpu.Cpu.boot(16, ITERATIONS * 12)
+    mut status cpu.Status = cpu.Status.RUNNING
+    as_long_as status == cpu.Status.RUNNING {
+        status = core.step(code)
+    }
+    println("vm status=${status} out=${cast(core.out[0], i64)} reads=${core.ram.reads} writes=${core.ram.writes} fault=${core.last_fault}")
+}

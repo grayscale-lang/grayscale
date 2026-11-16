@@ -22,7 +22,7 @@
 
 import @io, @os, @strings, @arrays, @strconv, @time, @fmt
 
-const WORKLOADS [string, 6] = {"json_roundtrip", "raytracer", "lexer", "life", "kvstore", "sha256"}
+const WORKLOADS [string, 7] = {"json_roundtrip", "raytracer", "lexer", "life", "kvstore", "sha256", "vm"}
 
 // Prior is one workload's row from the saved results.json.
 const Prior struct {
@@ -379,7 +379,9 @@ do main() {
 
     mut latest [Latest] = {}
     for_each name in WORKLOADS {
-        mut row Latest = measure(runner, gray, name, "${work}/${name}.gray", "${bin}/${name}", compile_runs, run_runs, true)
+        mut source string = "${work}/${name}.gray"
+        if io.is_directory("${work}/${name}") { source = "${work}/${name}/main.gray" }
+        mut row Latest = measure(runner, gray, name, source, "${bin}/${name}", compile_runs, run_runs, true)
         print_row(name, row.compile_median, row.run_median, kb(row.bytes), 12)
         arrays.append(latest, row)
     }
