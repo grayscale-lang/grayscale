@@ -54,11 +54,11 @@ static int bind_string_parameters(sqlite3_stmt *statement, GrayArray parameters)
 
 /* Step through a prepared statement and collect all result rows into a GrayArray
  * of GrayMap. Caller is responsible for sqlite3_finalize. */
-static GrayArray sqlite_collect_rows(GrayArena *arena, sqlite3_stmt *statement) {
+static GrayArray sqlite_collect_rows(GrayArena *arena, sqlite3_stmt *statement, int *step_code) {
     int column_count = sqlite3_column_count(statement);
     GrayArray rows = gray_array_new(arena, sizeof(GrayMap), 8, GRAY_ELEM_MAP);
 
-    while (sqlite3_step(statement) == SQLITE_ROW) {
+    while ((*step_code = sqlite3_step(statement)) == SQLITE_ROW) {
         GrayMap row_map = gray_map_new_kind(arena, sizeof(GrayString), sizeof(GrayString), column_count * 2, GRAY_ELEM_STRING, GRAY_ELEM_STRING);
         for (int i = 0; i < column_count; i++) {
             const char *column_name = sqlite3_column_name(statement, i);
@@ -171,9 +171,15 @@ GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *database
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "query failed: %s", errmsg ? errmsg : "unknown error"));
         return result;
     }
-    result.v0 = sqlite_collect_rows(arena, statement);
+    int step_code = SQLITE_DONE;
+    result.v0 = sqlite_collect_rows(arena, statement, &step_code);
+    if (step_code != SQLITE_DONE) {
+        const char *errmsg = sqlite3_errmsg((sqlite3 *)database->handle);
+        result.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "%s failed: %s", "query", errmsg ? errmsg : "unknown error"));
+    } else {
+        result.v1 = NULL;
+    }
     sqlite3_finalize(statement);
-    result.v1 = NULL;
     return result;
 }
 
@@ -201,8 +207,14 @@ GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *d
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena, "query_params bind failed: %s", errmsg ? errmsg : "unknown error"));
         return result;
     }
-    result.v0 = sqlite_collect_rows(arena, statement);
+    int step_code = SQLITE_DONE;
+    result.v0 = sqlite_collect_rows(arena, statement, &step_code);
+    if (step_code != SQLITE_DONE) {
+        const char *errmsg = sqlite3_errmsg((sqlite3 *)database->handle);
+        result.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "%s failed: %s", "query_params", errmsg ? errmsg : "unknown error"));
+    } else {
+        result.v1 = NULL;
+    }
     sqlite3_finalize(statement);
-    result.v1 = NULL;
     return result;
 }

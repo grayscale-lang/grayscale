@@ -1,0 +1,41 @@
+import @sqlite
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut db, _ = sqlite.open(":memory:")
+    mut _, _ = sqlite.exec(db, "create table t (n integer)")
+    mut _, _ = sqlite.exec(db, "insert into t values (1), (2), (-9223372036854775808), (4)")
+
+    mut first_rows, query_err = sqlite.query(db, "select abs(n) as n from t")
+    if query_err != nil && len(first_rows) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: query hid a step failure")
+    }
+
+    mut second_rows, params_err = sqlite.query_params(db, "select abs(n) as n from t where ? = ?", {"a", "a"})
+    if params_err != nil && len(second_rows) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: query_params hid a step failure")
+    }
+
+    mut ok_rows, ok_err = sqlite.query(db, "select n from t")
+    if ok_err == nil && len(ok_rows) == 4 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a clean query reported an error")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
