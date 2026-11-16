@@ -1,0 +1,40 @@
+/*
+ * generic_arena_parameter_shares_caller_name.gray - a generic function's arena
+ * parameter is its own arena even when the caller's arena variable has the
+ * same name and was destroyed before the instantiation is checked.
+ */
+
+import @mem
+
+const Box struct {
+    n i64
+}
+
+unsafe do in_arena(kind generic, arena mem.Arena) -> ^kind {
+    return mem.init(arena, kind)
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut arena mem.Arena = mem.arena(4096)
+
+    mut box ^Box = in_arena(Box, arena)
+    box^.n = 5
+
+    if box^.n == 5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] generic arena parameter named like the caller's arena")
+        failed += 1
+    }
+
+    mem.destroy(arena)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

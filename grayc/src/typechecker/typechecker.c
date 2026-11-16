@@ -21275,6 +21275,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             int errors_before = diagnostic_error_count(checker->diagnostics);
             checker->should_suppress_type_table_writes = true;
             checker->diagnostics->should_skip_duplicates = true;
+            /* Arena lifetimes belong to one function body; the last body
+             * checked left its arenas behind under names this one can reuse. */
+            checker->arena_count = 0;
+            checker->reassigned_arena_path_count = 0;
             if (declaration->data.function_declaration.body) {
                 check_block(checker, declaration->data.function_declaration.body);
             }
