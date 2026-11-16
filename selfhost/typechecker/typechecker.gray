@@ -12328,7 +12328,7 @@ fn register_stdlib_structs(checker ^TypeChecker) {
 fn recheck_generic_instantiations(checker ^TypeChecker, program ^ast.AstNode) {
     mut found_new = true
     mut cursors map[string:i64] = {:}
-    for found_new == true {
+    as_long_as found_new {
         found_new = false
         mut candidates [^ast.AstNode] = {}
         mut candidate_owners [string] = {}
