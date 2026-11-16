@@ -8519,7 +8519,8 @@ static void emit_arrays_out_call(CodeGen *codegen, const char *function_name, As
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *function_name) {
     if (strcmp(function_name, "append") == 0 && node->data.call.argument_count == 2) {
         GrayType *value_type = codegen_type_of(codegen, node->data.call.arguments[1]);
-        const char *element_type_name = codegen_array_element_type(codegen, node->data.call.arguments[0]);
+        const char *element_type_name = codegen_effective_type_string(codegen,
+            codegen_array_element_type(codegen, node->data.call.arguments[0]));
         bool is_element_string = (value_type && value_type->kind == TYPE_KIND_STRING) ||
             (element_type_name && strcmp(element_type_name, "string") == 0);
         const char *c_element_type = "__auto_type";
