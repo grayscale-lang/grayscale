@@ -8651,13 +8651,8 @@ fn declare_variable_symbol(checker ^TypeChecker, node ^ast.AstNode, declared ^ty
     value = node^.var_decl^.value
     if value != nil && value^.kind == ast.NodeKind.CALL_EXPR && value^.call^.function^.kind == ast.NodeKind.LABEL {
         signature = find_func(checker, value^.call^.function^.label^.value)
-        if signature != nil && signature^.is_generic && len(signature^.decl^.return_types) > 1 {
-            call_bindings = generic_call_bindings(checker, signature, value)
-            for_each slot_text in signature^.decl^.return_types {
-                arrays.append(symbol^.ret_types, checker_type_with_generics(checker, call_bindings, slot_text))
-            }
-        } or signature != nil && len(signature^.return_types) > 1 {
-            symbol^.ret_types = signature^.return_types
+        if signature != nil && (len(signature^.return_types) > 1 || signature^.is_generic && len(signature^.decl^.return_types) > 1) {
+            symbol^.ret_types = call_return_slots(checker, signature, value)
         }
         if signature == nil {
             callee_sym = scope.scope_lookup(checker^.current_scope, value^.call^.function^.label^.value)
@@ -8766,7 +8761,7 @@ fn record_struct_function_return_slots(checker ^TypeChecker, symbol ^scope.Symbo
         qualifier = callee^.member^.object^.label^.value
         if !is_struct_name(checker, qualifier) { return }
         qualified_signature = find_func(checker, "${qualifier}_${callee^.member^.member}")
-        if qualified_signature != nil && len(qualified_signature^.return_types) > 1 { symbol^.ret_types = qualified_signature^.return_types }
+        if qualified_signature != nil && len(qualified_signature^.return_types) > 1 { symbol^.ret_types = call_return_slots(checker, qualified_signature, value) }
         return
     }
     mut struct_name = ""
@@ -8774,7 +8769,19 @@ fn record_struct_function_return_slots(checker ^TypeChecker, symbol ^scope.Symbo
     if receiver^.sym_type^.kind == types.TypeKind.POINTER { struct_name = receiver^.sym_type^.element_type }
     if struct_name == "" { return }
     signature = find_func(checker, "${struct_name}_${callee^.member^.member}")
-    if signature != nil && len(signature^.return_types) > 1 { symbol^.ret_types = signature^.return_types }
+    if signature != nil && len(signature^.return_types) > 1 { symbol^.ret_types = call_return_slots(checker, signature, value) }
+}
+
+// The slot types a call to `signature` returns: for a generic function, each
+// declared slot with the type arguments the call names substituted in.
+fn call_return_slots(checker ^TypeChecker, signature ^FuncSig, call ^ast.AstNode) -> [^types.GrayType] {
+    if !signature^.is_generic { return signature^.return_types }
+    call_bindings = generic_call_bindings(checker, signature, call)
+    mut slots [^types.GrayType] = {}
+    for_each slot_text in signature^.decl^.return_types {
+        arrays.append(slots, checker_type_with_generics(checker, call_bindings, slot_text))
+    }
+    return slots
 }
 
 // True when a call appears anywhere inside `node`. Builtins that map directly to

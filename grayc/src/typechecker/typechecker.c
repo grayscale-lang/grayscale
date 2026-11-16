@@ -15667,10 +15667,7 @@ static void declare_variable_symbol(TypeChecker *checker, AstNode *node, GrayTyp
                 if (signature && signature->return_count > 1) {
                     Symbol *symbol = scope_lookup_local(checker->current_scope,
                         node->data.variable_declaration.name);
-                    if (symbol) {
-                        symbol->return_types = signature->return_types;
-                        symbol->return_count = signature->return_count;
-                    }
+                    if (symbol) apply_call_return_slots(checker, symbol, signature, node->data.variable_declaration.value);
                 }
             }
         }
