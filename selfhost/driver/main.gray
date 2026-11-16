@@ -21,6 +21,7 @@ import "./ccompile"
 import "./cinterop"
 import "./diagnostics"
 import "../typechecker/typechecker"
+import "../typechecker/reserved"
 import "../util/error_registry"
 
 // --- CLI options ---
@@ -619,6 +620,16 @@ fn resolve_file_imports(program ^ast.AstNode, input_file string, &imported map[s
             written_name string = strip_gray_ext(module_base)
             mut display_name string = written_name
             if item.import_alias != "" { display_name = item.import_alias }
+
+            // A module's name prefixes the symbols it declares, so it may not
+            // start with a prefix reserved for the compiler
+            mut reserved_module_name string = ""
+            if reserved.has_reserved_prefix(written_name) { reserved_module_name = written_name }
+            if reserved_module_name == "" && reserved.has_reserved_prefix(item.import_alias) { reserved_module_name = item.import_alias }
+            if reserved_module_name != "" {
+                report_import_error("E4006", error_registry.registry_message_formatted("E4006", {reserved_module_name}), "", statement, input_file)
+                continue
+            }
 
             mut target_path string = normalize_path(import_path)
             if !is_directory_import { target_path = normalize_path(source_files[0]) }

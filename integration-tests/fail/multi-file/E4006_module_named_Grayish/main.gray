@@ -1,0 +1,9 @@
+/*
+ * Error Test: E4006 - a module named with a reserved prefix
+ */
+
+import "./Grayish"
+
+do main() {
+    println(Grayish.get())
+}

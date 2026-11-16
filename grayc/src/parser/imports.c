@@ -50,6 +50,12 @@ static ImportHashEntry *import_hash = NULL;
 static uint32_t import_hash_buckets = 0;
 static int imported_file_count = 0;
 
+static bool module_name_has_reserved_prefix(const char *name) {
+    return strncmp(name, "gray_", 5) == 0 ||
+           strncmp(name, GRAY_SYNTHETIC_PREFIX, sizeof(GRAY_SYNTHETIC_PREFIX) - 1) == 0 ||
+           strncmp(name, "Gray", 4) == 0;
+}
+
 static uint32_t import_path_hash(const char *path) {
     uint32_t hash = FNV1A_OFFSET_BASIS;
     for (; *path; path++) hash = (hash ^ (uint8_t)*path) * FNV1A_PRIME;
@@ -443,6 +449,16 @@ void imports_resolve(Arena *arena, DiagnosticList *diagnostics, AstNode *program
                 char module_name_buffer[MESSAGE_BUFFER_SIZE];
                 copy_without_source_extension(module_name_buffer, sizeof(module_name_buffer), module_base);
                 const char *module_name = item->alias ? item->alias : arena_copy_string(arena, module_name_buffer);
+
+                /* A module's name prefixes the symbols it declares, so it may
+                 * not start with a prefix reserved for the compiler. */
+                const char *reserved_module_name = module_name_has_reserved_prefix(module_name_buffer) ? module_name_buffer
+                    : (item->alias && module_name_has_reserved_prefix(item->alias) ? item->alias : NULL);
+                if (reserved_module_name) {
+                    diagnostic_error_code_formatted(diagnostics, "E4006", statement_file,
+                        import_statement->token.line, import_statement->token.column, 0, reserved_module_name);
+                    continue;
+                }
 
                 /* Normalize import_path so diamond deps resolve to the same canonical path */
                 char normalized_import_path[PATH_BUFFER_SIZE];

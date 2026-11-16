@@ -1,0 +1,10 @@
+/*
+ * Test: a module named gray carries no reserved prefix, which ends in an underscore
+ */
+
+import "./gray"
+
+do main() {
+    assert(gray.get() == 7)
+    println("ok")
+}

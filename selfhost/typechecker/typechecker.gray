@@ -1229,11 +1229,7 @@ fn check_declaration_name(checker ^TypeChecker, name string, display string, rol
 
 fn check_reserved_name(checker ^TypeChecker, name string, file string, line i64, col i64) {
     if name == "" { return }
-    mut reserved_prefix = false
-    if strings.starts_with(name, "gray_") { reserved_prefix = true }
-    if strings.starts_with(name, "_gray_") { reserved_prefix = true }
-    if strings.starts_with(name, "Gray") { reserved_prefix = true }
-    if reserved_prefix {
+    if reserved.has_reserved_prefix(name) {
         message = error_registry.registry_message_formatted("E4006", {name})
         add_diagnostic(checker, "E4006", message, file, line, col)
     }
@@ -1284,7 +1280,9 @@ fn register_decl_functions(checker ^TypeChecker, program ^ast.AstNode) {
             add_diagnostic(checker, "E5046", error_registry.registry_message_formatted("E5046", {fn_name}), file, line, col)
         }
 
-        check_reserved_name(checker, function_data^.name, file, line, col)
+        mut declared_function_name = function_data^.name
+        if function_data^.original_name != "" { declared_function_name = function_data^.original_name }
+        check_reserved_name(checker, declared_function_name, file, line, col)
 
         // A global variable of another file of the same module already holds the name
         for_each earlier in stmts {
