@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3057 - tagged enum cannot be used as a map key
+ */
+
+// expect-error: E3057
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events map[Event:i64] = {:}
+    println(len(events))
+}

@@ -7536,7 +7536,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             GrayType *element_type = type_from_name(element_name);
             bool is_struct = element_type->kind == TYPE_KIND_STRUCT && !is_enum_name(checker, element_name);
             if (is_struct || element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP ||
-                element_type->kind == TYPE_KIND_POINTER) {
+                element_type->kind == TYPE_KIND_POINTER || typechecker_enum_is_tagged(checker, element_name)) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E3057", named_type_display_name(checker, element_name));
             }
         }
@@ -15878,8 +15878,9 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
 
     /* E3057: reject composite types as map keys before downstream checks
      * produce misleading cascades (e.g. struct-literal-in-index-position
-     * tripping "no field 'y'"). Enums are allowed; they're integer-backed
-     * and hash fine. */
+     * tripping "no field 'y'"). Plain enums are allowed; they're
+     * integer-backed and hash fine. A tagged enum carries a payload that is
+     * hashed by its bytes, so it is not. */
     if (declared->kind == TYPE_KIND_MAP && declared->key_type) {
         const char *key_type_name = resolve_type_alias(checker, declared->key_type);
         GrayType *key_resolved = type_from_name(key_type_name);
@@ -15889,6 +15890,7 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
         else if (key_resolved->kind == TYPE_KIND_ARRAY) bad_name = "array";
         else if (key_resolved->kind == TYPE_KIND_MAP) bad_name = "map";
         else if (key_resolved->kind == TYPE_KIND_POINTER) bad_name = "pointer";
+        else if (typechecker_enum_is_tagged(checker, key_type_name)) bad_name = "tagged enum";
         if (bad_name) {
             NODE_ERROR_FORMATTED(checker, node, "E3057", named_type_display_name(checker, key_type_name));
         }
