@@ -3991,6 +3991,11 @@ fn resolve_type_argument(checker ^TypeChecker, type_argument ^ast.AstNode) -> st
         add_diagnostic(checker, "E3128", "a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'", type_argument^.tok.file, type_argument^.tok.line, type_argument^.tok.col)
         return ""
     }
+    // A module-qualified name that names no type is an expression, as for grayc
+    if type_argument^.label^.qualifier != "" && !type_argument_names_a_type(checker, label_text) {
+        add_diagnostic(checker, "E3128", "a 'generic' parameter takes a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'", type_argument^.tok.file, type_argument^.tok.line, type_argument^.tok.col)
+        return ""
+    }
     bad_leaf = undefined_type_leaf(checker, label_text)
     if bad_leaf != "" {
         message = fmt.sprintf("undefined type '%s'; check the spelling or import the module that defines it", {bad_leaf})
@@ -7894,7 +7899,7 @@ fn resolve_call_expr_unchecked(checker ^TypeChecker, node ^ast.AstNode) -> ^type
         if symbol == nil && is_struct_name(checker, obj_name) {
             signature = find_func(checker, fmt.sprintf("%s_%s", {obj_name, member}))
             reject_private_struct_function(checker, node, signature, obj_name, member)
-            if signature != nil { return check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {obj_name, member}), signature, 0) }
+            if signature != nil { return check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {written_struct_name(callee^.member^.object, obj_name), member}), signature, 0) }
             if signature == nil && !struct_has_field(checker, obj_name, member) {
                 add_diagnostic(checker, "E4018", error_registry.registry_message_formatted("E4018", {struct_display_name(checker, obj_name), member}), node^.tok.file, node^.tok.line, node^.tok.col)
                 resolve_call_args_only(checker, node)
@@ -13324,6 +13329,12 @@ fn written_function_name(node ^ast.AstNode, name string) -> string {
 
 // A function as a diagnostic names it: `module.name` for a function of a module (its registry name
 // is `module_name`), else the name the call used.
+// A struct as the program wrote it: `module.Type` through a module, else its name.
+fn written_struct_name(label ^ast.AstNode, fallback string) -> string {
+    if label^.label^.qualifier != "" { return "${label^.label^.qualifier}.${label^.label^.qualified_member}" }
+    return fallback
+}
+
 fn shown_function_name(signature ^FuncSig, as_called string) -> string {
     if signature == nil || signature^.decl == nil || as_called != signature^.name { return as_called }
     if signature^.decl^.runtime_name != "" { return signature^.decl^.runtime_name }

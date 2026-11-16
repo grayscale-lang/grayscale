@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5008 - wrong argument count on a static struct function of an imported module
+ */
+
+import "./lib"
+
+do main() {
+    mut a i64 = lib.Pt.len2()
+}
