@@ -7370,7 +7370,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
             /* An unbound generic key is checked at each instantiation. */
             bool is_unbound = key_type->kind == TYPE_KIND_UNKNOWN;
             if (!is_unbound && (!is_orderable || is_enum_name(checker, map_type->key_type))) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E12008", map_type->key_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E12008", named_type_display_name(checker, map_type->key_type));
             }
         }
     }

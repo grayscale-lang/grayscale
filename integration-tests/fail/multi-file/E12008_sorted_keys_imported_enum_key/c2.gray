@@ -1,0 +1,1 @@
+const Op enum { A; B }

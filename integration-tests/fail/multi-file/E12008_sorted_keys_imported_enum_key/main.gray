@@ -1,0 +1,7 @@
+import @maps
+import "./c2"
+
+do main() {
+    mut counts map[c2.Op:i64] = {:}
+    println(maps.sorted_keys(counts))
+}
