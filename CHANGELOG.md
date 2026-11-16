@@ -1,5 +1,36 @@
 # Changelog
 
+## experimental-20261116-build4 (2026-11-16)
+
+### Bug Fixes
+
+* fix(typechecker): stop reporting a module name as an undefined variable on a qualified write (#3468)
+* fix(codegen): skip a blank identifier before the array declaration path (#3467)
+* fix(typechecker): resolve a module-qualified generic call's return type in its declaring module (#3460)
+* fix(typechecker): resolve a generic struct function without self called through an instance (#3466)
+* fix(typechecker): type each destructured slot of a generic struct function's tuple return (#3459)
+* fix(imports): check a module's name against the reserved prefixes, not its mangled symbols (#3458)
+* fix(selfhost): print the written module name in the E5008 and E3128 diagnostics (#3456)
+* fix(typechecker): type two literal wrap_* operands as the declared integer type (#3457)
+* fix(typechecker): reject an imported module's name used as a value (#3455)
+* fix(typechecker): report E4024 for a module member used as a value that does not exist (#3454)
+* fix(typechecker): name a module enum as written in E3047 (#3453)
+* fix(typechecker): name a module function as written in E5011 and E3040 (#3452)
+* fix(codegen): return a copy of a & parameter or a value held by one (#3450)
+* fix(typechecker): resolve named arguments in a module-qualified static struct function call (#3448)
+* fix(codegen): emit a generic [[T]] literal's inner array at the bound element type (#3447)
+* fix(typechecker): accept a calling-file struct in a generic T{} literal from an imported module (#3446)
+* fix(codegen): skip the map iteration guard when assigning a struct to a new map key (#3445)
+* fix(typechecker): accept a function reference passed to a typedef'd function-pointer parameter under gcc (#3444)
+
+### Security
+
+* security(sqlite): return an error when a query step fails mid-result (#3464)
+* security(stdlib): decode html_unescape numeric entities for NUL and surrogates to U+FFFD (#3462)
+* security(stdlib): reject an embedded NUL byte in an http request URL (#3465)
+* security(stdlib): unlink a symlink at a registered temp path instead of deleting its target at exit (#3463)
+* security(runtime): stop the fallback regex engine overflowing the stack on many quantified atoms (#3461)
+
 ## experimental-20261115-build3 (2026-11-15)
 
 ### Bug Fixes
