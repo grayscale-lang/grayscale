@@ -2968,7 +2968,10 @@ fn resolve_cast_expr(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType
     written_target = node^.cast_data^.target_type
     resolved_target = written_target
     target = resolve_type_alias(checker, resolved_target)
-    node^.cast_data^.target_type = target
+    // A generic body is checked again per instantiation, from this node: the
+    // written target keeps a distinct alias's name or the next pass types the
+    // cast as the representation.
+    node^.cast_data^.target_type = resolve_type_alias_keeping_distinct(checker, resolved_target)
 
     mut dst_t = checker_type_from_name(checker, resolved_target)
     if is_enum_name(checker, target) {
@@ -5124,6 +5127,7 @@ fn expected_kind_name(kind string) -> string {
 // standing between a mistyped name and codegen.
 fn type_argument_names_a_type(checker ^TypeChecker, name string) -> bool {
     if name == "" { return false }
+    if ast.generic_bindings_find(checker^.generics, name) >= 0 { return true }
     if is_struct_name(checker, name) || is_enum_name(checker, name) { return true }
     if types.is_builtin_type_name(name) && checker_type_from_name(checker, name)^.kind != types.TypeKind.UNKNOWN { return true }
     resolved = resolve_type_alias(checker, name)
@@ -5899,7 +5903,7 @@ fn check_maps_call(checker ^TypeChecker, node ^ast.AstNode, function_name string
     }
     if (function_name == "contains_value" || function_name == "find_key") && first_type^.value_type != "" {
         value_kind = types.type_from_name(checker^.pool, first_type^.value_type)^.kind
-        if value_kind == types.TypeKind.ARRAY || value_kind == types.TypeKind.MAP || value_kind == types.TypeKind.STRUCT {
+        if value_kind == types.TypeKind.ARRAY || value_kind == types.TypeKind.MAP || value_kind == types.TypeKind.STRUCT || enum_is_tagged(checker, resolve_type_alias(checker, first_type^.value_type)) {
             add_diagnostic(checker, "E12007", error_registry.registry_message_formatted("E12007", {function_name, first_type^.value_type}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
         }
     }
@@ -5945,6 +5949,15 @@ fn resolve_stdlib_call(checker ^TypeChecker, node ^ast.AstNode, signature ^stdli
         type_argument = node^.call^.args[1]
         // A name that reaches no type was already reported; stay unknown so the
         // assignment does not report it a second time
+        if type_argument^.kind == ast.NodeKind.LABEL {
+            // A type parameter stands for the type bound in this instantiation
+            generic_index = ast.generic_bindings_find(checker^.generics, type_argument^.label^.value)
+            if generic_index >= 0 {
+                bound = checker^.generics.types[generic_index]
+                if bound == "" { bound = "?${type_argument^.label^.value}" }
+                return checker_type_from_name(checker, "^${bound}")
+            }
+        }
         if type_argument^.kind == ast.NodeKind.LABEL && type_argument_names_a_type(checker, type_argument^.label^.value) { return checker_type_from_name(checker, "^${resolve_alias_impl(checker, type_argument^.label^.value, false)}") }
         return checker^.pool^.type_unknown
     }
@@ -6130,6 +6143,7 @@ fn check_arrays_call_extras(checker ^TypeChecker, node ^ast.AstNode, name string
         }
         if name == "binary_search" || name == "sort_asc" || name == "sort_desc" || name == "is_sorted" {
             orderable = types.type_is_numeric(element_type) || element_type^.kind == types.TypeKind.STRING || element_type^.kind == types.TypeKind.BOOL || element_type^.kind == types.TypeKind.ENUM
+            if enum_is_tagged(checker, resolve_type_alias(checker, element_name)) { orderable = false }
             if !orderable {
                 add_diagnostic(checker, "E9007", error_registry.registry_message_formatted("E9007", {name, element_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
             }
@@ -6138,19 +6152,22 @@ fn check_arrays_call_extras(checker ^TypeChecker, node ^ast.AstNode, name string
             resolved_name = resolve_type_alias(checker, element_name)
             resolved_element = checker_type_from_name(checker, resolved_name)
             is_struct = resolved_element^.kind == types.TypeKind.STRUCT && !is_enum_name(checker, resolved_name)
-            if is_struct || resolved_element^.kind == types.TypeKind.ARRAY || resolved_element^.kind == types.TypeKind.MAP || resolved_element^.kind == types.TypeKind.POINTER {
+            if is_struct || resolved_element^.kind == types.TypeKind.ARRAY || resolved_element^.kind == types.TypeKind.MAP || resolved_element^.kind == types.TypeKind.POINTER || enum_is_tagged(checker, resolved_name) {
                 add_diagnostic(checker, "E3057", error_registry.registry_message_formatted("E3057", {resolved_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
             }
         }
         if name == "average" && !types.type_is_numeric(element_type) {
             add_diagnostic(checker, "E9002", error_registry.registry_message_formatted("E9002", {name, element_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
         }
-        if (name == "is_equal" && len(arguments) >= 2) || (name == "contains" && len(arguments) >= 1) {
-            if element_type^.kind == types.TypeKind.ARRAY || element_type^.kind == types.TypeKind.MAP || element_type^.kind == types.TypeKind.STRUCT {
+        if (name == "is_equal" && len(arguments) >= 2) || ((name == "contains" || name == "index_of" || name == "count") && len(arguments) >= 1) {
+            // index_of and count compare elements by their bytes, as contains does
+            is_tagged_element = enum_is_tagged(checker, resolve_type_alias(checker, element_name))
+            is_composite_element = element_type^.kind == types.TypeKind.ARRAY || element_type^.kind == types.TypeKind.MAP || element_type^.kind == types.TypeKind.STRUCT
+            if is_tagged_element || (is_composite_element && (name == "is_equal" || name == "contains")) {
                 if name == "is_equal" {
                     add_diagnostic(checker, "E5058", error_registry.registry_message_formatted("E5058", {"arrays", "array elements", element_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
                 } otherwise {
-                    add_diagnostic(checker, "E9006", error_registry.registry_message_formatted("E9006", {element_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
+                    add_diagnostic(checker, "E9006", error_registry.registry_message_formatted("E9006", {name, element_name}), first_argument^.tok.file, first_argument^.tok.line, first_argument^.tok.col)
                 }
             }
         }
@@ -9290,7 +9307,7 @@ fn check_variable_declaration(checker ^TypeChecker, node ^ast.AstNode) {
     if declared^.kind == types.TypeKind.MAP && declared^.key_type != "" {
         key_type_name = resolve_type_alias(checker, declared^.key_type)
         key_resolved = types.type_from_name(checker^.pool, key_type_name)
-        if (key_resolved^.kind == types.TypeKind.STRUCT && !is_enum_name(checker, key_type_name)) || key_resolved^.kind == types.TypeKind.ARRAY || key_resolved^.kind == types.TypeKind.MAP || key_resolved^.kind == types.TypeKind.POINTER {
+        if (key_resolved^.kind == types.TypeKind.STRUCT && !is_enum_name(checker, key_type_name)) || key_resolved^.kind == types.TypeKind.ARRAY || key_resolved^.kind == types.TypeKind.MAP || key_resolved^.kind == types.TypeKind.POINTER || enum_is_tagged(checker, key_type_name) {
             add_diagnostic(checker, "E3057", error_registry.registry_message_formatted("E3057", {key_type_name}), node^.tok.file, node^.tok.line, node^.tok.col)
         }
     }
