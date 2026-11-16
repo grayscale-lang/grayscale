@@ -1,0 +1,33 @@
+/*
+ * Test: a generic struct function that takes no self, called through a value
+ * and through a pointer.
+ */
+
+const Util struct {
+    n i64
+
+    do keep(A generic, a A) -> A { return a }
+    do swap_pair(A generic, B generic, a A, b B) -> (B, A) { return b, a }
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut value Util = Util{n: 1}
+    mut number i64 = value.keep(i64, 5)
+    if number == 5 { passed += 1 } otherwise { failed += 1 }
+
+    mut text string = value.keep(string, "t")
+    if text == "t" { passed += 1 } otherwise { failed += 1 }
+
+    mut swapped_number, swapped_text = value.swap_pair(string, i64, "s", 9)
+    if swapped_number == 9 && swapped_text == "s" { passed += 1 } otherwise { failed += 1 }
+
+    mut pointer ^Util = new(Util)
+    mut pointer_number i64 = pointer.keep(i64, 6)
+    if pointer_number == 6 { passed += 1 } otherwise { failed += 1 }
+
+    println("passed: ${passed}, failed: ${failed}")
+    assert(failed == 0)
+}

@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3200 - argument conflicts with the type argument of a generic
+ * struct function without self, called through an instance
+ */
+
+const Util struct {
+    n i64
+
+    do keep(A generic, a A) -> A { return a }
+}
+
+do main() {
+    mut value Util = Util{n: 1}
+    mut number i64 = value.keep(i64, "no")
+}

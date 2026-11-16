@@ -8997,7 +8997,17 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     struct_function_signature->was_used = true;
                     symbol->was_used = true;
                     warn_if_function_deprecated(checker, node, struct_function_signature);
-                    result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
+                    bool is_generic_call = false;
+                    GenericBindings call_bindings;
+                    GrayType *generic_return_type = resolve_generic_call(checker, node, struct_function_signature,
+                        typechecker_format(checker, "%s.%s", display_struct_name, member_function_name), true,
+                        &call_bindings, &is_generic_call);
+                    generic_bindings_clear(&call_bindings);
+                    if (is_generic_call && generic_return_type) {
+                        result = generic_return_type;
+                    } else {
+                        result = struct_function_signature->return_count > 0 ? struct_function_signature->return_types[0] : &TYPE_VOID;
+                    }
                     /* Validate argument count */
                     {
                         int minimum_parameters = signature_minimum_arguments(struct_function_signature);
@@ -9018,6 +9028,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         char callee[MESSAGE_BUFFER_SIZE];
                         snprintf(callee, sizeof(callee), "%s.%s", display_struct_name, member_function_name);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                            if (argument_is_checked_by_generic_call(struct_function_signature, argument_index)) continue;
                             GrayType *parameter_type = struct_function_signature->parameter_types[argument_index];
                             GrayType *argument_type = check_expression_as(checker, node->data.call.arguments[argument_index], parameter_type);
                             AstNode *argument_node = node->data.call.arguments[argument_index];
@@ -10561,7 +10572,17 @@ static AstNode *callee_function_declaration(TypeChecker *checker, AstNode *node,
                     checker_resolve_declaration_into(checker, struct_name, struct_key, sizeof(struct_key)),
                     function_node->data.member.member);
                 signature = find_function(checker, prefixed);
-                if (signature && receiver) *leading_parameters = 1;
+                if (signature && receiver && signature->declaration &&
+                    signature->declaration->kind == NODE_FUNCTION_DECLARATION &&
+                    signature->declaration->data.function_declaration.parameter_count > 0) {
+                    const char *first_parameter_type_name =
+                        signature->declaration->data.function_declaration.parameters[0].type_name;
+                    if (first_parameter_type_name &&
+                        (self_parameter_names_struct(checker, signature->declaration, first_parameter_type_name, struct_name) ||
+                         (first_parameter_type_name[0] == '^' &&
+                          self_parameter_names_struct(checker, signature->declaration, first_parameter_type_name + 1, struct_name))))
+                        *leading_parameters = 1;
+                }
             }
         }
         /* mod.Struct.func(...): the struct function, namespaced under its module. */
