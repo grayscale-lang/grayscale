@@ -183,16 +183,15 @@ static int temporary_path_count = 0;
 static bool temp_cleanup_registered = false;
 
 static bool remove_directory_recursive(const char *path); /* forward decl */
+static bool is_real_directory(const char *path); /* forward decl */
 
 static void gray_io_temp_cleanup(void) {
     for (int i = 0; i < temporary_path_count; i++) {
-        struct stat file_info;
-        if (stat(temporary_paths[i], &file_info) == 0) {
-            if (S_ISDIR(file_info.st_mode))
-                remove_directory_recursive(temporary_paths[i]);
-            else
-                unlink(temporary_paths[i]);
-        }
+        /* A symlink planted at a registered path is unlinked, never followed. */
+        if (is_real_directory(temporary_paths[i]))
+            remove_directory_recursive(temporary_paths[i]);
+        else if (unlink(temporary_paths[i]) != 0 && GRAY_RUNTIME_WINDOWS)
+            rmdir(temporary_paths[i]);
         free(temporary_paths[i]);
     }
     temporary_path_count = 0;
