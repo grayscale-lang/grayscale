@@ -20,8 +20,6 @@ const SYNTH_OR string = "_gray_or"
 // check also covers them.
 const SYNTH_OR_PANIC string = "_gray_or_panic"
 const SYNTH_OR_DEFAULT string = "_gray_or_default"
-// The member naming the trailing Error slot of an or_return temporary
-const OR_RETURN_ERROR_SLOT string = "verr"
 
 const NodeKind enum {
     // Expressions
@@ -696,15 +694,6 @@ fn ast_member_base_qualifier(node ^AstNode) -> string {
     left = object^.postfix^.left
     if left == nil || left^.kind != NodeKind.LABEL { return "" }
     return left^.label^.value
-}
-
-// The halves of a nested qualified spelling — mod.Type.member: (qualifier, type, ok).
-fn ast_member_chain(node ^AstNode) -> (string, string, bool) {
-    if node == nil || node^.kind != NodeKind.MEMBER_EXPR { return "", "", false }
-    object = node^.member^.object
-    qualifier string = ast_member_qualifier(object)
-    if qualifier == "" { return "", "", false }
-    return qualifier, object^.member^.member, true
 }
 
 // --- String literal decoding ---

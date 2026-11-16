@@ -2620,11 +2620,6 @@ fn check_expression_as(checker ^TypeChecker, value ^ast.AstNode, target ^types.G
     return result
 }
 
-fn is_literal_operand(node ^ast.AstNode) -> bool {
-    if node^.kind == ast.NodeKind.INT_VALUE { return true }
-    return node^.kind == ast.NodeKind.PREFIX_EXPR && node^.prefix^.right^.kind == ast.NodeKind.INT_VALUE
-}
-
 // True when an element of type `actual` cannot be stored as `expected` in an
 // array or map literal. A narrowing or signedness-crossing number has been
 // reported by check_expression_as already.
@@ -9352,30 +9347,6 @@ fn register_file_scope_const_integers(checker ^TypeChecker, program ^ast.AstNode
             register_const_integer(checker, variable_data^.name, folded)
         }
     }
-}
-
-// The variable at the root of an assignment target: walks member, index and
-// `^` dereference chains down to the leading label, or nil when the chain
-// does not start at one (a call result, for instance).
-fn assign_target_root(target ^ast.AstNode) -> ^ast.AstNode {
-    mut base = target
-    as_long_as base != nil {
-        if base^.kind == ast.NodeKind.MEMBER_EXPR {
-            base = base^.member^.object
-        } otherwise {
-            if base^.kind == ast.NodeKind.INDEX_EXPR {
-                base = base^.index_data^.left
-            } otherwise {
-                if base^.kind == ast.NodeKind.POSTFIX_EXPR && base^.postfix^.op == token.TokenKind.CARET {
-                    base = base^.postfix^.left
-                } otherwise {
-                    break
-                }
-            }
-        }
-    }
-    if base != nil && base^.kind == ast.NodeKind.LABEL { return base }
-    return nil
 }
 
 // --- Escape summaries ---

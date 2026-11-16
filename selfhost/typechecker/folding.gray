@@ -575,17 +575,6 @@ fn literal_value_as_i64(value LiteralValue) -> (i64, bool) {
     return cast(magnitude, i64), true
 }
 
-// <0, 0 or >0 as the folded integer `left` is below, equal to or above `right`.
-fn literal_compare(left LiteralValue, right LiteralValue) -> i64 {
-    if left.is_negative != right.is_negative {
-        if left.is_negative { return -1 }
-        return 1
-    }
-    by_magnitude i64 = magnitude_compare(left.magnitude, right.magnitude)
-    if left.is_negative { return -by_magnitude }
-    return by_magnitude
-}
-
 // --- Text ---
 
 // Decimal text of an integer literal value.

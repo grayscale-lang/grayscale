@@ -262,24 +262,6 @@ fn type_same_distinct(left ^GrayType, right ^GrayType) -> bool {
 
 // --- Type comparison ---
 
-fn type_equals(left ^GrayType, right ^GrayType) -> bool {
-    if left^.kind != right^.kind { return false }
-    if !type_same_distinct(left, right) { return false }
-    if left^.kind == TypeKind.STRUCT || left^.kind == TypeKind.ENUM {
-        return left^.name == right^.name
-    }
-    if left^.kind == TypeKind.ARRAY {
-        return left^.element_type == right^.element_type
-    }
-    if left^.kind == TypeKind.POINTER {
-        return left^.name == right^.name
-    }
-    if left^.kind == TypeKind.FUNCTION {
-        return left^.name == right^.name
-    }
-    return true
-}
-
 // --- Type display name ---
 
 fn type_display_name(t ^GrayType) -> string {
@@ -424,14 +406,6 @@ fn parse_func_sig(name string) -> ^FuncSig {
 }
 
 // --- Stdlib opaque type normalization ---
-
-fn is_stdlib_opaque(name string) -> bool {
-    if name == "Thread" || name == "Mutex" || name == "SpinLock" || name == "Channel" { return true }
-    if name == "Socket" || name == "Listener" || name == "Database" { return true }
-    if name == "Router" || name == "HttpRequest" || name == "HttpResponse" { return true }
-    if name == "UUID" || name == "Arena" || name == "SourceLocation" { return true }
-    return false
-}
 
 // --- Builtin type resolver (replaces C bsearch on sorted table) ---
 

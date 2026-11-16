@@ -21,10 +21,6 @@ const CAST_ARGUMENT_COUNT i64 = 2
 // reports them as used.
 mut entry_used_aliases [string:bool] = {:}
 
-fn note_entry_used_alias(module_alias string) {
-    entry_used_aliases[module_alias] = true
-}
-
 // Private declarations of module files, by mangled name: the original name, the
 // file that declares it, and whether it is a type alias (the error differs for a type alias).
 mut private_names [string:string] = {:}
