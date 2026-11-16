@@ -166,7 +166,7 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
             }
             // Expressions and statements declare no top-level name
             // If a new NodeKind needs handling here, add a branch for it above
-            default {}
+            default { name = "" }
         }
         if !is_private { continue }
         mangled string = mangle(module_name, name)
@@ -467,7 +467,7 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
         }
         // These kinds have no child nodes to qualify
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -513,7 +513,7 @@ fn qualify_program(program ^ast.AstNode, module_name string, file string, aliase
             is ast.NodeKind.ALIAS_DECL { decls[statement^.alias_decl^.name] = true }
             // Every other node kind is an expression or statement that only appears inside a function body
             // If a new NodeKind can declare a top-level name, add a branch for it above
-            default {}
+            default { continue }
         }
     }
     // Names only another file of the same directory module declares

@@ -466,7 +466,7 @@ fn expr_type(generator ^CodeGen, node ^ast.AstNode) -> string {
             is ast.NodeKind.CHAR_VALUE { return "char" }
             // These kinds are not plain literals, so they have no literal type
             // If a new NodeKind needs handling here, add a branch for it above
-            default {}
+            default { return eff(generator, node^.resolved_type) }
         }
     }
     if len(generator^.generics.names) > 0 && (node^.resolved_type == "unknown" || strings.starts_with(node^.resolved_type, "?")) {
@@ -4963,10 +4963,11 @@ fn function_needs_scope_mark(generator ^CodeGen, function_node ^ast.AstNode) -> 
 fn ensure_value_is_captured(generator ^CodeGen, value ^ast.AstNode) -> bool {
     when value^.kind {
         is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE { return false }
-        default {}
+        default {
+            value_type = expr_type(generator, value)
+            return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
+        }
     }
-    value_type = expr_type(generator, value)
-    return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
 }
 
 fn ensure_receiver(generator ^CodeGen, call ^ast.AstNode) -> ^ast.AstNode {

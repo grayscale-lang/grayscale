@@ -2851,7 +2851,7 @@ fn resolve_expression_inner(checker ^TypeChecker, node ^ast.AstNode) -> ^types.G
         is ast.NodeKind.IMPLICIT_ENUM { result = resolve_implicit_enum(checker, node) }
         // Statements and declarations have no expression type
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { result = checker^.pool^.type_unknown }
     }
 
     if !checker^.suppress_type_writes { node^.resolved_type = types.type_display_name(result) }
@@ -6313,7 +6313,7 @@ fn body_mutates_array_parameter(checker ^TypeChecker, node ^ast.AstNode, paramet
         is ast.NodeKind.RETURN_STMT { children = node^.return_stmt^.values }
         // These kinds have no child nodes to collect
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { children = {} }
     }
     for_each child in children {
         found_in_child = body_mutates_array_parameter(checker, child, parameter_name)
@@ -6972,7 +6972,7 @@ fn premark_loop_body(checker ^TypeChecker, node ^ast.AstNode, body ^ast.AstNode)
         is ast.NodeKind.LOOP_STMT { premark_loop_body(checker, node^.loop_stmt^.body, body) }
         // These kinds are not walked
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -7031,7 +7031,7 @@ fn premark_function_destroys(checker ^TypeChecker, node ^ast.AstNode) {
         is ast.NodeKind.LOOP_STMT { premark_function_destroys(checker, node^.loop_stmt^.body) }
         // These kinds are not walked
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -7185,7 +7185,7 @@ fn mem_walk(checker ^TypeChecker, signature ^FuncSig, node ^ast.AstNode) {
         }
         // These kinds are not walked
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -7209,7 +7209,7 @@ fn return_expression_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^as
         is ast.NodeKind.MAP_VALUE { buried_parts = node^.map_value^.values }
         // These kinds have no nested element values
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { buried_parts = {} }
     }
     if node^.kind == ast.NodeKind.STRUCT_VALUE || node^.kind == ast.NodeKind.ARRAY_VALUE || node^.kind == ast.NodeKind.MAP_VALUE {
         mut field_bits i64 = 0
@@ -7292,7 +7292,7 @@ fn return_statement_mem_bits(checker ^TypeChecker, signature ^FuncSig, node ^ast
         is ast.NodeKind.LOOP_STMT { arrays.append(children, node^.loop_stmt^.body) }
         // These kinds have no child statements
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { children = {} }
     }
     for_each child in children {
         child_direct, child_field = return_statement_mem_bits(checker, signature, child)
@@ -9003,7 +9003,7 @@ fn check_variable_declaration_annotation(checker ^TypeChecker, node ^ast.AstNode
             is ast.NodeKind.BOOL_VALUE { suggested = "bool" }
             // Not a plain literal, so there is no type to suggest
             // If a new NodeKind needs handling here, add a branch for it above
-            default {}
+            default { suggested = "<type>" }
         }
         add_diagnostic(checker, "E3131", error_registry.registry_message_formatted("E3131", {display, suggested}), file, line, col)
     }
@@ -9647,7 +9647,7 @@ fn return_statement_parameter_bits(checker ^TypeChecker, signature ^FuncSig, nod
         is ast.NodeKind.LOOP_STMT { bits = return_statement_parameter_bits(checker, signature, node^.loop_stmt^.body) }
         // These kinds yield no parameter bits
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { bits = 0 }
     }
     return bits
 }
@@ -9932,7 +9932,7 @@ fn escape_walk(checker ^TypeChecker, signature ^FuncSig, body ^ast.AstNode, node
         }
         // These kinds are not walked
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -10689,7 +10689,7 @@ fn check_assignment_escape(checker ^TypeChecker, node ^ast.AstNode, target ^ast.
             add_diagnostic(checker, "E3163", error_registry.registry_message_formatted("E3163", {pointer_name, origin_name}), node^.tok.file, node^.tok.line, node^.tok.col)
         } otherwise {
             pointer_symbol = scope.scope_lookup(checker^.current_scope, pointer_name)
-            direct_depth, direct_name = pointer_origin_of(checker, ad^.value)
+            direct_depth, _ = pointer_origin_of(checker, ad^.value)
             may_keep_earlier_origin = pointer_symbol != nil && checker^.branch_entry_scope_depth > 0 && symbol_scope_depth(checker, pointer_name) <= checker^.branch_entry_scope_depth && pointer_symbol^.origin_depth > direct_depth
             if !may_keep_earlier_origin {
                 record_symbol_origin(checker, pointer_symbol, ad^.value)
@@ -10997,7 +10997,7 @@ fn check_no_nested_ensure(checker ^TypeChecker, node ^ast.AstNode, nested bool) 
         }
         // These kinds cannot contain a nested ensure
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -12192,7 +12192,7 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
         }
         // Expressions need no declaration check at file scope
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -12539,7 +12539,7 @@ fn check_alias_expression(checker ^TypeChecker, expression ^ast.AstNode, state ^
         }
         // These kinds hold no alias expression
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -12614,7 +12614,7 @@ fn check_alias_walk(checker ^TypeChecker, node ^ast.AstNode, state ^AliasState, 
         is ast.NodeKind.EXPR_STMT { check_alias_expression(checker, node^.expr_stmt^.expr, state, file) }
         // These kinds hold no alias block
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
