@@ -14,7 +14,7 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @io, @os, @strings, @arrays
+import @io, @os, @strings, @arrays, @chars
 
 const TIMEOUT_SECONDS string = "30"  // per test — prevents infinite loops from hanging CI
 
@@ -111,14 +111,10 @@ do directive_text(line string, name string) -> (string, bool) {
     return strings.trim_left(strings.slice(text, len(prefix), len(text))), true
 }
 
-do is_digit(c char) -> bool {
-    return c >= '0' && c <= '9'
-}
-
 // leading_digits returns the run of digits at the start of text.
 do leading_digits(text string) -> string {
     mut end i64 = 0
-    for end < len(text) && is_digit(strings.char_at(text, end)) {
+    for end < len(text) && chars.is_digit(strings.char_at(text, end)) {
         end = end + 1
     }
     return strings.slice(text, 0, end)
@@ -198,13 +194,13 @@ do has_mangled_name(output string) -> bool {
         mut j i64 = i + 1
         if j < len(output) && strings.char_at(output, j) >= 'a' && strings.char_at(output, j) <= 'z' {
             j = j + 1
-            for j < len(output) && is_alnum(strings.char_at(output, j)) {
+            for j < len(output) && chars.is_alnum(strings.char_at(output, j)) {
                 j = j + 1
             }
             if j + 1 < len(output) && strings.char_at(output, j) == '_' &&
                     strings.char_at(output, j + 1) >= 'A' && strings.char_at(output, j + 1) <= 'Z' {
                 j = j + 2
-                for j < len(output) && is_alnum(strings.char_at(output, j)) {
+                for j < len(output) && chars.is_alnum(strings.char_at(output, j)) {
                     j = j + 1
                 }
                 if j < len(output) && strings.char_at(output, j) == '\'' {
@@ -215,10 +211,6 @@ do has_mangled_name(output string) -> bool {
         i = i + 1
     }
     return false
-}
-
-do is_alnum(c char) -> bool {
-    return is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // has_diagnostic reports whether the output carries a Grayscale diagnostic:

@@ -30,14 +30,9 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @io, @strings, @arrays
+import @io, @strings, @arrays, @chars
 
 const MAX_SITES i64 = 15
-
-// is_digit reports whether c is an ASCII digit.
-do is_digit(c char) -> bool {
-    return c >= '0' && c <= '9'
-}
 
 // registry_code returns the code from a GRAY_ERROR("E3001", ...) /
 // GRAY_WARNING("W1001", ...) / GRAY_PANIC("P0001", ...) line, or "" if the
@@ -76,7 +71,7 @@ do defined_function(line string) -> string {
     mut start i64 = paren
     for start > 0 {
         mut c char = strings.char_at(line, start - 1)
-        if !(is_digit(c) || c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+        if !chars.is_word_char(c) {
             break
         }
         start = start - 1
@@ -94,9 +89,9 @@ do scan_line_codes(line string) -> [string] {
         mut c char = strings.char_at(line, i)
         mut c1 char = strings.char_at(line, i + 1)
         mut c2 char = strings.char_at(line, i + 2)
-        if c == '"' && (c1 == 'E' || c1 == 'W' || c1 == 'P') && is_digit(c2) {
+        if c == '"' && (c1 == 'E' || c1 == 'W' || c1 == 'P') && chars.is_digit(c2) {
             mut j i64 = i + 2
-            for j < n && is_digit(strings.char_at(line, j)) {
+            for j < n && chars.is_digit(strings.char_at(line, j)) {
                 j = j + 1
             }
             if j < n && strings.char_at(line, j) == '"' {
