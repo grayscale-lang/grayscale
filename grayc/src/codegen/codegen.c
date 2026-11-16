@@ -4664,7 +4664,8 @@ static void emit_wide_integer_target_conversion(CodeGen *codegen, const char *ta
 
 static void emit_cast_expression(CodeGen *codegen, AstNode *node) {
     /* cast(value, type); dispatch to conversion functions for non-trivial casts */
-    const char *target = codegen_effective_type_string(codegen, node->data.cast.target_type);
+    const char *target = resolve_type_alias_codegen(codegen,
+        codegen_effective_type_string(codegen, node->data.cast.target_type));
     AstNode *value = node->data.cast.value;
     GrayType *value_type = codegen_effective_type(codegen, codegen_type_of(codegen, value));
     TypeKind value_kind = value_type ? value_type->kind : TYPE_KIND_UNKNOWN;
