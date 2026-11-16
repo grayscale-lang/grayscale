@@ -1,0 +1,23 @@
+import "./a1"
+import "./a2"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    a1.show()
+
+    if a2.blank(2) == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] top-level function in another module")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

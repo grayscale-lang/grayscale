@@ -20257,10 +20257,14 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
              * A bare call inside the struct resolves to the top-level one,
              * leaving the struct function reachable only as Struct.func —
              * a silent shadow, so reject it at the declaration. */
+            const char *struct_module = module_table_module_for_file(checker->modules, statement->token.file);
             for (int index = 0; index < program->data.program.statement_count; index++) {
                 AstNode *top_statement = program->data.program.statements[index];
                 if (top_statement->kind != NODE_FUNCTION_DECLARATION ||
                     strcmp(top_statement->data.function_declaration.name, function_node->data.function_declaration.name) != 0)
+                    continue;
+                const char *top_module = module_table_module_for_file(checker->modules, top_statement->token.file);
+                if (struct_module != top_module && (!struct_module || !top_module || strcmp(struct_module, top_module) != 0))
                     continue;
                 NODE_ERROR_FORMATTED(checker, function_node, "E4022",
                     STRUCT_DISPLAY_NAME(statement), FUNCTION_DISPLAY_NAME(function_node), FUNCTION_DISPLAY_NAME(top_statement));
