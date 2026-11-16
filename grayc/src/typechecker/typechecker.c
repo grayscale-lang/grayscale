@@ -337,6 +337,16 @@ static const char *assignment_target_root_name(AstNode *expression) {
     }
 }
 
+static bool typechecker_is_imported_module(TypeChecker *checker, const char *name);
+
+/* True when `node` is an imported module's name used as a qualifier. It is not
+ * a value, so resolving it as an expression would report an undefined variable. */
+static bool node_is_module_qualifier(TypeChecker *checker, AstNode *node) {
+    return node && node->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, node->data.label.value) &&
+        typechecker_is_imported_module(checker, node->data.label.value);
+}
+
 /* True when an assignment target is, or is a field or element of, a value with
  * no storage of its own: a call result or a literal. Writing to it changes
  * nothing the program can read, and the generated C takes the address of an
@@ -351,7 +361,9 @@ static bool assignment_target_is_temporary(TypeChecker *checker, AstNode *target
     case NODE_STRUCT_VALUE:
         return true;
     case NODE_MEMBER_EXPRESSION: {
-        GrayType *object_type = resolve_expression(checker, target->data.member.object);
+        AstNode *object = target->data.member.object;
+        if (node_is_module_qualifier(checker, object)) return false;
+        GrayType *object_type = resolve_expression(checker, object);
         if (object_type && object_type->kind == TYPE_KIND_POINTER) return false;
         return assignment_target_is_temporary(checker, target->data.member.object);
     }
@@ -9174,6 +9186,7 @@ static bool array_spelling_is_fixed(const char *spelling) {
  * (`o.inner.items`). */
 static int member_expression_fixed_array_field_size(TypeChecker *checker, AstNode *expression) {
     if (!expression || expression->kind != NODE_MEMBER_EXPRESSION) return 0;
+    if (node_is_module_qualifier(checker, expression->data.member.object)) return 0;
     GrayType *object_type = resolve_expression(checker, expression->data.member.object);
     if (!object_type) return 0;
     /* The dot operator auto-derefs pointers to structs (p.field == p^.field),
@@ -15938,7 +15951,8 @@ static bool assign_target_outlives_locals(TypeChecker *checker, AstNode *target)
     while (base) {
         if (base->kind == NODE_MEMBER_EXPRESSION) {
             /* `.` on a pointer reads through it exactly as `^.` does. */
-            GrayType *object_type = resolve_expression(checker, base->data.member.object);
+            GrayType *object_type = node_is_module_qualifier(checker, base->data.member.object)
+                ? NULL : resolve_expression(checker, base->data.member.object);
             if (object_type && object_type->kind == TYPE_KIND_POINTER) through_deref = true;
             base = base->data.member.object;
         }
@@ -16256,7 +16270,8 @@ static void check_assign_statement(TypeChecker *checker, AstNode *node) {
      * never sees this — a plain `w.items = <expr>` is an ordinary
      * assignment statement, not a struct-literal node — so this is a
      * second, independent call site for the same shared check. */
-    if (target->kind == NODE_MEMBER_EXPRESSION && node->data.assign.value) {
+    if (target->kind == NODE_MEMBER_EXPRESSION && node->data.assign.value &&
+        !node_is_module_qualifier(checker, target->data.member.object)) {
         GrayType *object_type = resolve_expression(checker, target->data.member.object);
         const char *struct_name = NULL;
         if (object_type) {
