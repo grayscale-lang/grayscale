@@ -13617,7 +13617,10 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         reject_private_type(checker, node, written_target);
         const char *resolved_target = checker_resolve_type_name(checker, written_target);
         const char *target = resolve_type_alias(checker, resolved_target);
-        node->data.cast.target_type = target;
+        /* A generic body is checked again per instantiation, from this node:
+         * the written target must keep a distinct alias's name or the next
+         * pass types the cast as the representation. */
+        node->data.cast.target_type = resolve_type_alias_keeping_distinct(checker, resolved_target);
         /* E4016: a target that names no type, at any depth. The allowlist
          * below cannot stand in for this: an undefined capitalized name types
          * as TYPE_KIND_STRUCT and was reported as an unsupported conversion, and an
