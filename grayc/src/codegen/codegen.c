@@ -11390,6 +11390,17 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         node->data.variable_declaration.shadows_own_initializer = true;
         return;
     }
+    /* Skip blank identifiers (_) */
+    if (strcmp(node->data.variable_declaration.name, "_") == 0) {
+        if (node->data.variable_declaration.value) {
+            emit_indent(codegen);
+            emit(codegen, "(void)(");
+            emit_expression(codegen, node->data.variable_declaration.value);
+            emit(codegen, ");\n");
+        }
+        return;
+    }
+
     emit_indent(codegen);
 
     char inferred_type_name[TYPE_NAME_MAX];
@@ -11436,17 +11447,6 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         if (wide_integer_name) {
             register_wide_integer_variable(codegen, node->data.variable_declaration.name, wide_integer_name);
         }
-    }
-
-    /* Skip blank identifiers (_) */
-    if (strcmp(node->data.variable_declaration.name, "_") == 0) {
-        if (node->data.variable_declaration.value) {
-            emit_indent(codegen);
-            emit(codegen, "(void)(");
-            emit_expression(codegen, node->data.variable_declaration.value);
-            emit(codegen, ");\n");
-        }
-        return;
     }
 
     /* If no type annotation, try to infer from value */
