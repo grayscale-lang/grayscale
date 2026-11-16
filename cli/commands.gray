@@ -9,7 +9,7 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @io, @maps, @os, @path, @strings, @arrays, @strconv
+import @io, @os, @path, @strings, @arrays, @strconv
 import "./args"
 import "./driver"
 import "./sources"
@@ -41,17 +41,9 @@ do cross_targets() -> [CrossTarget] {
     }
 }
 
-// flag_text is the value a flag was given, or fallback when it was not.
-do flag_text(invocation args.Invocation, name string, fallback string) -> string {
-    if maps.contains_key(invocation.changed, name) && invocation.changed[name] {
-        return invocation.flag_values[name]
-    }
-    return fallback
-}
-
 // flag_is_set reports whether a bool flag was given as true.
 do flag_is_set(invocation args.Invocation, name string) -> bool {
-    return flag_text(invocation, name, "false") == "true"
+    return args.flag_text(invocation, name, "false") == "true"
 }
 
 // parse_arena_limit parses a size such as "512KB", "2MB" or "1GB" into bytes.
@@ -94,7 +86,7 @@ do parse_arena_limit(text string) -> (i64, Error) {
 // validate_quiet rejects a --quiet value that is neither "all" nor a
 // comma-separated list of W-prefixed warning codes.
 do validate_quiet(invocation args.Invocation) -> Error {
-    quiet string = flag_text(invocation, "quiet", "")
+    quiet string = args.flag_text(invocation, "quiet", "")
     if quiet == "" || quiet == "all" {
         return nil
     }
@@ -114,7 +106,7 @@ do validate_quiet(invocation args.Invocation) -> Error {
 // selects a cross-compile target and always builds the runtime from source,
 // where GRAY_CC keeps the host's prebuilt libgrayrt.a.
 do apply_compiler_flag(invocation args.Invocation) -> Error {
-    c_compiler string = flag_text(invocation, "cc", "")
+    c_compiler string = args.flag_text(invocation, "cc", "")
     if c_compiler == "" {
         return nil
     }
@@ -135,7 +127,7 @@ do compiler_flag_args(invocation args.Invocation, defines [string]) -> ([string]
         return {}, quiet_err
     }
     mut compiler_args [string] = {}
-    quiet string = flag_text(invocation, "quiet", "")
+    quiet string = args.flag_text(invocation, "quiet", "")
     if quiet == "all" {
         arrays.append(compiler_args, "--quiet")
     } or quiet != "" {
@@ -145,7 +137,7 @@ do compiler_flag_args(invocation args.Invocation, defines [string]) -> ([string]
     if flag_is_set(invocation, "no-color") {
         arrays.append(compiler_args, "--no-color")
     }
-    arena_text string = flag_text(invocation, "arena-limit", "")
+    arena_text string = args.flag_text(invocation, "arena-limit", "")
     if arena_text != "" {
         arena_limit, arena_err = parse_arena_limit(arena_text)
         if arena_err != nil {
@@ -165,13 +157,13 @@ do compiler_flag_args(invocation args.Invocation, defines [string]) -> ([string]
 
 // build_options reads the flags shared by build and cross build.
 do build_options(invocation args.Invocation, defines [string]) -> (driver.BuildOptions, Error) {
-    mut options driver.BuildOptions = driver.BuildOptions{output: flag_text(invocation, "output", ""), optimization_level: "", debug: false, verbose: false, emit_c: flag_is_set(invocation, "emit-c"), no_color: flag_is_set(invocation, "no-color"), show_time: flag_is_set(invocation, "time"), quiet: false, quiet_codes: "", c_compiler: "", arena_limit: 0, test: false, defines: defines}
+    mut options driver.BuildOptions = driver.BuildOptions{output: args.flag_text(invocation, "output", ""), optimization_level: "", debug: false, verbose: false, emit_c: flag_is_set(invocation, "emit-c"), no_color: flag_is_set(invocation, "no-color"), show_time: flag_is_set(invocation, "time"), quiet: false, quiet_codes: "", c_compiler: "", arena_limit: 0, test: false, defines: defines}
 
     quiet_err Error = validate_quiet(invocation)
     if quiet_err != nil {
         return options, quiet_err
     }
-    arena_limit, arena_err = parse_arena_limit(flag_text(invocation, "arena-limit", ""))
+    arena_limit, arena_err = parse_arena_limit(args.flag_text(invocation, "arena-limit", ""))
     if arena_err != nil {
         return options, arena_err
     }
@@ -181,7 +173,7 @@ do build_options(invocation args.Invocation, defines [string]) -> (driver.BuildO
     }
 
     options.arena_limit = arena_limit
-    quiet string = flag_text(invocation, "quiet", "")
+    quiet string = args.flag_text(invocation, "quiet", "")
     if quiet == "all" {
         options.quiet = true
     } or quiet != "" {
@@ -393,7 +385,7 @@ do run_cross_build(invocation args.Invocation, defines [string]) -> i64 {
         return 1
     }
 
-    target_name string = flag_text(invocation, "target", "")
+    target_name string = args.flag_text(invocation, "target", "")
     if target_name == "" {
         eprintln("error: --target is required")
         eprintln("  Run 'gray cross targets' to see available targets")

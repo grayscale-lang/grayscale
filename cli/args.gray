@@ -67,6 +67,19 @@ const Invocation struct {
     dash_index i64         // index in positional where "--" stood, or -1
 }
 
+// was_given reports whether a flag was given on the command line.
+do was_given(invocation Invocation, name string) -> bool {
+    return maps.contains_key(invocation.changed, name) && invocation.changed[name]
+}
+
+// flag_text is the value a flag was given, or fallback when it was not.
+do flag_text(invocation Invocation, name string, fallback string) -> string {
+    if was_given(invocation, name) {
+        return invocation.flag_values[name]
+    }
+    return fallback
+}
+
 // Flags are parsed into this, apart from the command lookup.
 const ParsedFlags struct {
     positional [string]

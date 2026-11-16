@@ -8,7 +8,7 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @io, @maps, @path, @strings, @arrays
+import @io, @path, @strings, @arrays
 import "./args"
 import "./templates"
 
@@ -35,10 +35,10 @@ const QUICK_REFERENCE string = `// Grayscale Quick Reference
 // run_new is the gray new command: it returns the exit status. With no project
 // name it prompts for the name and for each option that was not given as a flag.
 do run_new(invocation args.Invocation) -> i64 {
-    mut template string = flag_text(invocation, "template", "basic")
-    mut server_type string = flag_text(invocation, "server-type", "normal")
-    mut comments bool = flag_text(invocation, "comments", "false") == "true"
-    force bool = flag_text(invocation, "force", "false") == "true"
+    mut template string = args.flag_text(invocation, "template", "basic")
+    mut server_type string = args.flag_text(invocation, "server-type", "normal")
+    mut comments bool = args.flag_text(invocation, "comments", "false") == "true"
+    force bool = args.flag_text(invocation, "force", "false") == "true"
 
     mut name string = ""
     if len(invocation.positional) == 0 {
@@ -48,15 +48,15 @@ do run_new(invocation args.Invocation) -> i64 {
             return 1
         }
 
-        if !was_given(invocation, "template") {
+        if !args.was_given(invocation, "template") {
             template = prompt_for_input("Template (basic/cli/lib/multi/server/client) [basic]: ", "basic")
         }
 
-        if (template == "server" || template == "client") && !was_given(invocation, "server-type") {
+        if (template == "server" || template == "client") && !args.was_given(invocation, "server-type") {
             server_type = prompt_for_input("Type (minimal/normal) [normal]: ", "normal")
         }
 
-        if !was_given(invocation, "comments") {
+        if !args.was_given(invocation, "comments") {
             answer string = strings.to_lower(prompt_for_input("Include comments? (y/N): ", "n"))
             comments = answer == "y" || answer == "yes"
         }
@@ -100,19 +100,6 @@ do run_new(invocation args.Invocation) -> i64 {
         println("  cd ${name} && gray main.gray")
     }
     return 0
-}
-
-// was_given reports whether a flag was given on the command line.
-do was_given(invocation args.Invocation, name string) -> bool {
-    return maps.contains_key(invocation.changed, name) && invocation.changed[name]
-}
-
-// flag_text is the value a flag was given, or fallback when it was not.
-do flag_text(invocation args.Invocation, name string, fallback string) -> string {
-    if was_given(invocation, name) {
-        return invocation.flag_values[name]
-    }
-    return fallback
 }
 
 // is_valid_project_name returns true only when name is a plain single-element
