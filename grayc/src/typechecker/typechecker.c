@@ -8036,8 +8036,12 @@ static GrayType *resolve_wrapping_call(TypeChecker *checker, AstNode *node, cons
         ? type_binary_result(TOKEN_PLUS, left, right) : NULL;
     if (common) {
         if (left->kind == TYPE_KIND_LITERAL && right->kind == TYPE_KIND_LITERAL) {
-            left = check_expression_as(checker, left_node, NULL);
-            right = check_expression_as(checker, right_node, NULL);
+            GrayType *literal_target = checker->expected_type;
+            if (!literal_target || (literal_target->kind != TYPE_KIND_SIGNED_INTEGER &&
+                                    literal_target->kind != TYPE_KIND_UNSIGNED_INTEGER))
+                literal_target = NULL;
+            left = check_expression_as(checker, left_node, literal_target);
+            right = check_expression_as(checker, right_node, literal_target);
         } else if (left->kind == TYPE_KIND_LITERAL) {
             left = check_expression_as(checker, left_node, right);
         } else if (right->kind == TYPE_KIND_LITERAL) {

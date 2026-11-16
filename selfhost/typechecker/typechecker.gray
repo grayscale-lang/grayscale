@@ -4456,8 +4456,10 @@ fn resolve_wrapping_call(checker ^TypeChecker, node ^ast.AstNode, display_name s
     if left_is_number && right_is_number { common = types.type_binary_result(checker^.pool, token.TokenKind.PLUS, left, right) }
     if common != nil {
         if left^.kind == types.TypeKind.LITERAL && right^.kind == types.TypeKind.LITERAL {
-            left = check_expression_as(checker, left_node, nil)
-            right = check_expression_as(checker, right_node, nil)
+            mut literal_target = checker^.expected_type
+            if literal_target != nil && literal_target^.kind != types.TypeKind.INT && literal_target^.kind != types.TypeKind.UINT { literal_target = nil }
+            left = check_expression_as(checker, left_node, literal_target)
+            right = check_expression_as(checker, right_node, literal_target)
         } or left^.kind == types.TypeKind.LITERAL {
             left = check_expression_as(checker, left_node, right)
         } or right^.kind == types.TypeKind.LITERAL {
