@@ -8274,15 +8274,32 @@ static GrayType *typechecker_type_with_generics(TypeChecker *checker, const Gene
 
 /* True when the type written for parameter `index` of `declaration` names one of
  * its own `generic` parameters, so its type depends on the call. */
-static bool parameter_type_depends_on_generic(const AstNode *declaration, int index) {
+static bool type_text_depends_on_generic(const AstNode *declaration, const char *type_text) {
     GenericBindings unbound;
     generic_bindings_init(&unbound, declaration, NULL);
-    char *substituted = generic_bindings_substitute(&unbound,
-        declaration->data.function_declaration.parameters[index].type_name);
+    char *substituted = generic_bindings_substitute(&unbound, type_text);
     bool depends = substituted && strchr(substituted, '?') != NULL;
     free(substituted);
     generic_bindings_clear(&unbound);
     return depends;
+}
+
+static bool parameter_type_depends_on_generic(const AstNode *declaration, int index) {
+    return type_text_depends_on_generic(declaration,
+        declaration->data.function_declaration.parameters[index].type_name);
+}
+
+/* The type of return slot `index` of a call to a generic function. A slot that
+ * names no type parameter is already resolved, in the declaring module's scope,
+ * on the signature; writing it out again here would look its name up in the
+ * caller's file, where a module's own type is not visible. */
+static GrayType *generic_return_slot_type(TypeChecker *checker, const FunctionSignature *signature,
+                                          const GenericBindings *bindings, int index) {
+    const AstNode *declaration = signature->declaration;
+    const char *type_text = declaration->data.function_declaration.return_types[index];
+    if (index < signature->return_count && !type_text_depends_on_generic(declaration, type_text))
+        return signature->return_types[index];
+    return typechecker_type_with_generics(checker, bindings, type_text);
 }
 
 /* True when argument `index` of a call to `signature` is a type argument or is
@@ -8492,8 +8509,7 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             }
         }
         if (declaration->data.function_declaration.return_type_count > 0) {
-            generic_return_type = typechecker_type_with_generics(checker, call_bindings,
-                declaration->data.function_declaration.return_types[0]);
+            generic_return_type = generic_return_slot_type(checker, signature, call_bindings, 0);
         } else {
             generic_return_type = &TYPE_VOID;
         }
@@ -15326,8 +15342,8 @@ static void apply_call_return_slots(TypeChecker *checker, Symbol *symbol, Functi
         int return_count = declaration->data.function_declaration.return_type_count;
         GrayType **substituted_return_types = xmalloc(sizeof(GrayType *) * (size_t)return_count);
         for (int return_index = 0; return_index < return_count; return_index++) {
-            substituted_return_types[return_index] = typechecker_type_with_generics(checker,
-                &call_bindings, declaration->data.function_declaration.return_types[return_index]);
+            substituted_return_types[return_index] = generic_return_slot_type(checker, signature,
+                &call_bindings, return_index);
         }
         generic_bindings_clear(&call_bindings);
         slots = substituted_return_types;

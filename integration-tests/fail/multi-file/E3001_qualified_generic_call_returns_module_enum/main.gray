@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3001 - the module type a qualified generic call returns is not an i64
+ */
+
+import "./lib"
+
+do main() {
+    mut number i64 = lib.shape(i64, 1)
+    println("${number}")
+}
