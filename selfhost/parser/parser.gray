@@ -297,15 +297,6 @@ fn is_assignment_op(kind token.TokenKind) -> bool {
            kind == token.TokenKind.SLASH_ASSIGN || kind == token.TokenKind.PERCENT_ASSIGN
 }
 
-fn is_type_name(name string) -> bool {
-    return name == "f32" || name == "f64" ||
-           name == "string" || name == "bool" || name == "char" ||
-           name == "i8" || name == "i16" || name == "i32" || name == "i64" ||
-           name == "u8" || name == "u16" || name == "u32" || name == "u64" ||
-           name == "i128" || name == "u128" || name == "i256" || name == "u256" ||
-           (len(name) > 0 && strings.char_at(name, 0) >= 'A' && strings.char_at(name, 0) <= 'Z')
-}
-
 // --- Snapshot ---
 
 fn save_snapshot(parser ^Parser) -> ParserSnapshot {

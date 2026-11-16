@@ -1,0 +1,36 @@
+/*
+ * vm/cell - nominal types, error codes and the instruction set of the dillo64 VM.
+ * Exercises: distinct aliases, #error_code enums, default struct fields.
+ */
+
+distinct alias Cell = i64
+distinct alias Slot = u32
+
+#error_code
+const VmFault enum {
+    BAD_ADDRESS
+    STACK_EMPTY
+    BUDGET_SPENT
+}
+
+const Op enum {
+    PUSH
+    ADD
+    MUL
+    DUP
+    STORE
+    LOAD
+    JNZ
+    DEC
+    OUT
+    HALT
+}
+
+const Instr struct {
+    op Op
+    arg Cell = 0
+
+    do make(op Op, arg i64 = 0) -> Instr {
+        return Instr{op: op, arg: cast(arg, Cell)}
+    }
+}

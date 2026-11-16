@@ -1,0 +1,137 @@
+/*
+ * vm/cpu - the dillo64 core: a stack machine stepping one instruction at a time.
+ * Exercises: when dispatch, mutable struct aliases, (T, Error) returns,
+ * cross-module calls, struct functions.
+ */
+
+import @arrays
+import "./cell"
+import "./memory"
+
+const Status enum {
+    RUNNING
+    HALTED
+    FAULTED
+}
+
+const Cpu struct {
+    stack [cell.Cell]
+    ram memory.Memory
+    pc cell.Slot
+    budget i64
+    status Status
+    out [cell.Cell]
+    last_fault string
+
+    do boot(limit i64, budget i64) -> Cpu {
+        return Cpu{ram: memory.Memory.create(limit), budget: budget}
+    }
+
+    do push(&cpu Cpu, value cell.Cell) {
+        arrays.append(cpu.stack, value)
+    }
+
+    do pop(&cpu Cpu) -> (cell.Cell, Error) {
+        if len(cpu.stack) == 0 {
+            return cast(0, cell.Cell), error(.STACK_EMPTY, "pc ${cpu.pc}")
+        }
+        return arrays.remove_last(cpu.stack), nil
+    }
+
+    do fail(&cpu Cpu, err Error) {
+        cpu.status = Status.FAULTED
+        cpu.last_fault = "${err.msg}"
+    }
+
+    do step(&cpu Cpu, &code [cell.Instr]) -> Status {
+        if cpu.status != Status.RUNNING {
+            return cpu.status
+        }
+        if cpu.budget <= 0 {
+            cpu.fail(error(.BUDGET_SPENT, "budget"))
+            return cpu.status
+        }
+        cpu.budget -= 1
+        mut index i64 = cast(cpu.pc, i64)
+        if index >= len(code) {
+            cpu.fail(error(.BAD_ADDRESS, "pc ${index}"))
+            return cpu.status
+        }
+        mut inst cell.Instr = code[index]
+        cpu.pc += 1
+        #strict
+        when inst.op {
+            is .PUSH { cpu.push(inst.arg) }
+            is .DUP {
+                mut top, err = cpu.pop()
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                cpu.push(top)
+                cpu.push(top)
+            }
+            is .ADD {
+                mut b, e1 = cpu.pop()
+                mut a, e2 = cpu.pop()
+                if e1 != nil || e2 != nil {
+                    cpu.fail(error(.STACK_EMPTY, "add"))
+                    return cpu.status
+                }
+                unsafe { cpu.push(cast(wrap_add(cast(a, i64), cast(b, i64)), cell.Cell)) }
+            }
+            is .MUL {
+                mut b, e1 = cpu.pop()
+                mut a, e2 = cpu.pop()
+                if e1 != nil || e2 != nil {
+                    cpu.fail(error(.STACK_EMPTY, "mul"))
+                    return cpu.status
+                }
+                unsafe { cpu.push(cast(wrap_mult(cast(a, i64), cast(b, i64)), cell.Cell)) }
+            }
+            is .STORE {
+                mut value, err = cpu.pop()
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                mut store_error = cpu.ram.store(cast(inst.arg, i64), value)
+                if store_error != nil { cpu.fail(store_error) }
+            }
+            is .LOAD {
+                mut value, err = cpu.ram.load(cast(inst.arg, i64))
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                cpu.push(value)
+            }
+            is .DEC {
+                mut value, err = cpu.pop()
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                cpu.push(cast(cast(value, i64) - 1, cell.Cell))
+            }
+            is .JNZ {
+                mut value, err = cpu.pop()
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                if cast(value, i64) != 0 { cpu.pc = cast(inst.arg, cell.Slot) }
+            }
+            is .OUT {
+                mut value, err = cpu.pop()
+                if err != nil {
+                    cpu.fail(err)
+                    return cpu.status
+                }
+                arrays.append(cpu.out, value)
+            }
+            is .HALT { cpu.status = Status.HALTED }
+        }
+        return cpu.status
+    }
+}

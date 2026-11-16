@@ -139,7 +139,7 @@
 | `E3054` | types | mutable arrays cannot have a fixed size; remove the size or use 'const' (e.g., mut %s %.*s] = ...) |
 | `E3055` | types | const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...) |
 | `E3056` | types | #strict when is not exhaustive; missing variant '%s.%s' |
-| `E3057` | types | type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable |
+| `E3057` | types | type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums without payloads are hashable |
 | `E3058` | types | in instantiation of generic function '%s' with %s |
 | `E3059` | types | maps cannot be declared const; use 'mut' for maps or a struct for fixed data |
 | `E3061` | types | %s '%s' cannot contain itself by value |
@@ -410,8 +410,8 @@
 | `E9003` | stdlib | 'arrays.%s()' requires a function reference; use '()func_name' to pass a function |
 | `E9004` | stdlib | 'arrays.%s()' callback signature mismatch; %s |
 | `E9005` | stdlib | invalid range: start (%s) must be %s end (%s) |
-| `E9006` | stdlib | 'arrays.contains()' does not support arrays of '%s'; only primitive and string element types are supported |
-| `E9007` | stdlib | 'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s' |
+| `E9006` | stdlib | 'arrays.%s()' does not support arrays of '%s'; only primitive and string element types are supported |
+| `E9007` | stdlib | 'arrays.%s()' requires a comparable array (numeric, string, bool, or enum without payloads), got array of '%s' |
 | `E12001` | stdlib | 'maps.%s()' requires a map argument, got an array |
 | `E12006` | stdlib | duplicate key in map literal |
 | `E12007` | stdlib | 'maps.%s()' does not support maps with '%s' values; only primitive and string value types are supported |
@@ -632,4 +632,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-11-15 23:07:07 UTC*
+*Generated on 2026-11-16 17:48:16 UTC*

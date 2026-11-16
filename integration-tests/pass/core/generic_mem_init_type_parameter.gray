@@ -1,0 +1,50 @@
+/*
+ * generic_mem_init_type_parameter.gray - a generic parameter's name is a valid
+ * type argument to mem.init, bound per instantiation.
+ */
+
+import @mem
+
+const Box struct {
+    n i64
+}
+
+const Wide struct {
+    a i64
+    b i64
+    c i64
+    d i64
+}
+
+unsafe do in_arena(kind generic, target mem.Arena) -> ^kind {
+    return mem.init(target, kind)
+}
+
+unsafe do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut arena mem.Arena = mem.arena(4096)
+
+    mut box ^Box = in_arena(Box, arena)
+    box^.n = 5
+    mut wide ^Wide = in_arena(Wide, arena)
+    wide^.d = 8
+    mut count ^i64 = in_arena(i64, arena)
+    count^ = 3
+
+    if box^.n == 5 && wide^.d == 8 && count^ == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] mem.init with a type parameter")
+        failed += 1
+    }
+
+    mem.destroy(arena)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

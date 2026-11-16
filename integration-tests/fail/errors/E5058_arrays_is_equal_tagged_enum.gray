@@ -1,0 +1,18 @@
+/*
+ * Error Test: E5058 - arrays.is_equal does not support tagged enum elements
+ */
+
+// expect-error: E5058
+
+import @arrays
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut left [Event] = {Event.Quit}
+    mut right [Event] = {Event.Quit}
+    println(arrays.is_equal(left, right))
+}

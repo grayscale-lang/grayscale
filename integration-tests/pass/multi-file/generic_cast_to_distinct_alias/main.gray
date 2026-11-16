@@ -1,0 +1,41 @@
+import "./c"
+
+distinct alias Slot = u32
+
+const Event enum {
+    Tick(Slot)
+}
+
+do pick(T generic, value T) -> T {
+    mut slot Slot = cast(7, Slot)
+    mut wide c.Wide = cast(9, c.Wide)
+    mut event Event = Event.Tick(cast(5, Slot))
+    when event {
+        default { println("[FAIL] event variant") }
+        is Event.Tick(payload) {
+            if cast(slot, u32) != 7 || cast(wide, i64) != 9 || cast(payload, u32) != 5 {
+                println("[FAIL] cast value")
+            }
+        }
+    }
+    return value
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if pick(i64, 3) == 3 && pick(string, "x") == "x" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] cast to a distinct alias in a generic body")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

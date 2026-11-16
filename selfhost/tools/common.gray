@@ -71,18 +71,6 @@ fn build_with_real_compiler(source string, output string) -> bool {
     return built.exit_code == 0
 }
 
-// Builds a C file with the system compiler.
-fn compile_c(source string, output string, extra_sources [string]) -> bool {
-    mut arguments [string] = {"-w", "-Igrayc/src", "-o", output, source}
-    for_each extra in extra_sources { arrays.append(arguments, extra) }
-    return run("cc", arguments).exit_code == 0
-}
-
-// The C sources the reference-side dumpers link: the lexer and what it needs.
-fn lexer_sources() -> [string] {
-    return {"grayc/src/lexer/lexer.c", "grayc/src/lexer/token.c", "grayc/src/util/arena.c", "grayc/src/util/error.c", "grayc/src/util/error_codes.c", "grayc/src/util/platform.c", "grayc/src/util/buf.c"}
-}
-
 fn write_text(file_path string, text string) {
     _, write_error = io.write_file(file_path, text)
     if write_error != nil { eprintln("cannot write ${file_path}: ${write_error.message}") }
@@ -93,26 +81,4 @@ fn read_text(file_path string) -> string {
     text, read_error = io.read_file(file_path)
     if read_error != nil { return "" }
     return text
-}
-
-// Builds `source` with the real compiler and with `driver`, runs both programs and
-// compares their output and exit code. "skip" when the real compiler cannot build it,
-// "nobuild" when only the self-hosted driver cannot, "differ", or "ok".
-fn compare_program(source string, driver string) -> string {
-    mut work string = "selfhost/build/compare"
-    suffix = os.get_env("COMPARE_DIR")
-    if suffix != "" { work = "selfhost/build/compare_${suffix}" }
-    _ = run("mkdir", {"-p", work})
-    for_each leftover in {"${work}/real.bin", "${work}/self.bin"} {
-        if io.file_exists(leftover) {
-            _, _ = io.delete_file(leftover)
-        }
-    }
-    if !build_with_real_compiler(source, "${work}/real.bin") { return "skip" }
-    _ = run(driver, {"build", source, "-o", "${work}/self.bin"})
-    if !io.file_exists("${work}/self.bin") { return "nobuild" }
-    real = run_closed_input("${work}/real.bin", {})
-    self_run = run_closed_input("${work}/self.bin", {})
-    if real.stdout == self_run.stdout && real.stderr == self_run.stderr && real.exit_code == self_run.exit_code { return "ok" }
-    return "differ"
 }

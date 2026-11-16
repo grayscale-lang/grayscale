@@ -1,0 +1,11 @@
+const Item struct {
+    n i64
+
+    do blank() -> Item {
+        return Item{}
+    }
+}
+
+do show() {
+    println(Item.blank().n)
+}

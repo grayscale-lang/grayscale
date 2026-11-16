@@ -53,13 +53,10 @@ do find_compiler() -> (string, bool) {
         return on_path, true
     }
 
-    when os.current_os() {
-        is .WINDOWS { }
-        default {
-            for_each candidate in {"/usr/local/bin/grayc", "/usr/bin/grayc"} {
-                if io.is_file(candidate) {
-                    return candidate, true
-                }
+    if os.current_os() != .WINDOWS {
+        for_each candidate in {"/usr/local/bin/grayc", "/usr/bin/grayc"} {
+            if io.is_file(candidate) {
+                return candidate, true
             }
         }
     }

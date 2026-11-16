@@ -7370,7 +7370,7 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
             /* An unbound generic key is checked at each instantiation. */
             bool is_unbound = key_type->kind == TYPE_KIND_UNKNOWN;
             if (!is_unbound && (!is_orderable || is_enum_name(checker, map_type->key_type))) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E12008", map_type->key_type);
+                NODE_ERROR_FORMATTED(checker, first_argument, "E12008", named_type_display_name(checker, map_type->key_type));
             }
         }
     }
@@ -7406,7 +7406,8 @@ static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const ch
         GrayType *first_map_type = type_table_get(checker->type_table, first_argument);
         if (first_map_type && first_map_type->kind == TYPE_KIND_MAP && first_map_type->value_type) {
             GrayType *value_type = type_from_name(first_map_type->value_type);
-            if (value_type->kind == TYPE_KIND_ARRAY || value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_STRUCT) {
+            if (value_type->kind == TYPE_KIND_ARRAY || value_type->kind == TYPE_KIND_MAP || value_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_map_type->value_type))) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E12007", member_function_name, first_map_type->value_type);
             }
         }
@@ -7521,6 +7522,8 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             GrayType *element_type = type_from_name(array_type->element_type);
             bool orderable = type_is_numeric(element_type) || element_type->kind == TYPE_KIND_STRING ||
                               element_type->kind == TYPE_KIND_BOOL || element_type->kind == TYPE_KIND_ENUM;
+            if (typechecker_enum_is_tagged(checker, resolve_type_alias(checker, array_type->element_type)))
+                orderable = false;
             if (!orderable) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E9007", member_function_name, named_type_display_name(checker, array_type->element_type));
             }
@@ -7536,7 +7539,7 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
             GrayType *element_type = type_from_name(element_name);
             bool is_struct = element_type->kind == TYPE_KIND_STRUCT && !is_enum_name(checker, element_name);
             if (is_struct || element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP ||
-                element_type->kind == TYPE_KIND_POINTER) {
+                element_type->kind == TYPE_KIND_POINTER || typechecker_enum_is_tagged(checker, element_name)) {
                 NODE_ERROR_FORMATTED(checker, first_argument, "E3057", named_type_display_name(checker, element_name));
             }
         }
@@ -7559,7 +7562,8 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
-            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
+            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
                 NODE_ERROR_FORMATTED_HELP(checker, first_argument, "E5058",
                     "only primitive and string element types are supported", "arrays", "array elements", named_type_display_name(checker, first_argument_type->element_type));
             }
@@ -7570,9 +7574,20 @@ static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const 
         GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
         if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type) {
             GrayType *element_type = type_from_name(first_argument_type->element_type);
-            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT) {
-                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", named_type_display_name(checker, first_argument_type->element_type));
+            if (element_type->kind == TYPE_KIND_ARRAY || element_type->kind == TYPE_KIND_MAP || element_type->kind == TYPE_KIND_STRUCT ||
+                typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
+                NODE_ERROR_FORMATTED(checker, first_argument, "E9006", member_function_name, named_type_display_name(checker, first_argument_type->element_type));
             }
+        }
+    }
+    /* E9006: index_of and count compare elements by their bytes, as contains does. */
+    if ((strcmp(member_function_name, "index_of") == 0 || strcmp(member_function_name, "count") == 0) &&
+        node->data.call.argument_count >= 1) {
+        AstNode *first_argument = node->data.call.arguments[0];
+        GrayType *first_argument_type = type_table_get(checker->type_table, first_argument);
+        if (first_argument_type && first_argument_type->kind == TYPE_KIND_ARRAY && first_argument_type->element_type &&
+            typechecker_enum_is_tagged(checker, resolve_type_alias(checker, first_argument_type->element_type))) {
+            NODE_ERROR_FORMATTED(checker, first_argument, "E9006", member_function_name, named_type_display_name(checker, first_argument_type->element_type));
         }
     }
     /* E9003/E9004: map/filter/reduce callback validation */
@@ -8113,7 +8128,16 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
              * and codegen has no C type named after the alias. A name that
              * reaches no type was already reported; stay unknown so the
              * assignment does not report it a second time. */
-            if (type_argument->kind == NODE_LABEL &&
+            int generic_index = type_argument->kind == NODE_LABEL
+                ? generic_bindings_find(&checker->generics, type_argument->data.label.value) : -1;
+            if (generic_index >= 0) {
+                /* A type parameter stands for the type bound in this
+                 * instantiation; the node keeps the parameter's name for the
+                 * next one. */
+                const char *bound = checker->generics.types[generic_index];
+                result = type_pointer(bound ? bound : typechecker_format(checker, "?%s",
+                    type_argument->data.label.value));
+            } else if (type_argument->kind == NODE_LABEL &&
                 type_argument_names_a_type(checker, type_argument->data.label.value)) {
                 const char *target = resolve_type_alias(checker,
                     checker_resolve_type_name(checker, type_argument->data.label.value));
@@ -8264,6 +8288,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
 static bool type_argument_names_a_type(TypeChecker *checker, const char *name) {
     if (!name) return false;
     if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    if (generic_bindings_find(&checker->generics, name) >= 0) return true;
     if (typechecker_is_builtin(name) && type_from_name(name) != &TYPE_UNKNOWN)
         return true;
     const char *resolved = resolve_type_alias(checker,
@@ -13617,7 +13642,10 @@ static GrayType *resolve_expression_inner(TypeChecker *checker, AstNode *node) {
         reject_private_type(checker, node, written_target);
         const char *resolved_target = checker_resolve_type_name(checker, written_target);
         const char *target = resolve_type_alias(checker, resolved_target);
-        node->data.cast.target_type = target;
+        /* A generic body is checked again per instantiation, from this node:
+         * the written target must keep a distinct alias's name or the next
+         * pass types the cast as the representation. */
+        node->data.cast.target_type = resolve_type_alias_keeping_distinct(checker, resolved_target);
         /* E4016: a target that names no type, at any depth. The allowlist
          * below cannot stand in for this: an undefined capitalized name types
          * as TYPE_KIND_STRUCT and was reported as an unsupported conversion, and an
@@ -15865,8 +15893,9 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
 
     /* E3057: reject composite types as map keys before downstream checks
      * produce misleading cascades (e.g. struct-literal-in-index-position
-     * tripping "no field 'y'"). Enums are allowed; they're integer-backed
-     * and hash fine. */
+     * tripping "no field 'y'"). Plain enums are allowed; they're
+     * integer-backed and hash fine. A tagged enum carries a payload that is
+     * hashed by its bytes, so it is not. */
     if (declared->kind == TYPE_KIND_MAP && declared->key_type) {
         const char *key_type_name = resolve_type_alias(checker, declared->key_type);
         GrayType *key_resolved = type_from_name(key_type_name);
@@ -15876,6 +15905,7 @@ static void check_variable_declaration(TypeChecker *checker, AstNode *node) {
         else if (key_resolved->kind == TYPE_KIND_ARRAY) bad_name = "array";
         else if (key_resolved->kind == TYPE_KIND_MAP) bad_name = "map";
         else if (key_resolved->kind == TYPE_KIND_POINTER) bad_name = "pointer";
+        else if (typechecker_enum_is_tagged(checker, key_type_name)) bad_name = "tagged enum";
         if (bad_name) {
             NODE_ERROR_FORMATTED(checker, node, "E3057", named_type_display_name(checker, key_type_name));
         }
@@ -20257,10 +20287,14 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
              * A bare call inside the struct resolves to the top-level one,
              * leaving the struct function reachable only as Struct.func —
              * a silent shadow, so reject it at the declaration. */
+            const char *struct_module = module_table_module_for_file(checker->modules, statement->token.file);
             for (int index = 0; index < program->data.program.statement_count; index++) {
                 AstNode *top_statement = program->data.program.statements[index];
                 if (top_statement->kind != NODE_FUNCTION_DECLARATION ||
                     strcmp(top_statement->data.function_declaration.name, function_node->data.function_declaration.name) != 0)
+                    continue;
+                const char *top_module = module_table_module_for_file(checker->modules, top_statement->token.file);
+                if (struct_module != top_module && (!struct_module || !top_module || strcmp(struct_module, top_module) != 0))
                     continue;
                 NODE_ERROR_FORMATTED(checker, function_node, "E4022",
                     STRUCT_DISPLAY_NAME(statement), FUNCTION_DISPLAY_NAME(function_node), FUNCTION_DISPLAY_NAME(top_statement));
@@ -21258,6 +21292,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             int errors_before = diagnostic_error_count(checker->diagnostics);
             checker->should_suppress_type_table_writes = true;
             checker->diagnostics->should_skip_duplicates = true;
+            /* Arena lifetimes belong to one function body; the last body
+             * checked left its arenas behind under names this one can reuse. */
+            checker->arena_count = 0;
+            checker->reassigned_arena_path_count = 0;
             if (declaration->data.function_declaration.body) {
                 check_block(checker, declaration->data.function_declaration.body);
             }

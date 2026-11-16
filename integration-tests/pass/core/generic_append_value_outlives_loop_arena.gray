@@ -1,0 +1,55 @@
+/*
+ * generic_append_value_outlives_loop_arena.gray - arrays.append of a value
+ * typed by a generic parameter inside a loop keeps each element's own data.
+ */
+
+import @arrays
+
+const Item struct {
+    name string
+}
+
+do text(index i64) -> string {
+    return "c${index}"
+}
+
+do collect(kind generic, count i64, make func(i64) -> kind) -> [kind] {
+    mut out [kind] = {}
+    for index in range(0, count) { arrays.append(out, make(index)) }
+    return out
+}
+
+do collect_items(kind generic, count i64) -> [kind] {
+    mut out [kind] = {}
+    for index in range(0, count) { arrays.append(out, kind{name: "c${index}"}) }
+    return out
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const make func(i64) -> string = ()text
+    mut names [string] = collect(string, 3, make)
+    if names[0] == "c0" && names[1] == "c1" && names[2] == "c2" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] string elements from a function value")
+        failed += 1
+    }
+
+    mut items [Item] = collect_items(Item, 3)
+    if items[0].name == "c0" && items[1].name == "c1" && items[2].name == "c2" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] struct literal elements")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

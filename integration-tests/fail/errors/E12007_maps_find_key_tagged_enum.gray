@@ -1,0 +1,19 @@
+/*
+ * Error Test: E12007 - maps.find_key does not support tagged enum values
+ */
+
+// expect-error: E12007
+
+import @maps
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events map[string:Event] = {"a": Event.Quit}
+    mut key, found = maps.find_key(events, Event.Quit)
+    println(key)
+    println(found)
+}

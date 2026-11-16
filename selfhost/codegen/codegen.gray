@@ -466,7 +466,7 @@ fn expr_type(generator ^CodeGen, node ^ast.AstNode) -> string {
             is ast.NodeKind.CHAR_VALUE { return "char" }
             // These kinds are not plain literals, so they have no literal type
             // If a new NodeKind needs handling here, add a branch for it above
-            default {}
+            default { return eff(generator, node^.resolved_type) }
         }
     }
     if len(generator^.generics.names) > 0 && (node^.resolved_type == "unknown" || strings.starts_with(node^.resolved_type, "?")) {
@@ -1402,15 +1402,6 @@ fn c_quote(text string) -> string {
     return "${quoted}\""
 }
 
-// printf conversion for one interpolated value, or "" when it needs a helper.
-fn format_spec(type_name string) -> string {
-    if type_name == "bool" { return "" }
-    if is_signed_int_name(type_name) { return "%lld" }
-    if is_unsigned_int_name(type_name) { return "%llu" }
-    if is_float_name(type_name) { return "%g" }
-    return ""
-}
-
 // The string form of one interpolated part.
 fn gen_part_as_string(generator ^CodeGen, part ^ast.AstNode) -> string {
     if part^.kind == ast.NodeKind.NIL_VALUE { return "gray_string_lit(\"nil\")" }
@@ -1802,12 +1793,6 @@ fn gen_infix(generator ^CodeGen, node ^ast.AstNode) -> string {
     if node^.infix^.left^.kind == ast.NodeKind.INFIX_EXPR { left = "(${left})" }
     if node^.infix^.right^.kind == ast.NodeKind.INFIX_EXPR { right = "(${right})" }
     return "${left} ${op_text(operator)} ${right}"
-}
-
-// Division and modulo trap on a zero divisor and on MIN / -1.
-fn gen_division(generator ^CodeGen, node ^ast.AstNode, left string, right string, operator string, what string) -> string {
-    line = node^.tok.line
-    return "({ __auto_type _dn = (${left}); __auto_type _dv = (${right}); if (!_dv) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0078\", \"division by zero\"); } if ((int64_t)_dn == (-9223372036854775807LL - 1) && _dv == -1) { gray_panic_code_at(\"${generator^.file}\", ${line}, \"P0079\", \"%s result is too large; value exceeds the range of this type\", \"${what}\"); } _dn ${operator} _dv; })"
 }
 
 fn gen_struct_literal(generator ^CodeGen, node ^ast.AstNode) -> string {
@@ -4963,10 +4948,11 @@ fn function_needs_scope_mark(generator ^CodeGen, function_node ^ast.AstNode) -> 
 fn ensure_value_is_captured(generator ^CodeGen, value ^ast.AstNode) -> bool {
     when value^.kind {
         is ast.NodeKind.INT_VALUE, ast.NodeKind.FLOAT_VALUE, ast.NodeKind.STRING_VALUE, ast.NodeKind.CHAR_VALUE, ast.NodeKind.BOOL_VALUE, ast.NodeKind.NIL_VALUE, ast.NodeKind.ARRAY_VALUE, ast.NodeKind.MAP_VALUE, ast.NodeKind.STRUCT_VALUE { return false }
-        default {}
+        default {
+            value_type = expr_type(generator, value)
+            return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
+        }
     }
-    value_type = expr_type(generator, value)
-    return value_type != "" && value_type != "unknown" && !is_func_type(value_type)
 }
 
 fn ensure_receiver(generator ^CodeGen, call ^ast.AstNode) -> ^ast.AstNode {
@@ -5878,12 +5864,6 @@ fn gen_tagged_enum_body(generator ^CodeGen, name string, &done map[string:bool])
     emit(generator, "\n")
 }
 
-// Emits the struct or tagged enum a value of `type_name` holds by value.
-fn gen_by_value_dependency(generator ^CodeGen, type_name string, &done map[string:bool]) {
-    if maps.contains_key(generator^.structs, type_name) { gen_struct_definition(generator, type_name, done) }
-    if is_tagged_enum(generator, type_name) { gen_tagged_enum_body(generator, type_name, done) }
-}
-
 // A tagged enum variant with no payload, written as a name (`Shape.Point`, `.Point`).
 fn unit_variant_value(enum_name string, variant string) -> string {
     return "(GrayEnum_${enum_name}){ .tag = GrayEnum_${enum_name}_TAG_${variant} }"
@@ -6496,39 +6476,6 @@ fn when_range_text(generator ^CodeGen, subject string, subject_type string, rang
     mut text = "(${subject}${lower_operator}${start_text} && ${subject}${upper_operator}${gen_expr(generator, range_data^.end_expr)}"
     if step != nil { text = "${text} && (${subject} - ${start_text}) % ${gen_expr(generator, step)} == 0" }
     return "${text})"
-}
-
-fn range_membership_text(generator ^CodeGen, subject string, subject_type string, range_data ^ast.RangeData, where_node ^ast.AstNode) -> string {
-    mut wide_type = ""
-    if is_wide_name(subject_type) { wide_type = subject_type }
-    for_each bound in {range_data^.start_expr, range_data^.end_expr, range_data^.step} {
-        if wide_type == "" && bound != nil && (is_wide_name(expr_type(generator, bound)) || expr_type(generator, bound) == "u64") { wide_type = expr_type(generator, bound) }
-    }
-    if wide_type != "" {
-        prefix = range_prefix(wide_type)
-        c_wide = ctype(generator, wide_type)
-        id = next_id(generator)
-        mut start_text = "${prefix}_from_u64(0)"
-        if range_data^.start_expr != nil { start_text = gen_coerced(generator, wide_type, range_data^.start_expr) }
-        mut subject_text = "(uint64_t)(${subject})"
-        if wide_type != "u64" { subject_text = to_wide(wide_type, subject_type, subject) }
-        where = location_args(generator, where_node)
-        text = "({ ${c_wide} _rs${id} = ${subject_text}, _ra${id} = ${start_text}, _re${id} = ${gen_coerced(generator, wide_type, range_data^.end_expr)}; "
-        if range_data^.step == nil { return "${text}${prefix}_ge(_rs${id}, _ra${id}) && ${prefix}_lt(_rs${id}, _re${id}); })" }
-        zero = "${prefix}_from_u64(0)"
-        up = "${prefix}_ge(_rs${id}, _ra${id}) && ${prefix}_lt(_rs${id}, _re${id}) && ${prefix}_eq(${prefix}_mod(${prefix}_sub(_rs${id}, _ra${id}), _rt${id}, ${where}), ${zero})"
-        if !strings.starts_with(wide_type, "i") {
-            return "${text}${c_wide} _rt${id} = ${gen_coerced(generator, wide_type, range_data^.step)}; ${up}; })"
-        }
-        down = "${prefix}_lt(_rt${id}, ${zero}) && ${prefix}_le(_rs${id}, _ra${id}) && ${prefix}_gt(_rs${id}, _re${id}) && ${prefix}_eq(${prefix}_mod(${prefix}_sub(_ra${id}, _rs${id}), ${prefix}_neg(_rt${id}), ${where}), ${zero})"
-        return "${text}${c_wide} _rt${id} = ${gen_coerced(generator, wide_type, range_data^.step)}; ${prefix}_gt(_rt${id}, ${zero}) ? (${up}) : (${down}); })"
-    }
-    mut start_text = "0"
-    if range_data^.start_expr != nil { start_text = gen_expr(generator, range_data^.start_expr) }
-    end_text = gen_expr(generator, range_data^.end_expr)
-    if range_data^.step == nil { return "(${subject} >= ${start_text} && ${subject} < ${end_text})" }
-    id = next_id(generator)
-    return "({ int64_t _rs${id} = ${subject}, _ra${id} = ${start_text}, _re${id} = ${end_text}, _rt${id} = ${gen_expr(generator, range_data^.step)}; _rt${id} > 0 ? (_rs${id} >= _ra${id} && _rs${id} < _re${id} && (_rs${id} - _ra${id}) % _rt${id} == 0) : (_rt${id} < 0 && _rs${id} <= _ra${id} && _rs${id} > _re${id} && (_ra${id} - _rs${id}) % (-_rt${id}) == 0); })"
 }
 
 // True when `callee` (a member expression) names a field of a struct value, or of a pointer to
@@ -7324,30 +7271,6 @@ fn staged_value_copy(generator ^CodeGen, element_type string, temporary_name str
     return ""
 }
 
-// insert_at, prepend and fill on an array reached through a pointer: the growth and the
-// stored value are allocated in the heap arena.
-fn gen_heap_array_call(generator ^CodeGen, node ^ast.AstNode, function_name string) -> string {
-    arguments = node^.call^.args
-    element = array_element_type(expr_type(generator, arguments[0]))
-    element_c = ctype(generator, element)
-    arena = growth_arena(generator, arguments[0])
-    if function_name == "insert_at" {
-        escape = staged_value_escape(generator, element, "_iv", arena, arguments[0])
-        return "({ __auto_type _ii = ${gen_expr(generator, arguments[1])}; ${element_c} _iv = ${gen_stored(generator, element, arguments[2])}; ${escape}gray_arrays_insert_at(${arena}, ${address_of_arg(generator, arguments[0])}, _ii, &_iv); })"
-    }
-    if function_name == "prepend" {
-        escape = staged_value_escape(generator, element, "_pv", arena, arguments[0])
-        return "({ ${element_c} _pv = ${gen_stored(generator, element, arguments[1])}; ${escape}gray_arrays_prepend(${arena}, ${address_of_arg(generator, arguments[0])}, &_pv); })"
-    }
-    escape = staged_value_escape(generator, element, "_fv", arena, arguments[0])
-    mut per_slot_copy = ""
-    if element != "" && type_shares_storage(generator, element) {
-        // every filled slot needs its own copy of the value, or the slots and the source would share one backing store
-        per_slot_copy = " { GrayArena *_fs = gray_default_arena; gray_default_arena = ${arena}; for (int32_t _fi = 0; _fi < _fa->len; _fi++) { ((${element_c} *)_fa->data)[_fi] = ${value_deep_copy(generator, element, "_fv")}; } gray_default_arena = _fs; }"
-    }
-    return "({ ${element_c} _fv = ${gen_expr(generator, arguments[1])}; ${escape}GrayArray *_fa = ${address_of_arg(generator, arguments[0])}; gray_arrays_fill(${arena}, _fa, &_fv, ${gen_expr(generator, arguments[2])});${per_slot_copy} (void)0; })"
-}
-
 // True when `target` is stored through a pointer: `p^`, `p^.field`, or `p.field` with `p` a
 // pointer (not a ref variable), at any depth of a member chain.
 fn target_stored_through_pointer(generator ^CodeGen, target ^ast.AstNode) -> bool {
@@ -7390,15 +7313,6 @@ fn value_store_arena(generator ^CodeGen, target ^ast.AstNode) -> string {
     return ""
 }
 
-// The arena a map entry stored through a heap pointer variable lives in.
-fn map_store_escape(generator ^CodeGen, slot_type string, temporary_name string) -> string {
-    if eff(generator, slot_type) == "string" { return "${temporary_name} = gray_string_new(gray_heap_arena, ${temporary_name}.data, ${temporary_name}.len); " }
-    if slot_type != "" && needs_copy_walk(generator, slot_type, true) {
-        return "{ GrayArena *_esc = gray_default_arena; gray_default_arena = gray_heap_arena; ${temporary_name} = ${value_deep_copy(generator, slot_type, temporary_name)}; gray_default_arena = _esc; } "
-    }
-    return ""
-}
-
 // True when a variable was last assigned the result of new().
 fn is_heap_variable(generator ^CodeGen, name string) -> bool {
     return arrays.contains(generator^.heap_variables, name)
@@ -7423,20 +7337,6 @@ fn string_append_arena(generator ^CodeGen, target ^ast.AstNode) -> string {
     if target_stored_through_pointer(generator, target) { return "gray_heap_arena" }
     if generator^.loop_scope_depth > 0 && !generator^.is_module_store { return "_gray_outer_arena" }
     return "gray_default_arena"
-}
-
-// True when the map being stored into is a field of a variable assigned the result of new(): the
-// map lives in the heap arena, so the key, the value and the map's growth are allocated there too.
-fn map_stored_in_heap_variable(generator ^CodeGen, map_place ^ast.AstNode) -> bool {
-    if map_place^.kind != ast.NodeKind.MEMBER_EXPR { return false }
-    mut pointer_object ^ast.AstNode = nil
-    member_object = map_place^.member^.object
-    if strings.starts_with(expr_type(generator, member_object), "^") {
-        pointer_object = member_object
-    } or member_object^.kind == ast.NodeKind.POSTFIX_EXPR && member_object^.postfix^.op == token.TokenKind.CARET {
-        pointer_object = member_object^.postfix^.left
-    }
-    return pointer_object != nil && pointer_object^.kind == ast.NodeKind.LABEL && is_heap_variable(generator, pointer_object^.label^.value)
 }
 
 // A tagged enum copied: switch on the tag and copy the payloads of the live variant that hold

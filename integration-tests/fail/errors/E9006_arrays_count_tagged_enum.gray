@@ -1,0 +1,17 @@
+/*
+ * Error Test: E9006 - arrays.count does not support a tagged enum array
+ */
+
+// expect-error: E9006
+
+import @arrays
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events [Event] = {Event.Quit}
+    println(arrays.count(events, Event.Quit))
+}

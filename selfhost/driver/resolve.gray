@@ -21,10 +21,6 @@ const CAST_ARGUMENT_COUNT i64 = 2
 // reports them as used.
 mut entry_used_aliases [string:bool] = {:}
 
-fn note_entry_used_alias(module_alias string) {
-    entry_used_aliases[module_alias] = true
-}
-
 // Private declarations of module files, by mangled name: the original name, the
 // file that declares it, and whether it is a type alias (the error differs for a type alias).
 mut private_names [string:string] = {:}
@@ -166,7 +162,7 @@ fn register_private_declarations(program ^ast.AstNode, module_name string, file 
             }
             // Expressions and statements declare no top-level name
             // If a new NodeKind needs handling here, add a branch for it above
-            default {}
+            default { name = "" }
         }
         if !is_private { continue }
         mangled string = mangle(module_name, name)
@@ -467,7 +463,7 @@ fn qualify_node(qualifier ^Qualifier, node ^ast.AstNode) {
         }
         // These kinds have no child nodes to qualify
         // If a new NodeKind needs handling here, add a branch for it above
-        default {}
+        default { return }
     }
 }
 
@@ -513,7 +509,7 @@ fn qualify_program(program ^ast.AstNode, module_name string, file string, aliase
             is ast.NodeKind.ALIAS_DECL { decls[statement^.alias_decl^.name] = true }
             // Every other node kind is an expression or statement that only appears inside a function body
             // If a new NodeKind can declare a top-level name, add a branch for it above
-            default {}
+            default { continue }
         }
     }
     // Names only another file of the same directory module declares

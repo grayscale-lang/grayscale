@@ -245,7 +245,6 @@ fn read_number(lexer ^Lexer) -> (string, token.TokenKind) {
         }
     }
 
-    // Decimal digits
     as_long_as is_digit(lexer^.ch) || lexer^.ch == '_' {
         read_char(lexer)
     }
@@ -591,16 +590,6 @@ fn byte_value(character char) -> i64 {
     return value
 }
 
-// Length of the UTF-8 sequence a lead byte introduces, or 0 if it is not a
-// valid lead byte (a continuation byte or 0xF8 and above).
-fn utf8_sequence_length(lead i64) -> i64 {
-    if lead < ASCII_LIMIT { return 1 }
-    if lead >= TWO_BYTE_PATTERN_MIN && lead < THREE_BYTE_LEAD_MIN { return TWO_BYTE_SEQUENCE_LENGTH }
-    if lead >= THREE_BYTE_LEAD_MIN && lead < FOUR_BYTE_LEAD_MIN { return THREE_BYTE_SEQUENCE_LENGTH }
-    if lead >= FOUR_BYTE_LEAD_MIN && lead < FOUR_BYTE_PATTERN_LIMIT { return FOUR_BYTE_SEQUENCE_LENGTH }
-    return 0
-}
-
 fn read_char_literal(lexer ^Lexer) -> string {
     read_char(lexer)
     start i64 = lexer^.pos
@@ -720,7 +709,6 @@ fn next_token(lexer ^Lexer) -> token.Token {
         return nul_tok
     }
 
-    // EOF
     if lexer^.ch == '\0' {
         current_token token.Token = token.make_token(token.TokenKind.EOF, "", line, col)
         current_token.file = lexer^.file
@@ -786,7 +774,6 @@ fn next_token(lexer ^Lexer) -> token.Token {
         return current_token
     }
 
-    // Char literals
     if lexer^.ch == '\'' {
         lexer^.error_code = ""
         literal string = read_char_literal(lexer)

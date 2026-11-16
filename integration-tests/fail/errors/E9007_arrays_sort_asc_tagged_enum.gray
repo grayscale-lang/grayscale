@@ -1,0 +1,17 @@
+/*
+ * Error Test: E9007 - arrays.sort_asc requires a comparable array, not a tagged enum
+ */
+
+// expect-error: E9007
+
+import @arrays
+
+const Event enum {
+    Name(string)
+    Quit
+}
+
+do main() {
+    mut events [Event] = {Event.Quit}
+    arrays.sort_asc(events)
+}
