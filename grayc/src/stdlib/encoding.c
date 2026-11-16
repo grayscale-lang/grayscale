@@ -283,6 +283,8 @@ GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString string) {
                 }
             }
             if (is_valid) {
+                /* U+0000 and the surrogates are not valid text: decode them to U+FFFD. */
+                if (codepoint == 0 || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) codepoint = 0xFFFD;
                 int32_t entity_length = encoding_utf8_encode(codepoint, output + j);
                 if (entity_length > 0) { j += entity_length; consumed = 1; }
             }
