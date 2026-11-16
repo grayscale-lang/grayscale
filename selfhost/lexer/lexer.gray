@@ -245,7 +245,6 @@ fn read_number(lexer ^Lexer) -> (string, token.TokenKind) {
         }
     }
 
-    // Decimal digits
     as_long_as is_digit(lexer^.ch) || lexer^.ch == '_' {
         read_char(lexer)
     }
@@ -710,7 +709,6 @@ fn next_token(lexer ^Lexer) -> token.Token {
         return nul_tok
     }
 
-    // EOF
     if lexer^.ch == '\0' {
         current_token token.Token = token.make_token(token.TokenKind.EOF, "", line, col)
         current_token.file = lexer^.file
@@ -776,7 +774,6 @@ fn next_token(lexer ^Lexer) -> token.Token {
         return current_token
     }
 
-    // Char literals
     if lexer^.ch == '\'' {
         lexer^.error_code = ""
         literal string = read_char_literal(lexer)

@@ -1277,7 +1277,6 @@ fn main() {
     if opts.no_color { diagnostics.disable_color() }
     diagnostics.configure_warnings(opts.quiet_all, opts.quiet_codes)
 
-    // Lex and parse
     lex = lexer.lexer_create(source, opts.input_file)
     par = parser.parser_create(lex, opts.input_file)
     program = parser.parse_program(par)
