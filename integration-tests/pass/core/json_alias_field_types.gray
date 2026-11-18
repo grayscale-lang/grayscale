@@ -1,0 +1,63 @@
+/*
+ * json_alias_field_types.gray - A #json struct field whose type is an alias,
+ * or a distinct alias, of a number, bool or string is marshalled as its
+ * target type.
+ */
+import @json
+
+alias Num = i64
+alias Small = u8
+alias Real = f64
+alias Flag = bool
+alias Name = string
+distinct alias Id = i64
+distinct alias Label = string
+
+#json
+const Record struct {
+    num Num
+    small Small
+    real Real
+    flag Flag
+    name Name
+    id Id
+    label Label
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== #json alias field types ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut record Record = json.parse("{\"num\": 7, \"small\": 200, \"real\": 1.5, \"flag\": true, \"name\": \"a\", \"id\": 9, \"label\": \"b\"}")
+    check("number alias", record.num == 7, addr(passed), addr(failed))
+    check("unsigned alias", record.small == 200, addr(passed), addr(failed))
+    check("float alias", record.real == 1.5, addr(passed), addr(failed))
+    check("bool alias", record.flag, addr(passed), addr(failed))
+    check("string alias", record.name == "a", addr(passed), addr(failed))
+    check("distinct number alias", cast(record.id, i64) == 9, addr(passed), addr(failed))
+    check("distinct string alias", cast(record.label, string) == "b", addr(passed), addr(failed))
+
+    encoded = json.encode(record)
+    again Record = json.parse(encoded)
+    check("round trip", again.num == 7 && again.small == 200 && again.flag && again.name == "a" && cast(again.id, i64) == 9, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

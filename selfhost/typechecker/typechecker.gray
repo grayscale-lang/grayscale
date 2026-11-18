@@ -11990,7 +11990,7 @@ fn json_field_type_supported(checker ^TypeChecker, type_name string) -> bool {
         return field_type^.element_type != "" && !strings.contains(field_type^.element_type, "[") && json_field_type_supported(checker, field_type^.element_type)
     }
     if field_type^.kind == types.TypeKind.INT || field_type^.kind == types.TypeKind.UINT || field_type^.kind == types.TypeKind.FLOAT { return true }
-    if type_name == "string" || type_name == "bool" { return true }
+    if field_type^.kind == types.TypeKind.STRING || field_type^.kind == types.TypeKind.BOOL { return true }
     if field_type^.kind == types.TypeKind.STRUCT {
         info = find_struct(checker, field_type^.name)
         return info != nil && info^.is_json
