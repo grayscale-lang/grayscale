@@ -12064,6 +12064,7 @@ fn check_struct_declaration(checker ^TypeChecker, node ^ast.AstNode) {
             if field_default == nil || field_index >= len(declared_info^.field_types) { continue }
             field_type = declared_info^.field_types[field_index]
             default_type = check_expression_as(checker, field_default, field_type)
+            reject_multi_return_in_single_position(checker, field_default)
             if default_type^.kind != types.TypeKind.UNKNOWN && field_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, field_type, default_type) && default_type^.kind != types.TypeKind.NIL_TYPE {
                 add_diagnostic(checker, "E3175", error_registry.registry_message_formatted("E3175", {sd^.struct_fields[field_index].name, shown_type(checker, field_type), shown_type(checker, default_type)}), field_default^.tok.file, field_default^.tok.line, field_default^.tok.col)
             }

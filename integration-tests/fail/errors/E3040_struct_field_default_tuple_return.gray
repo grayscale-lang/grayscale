@@ -1,0 +1,15 @@
+// expect-error: E3040
+// expect-error-count: 1
+
+do pair() -> (i64, i64) {
+    return 1, 2
+}
+
+const Cfg struct {
+    n i64 = pair()
+}
+
+do main() {
+    const c Cfg = Cfg{}
+    println("${c.n}")
+}

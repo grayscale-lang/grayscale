@@ -18418,6 +18418,7 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
 /* Checks a struct field's default value against the field's type (E3175). */
 static void check_struct_field_default(TypeChecker *checker, StructField *field, GrayType *field_type) {
     GrayType *default_type = check_expression_as(checker, field->default_value, field_type);
+    reject_multi_return_in_single_position(checker, field->default_value);
     if (default_type && field_type && default_type->kind != TYPE_KIND_UNKNOWN &&
         field_type->kind != TYPE_KIND_UNKNOWN &&
         !types_assignable(checker, field_type, default_type) &&
