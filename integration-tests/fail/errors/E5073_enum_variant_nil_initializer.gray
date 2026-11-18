@@ -1,0 +1,7 @@
+const Mode enum {
+    A = nil
+}
+
+do main() {
+    println("hi")
+}

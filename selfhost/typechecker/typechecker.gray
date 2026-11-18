@@ -8891,6 +8891,18 @@ fn expression_global_reference(node ^ast.AstNode) -> string {
     }
 }
 
+// True when an enum variant's value is not an integer or string constant by its
+// form: a float, bool or nil literal, or an operator over strings.
+fn enum_variant_value_is_not_constant(node ^ast.AstNode) -> bool {
+    when node^.kind {
+        is ast.NodeKind.FLOAT_VALUE { return true }
+        is ast.NodeKind.BOOL_VALUE { return true }
+        is ast.NodeKind.NIL_VALUE { return true }
+        is ast.NodeKind.INFIX_EXPR { return node^.infix^.left^.resolved_type == "string" || node^.infix^.right^.resolved_type == "string" }
+        default { return false }
+    }
+}
+
 fn expression_contains_call(node ^ast.AstNode) -> bool {
     if node == nil { return false }
     when node^.kind {
@@ -12209,6 +12221,10 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
                 }
                 if expression_contains_call(variant_value) {
                     add_diagnostic(checker, "E5040", error_registry.registry_message("E5040"), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                }
+                if enum_variant_value_is_not_constant(variant_value) {
+                    add_diagnostic(checker, "E5073", error_registry.registry_message_formatted("E5073", {variant.name}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                    continue
                 }
                 global_name = expression_global_reference(variant_value)
                 if global_name != "" {

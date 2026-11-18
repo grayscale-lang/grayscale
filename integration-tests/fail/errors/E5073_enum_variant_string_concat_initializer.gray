@@ -1,0 +1,7 @@
+const Mode enum {
+    A = "x" + "y"
+}
+
+do main() {
+    println("hi")
+}

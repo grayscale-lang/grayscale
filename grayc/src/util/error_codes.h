@@ -409,7 +409,8 @@
     GRAY_ERROR("E5069", "usage", "'size_of()' requires a type, not a value") \
     GRAY_ERROR("E5070", "usage", "'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value") \
     GRAY_ERROR("E5071", "arguments", "missing required parameter '%s' in call to '%s'") \
-    GRAY_ERROR("E5072", "usage", "enum variant '%s' requires a compile-time constant; '%s' is not a const whose value is known at compile time")
+    GRAY_ERROR("E5072", "usage", "enum variant '%s' requires a compile-time constant; '%s' is not a const whose value is known at compile time") \
+    GRAY_ERROR("E5073", "usage", "enum variant '%s' must be an integer or string constant")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \

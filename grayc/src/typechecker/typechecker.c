@@ -14143,6 +14143,24 @@ static const char *expression_global_reference(AstNode *node) {
     }
 }
 
+/* True when an enum variant's value is not an integer or string constant by
+ * its form: a float, bool or nil literal, or an operator over strings. */
+static bool enum_variant_value_is_not_constant(TypeChecker *checker, AstNode *node) {
+    switch (node->kind) {
+    case NODE_FLOATING_POINT_LITERAL:
+    case NODE_BOOL_VALUE:
+    case NODE_NIL_VALUE:
+        return true;
+    case NODE_INFIX_EXPRESSION: {
+        GrayType *left = type_table_get(checker->type_table, node->data.infix.left);
+        GrayType *right = type_table_get(checker->type_table, node->data.infix.right);
+        return (left && left->kind == TYPE_KIND_STRING) || (right && right->kind == TYPE_KIND_STRING);
+    }
+    default:
+        return false;
+    }
+}
+
 static bool expression_contains_call(AstNode *node) {
     if (!node) return false;
     switch (node->kind) {
@@ -19284,6 +19302,10 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
             if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
             resolve_expression(checker, variant_value);
             if (expression_contains_call(variant_value)) NODE_ERROR(checker, variant_value, "E5040");
+            if (enum_variant_value_is_not_constant(checker, variant_value)) {
+                NODE_ERROR_FORMATTED(checker, variant_value, "E5073", node->data.enum_declaration.values[j].name);
+                continue;
+            }
             const char *global_name = expression_global_reference(variant_value);
             if (global_name)
                 NODE_ERROR_FORMATTED(checker, variant_value, "E5072", node->data.enum_declaration.values[j].name, global_name);

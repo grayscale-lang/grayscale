@@ -1,0 +1,7 @@
+const Mode enum {
+    A = 1.5
+}
+
+do main() {
+    println("hi")
+}
