@@ -5903,7 +5903,7 @@ fn gen_enum_definition(generator ^CodeGen, node ^ast.AstNode) {
         for_each value in data^.values {
             // a variant without a value is its own name
             mut text = value.name
-            if value.value != nil { text = ast.ast_string_decode(value.value^.string_value) }
+            if value.value != nil && value.value^.kind == ast.NodeKind.STRING_VALUE { text = ast.ast_string_decode(value.value^.string_value) }
             emit_line(generator, "#define GrayEnum_${data^.name}_${value.name} ((GrayString){ ${c_quote(text)}, ${len(text)} })")
         }
         emit(generator, "\n")

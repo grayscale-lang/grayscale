@@ -1,0 +1,43 @@
+/*
+ * enum_mixed_integer_and_string_variants.gray - An enum with both an integer
+ * variant value and a string variant value is a string enum; the integer-valued
+ * variant is named by its own name.
+ */
+
+const Mixed enum {
+    A = 10
+    B = "b"
+}
+
+const Reversed enum {
+    X = "x"
+    Y = 5
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== enum mixing integer and string variant values ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    check("integer variant first", cast(Mixed.A, string) == "A" && cast(Mixed.B, string) == "b", addr(passed), addr(failed))
+    check("integer variant last", cast(Reversed.X, string) == "x" && cast(Reversed.Y, string) == "Y", addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
