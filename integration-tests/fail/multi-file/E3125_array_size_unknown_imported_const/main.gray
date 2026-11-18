@@ -1,0 +1,7 @@
+import "./lib.gray"
+
+const Arr [i64, lib.NOPE] = {1}
+
+do main() {
+    println("${len(Arr)}")
+}

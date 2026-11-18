@@ -6746,15 +6746,40 @@ static void typechecker_resolve_array_size_text(TypeChecker *checker,
         return;
     }
 
-    /* Look up the identifier in the const integer table. */
-    int const_index = find_const_integer(checker, size_text);
-    if (const_index < 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3125",
-            file, line, column, 0,
-            size_text);
-        return;
+    /* Look up the identifier in the const integer table. A `module.NAME` is
+     * read from its own declaration: the table is keyed by the bare name,
+     * which another module's const may share. */
+    LiteralValue resolved;
+    char *qualifier_dot = strchr(size_text, '.');
+    if (qualifier_dot) {
+        char qualifier[MESSAGE_BUFFER_SIZE];
+        size_t qualifier_length = (size_t)(qualifier_dot - size_text);
+        DeclarationEntry *entry = NULL;
+        ResolveStatus status = RESOLVE_NO_MODULE;
+        if (checker->modules && qualifier_length < sizeof(qualifier)) {
+            memcpy(qualifier, size_text, qualifier_length);
+            qualifier[qualifier_length] = '\0';
+            ResolveScope scope = checker_scope(checker);
+            entry = module_resolve_qualified(checker->modules, &scope, qualifier, qualifier_dot + 1, &status);
+        }
+        AstNode *declaration = status == RESOLVE_OK && entry && entry->kind == DECLARATION_CONST ? entry->ast_node : NULL;
+        if (!declaration || declaration->kind != NODE_VARIABLE_DECLARATION ||
+            declaration->data.variable_declaration.is_mutable || !declaration->data.variable_declaration.value ||
+            !declaration->data.variable_declaration.type_name ||
+            !is_integer_type_name(declaration->data.variable_declaration.type_name) ||
+            !constant_fold(checker, declaration->data.variable_declaration.value, &resolved) ||
+            resolved.is_decimal || resolved.is_too_large) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3125", file, line, column, 0, size_text);
+            return;
+        }
+    } else {
+        int const_index = find_const_integer(checker, size_text);
+        if (const_index < 0) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3125", file, line, column, 0, size_text);
+            return;
+        }
+        resolved = checker->const_integer_values[const_index];
     }
-    LiteralValue resolved = checker->const_integer_values[const_index];
     const char *resolved_text = literal_text(checker, &resolved);
     if (resolved.is_negative || magnitude_is_zero(resolved.magnitude)) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3126",

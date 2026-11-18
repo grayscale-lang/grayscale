@@ -9170,7 +9170,13 @@ fn resolve_array_size_text(checker ^TypeChecker, type_text string, file string, 
         }
         return type_text
     }
-    index = folding.constant_table_find(checker^.const_integers, size_text)
+    // A `module.NAME` is registered under the module's own spelling of the name
+    mut lookup_name = size_text
+    dot = strings.index_of(size_text, ".")
+    if dot > 0 {
+        lookup_name = "${resolve_import_alias(checker, strings.slice(size_text, 0, dot))}_${strings.slice(size_text, dot + 1, len(size_text))}"
+    }
+    index = folding.constant_table_find(checker^.const_integers, lookup_name)
     if index < 0 {
         add_diagnostic(checker, "E3125", error_registry.registry_message_formatted("E3125", {size_text}), file, line, col)
         return type_text
