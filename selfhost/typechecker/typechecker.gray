@@ -11206,9 +11206,6 @@ fn check_function_declaration_bound(checker ^TypeChecker, node ^ast.AstNode, bin
                 }
             }
         }
-        scope.scope_define(function_scope, p.name, parameter_type, p.is_mutable)
-        parameter_symbol = scope.scope_lookup_local(function_scope, p.name)
-        if parameter_symbol != nil { parameter_symbol^.param_line = node^.tok.line }
         // A default value must fit its parameter (checked once, in the unbound pass)
         if p.default_value != nil && p.type_name != "" && binding_text == "" {
             default_type = check_expression_as(checker, p.default_value, parameter_type)
@@ -11217,6 +11214,9 @@ fn check_function_declaration_bound(checker ^TypeChecker, node ^ast.AstNode, bin
                 add_diagnostic(checker, "E5062", error_registry.registry_message_formatted("E5062", {p.name, p.type_name, shown_type(checker, default_type)}), p.default_value^.tok.file, p.default_value^.tok.line, p.default_value^.tok.col)
             }
         }
+        scope.scope_define(function_scope, p.name, parameter_type, p.is_mutable)
+        parameter_symbol = scope.scope_lookup_local(function_scope, p.name)
+        if parameter_symbol != nil { parameter_symbol^.param_line = node^.tok.line }
         // The parameter shadows a global constant or variable
         if binding_text == "" && p.name != "_" {
             global_symbol = scope.scope_lookup(outer, p.name)

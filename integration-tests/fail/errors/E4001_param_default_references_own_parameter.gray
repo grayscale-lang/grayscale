@@ -1,0 +1,7 @@
+do f(a i64 = a) -> i64 {
+    return a
+}
+
+do main() {
+    println("${f()}")
+}
