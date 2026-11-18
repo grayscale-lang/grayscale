@@ -6751,16 +6751,23 @@ static void typechecker_resolve_array_size_text(TypeChecker *checker,
      * which another module's const may share. */
     LiteralValue resolved;
     char *qualifier_dot = strchr(size_text, '.');
-    if (qualifier_dot) {
-        char qualifier[MESSAGE_BUFFER_SIZE];
-        size_t qualifier_length = (size_t)(qualifier_dot - size_text);
+    if (qualifier_dot || checker->modules) {
         DeclarationEntry *entry = NULL;
         ResolveStatus status = RESOLVE_NO_MODULE;
-        if (checker->modules && qualifier_length < sizeof(qualifier)) {
-            memcpy(qualifier, size_text, qualifier_length);
-            qualifier[qualifier_length] = '\0';
+        if (qualifier_dot) {
+            char qualifier[MESSAGE_BUFFER_SIZE];
+            size_t qualifier_length = (size_t)(qualifier_dot - size_text);
+            if (checker->modules && qualifier_length < sizeof(qualifier)) {
+                memcpy(qualifier, size_text, qualifier_length);
+                qualifier[qualifier_length] = '\0';
+                ResolveScope scope = checker_scope(checker);
+                entry = module_resolve_qualified(checker->modules, &scope, qualifier, qualifier_dot + 1, &status);
+            }
+        } else {
+            /* A bare name is the file's own const, or one a `using` brings in. */
             ResolveScope scope = checker_scope(checker);
-            entry = module_resolve_qualified(checker->modules, &scope, qualifier, qualifier_dot + 1, &status);
+            entry = module_resolve_unqualified(checker->modules, &scope, size_text, NULL);
+            status = RESOLVE_OK;
         }
         AstNode *declaration = status == RESOLVE_OK && entry && entry->kind == DECLARATION_CONST ? entry->ast_node : NULL;
         if (!declaration || declaration->kind != NODE_VARIABLE_DECLARATION ||

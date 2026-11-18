@@ -1,0 +1,24 @@
+/*
+ * Test: a bare const name as a fixed array size is the file's own const, not
+ * an imported file's const of the same name.
+ */
+import "./lib.gray"
+
+const MAX i64 = 3
+
+const Arr [i64, MAX] = {1, 2, 3}
+
+const Holder struct {
+    slots [i64, MAX]
+}
+
+do main() {
+    const Local [i64, MAX] = {1, 2, 3}
+    const holder Holder = Holder{slots: {1, 2, 3}}
+    assert(len(Arr) == 3, "file-scope array size")
+    assert(len(Local) == 3, "function-local array size")
+    assert(len(holder.slots) == 3, "struct field array size")
+    assert(lib.MAX == 5, "imported const keeps its value")
+
+    println("ALL TESTS PASSED")
+}
