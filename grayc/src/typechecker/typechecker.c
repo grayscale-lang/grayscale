@@ -14117,6 +14117,32 @@ static void check_statement(TypeChecker *checker, AstNode *node);
  * a top-level var_decl produce invalid C (free-standing init or
  * non-constant initializer), so the Grayscale side must reject them with
  * a real diagnostic before codegen runs. */
+/* The first file-scope variable `node` names, or NULL. An enum variant's
+ * value is a C constant, which cannot read a global. */
+static const char *expression_global_reference(AstNode *node) {
+    if (!node) return NULL;
+    switch (node->kind) {
+    case NODE_LABEL:
+        return node->data.label.is_file_global_reference ? node->data.label.value : NULL;
+    case NODE_PREFIX_EXPRESSION:
+        return expression_global_reference(node->data.prefix.right);
+    case NODE_INFIX_EXPRESSION: {
+        const char *left = expression_global_reference(node->data.infix.left);
+        return left ? left : expression_global_reference(node->data.infix.right);
+    }
+    case NODE_INDEX_EXPRESSION: {
+        const char *left = expression_global_reference(node->data.index_expression.left);
+        return left ? left : expression_global_reference(node->data.index_expression.index);
+    }
+    case NODE_MEMBER_EXPRESSION:
+        return expression_global_reference(node->data.member.object);
+    case NODE_CAST_EXPRESSION:
+        return expression_global_reference(node->data.cast.value);
+    default:
+        return NULL;
+    }
+}
+
 static bool expression_contains_call(AstNode *node) {
     if (!node) return false;
     switch (node->kind) {
@@ -19258,6 +19284,9 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
             if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
             resolve_expression(checker, variant_value);
             if (expression_contains_call(variant_value)) NODE_ERROR(checker, variant_value, "E5040");
+            const char *global_name = expression_global_reference(variant_value);
+            if (global_name)
+                NODE_ERROR_FORMATTED(checker, variant_value, "E5072", node->data.enum_declaration.values[j].name, global_name);
         }
         /* E4016: a tagged variant's payload type must name a type, at any depth */
         for (int variant_index = 0; variant_index < node->data.enum_declaration.value_count; variant_index++) {
@@ -19768,12 +19797,82 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
     }
 }
 
+/* The file-scope const named `name` declared in the same file as `origin`,
+ * or NULL. */
+static AstNode *find_file_scope_const(AstNode *program, AstNode *origin, const char *name) {
+    for (int i = 0; i < program->data.program.statement_count; i++) {
+        AstNode *statement = program->data.program.statements[i];
+        if (statement->kind != NODE_VARIABLE_DECLARATION || statement->data.variable_declaration.is_mutable ||
+            statement->data.variable_declaration.is_synthetic || !statement->data.variable_declaration.value ||
+            strcmp(statement->data.variable_declaration.name, name) != 0) continue;
+        if (statement->token.file != origin->token.file &&
+            (!statement->token.file || !origin->token.file || strcmp(statement->token.file, origin->token.file) != 0)) continue;
+        return statement;
+    }
+    return NULL;
+}
+
+/* Fold an enum variant initializer into a literal: a file-scope const's
+ * name, an element of a const array literal, or integer arithmetic over
+ * consts. A C enum constant cannot name a gray_g_* global, so the literal
+ * is what codegen emits. Returns a string or integer literal, or NULL when
+ * `node` does not reduce to one. */
+static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, AstNode *node, int depth) {
+    if (depth > 16) return NULL;
+    if (node->kind == NODE_LABEL) {
+        AstNode *declaration = find_file_scope_const(program, node, node->data.label.value);
+        if (declaration && declaration->data.variable_declaration.value->kind == NODE_STRING_VALUE)
+            return declaration->data.variable_declaration.value;
+    } else if (node->kind == NODE_INDEX_EXPRESSION && node->data.index_expression.left->kind == NODE_LABEL) {
+        AstNode *declaration = find_file_scope_const(program, node, node->data.index_expression.left->data.label.value);
+        LiteralValue index_value;
+        int64_t index;
+        if (!declaration || declaration->data.variable_declaration.value->kind != NODE_ARRAY_VALUE ||
+            !constant_fold(checker, node->data.index_expression.index, &index_value) || index_value.is_decimal ||
+            !literal_value_as_i64(&index_value, &index)) return NULL;
+        AstNode *array = declaration->data.variable_declaration.value;
+        if (index < 0 || index >= array->data.array_value.count) return NULL;
+        AstNode *element = array->data.array_value.elements[index];
+        if (element->kind == NODE_STRING_VALUE || is_literal_expression(element)) return element;
+        return fold_enum_variant_value(checker, program, element, depth + 1);
+    }
+    LiteralValue folded;
+    int64_t number;
+    if (is_literal_expression(node) || !constant_fold(checker, node, &folded) || folded.is_decimal ||
+        folded.is_too_large || !literal_value_as_i64(&folded, &number) || number == INT64_MIN) return NULL;
+    char digits[32];
+    snprintf(digits, sizeof(digits), "%lld", (long long)(number < 0 ? -number : number));
+    AstNode *literal = ast_allocate(checker->arena, NODE_INTEGER_LITERAL, node->token);
+    literal->data.integer_literal.value = number < 0 ? -number : number;
+    literal->data.integer_literal.literal = arena_copy_string(checker->arena, digits);
+    if (number >= 0) return literal;
+    AstNode *negation = ast_allocate(checker->arena, NODE_PREFIX_EXPRESSION, node->token);
+    negation->data.prefix.operator = TOKEN_MINUS;
+    negation->data.prefix.right = literal;
+    return negation;
+}
+
+/* Replace each variant initializer that names a const with its folded
+ * literal, keeping the variant's own source position. */
+static void fold_enum_variant_values(TypeChecker *checker, AstNode *program, AstNode *enum_node) {
+    for (int j = 0; j < enum_node->data.enum_declaration.value_count; j++) {
+        AstNode *variant_value = enum_node->data.enum_declaration.values[j].value;
+        if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
+        AstNode *folded = fold_enum_variant_value(checker, program, variant_value, 0);
+        if (!folded) continue;
+        Token position = variant_value->token;
+        *variant_value = *folded;
+        variant_value->token = position;
+    }
+}
+
 static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
     /* Register enums BEFORE structs so that struct field types
      * referencing enums resolve correctly via typechecker_type_from_name(). */
     for (int i = 0; i < program->data.program.statement_count; i++) {
         AstNode *statement = program->data.program.statements[i];
         if (statement->kind != NODE_ENUM_DECLARATION) continue;
+        fold_enum_variant_values(checker, program, statement);
 
         /* E2038: reserved name for enums */
         const char *enum_name = ENUM_DISPLAY_NAME(statement);

@@ -613,10 +613,79 @@ fn enum_display_name_for(statement ^ast.AstNode) -> string {
     return statement^.enum_decl^.name
 }
 
+// The file-scope const named `name` declared in the same file as `origin`, or nil.
+fn find_file_scope_const(program ^ast.AstNode, origin ^ast.AstNode, name string) -> ^ast.AstNode {
+    for_each statement in program^.program^.stmts {
+        if statement^.kind != ast.NodeKind.VAR_DECL { continue }
+        declaration = statement^.var_decl
+        if declaration^.is_mutable || declaration^.is_synthetic || declaration^.value == nil || declaration^.name != name { continue }
+        if statement^.tok.file != origin^.tok.file { continue }
+        return statement
+    }
+    return nil
+}
+
+// Folds an enum variant initializer into a literal: a file-scope const's name,
+// an element of a const array literal, or integer arithmetic over consts. A C
+// enum constant cannot name a global, so the literal is what codegen emits.
+// Returns a string or integer literal, or nil when `node` does not reduce to one.
+fn fold_enum_variant_value(checker ^TypeChecker, program ^ast.AstNode, node ^ast.AstNode, depth i64) -> ^ast.AstNode {
+    if depth > 16 { return nil }
+    if node^.kind == ast.NodeKind.LABEL {
+        declaration = find_file_scope_const(program, node, node^.label^.value)
+        if declaration != nil && declaration^.var_decl^.value^.kind == ast.NodeKind.STRING_VALUE {
+            return declaration^.var_decl^.value
+        }
+    } or node^.kind == ast.NodeKind.INDEX_EXPR && node^.index_data^.left^.kind == ast.NodeKind.LABEL {
+        declaration = find_file_scope_const(program, node, node^.index_data^.left^.label^.value)
+        if declaration == nil || declaration^.var_decl^.value^.kind != ast.NodeKind.ARRAY_VALUE { return nil }
+        index_value, index_is_constant = folding.constant_fold(checker^.const_integers, node^.index_data^.index_expr)
+        if !index_is_constant || index_value.is_decimal { return nil }
+        index, index_fits = folding.literal_value_as_i64(index_value)
+        elements = declaration^.var_decl^.value^.array_value^.elements
+        if !index_fits || index < 0 || index >= len(elements) { return nil }
+        element = elements[index]
+        if element^.kind == ast.NodeKind.STRING_VALUE || folding.is_literal_expression(element) { return element }
+        return fold_enum_variant_value(checker, program, element, depth + 1)
+    }
+    if folding.is_literal_expression(node) { return nil }
+    folded, is_constant = folding.constant_fold(checker^.const_integers, node)
+    if !is_constant || folded.is_decimal || folded.is_too_large { return nil }
+    number, fits_i64 = folding.literal_value_as_i64(folded)
+    if !fits_i64 || number == -9223372036854775807 - 1 { return nil }
+    mut magnitude i64 = number
+    if number < 0 { magnitude = -number }
+    literal = ast.ast_alloc(ast.NodeKind.INT_VALUE, node^.tok)
+    literal^.int_value = new(ast.IntValueData)
+    literal^.int_value^.value = magnitude
+    literal^.int_value^.literal = "${magnitude}"
+    if number >= 0 { return literal }
+    negation = ast.ast_alloc(ast.NodeKind.PREFIX_EXPR, node^.tok)
+    negation^.prefix = new(ast.PrefixData)
+    negation^.prefix^.op = token.TokenKind.MINUS
+    negation^.prefix^.right = literal
+    return negation
+}
+
+// Replaces each variant initializer that names a const with its folded literal,
+// keeping the variant's own source position.
+fn fold_enum_variant_values(checker ^TypeChecker, program ^ast.AstNode, enum_node ^ast.AstNode) {
+    for_each variant in enum_node^.enum_decl^.values {
+        variant_value = variant.value
+        if variant_value == nil || variant_value^.kind == ast.NodeKind.STRING_VALUE { continue }
+        folded = fold_enum_variant_value(checker, program, variant_value, 0)
+        if folded == nil { continue }
+        position = variant_value^.tok
+        variant_value^ = folded^
+        variant_value^.tok = position
+    }
+}
+
 fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
     stmts = program^.program^.stmts
     for_each statement in stmts {
         if statement^.kind != ast.NodeKind.ENUM_DECL { continue }
+        fold_enum_variant_values(checker, program, statement)
 
         en = enum_display_name_for(statement)
         ed_name = statement^.enum_decl^.name
@@ -8796,6 +8865,32 @@ fn call_return_slots(checker ^TypeChecker, signature ^FuncSig, call ^ast.AstNode
 
 // True when a call appears anywhere inside `node`. Builtins that map directly to
 // C constructs (new, ref, len, ...) are not runtime calls.
+// The first file-scope variable `node` names, or "". An enum variant's value is
+// a C constant, which cannot read a global.
+fn expression_global_reference(node ^ast.AstNode) -> string {
+    if node == nil { return "" }
+    when node^.kind {
+        is ast.NodeKind.LABEL {
+            if node^.label^.is_file_global_reference { return node^.label^.value }
+            return ""
+        }
+        is ast.NodeKind.PREFIX_EXPR { return expression_global_reference(node^.prefix^.right) }
+        is ast.NodeKind.INFIX_EXPR {
+            left = expression_global_reference(node^.infix^.left)
+            if left != "" { return left }
+            return expression_global_reference(node^.infix^.right)
+        }
+        is ast.NodeKind.INDEX_EXPR {
+            left = expression_global_reference(node^.index_data^.left)
+            if left != "" { return left }
+            return expression_global_reference(node^.index_data^.index_expr)
+        }
+        is ast.NodeKind.MEMBER_EXPR { return expression_global_reference(node^.member^.object) }
+        is ast.NodeKind.CAST_EXPR { return expression_global_reference(node^.cast_data^.value) }
+        default { return "" }
+    }
+}
+
 fn expression_contains_call(node ^ast.AstNode) -> bool {
     if node == nil { return false }
     when node^.kind {
@@ -12114,6 +12209,10 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
                 }
                 if expression_contains_call(variant_value) {
                     add_diagnostic(checker, "E5040", error_registry.registry_message("E5040"), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                }
+                global_name = expression_global_reference(variant_value)
+                if global_name != "" {
+                    add_diagnostic(checker, "E5072", error_registry.registry_message_formatted("E5072", {variant.name, global_name}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
                 }
             }
             // A tagged variant's payload type must name a type, at any depth

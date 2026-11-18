@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `make grayc generate-errors` to regenerate.
 
-**Total: 581 codes** (407 errors, 17 warnings, 157 panics)
+**Total: 582 codes** (408 errors, 17 warnings, 157 panics)
 
 ---
 
@@ -387,6 +387,7 @@
 | `E5069` | usage | 'size_of()' requires a type, not a value |
 | `E5070` | usage | 'copy()' cannot be applied to '%s'; it is a handle to shared state, not a copyable value |
 | `E5071` | arguments | missing required parameter '%s' in call to '%s' |
+| `E5072` | usage | enum variant '%s' requires a compile-time constant; '%s' is not a const whose value is known at compile time |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no source files |
@@ -632,4 +633,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-11-16 17:48:16 UTC*
+*Generated on 2026-11-18 22:30:51 UTC*

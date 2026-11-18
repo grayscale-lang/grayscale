@@ -1,0 +1,9 @@
+mut base i64 = 10
+
+const Level enum {
+    LOW = base
+}
+
+do main() {
+    println("hi")
+}
