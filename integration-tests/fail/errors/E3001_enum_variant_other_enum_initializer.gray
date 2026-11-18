@@ -1,0 +1,13 @@
+const Color enum {
+    R
+    G
+}
+
+const E enum {
+    A = Color.G
+    B
+}
+
+do main() {
+    println("hi")
+}

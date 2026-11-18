@@ -12217,7 +12217,11 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
                 if folding.is_literal_expression(variant_value) && !folding.literal_expression_is_decimal(variant_value) {
                     check_expression_as(checker, variant_value, checker^.pool^.type_i64)
                 } otherwise {
-                    resolve_expression(checker, variant_value)
+                    variant_type = resolve_expression(checker, variant_value)
+                    if (variant_type^.kind == types.TypeKind.BOOL || variant_type^.kind == types.TypeKind.CHAR || variant_type^.kind == types.TypeKind.ENUM) && !enum_variant_value_is_not_constant(variant_value) {
+                        add_diagnostic(checker, "E3001", error_registry.registry_message_formatted("E3001", {types.type_display_name(variant_type), "i64"}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                        continue
+                    }
                 }
                 if expression_contains_call(variant_value) {
                     add_diagnostic(checker, "E5040", error_registry.registry_message("E5040"), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)

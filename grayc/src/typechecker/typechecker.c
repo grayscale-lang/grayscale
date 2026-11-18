@@ -19300,7 +19300,13 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         for (int j = 0; j < node->data.enum_declaration.value_count; j++) {
             AstNode *variant_value = node->data.enum_declaration.values[j].value;
             if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
-            resolve_expression(checker, variant_value);
+            GrayType *variant_type = resolve_expression(checker, variant_value);
+            if (variant_type && (variant_type->kind == TYPE_KIND_BOOL || variant_type->kind == TYPE_KIND_CHAR ||
+                                 variant_type->kind == TYPE_KIND_ENUM) &&
+                !enum_variant_value_is_not_constant(checker, variant_value)) {
+                NODE_ERROR_FORMATTED(checker, variant_value, "E3001", variant_type->name, "i64");
+                continue;
+            }
             if (expression_contains_call(variant_value)) NODE_ERROR(checker, variant_value, "E5040");
             if (enum_variant_value_is_not_constant(checker, variant_value)) {
                 NODE_ERROR_FORMATTED(checker, variant_value, "E5073", node->data.enum_declaration.values[j].name);
