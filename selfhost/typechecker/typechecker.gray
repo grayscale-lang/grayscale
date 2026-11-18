@@ -1982,6 +1982,19 @@ fn types_assignable(checker ^TypeChecker, dest ^types.GrayType, src ^types.GrayT
     return dest^.kind == src^.kind
 }
 
+// A file-scope variable gets a collision-proof C name in codegen; anything nearer is a local.
+fn mark_label_scope(checker ^TypeChecker, node ^ast.AstNode) {
+    mut declaration_scope = checker^.current_scope
+    as_long_as declaration_scope^.parent != nil && scope.scope_lookup_local(declaration_scope, node^.label^.value) == nil {
+        declaration_scope = declaration_scope^.parent
+    }
+    if declaration_scope^.parent == nil {
+        node^.label^.is_file_global_reference = true
+    } otherwise {
+        node^.label^.is_local_reference = true
+    }
+}
+
 fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     name = node^.label^.value
 
@@ -1994,16 +2007,7 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     symbol = scope.scope_lookup(checker^.current_scope, name)
     if symbol != nil && checker^.initialized_variable_name == name { checker^.is_initializer_reading_own_name = true }
     if symbol != nil {
-        // a file-scope variable gets a collision-proof C name in codegen; anything nearer is a local
-        mut declaration_scope = checker^.current_scope
-        as_long_as declaration_scope^.parent != nil && scope.scope_lookup_local(declaration_scope, name) == nil {
-            declaration_scope = declaration_scope^.parent
-        }
-        if declaration_scope^.parent == nil {
-            node^.label^.is_file_global_reference = true
-        } otherwise {
-            node^.label^.is_local_reference = true
-        }
+        mark_label_scope(checker, node)
     }
     if symbol != nil {
         symbol^.used = true
@@ -8035,6 +8039,7 @@ fn resolve_call_expr_unchecked(checker ^TypeChecker, node ^ast.AstNode) -> ^type
                 if signature != nil && len(signature^.param_types) > 0 && signature^.param_types[0]^.name == struct_name {
                     result = check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {struct_display_name(checker, struct_name), member}), signature, 1)
                     receiver = callee^.member^.object
+                    if receiver^.kind == ast.NodeKind.LABEL { mark_label_scope(checker, receiver) }
                     retarget_instance_call(node, receiver, struct_name, types.type_display_name(symbol^.sym_type))
                     check_mutable_receiver(checker, node, signature, symbol, receiver, struct_name, member)
                     return result

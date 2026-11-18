@@ -1,0 +1,25 @@
+/*
+ * pointer_receiver_call_on_file_global.gray - A pointer-receiver struct
+ * function called on a file-scope mut variable, in main and in another
+ * function, mutates that variable.
+ */
+
+const Counter struct {
+    n i64
+    do bump(self ^Counter) { self^.n = self^.n + 1 }
+}
+
+mut LOCAL Counter = Counter{n: 0}
+
+do touch() { LOCAL.bump() }
+
+do main() {
+    LOCAL.bump()
+    touch()
+    mut other Counter = Counter{n: 10}
+    other.bump()
+    assert(LOCAL.n == 2, "file-scope variable mutated through pointer receiver")
+    assert(other.n == 11, "local variable mutated through pointer receiver")
+
+    println("ALL TESTS PASSED")
+}
