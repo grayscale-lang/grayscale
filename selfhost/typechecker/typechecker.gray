@@ -6651,9 +6651,14 @@ fn apply_call_parameter_write_effects(checker ^TypeChecker, node ^ast.AstNode) {
     }
     signature = resolve_call_signature(checker, node)
     if signature == nil || signature^.decl == nil { return }
+    arguments = node^.call^.args
+    // Instance dispatch passes a pointer receiver by address, which is the address of the
+    // imported module variable it is called on
+    if len(arguments) > 0 && len(signature^.param_types) > 0 && signature^.param_types[0]^.kind == types.TypeKind.POINTER && const_walk_expression_type(checker, arguments[0])^.kind != types.TypeKind.POINTER {
+        report_write_to_module_variable(checker, node, arguments[0])
+    }
     ensure_escape_summary(checker, signature)
     if signature^.writes_through_parameter == 0 { return }
-    arguments = node^.call^.args
     for index in range(0, len(signature^.param_types)) {
         if index >= len(arguments) || index >= MAX_TRACKED_PARAMETERS { break }
         if signature^.writes_through_parameter bit_and (1 bit_shift_left index) == 0 { continue }

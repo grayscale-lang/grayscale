@@ -1,0 +1,12 @@
+const Counter struct {
+    n i64
+    do bump(self ^Counter) {
+        self^.n = self^.n + 1
+    }
+}
+
+const Holder struct {
+    c Counter
+}
+
+mut HOLD Holder = Holder{c: Counter{n: 0}}
