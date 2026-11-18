@@ -707,7 +707,7 @@ fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
             add_diagnostic(checker, "E3143", error_registry.registry_message_formatted("E3143", {en, "${len(values)}"}), file, line, col)
         }
         // A #flags variant with an explicit value must occupy exactly one usable bit.
-        // 0 is allowed as a "none" sentinel; a literal above INT64_MAX reaches the sign bit.
+        // 0 holds none, a string holds no bit, and a literal above INT64_MAX reaches the sign bit.
         if statement^.enum_decl^.is_flags {
             for_each flag_variant in values {
                 flag_value = flag_variant.value
@@ -715,12 +715,17 @@ fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
                 is_negated = flag_value^.kind == ast.NodeKind.PREFIX_EXPR && flag_value^.prefix^.op == token.TokenKind.MINUS && flag_value^.prefix^.right^.kind == ast.NodeKind.INT_VALUE
                 mut flag_literal = flag_value
                 if is_negated { flag_literal = flag_value^.prefix^.right }
-                if flag_literal^.kind != ast.NodeKind.INT_VALUE { continue }
-                literal_value = flag_literal^.int_value^.value
-                is_single_bit = !is_negated && !flag_literal^.int_value^.overflow && (literal_value == 0 || (literal_value bit_and (literal_value - 1)) == 0)
-                if is_single_bit { continue }
-                mut shown = flag_literal^.int_value^.literal
-                if is_negated { shown = "-${shown}" }
+                if flag_literal^.kind != ast.NodeKind.INT_VALUE && flag_literal^.kind != ast.NodeKind.STRING_VALUE { continue }
+                mut shown = ""
+                if flag_literal^.kind == ast.NodeKind.STRING_VALUE {
+                    shown = "\"${flag_literal^.string_value^.value}\""
+                } otherwise {
+                    literal_value = flag_literal^.int_value^.value
+                    is_single_bit = !is_negated && !flag_literal^.int_value^.overflow && literal_value != 0 && (literal_value bit_and (literal_value - 1)) == 0
+                    if is_single_bit { continue }
+                    shown = flag_literal^.int_value^.literal
+                    if is_negated { shown = "-${shown}" }
+                }
                 add_diagnostic(checker, "E3176", error_registry.registry_message_formatted("E3176", {en, flag_variant.name, shown}), flag_value^.tok.file, flag_value^.tok.line, flag_value^.tok.col)
             }
         }

@@ -20006,21 +20006,25 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
             }
         }
         /* E3176: a #flags variant with an explicit value must occupy exactly
-         * one usable bit. 0 is allowed as a "none" sentinel; a literal above
-         * INT64_MAX reaches the sign bit or beyond. */
+         * one usable bit. 0 holds none, a string holds no bit, and a literal
+         * above INT64_MAX reaches the sign bit or beyond. */
         if (statement->data.enum_declaration.is_flags) {
             for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
                 AstNode *variant_value = statement->data.enum_declaration.values[j].value;
                 bool negated = variant_value && variant_value->kind == NODE_PREFIX_EXPRESSION && variant_value->data.prefix.operator == TOKEN_MINUS &&
                                variant_value->data.prefix.right->kind == NODE_INTEGER_LITERAL;
                 AstNode *literal = negated ? variant_value->data.prefix.right : variant_value;
-                if (!literal || literal->kind != NODE_INTEGER_LITERAL) continue;
-                int64_t value = literal->data.integer_literal.value;
-                bool single_bit = !negated && !literal->data.integer_literal.is_above_i64_maximum &&
-                                  (value == 0 || (value & (value - 1)) == 0);
-                if (single_bit) continue;
+                if (!literal || (literal->kind != NODE_INTEGER_LITERAL && literal->kind != NODE_STRING_VALUE)) continue;
                 char shown[MESSAGE_BUFFER_SIZE];
-                snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", literal->data.integer_literal.literal);
+                if (literal->kind == NODE_STRING_VALUE) {
+                    snprintf(shown, sizeof(shown), "\"%s\"", literal->data.string_value.value);
+                } else {
+                    int64_t value = literal->data.integer_literal.value;
+                    bool single_bit = !negated && !literal->data.integer_literal.is_above_i64_maximum &&
+                                      value != 0 && (value & (value - 1)) == 0;
+                    if (single_bit) continue;
+                    snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", literal->data.integer_literal.literal);
+                }
                 diagnostic_error_code_formatted(checker->diagnostics, "E3176", NODE_FILE(checker, statement),
                     variant_value->token.line, variant_value->token.column, 0,
                     enum_name, statement->data.enum_declaration.values[j].name, arena_copy_string(checker->arena, shown));

@@ -1,0 +1,12 @@
+// expect-error: E3176
+// expect-error-count: 2
+
+#flags
+const Perm enum {
+    A = "a"
+    B = "b"
+}
+
+do main() {
+    println("${Perm.A}")
+}
