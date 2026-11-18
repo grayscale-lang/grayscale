@@ -14135,6 +14135,8 @@ static const char *expression_global_reference(AstNode *node) {
         return left ? left : expression_global_reference(node->data.index_expression.index);
     }
     case NODE_MEMBER_EXPRESSION:
+        if (node->resolved_declaration && node->resolved_declaration->kind == DECLARATION_CONST)
+            return node->data.member.member;
         return expression_global_reference(node->data.member.object);
     case NODE_CAST_EXPRESSION:
         return expression_global_reference(node->data.cast.value);
@@ -19858,19 +19860,61 @@ static AstNode *find_file_scope_const(AstNode *program, AstNode *origin, const c
     return NULL;
 }
 
+static void resolve_qualified_member(TypeChecker *checker, AstNode *node);
+static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, AstNode *node, int depth);
+
+/* The file-scope const that `reference` names: a bare name in the same file,
+ * or a `module.name` member. NULL when it names no const. */
+static AstNode *enum_value_const_declaration(TypeChecker *checker, AstNode *program, AstNode *reference) {
+    if (reference->kind == NODE_LABEL)
+        return find_file_scope_const(program, reference, reference->data.label.value);
+    if (reference->kind != NODE_MEMBER_EXPRESSION) return NULL;
+    resolve_qualified_member(checker, reference);
+    DeclarationEntry *entry = reference->resolved_declaration;
+    if (!entry || entry->kind != DECLARATION_CONST || !entry->ast_node ||
+        entry->ast_node->kind != NODE_VARIABLE_DECLARATION) return NULL;
+    AstNode *declaration = entry->ast_node;
+    if (declaration->data.variable_declaration.is_mutable || !declaration->data.variable_declaration.value) return NULL;
+    return declaration;
+}
+
+/* Replaces each `module.name` const inside an integer expression with its
+ * folded literal, so constant folding can see through it. */
+static bool substitute_member_consts(TypeChecker *checker, AstNode *program, AstNode **slot, int depth) {
+    AstNode *node = *slot;
+    if (node->kind == NODE_MEMBER_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node);
+        AstNode *folded = declaration
+            ? fold_enum_variant_value(checker, program, declaration->data.variable_declaration.value, depth + 1) : NULL;
+        if (!folded) return false;
+        *slot = folded;
+        return true;
+    }
+    if (node->kind == NODE_PREFIX_EXPRESSION)
+        return substitute_member_consts(checker, program, &node->data.prefix.right, depth);
+    if (node->kind == NODE_INFIX_EXPRESSION) {
+        bool left_changed = substitute_member_consts(checker, program, &node->data.infix.left, depth);
+        bool right_changed = substitute_member_consts(checker, program, &node->data.infix.right, depth);
+        return left_changed || right_changed;
+    }
+    return false;
+}
+
 /* Fold an enum variant initializer into a literal: a file-scope const's
  * name, an element of a const array literal, or integer arithmetic over
- * consts. A C enum constant cannot name a gray_g_* global, so the literal
- * is what codegen emits. Returns a string or integer literal, or NULL when
- * `node` does not reduce to one. */
+ * consts, each possibly written `module.name`. A C enum constant cannot name
+ * a gray_g_* global, so the literal is what codegen emits. Returns a string
+ * or integer literal, or NULL when `node` does not reduce to one. */
 static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, AstNode *node, int depth) {
     if (depth > 16) return NULL;
-    if (node->kind == NODE_LABEL) {
-        AstNode *declaration = find_file_scope_const(program, node, node->data.label.value);
+    if (node->kind == NODE_LABEL || node->kind == NODE_MEMBER_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node);
         if (declaration && declaration->data.variable_declaration.value->kind == NODE_STRING_VALUE)
             return declaration->data.variable_declaration.value;
-    } else if (node->kind == NODE_INDEX_EXPRESSION && node->data.index_expression.left->kind == NODE_LABEL) {
-        AstNode *declaration = find_file_scope_const(program, node, node->data.index_expression.left->data.label.value);
+        if (declaration && node->kind == NODE_MEMBER_EXPRESSION)
+            return fold_enum_variant_value(checker, program, declaration->data.variable_declaration.value, depth + 1);
+    } else if (node->kind == NODE_INDEX_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node->data.index_expression.left);
         LiteralValue index_value;
         int64_t index;
         if (!declaration || declaration->data.variable_declaration.value->kind != NODE_ARRAY_VALUE ||
@@ -19882,9 +19926,12 @@ static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, 
         if (element->kind == NODE_STRING_VALUE || is_literal_expression(element)) return element;
         return fold_enum_variant_value(checker, program, element, depth + 1);
     }
+    bool is_substituted = substitute_member_consts(checker, program, &node, depth);
+    if (node->kind == NODE_STRING_VALUE) return is_substituted || depth > 0 ? node : NULL;
     LiteralValue folded;
     int64_t number;
-    if (is_literal_expression(node) || !constant_fold(checker, node, &folded) || folded.is_decimal ||
+    if (is_literal_expression(node) && !is_substituted) return depth > 0 ? node : NULL;
+    if (!constant_fold(checker, node, &folded) || folded.is_decimal ||
         folded.is_too_large || !literal_value_as_i64(&folded, &number) || number == INT64_MIN) return NULL;
     char digits[32];
     snprintf(digits, sizeof(digits), "%lld", (long long)(number < 0 ? -number : number));
