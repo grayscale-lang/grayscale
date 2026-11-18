@@ -613,16 +613,19 @@ fn enum_display_name_for(statement ^ast.AstNode) -> string {
     return statement^.enum_decl^.name
 }
 
-// The file-scope const named `name` declared in the same file as `origin`, or nil.
+// The file-scope const named `name`, or nil: one declared in the same file as
+// `origin`, else an imported file's, which the resolver has renamed to a
+// module-qualified name no other declaration shares.
 fn find_file_scope_const(program ^ast.AstNode, origin ^ast.AstNode, name string) -> ^ast.AstNode {
+    mut imported ^ast.AstNode = nil
     for_each statement in program^.program^.stmts {
         if statement^.kind != ast.NodeKind.VAR_DECL { continue }
         declaration = statement^.var_decl
         if declaration^.is_mutable || declaration^.is_synthetic || declaration^.value == nil || declaration^.name != name { continue }
-        if statement^.tok.file != origin^.tok.file { continue }
-        return statement
+        if statement^.tok.file == origin^.tok.file { return statement }
+        imported = statement
     }
-    return nil
+    return imported
 }
 
 // Folds an enum variant initializer into a literal: a file-scope const's name,
