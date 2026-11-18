@@ -172,6 +172,42 @@ GrayString gray_os_hostname(GrayArena *arena);
  *@end
  */
 
+/*@man MAC_OS
+ *@module os
+ *@group Constants
+ *@kind const
+ *@sig 0
+ *@desc The macOS platform, a Platform. Also reachable as Platform.MAC_OS.
+ *@end
+ */
+
+/*@man LINUX
+ *@module os
+ *@group Constants
+ *@kind const
+ *@sig 1
+ *@desc The Linux platform, a Platform. Also reachable as Platform.LINUX.
+ *@end
+ */
+
+/*@man WINDOWS
+ *@module os
+ *@group Constants
+ *@kind const
+ *@sig 2
+ *@desc The Windows platform, a Platform. Also reachable as Platform.WINDOWS.
+ *@end
+ */
+
+/*@man OTHER
+ *@module os
+ *@group Constants
+ *@kind const
+ *@sig 3
+ *@desc Any platform other than macOS, Linux, or Windows, a Platform. Also reachable as Platform.OTHER.
+ *@end
+ */
+
 /*@man current_os
  *@module os
  *@group System
