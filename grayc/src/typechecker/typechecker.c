@@ -10737,11 +10737,15 @@ static void normalize_instance_call_on_expression(TypeChecker *checker, AstNode 
     /* A plain-variable or `p^` receiver is handled downstream already. So is
      * the `mod.Struct.func()` triple chain — but only when the leading name
      * is a module, not a local whose field happens to be a struct. */
-    if (ast_member_base_qualifier(function_node)) return;
-    const char *chain_module = NULL, *chain_type = NULL;
-    if (ast_member_chain(function_node, &chain_module, &chain_type) &&
-        !scope_lookup(checker->current_scope, chain_module))
-        return;
+    bool is_module_variable = object->kind == NODE_MEMBER_EXPRESSION && object->resolved_declaration &&
+                              object->resolved_declaration->kind == DECLARATION_CONST;
+    if (!is_module_variable) {
+        if (ast_member_base_qualifier(function_node)) return;
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (ast_member_chain(function_node, &chain_module, &chain_type) &&
+            !scope_lookup(checker->current_scope, chain_module))
+            return;
+    }
 
     GrayType *object_type = resolve_expression(checker, object);
     if (!object_type) return;

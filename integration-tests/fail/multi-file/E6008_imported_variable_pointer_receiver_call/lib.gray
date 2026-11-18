@@ -1,0 +1,12 @@
+const Pt struct {
+    x i64
+    do sum(self Pt) -> i64 {
+        return self.x
+    }
+    do bump(self ^Pt) {
+        self^.x = self^.x + 1
+    }
+}
+
+const ORIGIN Pt = Pt{x: 1}
+mut COUNTER Pt = Pt{x: 5}
