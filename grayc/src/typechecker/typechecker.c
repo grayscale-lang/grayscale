@@ -18858,10 +18858,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                 bool is_enum_versus_integer =
                     (when_type->kind == TYPE_KIND_ENUM && is_integer_kind(case_type->kind)) ||
                     (is_integer_kind(when_type->kind) && case_type->kind == TYPE_KIND_ENUM);
-                bool is_compatible = !is_enum_versus_integer &&
-                    (types_assignable(checker, when_type, case_type) ||
-                     (when_type->kind == TYPE_KIND_ENUM && case_type->kind == TYPE_KIND_STRING &&
-                      typechecker_enum_is_string(checker, when_type->name)));
+                bool is_compatible = !is_enum_versus_integer && types_assignable(checker, when_type, case_type);
                 if (!is_compatible) {
                     NODE_ERROR_FORMATTED(checker, value_node, "E3018",
                         type_display_name(checker, when_type), type_display_name(checker, case_type));

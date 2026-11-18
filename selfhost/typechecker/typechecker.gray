@@ -11784,10 +11784,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
             if subject_valid && !is_range_case && when_type^.kind != types.TypeKind.UNKNOWN && case_type^.kind != types.TypeKind.UNKNOWN {
                 // An enum against a plain integer is a mismatch, as with ==
                 enum_vs_int = (when_type^.kind == types.TypeKind.ENUM && is_int_kind(case_type^.kind)) || (is_int_kind(when_type^.kind) && case_type^.kind == types.TypeKind.ENUM)
-                mut compatible = !enum_vs_int && types_assignable(checker, when_type, case_type)
-                if !enum_vs_int && when_type^.kind == types.TypeKind.ENUM && case_type^.kind == types.TypeKind.STRING && enum_is_string(checker, when_type^.name) {
-                    compatible = true
-                }
+                compatible = !enum_vs_int && types_assignable(checker, when_type, case_type)
                 if !compatible {
                     message = fmt.sprintf("type mismatch in 'when'; comparing '%s' with '%s'", {shown_type(checker, when_type), shown_type(checker, case_type)})
                     add_diagnostic(checker, "E3018", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)

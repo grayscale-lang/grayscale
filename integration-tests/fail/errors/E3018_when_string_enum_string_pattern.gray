@@ -1,0 +1,16 @@
+// expect-error: E3018
+// expect-error-count: 2
+
+const Status enum {
+    OK = "ok"
+    BAD = "bad"
+}
+
+do main() {
+    const s Status = .OK
+    when s {
+        is "ok" { println("x") }
+        is "bad" { println("y") }
+        default { println("d") }
+    }
+}
