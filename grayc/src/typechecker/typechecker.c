@@ -18415,11 +18415,33 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
     }
 }
 
+/* Checks a struct field's default value against the field's type (E3175). */
+static void check_struct_field_default(TypeChecker *checker, StructField *field, GrayType *field_type) {
+    GrayType *default_type = check_expression_as(checker, field->default_value, field_type);
+    if (default_type && field_type && default_type->kind != TYPE_KIND_UNKNOWN &&
+        field_type->kind != TYPE_KIND_UNKNOWN &&
+        !types_assignable(checker, field_type, default_type) &&
+        default_type->kind != TYPE_KIND_NIL) {
+        NODE_ERROR_FORMATTED(checker, field->default_value, "E3175",
+            field->name, type_name(field_type), type_name(default_type));
+    }
+}
+
 static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
     /* E4021/E4015: a field's annotated type is private to another file */
     for (int field_index = 0; field_index < node->data.struct_declaration.field_count; field_index++) {
         reject_private_type(checker, node, node->data.struct_declaration.fields[field_index].type_name);
         reject_error_in_container(checker, node, node->data.struct_declaration.fields[field_index].type_name);
+    }
+    /* A field default is first checked while the declarations are still being
+     * registered, before a file-scope const it names has a type. Check it
+     * again now so codegen sees the types of its parts. */
+    for (int field_index = 0; field_index < node->data.struct_declaration.field_count; field_index++) {
+        StructField *field = &node->data.struct_declaration.fields[field_index];
+        if (!field->default_value || !field->type_name) continue;
+        checker->diagnostics->should_skip_duplicates = true;
+        check_struct_field_default(checker, field, typechecker_type_from_name(checker, field->type_name));
+        checker->diagnostics->should_skip_duplicates = false;
     }
     check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
@@ -20349,15 +20371,11 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
              * declared type, the same way E5026 does for a function
              * parameter default (typechecker.c ~16497). */
             if (statement->data.struct_declaration.fields[j].default_value) {
-                AstNode *field_default = statement->data.struct_declaration.fields[j].default_value;
-                GrayType *default_type = check_expression_as(checker, field_default, field_types[j]);
-                if (default_type && field_types[j] && default_type->kind != TYPE_KIND_UNKNOWN &&
-                    field_types[j]->kind != TYPE_KIND_UNKNOWN &&
-                    !types_assignable(checker, field_types[j], default_type) &&
-                    default_type->kind != TYPE_KIND_NIL) {
-                    NODE_ERROR_FORMATTED(checker, field_default, "E3175",
-                        field_names[j], type_name(field_types[j]), type_name(default_type));
-                }
+                /* A const the default names is not typed yet: nothing is
+                 * recorded for the expression until the struct is checked. */
+                checker->should_suppress_type_table_writes = true;
+                check_struct_field_default(checker, &statement->data.struct_declaration.fields[j], field_types[j]);
+                checker->should_suppress_type_table_writes = false;
             }
         }
         /* E2037/E2038: reserved name check for structs */

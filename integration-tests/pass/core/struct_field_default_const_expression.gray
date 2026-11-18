@@ -1,0 +1,47 @@
+/*
+ * struct_field_default_const_expression.gray - A struct field default may
+ * index a file-scope const array, concatenate strings, or combine those in
+ * an expression.
+ */
+
+const Nums [i64, 2] = {5, 6}
+const Names [string, 2] = {"ann", "bob"}
+const Greeting string = "hi"
+
+const Config struct {
+    second i64 = Nums[1]
+    sum i64 = Nums[0] + Nums[1]
+    name string = Names[0]
+    shout string = Greeting + "!"
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== struct field defaults over consts ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const config Config = Config{}
+    check("index into i64 array", config.second == 6, addr(passed), addr(failed))
+    check("expression over indexed elements", config.sum == 11, addr(passed), addr(failed))
+    check("index into string array", config.name == "ann", addr(passed), addr(failed))
+    check("string concatenation over a const", config.shout == "hi!", addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
