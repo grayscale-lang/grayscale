@@ -2641,18 +2641,25 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
     for_each declared_param in declared_params {
         if declared_param.is_mutable { has_mutable_parameter = true }
     }
-    if has_mutable_parameter || node^.call^.function^.kind != ast.NodeKind.LABEL { uses_defaults = false }
+    if has_mutable_parameter { uses_defaults = false }
     if uses_defaults {
+        // each argument is evaluated once, in order, into a temporary before any
+        // parameter-named local exists: a caller variable may share a parameter's name
+        binding_id = next_id(generator)
+        mut temporaries = ""
+        mut named_bindings = ""
         mut piece_index i64 = 0
         for i in range(0, len(arguments)) {
             if i >= len(declared_params) || declared_params[i].is_type_param { continue }
             if !declared_params[i].is_mutable && piece_index < len(pieces) {
                 bound_type = ctype(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name))
-                default_bindings = "${default_bindings}${bound_type} ${declared_params[i].name} = ${pieces[piece_index]}; "
+                temporaries = "${temporaries}__auto_type _gray_bp${binding_id}_${i} = ${pieces[piece_index]}; "
+                named_bindings = "${named_bindings}${bound_type} ${declared_params[i].name} = _gray_bp${binding_id}_${i}; "
                 pieces[piece_index] = declared_params[i].name
             }
             piece_index = piece_index + 1
         }
+        default_bindings = "${temporaries}${named_bindings}"
     }
     // omitted trailing arguments take the parameter's default value
     for i in range(len(arguments), len(declared_params)) {
