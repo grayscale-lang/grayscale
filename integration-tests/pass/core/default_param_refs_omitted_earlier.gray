@@ -1,0 +1,40 @@
+/*
+ * default_param_refs_omitted_earlier.gray - A default that names an earlier
+ * parameter works when that parameter is itself omitted and takes its own
+ * default, including across a chain of three or more parameters.
+ */
+
+do offset(a i64 = 1, b i64 = a + 1) -> i64 { return b }
+do area(w i64 = 2, h i64 = w, size i64 = w * h) -> i64 { return size }
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== defaults naming omitted earlier parameters ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    check("both omitted", offset() == 2, addr(passed), addr(failed))
+    check("first given", offset(5) == 6, addr(passed), addr(failed))
+    check("second given by name", offset(b: 9) == 9, addr(passed), addr(failed))
+    check("chain with all omitted", area() == 4, addr(passed), addr(failed))
+    check("chain with first given", area(3) == 9, addr(passed), addr(failed))
+    check("chain with two given", area(3, 4) == 12, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

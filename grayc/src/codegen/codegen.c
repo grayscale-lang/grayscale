@@ -10515,16 +10515,23 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         GenericBindings callee_bindings = {0};
         bool is_callee_generic = function_is_generic(target_function);
         if (is_callee_generic) codegen_call_bindings(codegen, target_function, node, 0, &callee_bindings);
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (target_function->data.function_declaration.parameters[i].is_type_parameter) continue;
-            const char *parameter_name = target_function->data.function_declaration.parameters[i].name;
-            const char *parameter_type_spelling = target_function->data.function_declaration.parameters[i].type_name;
+        /* An omitted parameter with a default is bound too, so a later default
+         * that names it finds a variable. */
+        for (int i = 0; i < parameter_count; i++) {
+            Parameter *bound_parameter = &target_function->data.function_declaration.parameters[i];
+            if (bound_parameter->is_type_parameter) continue;
+            bool is_omitted = i >= node->data.call.argument_count;
+            if (is_omitted && !bound_parameter->default_value) continue;
+            const char *parameter_name = bound_parameter->name;
+            const char *parameter_type_spelling = bound_parameter->type_name;
             char *bound_type_spelling = parameter_type_spelling && is_callee_generic
                 ? generic_bindings_substitute(&callee_bindings, parameter_type_spelling) : NULL;
             if (bound_type_spelling) parameter_type_spelling = bound_type_spelling;
             const char *c_type = parameter_type_spelling ? gray_type_to_c_codegen(codegen, parameter_type_spelling) : "int64_t";
             emit_formatted(codegen, "%s %s = ", c_type, parameter_name ? sanitize_name(parameter_name) : "_arg");
-            if (!emit_wide_integer_coerced(codegen, parameter_type_spelling, node->data.call.arguments[i]) &&
+            if (is_omitted) {
+                emit_parameter_default_value(codegen, target_function, bound_parameter);
+            } else if (!emit_wide_integer_coerced(codegen, parameter_type_spelling, node->data.call.arguments[i]) &&
                 !emit_narrowing_cast(codegen, parameter_type_spelling, node->data.call.arguments[i], node->token.line))
                 emit_declared_value(codegen, parameter_type_spelling, node->data.call.arguments[i]);
             emit(codegen, "; ");
@@ -10539,7 +10546,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 if (target_function->data.function_declaration.parameters[i].is_type_parameter) continue;
                 if (!is_first_default) emit(codegen, ", ");
                 is_first_default = false;
-                if (i < node->data.call.argument_count) {
+                if (i < node->data.call.argument_count || target_function->data.function_declaration.parameters[i].default_value) {
                     const char *parameter_name = target_function->data.function_declaration.parameters[i].name;
                     emit_formatted(codegen, "%s", parameter_name ? sanitize_name(parameter_name) : "_arg");
                 } else {

@@ -2662,8 +2662,15 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
         // the caller is the frame running now.
         saved_target = generator^.default_target_name
         generator^.default_target_name = declared_runtime_name(generator, name)
-        arrays.append(pieces, gen_coerced(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name), declared_params[i].default_value))
+        default_piece = gen_coerced(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name), declared_params[i].default_value)
         generator^.default_target_name = saved_target
+        if uses_defaults {
+            // bound like a given argument, so a later default can name this parameter
+            bound_type = ctype(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name))
+            default_bindings = "${default_bindings}${bound_type} ${declared_params[i].name} = ${default_piece}; "
+            default_piece = declared_params[i].name
+        }
+        arrays.append(pieces, default_piece)
     }
     // an array or map element passed to a `&` parameter is lent as a local and stored back:
     // the callee may grow the container, which moves the slot
