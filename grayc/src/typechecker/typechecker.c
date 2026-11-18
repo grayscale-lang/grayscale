@@ -18433,15 +18433,13 @@ static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
         reject_private_type(checker, node, node->data.struct_declaration.fields[field_index].type_name);
         reject_error_in_container(checker, node, node->data.struct_declaration.fields[field_index].type_name);
     }
-    /* A field default is first checked while the declarations are still being
-     * registered, before a file-scope const it names has a type. Check it
-     * again now so codegen sees the types of its parts. */
+    /* A field default is checked here, once every function and const it can
+     * name has been registered and typed: implicit enum selectors resolve and
+     * the default's type is validated against the field's (E3175). */
     for (int field_index = 0; field_index < node->data.struct_declaration.field_count; field_index++) {
         StructField *field = &node->data.struct_declaration.fields[field_index];
         if (!field->default_value || !field->type_name) continue;
-        checker->diagnostics->should_skip_duplicates = true;
         check_struct_field_default(checker, field, typechecker_type_from_name(checker, field->type_name));
-        checker->diagnostics->should_skip_duplicates = false;
     }
     check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
@@ -20365,17 +20363,6 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                     NODE_ERROR_FORMATTED(checker, statement, "E2013", field_names[j], STRUCT_DISPLAY_NAME(statement));
                     break;
                 }
-            }
-            /* Resolve implicit enum selectors in field default values, and
-             * E3175: validate the default value's type against the field's
-             * declared type, the same way E5026 does for a function
-             * parameter default (typechecker.c ~16497). */
-            if (statement->data.struct_declaration.fields[j].default_value) {
-                /* A const the default names is not typed yet: nothing is
-                 * recorded for the expression until the struct is checked. */
-                checker->should_suppress_type_table_writes = true;
-                check_struct_field_default(checker, &statement->data.struct_declaration.fields[j], field_types[j]);
-                checker->should_suppress_type_table_writes = false;
             }
         }
         /* E2037/E2038: reserved name check for structs */
