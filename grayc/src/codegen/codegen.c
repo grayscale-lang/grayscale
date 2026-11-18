@@ -2600,7 +2600,8 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 int element_kind_tag = 0;
                 if (part_type && part_type->element_type) {
                     GrayType *element_type = type_from_name(part_type->element_type);
-                    if (element_type->kind == TYPE_KIND_FLOATING_POINT) element_kind_tag = 1;
+                    if (codegen_enum_is_string(codegen, part_type->element_type)) element_kind_tag = 2;
+                    else if (element_type->kind == TYPE_KIND_FLOATING_POINT) element_kind_tag = 1;
                     else if (element_type->kind == TYPE_KIND_STRING) element_kind_tag = 2;
                     else if (element_type->kind == TYPE_KIND_BOOL) element_kind_tag = 3;
                     else if (element_type->kind == TYPE_KIND_CHAR) element_kind_tag = 6;
