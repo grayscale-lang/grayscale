@@ -1,0 +1,31 @@
+/*
+ * default_param_arg_shares_param_name.gray - An argument that names a caller
+ * variable sharing a parameter's name reads the caller's variable when a
+ * later parameter's default references that parameter.
+ */
+
+do f(a i64, b i64 = a + 1, c i64 = b + 1) -> i64 { return c }
+do g(a i64) -> i64 { return f(a) }
+
+do main() {
+    println("=== default-param arg shares param name ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+    mut a i64 = 10
+    mut b i64 = 5
+
+    mut results [i64] = {f(a), f(a, b), f(a: a), f(a + 1), g(a)}
+    mut expected [i64] = {12, 6, 12, 13, 12}
+    for i in range(0, 5) {
+        if results[i] == expected[i] {
+            println("  [PASS] case ${i}")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] case ${i}: got ${results[i]}")
+            failed += 1
+        }
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 { exit(1) }
+}
