@@ -1,5 +1,33 @@
 # Changelog
 
+## experimental-20261119-build6 (2026-11-19)
+
+### Bug Fixes
+
+* fix(codegen): resolve a default-filled call's parameter types in the callee's module (#3515)
+* fix(selfhost): name a file-scope variable by its C name as a pointer receiver (#3514)
+* fix(typechecker): resolve a bare const array size against the file's own consts (#3513)
+* fix(codegen): bind a call's arguments before its parameters so a default-using call reads the caller's variable (#3512)
+* fix(selfhost): marshal a #json field of an alias type as its target (#3511)
+* fix(codegen): format a string-backed enum's variants() call in an interpolation as its strings (#3510)
+* fix(selfhost): reject a pointer-receiver call on an imported module variable (#3509)
+* fix(parser): accept a module-qualified const as a fixed array size (#3508)
+* fix(typechecker): dispatch a struct function called on a module-qualified variable (#3507)
+* fix(selfhost): fold an imported const array in an enum variant initializer (#3506)
+* fix(typechecker): fold a module-qualified const in an enum variant initializer (#3505)
+* fix(codegen): bind a struct function's parameters so its defaults can name an earlier parameter or self (#3504)
+* fix(typechecker): reject a string literal pattern in a when over a string-backed enum (#3503)
+* fix(typechecker): reject a multi-value call as a struct field default (#3502)
+* fix(typechecker): reject string and zero variant values in a flags enum (#3501)
+* fix(selfhost): define a parameter after its default is checked (#3500)
+* fix(codegen): bind an omitted defaulted parameter so a later default can name it (#3499)
+* fix(typechecker): check a struct field default after functions are registered (#3498)
+* fix(typechecker): type a struct field default that names a const once the const is known (#3497)
+* fix(selfhost): emit a non-string variant of a string enum under its own name instead of crashing (#3496)
+* fix(typechecker): reject bool, char, and other-enum enum variant initializers (#3495)
+* fix(typechecker): reject enum variant initializers that are not integer or string constants (#3494)
+* fix(typechecker): fold const references in enum variant initializers and reject unfoldable ones (#3493)
+
 ## experimental-20261116-build5 (2026-11-16)
 
 ### Bug Fixes
