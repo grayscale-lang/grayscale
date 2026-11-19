@@ -1,0 +1,65 @@
+/*
+ * enum_variant_const_initializer.gray - An enum variant initialized from a
+ * file-scope const takes that const's value: a scalar const, arithmetic over
+ * consts, an element of a const array, or a string const. A variant without
+ * an initializer continues from the one before it.
+ */
+
+const HERO_RACES [string, 3] = {"Human", "Elf", "Orc"}
+const LEVELS [i64, 2] = {7, 9}
+const NAME string = "alpha"
+const BASE i64 = 10
+
+const Race enum {
+    HUMAN = HERO_RACES[0]
+    ELF = HERO_RACES[1]
+    ORC = HERO_RACES[2]
+}
+
+const Level enum {
+    LOW = BASE
+    HIGH = BASE + 1
+    NEXT
+}
+
+const Pick enum {
+    FIRST = LEVELS[1]
+    SECOND
+}
+
+const Named enum {
+    FROM_CONST = NAME
+    LITERAL = "literal"
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== enum variants initialized from consts ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    check("string array element", cast(Race.HUMAN, string) == "Human" && cast(Race.ORC, string) == "Orc", addr(passed), addr(failed))
+    check("scalar const", cast(Level.LOW, i64) == 10, addr(passed), addr(failed))
+    check("const arithmetic", cast(Level.HIGH, i64) == 11, addr(passed), addr(failed))
+    check("uninitialized variant after const", cast(Level.NEXT, i64) == 12, addr(passed), addr(failed))
+    check("i64 array element", cast(Pick.FIRST, i64) == 9 && cast(Pick.SECOND, i64) == 10, addr(passed), addr(failed))
+    check("string const", cast(Named.FROM_CONST, string) == "alpha" && cast(Named.LITERAL, string) == "literal", addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -2600,7 +2600,8 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 int element_kind_tag = 0;
                 if (part_type && part_type->element_type) {
                     GrayType *element_type = type_from_name(part_type->element_type);
-                    if (element_type->kind == TYPE_KIND_FLOATING_POINT) element_kind_tag = 1;
+                    if (codegen_enum_is_string(codegen, part_type->element_type)) element_kind_tag = 2;
+                    else if (element_type->kind == TYPE_KIND_FLOATING_POINT) element_kind_tag = 1;
                     else if (element_type->kind == TYPE_KIND_STRING) element_kind_tag = 2;
                     else if (element_type->kind == TYPE_KIND_BOOL) element_kind_tag = 3;
                     else if (element_type->kind == TYPE_KIND_CHAR) element_kind_tag = 6;
@@ -9717,6 +9718,75 @@ static void emit_namespaced_call_argument(CodeGen *codegen, AstNode *argument,
     emit_mutable_call_argument(codegen, argument, is_mutable_parameter);
 }
 
+/* True when a call to `function` that provides `provided_count` of its
+ * parameters fills an omitted one from its default, and every parameter can
+ * be bound to a local by value. */
+static bool call_fills_default_by_binding(AstNode *function, int provided_count) {
+    if (function_is_generic(function)) return false;
+    bool fills_default = false;
+    for (int i = 0; i < function->data.function_declaration.parameter_count; i++) {
+        Parameter *parameter = &function->data.function_declaration.parameters[i];
+        if (parameter->is_mutable) return false;
+        if (i >= provided_count && !parameter->is_type_parameter && parameter->default_value) fills_default = true;
+    }
+    return fills_default;
+}
+
+/* Emits a call whose omitted parameters take their defaults, as a statement
+ * expression that binds each parameter to a local named after it, so a
+ * default naming an earlier parameter or `self` finds a variable. `instance`
+ * is the receiver standing for parameter 0, or NULL. Arguments are evaluated
+ * once, in order, into temporaries first: a caller variable may share a
+ * parameter's name. */
+static void emit_call_binding_defaults(CodeGen *codegen, AstNode *node, AstNode *function,
+                                       const char *callee_name, AstNode *instance) {
+    int offset = instance ? 1 : 0;
+    int parameter_count = function->data.function_declaration.parameter_count;
+    int temporary_id = codegen_next_id(codegen);
+    emit(codegen, "({ ");
+    for (int i = 0; i < parameter_count; i++) {
+        Parameter *parameter = &function->data.function_declaration.parameters[i];
+        if (parameter->is_type_parameter) continue;
+        bool is_instance = instance && i == 0;
+        int argument_index = i - offset;
+        if (!is_instance && argument_index >= node->data.call.argument_count) continue;
+        emit_formatted(codegen, "__auto_type _gray_bp%d_%d = ", temporary_id, i);
+        if (is_instance) emit_expression(codegen, instance);
+        else emit_namespaced_call_argument(codegen, node->data.call.arguments[argument_index], function, i, node->token.line);
+        emit(codegen, "; ");
+    }
+    for (int i = 0; i < parameter_count; i++) {
+        Parameter *parameter = &function->data.function_declaration.parameters[i];
+        if (parameter->is_type_parameter) continue;
+        bool is_provided = (instance && i == 0) || i - offset < node->data.call.argument_count;
+        if (!is_provided && !parameter->default_value) continue;
+        /* The parameter's type is spelled in the callee's file, so it
+         * resolves against the callee's module, not the caller's. */
+        const char *caller_module = codegen->current_module;
+        const char *caller_file = codegen->current_file;
+        codegen_enter_node(codegen, function);
+        const char *c_type = parameter->type_name ? gray_type_to_c_codegen(codegen, parameter->type_name) : "int64_t";
+        codegen->current_module = caller_module;
+        codegen->current_file = caller_file;
+        emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(parameter->name));
+        if (is_provided) emit_formatted(codegen, "_gray_bp%d_%d", temporary_id, i);
+        else emit_parameter_default_value(codegen, function, parameter);
+        emit(codegen, "; ");
+    }
+    emit_formatted(codegen, "%s(", callee_name);
+    bool is_first = true;
+    for (int i = 0; i < parameter_count; i++) {
+        Parameter *parameter = &function->data.function_declaration.parameters[i];
+        if (parameter->is_type_parameter) continue;
+        if (!is_first) emit(codegen, ", ");
+        is_first = false;
+        bool is_bound = (instance && i == 0) || i - offset < node->data.call.argument_count || parameter->default_value;
+        if (is_bound) emit(codegen, sanitize_name(parameter->name));
+        else emit(codegen, "0");
+    }
+    emit(codegen, "); })");
+}
+
 static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     /* Check for struct-namespaced or user-module function call: Name.func() */
     if (node->data.call.function->kind == NODE_MEMBER_EXPRESSION) {
@@ -9825,6 +9895,11 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     mangled[position] = '\0';
                     emit_formatted(codegen, "%s(", mangled);
                     free(binding);
+                } else if (call_fills_default_by_binding(namespaced_function, node->data.call.argument_count)) {
+                    char callee[MESSAGE_BUFFER_SIZE];
+                    snprintf(callee, sizeof(callee), "gray_fn_%s", full_name);
+                    emit_call_binding_defaults(codegen, node, namespaced_function, callee, NULL);
+                    return true;
                 } else {
                     emit_formatted(codegen, "gray_fn_%s(", full_name);
                 }
@@ -10044,6 +10119,16 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "%s(", mangled);
                     free(binding);
                 } else {
+                    bool is_instance_injected = instance_dispatch &&
+                        namespaced_function->data.function_declaration.parameter_count > node->data.call.argument_count;
+                    int provided_count = node->data.call.argument_count + (is_instance_injected ? 1 : 0);
+                    if (call_fills_default_by_binding(namespaced_function, provided_count)) {
+                        char callee[MESSAGE_BUFFER_SIZE];
+                        snprintf(callee, sizeof(callee), "gray_fn_%s_%s", resolved_name, member);
+                        emit_call_binding_defaults(codegen, node, namespaced_function, callee,
+                            is_instance_injected ? object : NULL);
+                        return true;
+                    }
                     emit_formatted(codegen, "gray_fn_%s_%s(", resolved_name, member);
                 }
                 /* For instance dispatch, inject the instance as the first
@@ -10199,6 +10284,12 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         int parameter_count = prefixed_function->data.function_declaration.parameter_count;
                         int argument_count = node->data.call.argument_count;
                         int slot_count = argument_count < parameter_count ? parameter_count : argument_count;
+                        if (call_fills_default_by_binding(prefixed_function, argument_count)) {
+                            char callee[MESSAGE_BUFFER_SIZE];
+                            snprintf(callee, sizeof(callee), "gray_fn_%s_%s", real_module, function_name);
+                            emit_call_binding_defaults(codegen, node, prefixed_function, callee, NULL);
+                            return;
+                        }
                         emit_formatted(codegen, "gray_fn_%s_%s(", real_module, function_name);
                         for (int i = 0; i < slot_count; i++) {
                             if (i > 0) emit(codegen, ", ");
@@ -10515,18 +10606,40 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         GenericBindings callee_bindings = {0};
         bool is_callee_generic = function_is_generic(target_function);
         if (is_callee_generic) codegen_call_bindings(codegen, target_function, node, 0, &callee_bindings);
-        for (int i = 0; i < node->data.call.argument_count; i++) {
-            if (target_function->data.function_declaration.parameters[i].is_type_parameter) continue;
-            const char *parameter_name = target_function->data.function_declaration.parameters[i].name;
-            const char *parameter_type_spelling = target_function->data.function_declaration.parameters[i].type_name;
+        /* Every provided argument is evaluated first, into a temporary the
+         * parameter names cannot shadow, so an argument that names a caller
+         * variable shared with a parameter reads the caller's variable. */
+        for (int i = 0; i < parameter_count && i < node->data.call.argument_count; i++) {
+            Parameter *bound_parameter = &target_function->data.function_declaration.parameters[i];
+            if (bound_parameter->is_type_parameter) continue;
+            const char *parameter_type_spelling = bound_parameter->type_name;
+            char *bound_type_spelling = parameter_type_spelling && is_callee_generic
+                ? generic_bindings_substitute(&callee_bindings, parameter_type_spelling) : NULL;
+            if (bound_type_spelling) parameter_type_spelling = bound_type_spelling;
+            const char *c_type = parameter_type_spelling ? gray_type_to_c_codegen(codegen, parameter_type_spelling) : "int64_t";
+            emit_formatted(codegen, "%s gray_bound_argument_%d = ", c_type, i);
+            if (!emit_wide_integer_coerced(codegen, parameter_type_spelling, node->data.call.arguments[i]) &&
+                !emit_narrowing_cast(codegen, parameter_type_spelling, node->data.call.arguments[i], node->token.line))
+                emit_declared_value(codegen, parameter_type_spelling, node->data.call.arguments[i]);
+            emit(codegen, "; ");
+            free(bound_type_spelling);
+        }
+        /* Then each parameter is bound in order, so a later default that names
+         * an earlier parameter finds a variable. */
+        for (int i = 0; i < parameter_count; i++) {
+            Parameter *bound_parameter = &target_function->data.function_declaration.parameters[i];
+            if (bound_parameter->is_type_parameter) continue;
+            bool is_omitted = i >= node->data.call.argument_count;
+            if (is_omitted && !bound_parameter->default_value) continue;
+            const char *parameter_name = bound_parameter->name;
+            const char *parameter_type_spelling = bound_parameter->type_name;
             char *bound_type_spelling = parameter_type_spelling && is_callee_generic
                 ? generic_bindings_substitute(&callee_bindings, parameter_type_spelling) : NULL;
             if (bound_type_spelling) parameter_type_spelling = bound_type_spelling;
             const char *c_type = parameter_type_spelling ? gray_type_to_c_codegen(codegen, parameter_type_spelling) : "int64_t";
             emit_formatted(codegen, "%s %s = ", c_type, parameter_name ? sanitize_name(parameter_name) : "_arg");
-            if (!emit_wide_integer_coerced(codegen, parameter_type_spelling, node->data.call.arguments[i]) &&
-                !emit_narrowing_cast(codegen, parameter_type_spelling, node->data.call.arguments[i], node->token.line))
-                emit_declared_value(codegen, parameter_type_spelling, node->data.call.arguments[i]);
+            if (is_omitted) emit_parameter_default_value(codegen, target_function, bound_parameter);
+            else emit_formatted(codegen, "gray_bound_argument_%d", i);
             emit(codegen, "; ");
             free(bound_type_spelling);
         }
@@ -10539,7 +10652,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 if (target_function->data.function_declaration.parameters[i].is_type_parameter) continue;
                 if (!is_first_default) emit(codegen, ", ");
                 is_first_default = false;
-                if (i < node->data.call.argument_count) {
+                if (i < node->data.call.argument_count || target_function->data.function_declaration.parameters[i].default_value) {
                     const char *parameter_name = target_function->data.function_declaration.parameters[i].name;
                     emit_formatted(codegen, "%s", parameter_name ? sanitize_name(parameter_name) : "_arg");
                 } else {

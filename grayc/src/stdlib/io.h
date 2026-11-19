@@ -466,4 +466,31 @@ GrayResult_string gray_io_temp_dir_result(GrayArena *arena);
  *@end
  */
 
+/*@man O_RDONLY
+ *@module io
+ *@group Constants
+ *@kind const
+ *@sig 0
+ *@desc The read-only open mode, an OpenFlag. Also reachable as OpenFlag.O_RDONLY.
+ *@end
+ */
+
+/*@man O_WRONLY
+ *@module io
+ *@group Constants
+ *@kind const
+ *@sig 1
+ *@desc The write-only open mode, an OpenFlag. Also reachable as OpenFlag.O_WRONLY.
+ *@end
+ */
+
+/*@man O_RDWR
+ *@module io
+ *@group Constants
+ *@kind const
+ *@sig 2
+ *@desc The read-write open mode, an OpenFlag. Also reachable as OpenFlag.O_RDWR.
+ *@end
+ */
+
 #endif

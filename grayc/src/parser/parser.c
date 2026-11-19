@@ -447,7 +447,9 @@ static const char *parse_bracketed_type(Parser *parser) {
         if (!current_token_is(parser, TOKEN_INTEGER_LITERAL) && !current_token_is(parser, TOKEN_IDENTIFIER)) {
             diagnostic_error_code(parser->diagnostics, "E2025", parser->file, parser->current_token.line, parser->current_token.column, 0);
         }
-        const char *size_text = parser->current_token.literal;
+        /* The size may be a const of another module, written module.NAME. */
+        const char *size_text = current_token_is(parser, TOKEN_IDENTIFIER)
+            ? read_type_name(parser) : parser->current_token.literal;
         if (!expect_peek_token(parser, TOKEN_RIGHT_BRACKET)) return NULL;
         size_t element_length = strlen(element_type), size_length = strlen(size_text);
         size_t type_name_length = element_length + size_length + 4;

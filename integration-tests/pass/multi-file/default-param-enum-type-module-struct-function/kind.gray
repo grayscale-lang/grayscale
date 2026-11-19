@@ -1,0 +1,13 @@
+const Op enum {
+    PUSH
+    ADD
+}
+
+const Instr struct {
+    op Op
+    arg i64
+
+    do make(op Op, arg i64 = 0) -> Instr {
+        return Instr{op: op, arg: arg}
+    }
+}

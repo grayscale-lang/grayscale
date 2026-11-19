@@ -1,0 +1,46 @@
+/*
+ * struct_field_default_function_call.gray - A struct field default may call a
+ * function declared before or after the struct.
+ */
+
+do before() -> i64 {
+    return 3
+}
+
+const Config struct {
+    first i64 = before()
+    second i64 = after()
+}
+
+do after() -> i64 {
+    return 4
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== struct field defaults calling functions ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const config Config = Config{}
+    check("function declared before the struct", config.first == 3, addr(passed), addr(failed))
+    check("function declared after the struct", config.second == 4, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

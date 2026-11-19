@@ -386,7 +386,9 @@ fn parse_bracketed_type(parser ^Parser) -> string {
         if !cur_is(parser, token.TokenKind.INT) && !cur_is(parser, token.TokenKind.IDENT) {
             report(parser, "E2025")
         }
-        size_text string = parser^.cur_token.literal
+        // The size may be a const of another module, written module.NAME
+        mut size_text string = parser^.cur_token.literal
+        if cur_is(parser, token.TokenKind.IDENT) { size_text = read_type_name(parser) }
         if !expect_peek(parser, token.TokenKind.RBRACKET) { return TYPE_FAILED }
         return fmt.sprintf("[%s,%s]", {element_type, size_text})
     }

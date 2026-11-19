@@ -1,0 +1,12 @@
+/*
+ * Test: a struct function called directly on a variable of an imported file,
+ * written module.variable.function(), dispatches like a call on a local.
+ */
+import "./lib.gray"
+
+do main() {
+    assert(lib.ORIGIN.sum() == 1, "call on an imported const")
+    assert(lib.COUNTER.sum() == 5, "call on an imported mut variable")
+
+    println("ALL TESTS PASSED")
+}

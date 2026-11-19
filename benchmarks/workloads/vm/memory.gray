@@ -1,6 +1,6 @@
 /*
  * vm/memory - sparse cell memory of the dillo64 VM.
- * Exercises: struct functions, maps, (T, Error) returns.
+ * Exercises: struct functions, maps, (T, Error) returns, instance dispatch.
  */
 
 import @maps
@@ -34,5 +34,9 @@ const Memory struct {
             return ram.cells[address], nil
         }
         return cast(0, cell.Cell), nil
+    }
+
+    do touched(ram Memory) -> i64 {
+        return len(ram.cells)
     }
 }

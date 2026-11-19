@@ -1,0 +1,23 @@
+/*
+ * Test: a const of an imported file, written module.NAME, is a fixed array
+ * size, in a file-scope declaration and in a struct field.
+ */
+import "./lib.gray"
+
+const LOCAL_MAX i64 = 3
+
+const Arr [i64, lib.MAX] = {1, 2, 3, 4, 5}
+const Local [i64, LOCAL_MAX] = {1, 2, 3}
+
+const Holder struct {
+    slots [i64, lib.MAX]
+}
+
+do main() {
+    assert(len(Arr) == 5, "imported const as a file-scope array size")
+    assert(len(Local) == 3, "same-file const as a file-scope array size")
+    const holder Holder = Holder{slots: {1, 2, 3, 4, 5}}
+    assert(len(holder.slots) == 5, "imported const as a struct field array size")
+
+    println("ALL TESTS PASSED")
+}

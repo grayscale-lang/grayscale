@@ -6746,15 +6746,47 @@ static void typechecker_resolve_array_size_text(TypeChecker *checker,
         return;
     }
 
-    /* Look up the identifier in the const integer table. */
-    int const_index = find_const_integer(checker, size_text);
-    if (const_index < 0) {
-        diagnostic_error_code_formatted(checker->diagnostics, "E3125",
-            file, line, column, 0,
-            size_text);
-        return;
+    /* Look up the identifier in the const integer table. A `module.NAME` is
+     * read from its own declaration: the table is keyed by the bare name,
+     * which another module's const may share. */
+    LiteralValue resolved;
+    char *qualifier_dot = strchr(size_text, '.');
+    if (qualifier_dot || checker->modules) {
+        DeclarationEntry *entry = NULL;
+        ResolveStatus status = RESOLVE_NO_MODULE;
+        if (qualifier_dot) {
+            char qualifier[MESSAGE_BUFFER_SIZE];
+            size_t qualifier_length = (size_t)(qualifier_dot - size_text);
+            if (checker->modules && qualifier_length < sizeof(qualifier)) {
+                memcpy(qualifier, size_text, qualifier_length);
+                qualifier[qualifier_length] = '\0';
+                ResolveScope scope = checker_scope(checker);
+                entry = module_resolve_qualified(checker->modules, &scope, qualifier, qualifier_dot + 1, &status);
+            }
+        } else {
+            /* A bare name is the file's own const, or one a `using` brings in. */
+            ResolveScope scope = checker_scope(checker);
+            entry = module_resolve_unqualified(checker->modules, &scope, size_text, NULL);
+            status = RESOLVE_OK;
+        }
+        AstNode *declaration = status == RESOLVE_OK && entry && entry->kind == DECLARATION_CONST ? entry->ast_node : NULL;
+        if (!declaration || declaration->kind != NODE_VARIABLE_DECLARATION ||
+            declaration->data.variable_declaration.is_mutable || !declaration->data.variable_declaration.value ||
+            !declaration->data.variable_declaration.type_name ||
+            !is_integer_type_name(declaration->data.variable_declaration.type_name) ||
+            !constant_fold(checker, declaration->data.variable_declaration.value, &resolved) ||
+            resolved.is_decimal || resolved.is_too_large) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3125", file, line, column, 0, size_text);
+            return;
+        }
+    } else {
+        int const_index = find_const_integer(checker, size_text);
+        if (const_index < 0) {
+            diagnostic_error_code_formatted(checker->diagnostics, "E3125", file, line, column, 0, size_text);
+            return;
+        }
+        resolved = checker->const_integer_values[const_index];
     }
-    LiteralValue resolved = checker->const_integer_values[const_index];
     const char *resolved_text = literal_text(checker, &resolved);
     if (resolved.is_negative || magnitude_is_zero(resolved.magnitude)) {
         diagnostic_error_code_formatted(checker->diagnostics, "E3126",
@@ -10737,11 +10769,15 @@ static void normalize_instance_call_on_expression(TypeChecker *checker, AstNode 
     /* A plain-variable or `p^` receiver is handled downstream already. So is
      * the `mod.Struct.func()` triple chain — but only when the leading name
      * is a module, not a local whose field happens to be a struct. */
-    if (ast_member_base_qualifier(function_node)) return;
-    const char *chain_module = NULL, *chain_type = NULL;
-    if (ast_member_chain(function_node, &chain_module, &chain_type) &&
-        !scope_lookup(checker->current_scope, chain_module))
-        return;
+    bool is_module_variable = object->kind == NODE_MEMBER_EXPRESSION && object->resolved_declaration &&
+                              object->resolved_declaration->kind == DECLARATION_CONST;
+    if (!is_module_variable) {
+        if (ast_member_base_qualifier(function_node)) return;
+        const char *chain_module = NULL, *chain_type = NULL;
+        if (ast_member_chain(function_node, &chain_module, &chain_type) &&
+            !scope_lookup(checker->current_scope, chain_module))
+            return;
+    }
 
     GrayType *object_type = resolve_expression(checker, object);
     if (!object_type) return;
@@ -14117,6 +14153,52 @@ static void check_statement(TypeChecker *checker, AstNode *node);
  * a top-level var_decl produce invalid C (free-standing init or
  * non-constant initializer), so the Grayscale side must reject them with
  * a real diagnostic before codegen runs. */
+/* The first file-scope variable `node` names, or NULL. An enum variant's
+ * value is a C constant, which cannot read a global. */
+static const char *expression_global_reference(AstNode *node) {
+    if (!node) return NULL;
+    switch (node->kind) {
+    case NODE_LABEL:
+        return node->data.label.is_file_global_reference ? node->data.label.value : NULL;
+    case NODE_PREFIX_EXPRESSION:
+        return expression_global_reference(node->data.prefix.right);
+    case NODE_INFIX_EXPRESSION: {
+        const char *left = expression_global_reference(node->data.infix.left);
+        return left ? left : expression_global_reference(node->data.infix.right);
+    }
+    case NODE_INDEX_EXPRESSION: {
+        const char *left = expression_global_reference(node->data.index_expression.left);
+        return left ? left : expression_global_reference(node->data.index_expression.index);
+    }
+    case NODE_MEMBER_EXPRESSION:
+        if (node->resolved_declaration && node->resolved_declaration->kind == DECLARATION_CONST)
+            return node->data.member.member;
+        return expression_global_reference(node->data.member.object);
+    case NODE_CAST_EXPRESSION:
+        return expression_global_reference(node->data.cast.value);
+    default:
+        return NULL;
+    }
+}
+
+/* True when an enum variant's value is not an integer or string constant by
+ * its form: a float, bool or nil literal, or an operator over strings. */
+static bool enum_variant_value_is_not_constant(TypeChecker *checker, AstNode *node) {
+    switch (node->kind) {
+    case NODE_FLOATING_POINT_LITERAL:
+    case NODE_BOOL_VALUE:
+    case NODE_NIL_VALUE:
+        return true;
+    case NODE_INFIX_EXPRESSION: {
+        GrayType *left = type_table_get(checker->type_table, node->data.infix.left);
+        GrayType *right = type_table_get(checker->type_table, node->data.infix.right);
+        return (left && left->kind == TYPE_KIND_STRING) || (right && right->kind == TYPE_KIND_STRING);
+    }
+    default:
+        return false;
+    }
+}
+
 static bool expression_contains_call(AstNode *node) {
     if (!node) return false;
     switch (node->kind) {
@@ -18371,11 +18453,32 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
     }
 }
 
+/* Checks a struct field's default value against the field's type (E3175). */
+static void check_struct_field_default(TypeChecker *checker, StructField *field, GrayType *field_type) {
+    GrayType *default_type = check_expression_as(checker, field->default_value, field_type);
+    reject_multi_return_in_single_position(checker, field->default_value);
+    if (default_type && field_type && default_type->kind != TYPE_KIND_UNKNOWN &&
+        field_type->kind != TYPE_KIND_UNKNOWN &&
+        !types_assignable(checker, field_type, default_type) &&
+        default_type->kind != TYPE_KIND_NIL) {
+        NODE_ERROR_FORMATTED(checker, field->default_value, "E3175",
+            field->name, type_name(field_type), type_name(default_type));
+    }
+}
+
 static void check_struct_declaration(TypeChecker *checker, AstNode *node) {
     /* E4021/E4015: a field's annotated type is private to another file */
     for (int field_index = 0; field_index < node->data.struct_declaration.field_count; field_index++) {
         reject_private_type(checker, node, node->data.struct_declaration.fields[field_index].type_name);
         reject_error_in_container(checker, node, node->data.struct_declaration.fields[field_index].type_name);
+    }
+    /* A field default is checked here, once every function and const it can
+     * name has been registered and typed: implicit enum selectors resolve and
+     * the default's type is validated against the field's (E3175). */
+    for (int field_index = 0; field_index < node->data.struct_declaration.field_count; field_index++) {
+        StructField *field = &node->data.struct_declaration.fields[field_index];
+        if (!field->default_value || !field->type_name) continue;
+        check_struct_field_default(checker, field, typechecker_type_from_name(checker, field->type_name));
     }
     check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
@@ -18793,10 +18896,7 @@ static void check_when_statement(TypeChecker *checker, AstNode *node) {
                 bool is_enum_versus_integer =
                     (when_type->kind == TYPE_KIND_ENUM && is_integer_kind(case_type->kind)) ||
                     (is_integer_kind(when_type->kind) && case_type->kind == TYPE_KIND_ENUM);
-                bool is_compatible = !is_enum_versus_integer &&
-                    (types_assignable(checker, when_type, case_type) ||
-                     (when_type->kind == TYPE_KIND_ENUM && case_type->kind == TYPE_KIND_STRING &&
-                      typechecker_enum_is_string(checker, when_type->name)));
+                bool is_compatible = !is_enum_versus_integer && types_assignable(checker, when_type, case_type);
                 if (!is_compatible) {
                     NODE_ERROR_FORMATTED(checker, value_node, "E3018",
                         type_display_name(checker, when_type), type_display_name(checker, case_type));
@@ -19256,8 +19356,21 @@ static void check_statement_kind(TypeChecker *checker, AstNode *node) {
         for (int j = 0; j < node->data.enum_declaration.value_count; j++) {
             AstNode *variant_value = node->data.enum_declaration.values[j].value;
             if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
-            resolve_expression(checker, variant_value);
+            GrayType *variant_type = resolve_expression(checker, variant_value);
+            if (variant_type && (variant_type->kind == TYPE_KIND_BOOL || variant_type->kind == TYPE_KIND_CHAR ||
+                                 variant_type->kind == TYPE_KIND_ENUM) &&
+                !enum_variant_value_is_not_constant(checker, variant_value)) {
+                NODE_ERROR_FORMATTED(checker, variant_value, "E3001", variant_type->name, "i64");
+                continue;
+            }
             if (expression_contains_call(variant_value)) NODE_ERROR(checker, variant_value, "E5040");
+            if (enum_variant_value_is_not_constant(checker, variant_value)) {
+                NODE_ERROR_FORMATTED(checker, variant_value, "E5073", node->data.enum_declaration.values[j].name);
+                continue;
+            }
+            const char *global_name = expression_global_reference(variant_value);
+            if (global_name)
+                NODE_ERROR_FORMATTED(checker, variant_value, "E5072", node->data.enum_declaration.values[j].name, global_name);
         }
         /* E4016: a tagged variant's payload type must name a type, at any depth */
         for (int variant_index = 0; variant_index < node->data.enum_declaration.value_count; variant_index++) {
@@ -19768,12 +19881,127 @@ static void register_declaration_aliases(TypeChecker *checker, AstNode *program)
     }
 }
 
+/* The file-scope const named `name` declared in the same file as `origin`,
+ * or NULL. */
+static AstNode *find_file_scope_const(AstNode *program, AstNode *origin, const char *name) {
+    for (int i = 0; i < program->data.program.statement_count; i++) {
+        AstNode *statement = program->data.program.statements[i];
+        if (statement->kind != NODE_VARIABLE_DECLARATION || statement->data.variable_declaration.is_mutable ||
+            statement->data.variable_declaration.is_synthetic || !statement->data.variable_declaration.value ||
+            strcmp(statement->data.variable_declaration.name, name) != 0) continue;
+        if (statement->token.file != origin->token.file &&
+            (!statement->token.file || !origin->token.file || strcmp(statement->token.file, origin->token.file) != 0)) continue;
+        return statement;
+    }
+    return NULL;
+}
+
+static void resolve_qualified_member(TypeChecker *checker, AstNode *node);
+static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, AstNode *node, int depth);
+
+/* The file-scope const that `reference` names: a bare name in the same file,
+ * or a `module.name` member. NULL when it names no const. */
+static AstNode *enum_value_const_declaration(TypeChecker *checker, AstNode *program, AstNode *reference) {
+    if (reference->kind == NODE_LABEL)
+        return find_file_scope_const(program, reference, reference->data.label.value);
+    if (reference->kind != NODE_MEMBER_EXPRESSION) return NULL;
+    resolve_qualified_member(checker, reference);
+    DeclarationEntry *entry = reference->resolved_declaration;
+    if (!entry || entry->kind != DECLARATION_CONST || !entry->ast_node ||
+        entry->ast_node->kind != NODE_VARIABLE_DECLARATION) return NULL;
+    AstNode *declaration = entry->ast_node;
+    if (declaration->data.variable_declaration.is_mutable || !declaration->data.variable_declaration.value) return NULL;
+    return declaration;
+}
+
+/* Replaces each `module.name` const inside an integer expression with its
+ * folded literal, so constant folding can see through it. */
+static bool substitute_member_consts(TypeChecker *checker, AstNode *program, AstNode **slot, int depth) {
+    AstNode *node = *slot;
+    if (node->kind == NODE_MEMBER_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node);
+        AstNode *folded = declaration
+            ? fold_enum_variant_value(checker, program, declaration->data.variable_declaration.value, depth + 1) : NULL;
+        if (!folded) return false;
+        *slot = folded;
+        return true;
+    }
+    if (node->kind == NODE_PREFIX_EXPRESSION)
+        return substitute_member_consts(checker, program, &node->data.prefix.right, depth);
+    if (node->kind == NODE_INFIX_EXPRESSION) {
+        bool left_changed = substitute_member_consts(checker, program, &node->data.infix.left, depth);
+        bool right_changed = substitute_member_consts(checker, program, &node->data.infix.right, depth);
+        return left_changed || right_changed;
+    }
+    return false;
+}
+
+/* Fold an enum variant initializer into a literal: a file-scope const's
+ * name, an element of a const array literal, or integer arithmetic over
+ * consts, each possibly written `module.name`. A C enum constant cannot name
+ * a gray_g_* global, so the literal is what codegen emits. Returns a string
+ * or integer literal, or NULL when `node` does not reduce to one. */
+static AstNode *fold_enum_variant_value(TypeChecker *checker, AstNode *program, AstNode *node, int depth) {
+    if (depth > 16) return NULL;
+    if (node->kind == NODE_LABEL || node->kind == NODE_MEMBER_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node);
+        if (declaration && declaration->data.variable_declaration.value->kind == NODE_STRING_VALUE)
+            return declaration->data.variable_declaration.value;
+        if (declaration && node->kind == NODE_MEMBER_EXPRESSION)
+            return fold_enum_variant_value(checker, program, declaration->data.variable_declaration.value, depth + 1);
+    } else if (node->kind == NODE_INDEX_EXPRESSION) {
+        AstNode *declaration = enum_value_const_declaration(checker, program, node->data.index_expression.left);
+        LiteralValue index_value;
+        int64_t index;
+        if (!declaration || declaration->data.variable_declaration.value->kind != NODE_ARRAY_VALUE ||
+            !constant_fold(checker, node->data.index_expression.index, &index_value) || index_value.is_decimal ||
+            !literal_value_as_i64(&index_value, &index)) return NULL;
+        AstNode *array = declaration->data.variable_declaration.value;
+        if (index < 0 || index >= array->data.array_value.count) return NULL;
+        AstNode *element = array->data.array_value.elements[index];
+        if (element->kind == NODE_STRING_VALUE || is_literal_expression(element)) return element;
+        return fold_enum_variant_value(checker, program, element, depth + 1);
+    }
+    bool is_substituted = substitute_member_consts(checker, program, &node, depth);
+    if (node->kind == NODE_STRING_VALUE) return is_substituted || depth > 0 ? node : NULL;
+    LiteralValue folded;
+    int64_t number;
+    if (is_literal_expression(node) && !is_substituted) return depth > 0 ? node : NULL;
+    if (!constant_fold(checker, node, &folded) || folded.is_decimal ||
+        folded.is_too_large || !literal_value_as_i64(&folded, &number) || number == INT64_MIN) return NULL;
+    char digits[32];
+    snprintf(digits, sizeof(digits), "%lld", (long long)(number < 0 ? -number : number));
+    AstNode *literal = ast_allocate(checker->arena, NODE_INTEGER_LITERAL, node->token);
+    literal->data.integer_literal.value = number < 0 ? -number : number;
+    literal->data.integer_literal.literal = arena_copy_string(checker->arena, digits);
+    if (number >= 0) return literal;
+    AstNode *negation = ast_allocate(checker->arena, NODE_PREFIX_EXPRESSION, node->token);
+    negation->data.prefix.operator = TOKEN_MINUS;
+    negation->data.prefix.right = literal;
+    return negation;
+}
+
+/* Replace each variant initializer that names a const with its folded
+ * literal, keeping the variant's own source position. */
+static void fold_enum_variant_values(TypeChecker *checker, AstNode *program, AstNode *enum_node) {
+    for (int j = 0; j < enum_node->data.enum_declaration.value_count; j++) {
+        AstNode *variant_value = enum_node->data.enum_declaration.values[j].value;
+        if (!variant_value || variant_value->kind == NODE_STRING_VALUE) continue;
+        AstNode *folded = fold_enum_variant_value(checker, program, variant_value, 0);
+        if (!folded) continue;
+        Token position = variant_value->token;
+        *variant_value = *folded;
+        variant_value->token = position;
+    }
+}
+
 static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
     /* Register enums BEFORE structs so that struct field types
      * referencing enums resolve correctly via typechecker_type_from_name(). */
     for (int i = 0; i < program->data.program.statement_count; i++) {
         AstNode *statement = program->data.program.statements[i];
         if (statement->kind != NODE_ENUM_DECLARATION) continue;
+        fold_enum_variant_values(checker, program, statement);
 
         /* E2038: reserved name for enums */
         const char *enum_name = ENUM_DISPLAY_NAME(statement);
@@ -19859,21 +20087,25 @@ static void register_declaration_enums(TypeChecker *checker, AstNode *program) {
             }
         }
         /* E3176: a #flags variant with an explicit value must occupy exactly
-         * one usable bit. 0 is allowed as a "none" sentinel; a literal above
-         * INT64_MAX reaches the sign bit or beyond. */
+         * one usable bit. 0 holds none, a string holds no bit, and a literal
+         * above INT64_MAX reaches the sign bit or beyond. */
         if (statement->data.enum_declaration.is_flags) {
             for (int j = 0; j < statement->data.enum_declaration.value_count; j++) {
                 AstNode *variant_value = statement->data.enum_declaration.values[j].value;
                 bool negated = variant_value && variant_value->kind == NODE_PREFIX_EXPRESSION && variant_value->data.prefix.operator == TOKEN_MINUS &&
                                variant_value->data.prefix.right->kind == NODE_INTEGER_LITERAL;
                 AstNode *literal = negated ? variant_value->data.prefix.right : variant_value;
-                if (!literal || literal->kind != NODE_INTEGER_LITERAL) continue;
-                int64_t value = literal->data.integer_literal.value;
-                bool single_bit = !negated && !literal->data.integer_literal.is_above_i64_maximum &&
-                                  (value == 0 || (value & (value - 1)) == 0);
-                if (single_bit) continue;
+                if (!literal || (literal->kind != NODE_INTEGER_LITERAL && literal->kind != NODE_STRING_VALUE)) continue;
                 char shown[MESSAGE_BUFFER_SIZE];
-                snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", literal->data.integer_literal.literal);
+                if (literal->kind == NODE_STRING_VALUE) {
+                    snprintf(shown, sizeof(shown), "\"%s\"", literal->data.string_value.value);
+                } else {
+                    int64_t value = literal->data.integer_literal.value;
+                    bool single_bit = !negated && !literal->data.integer_literal.is_above_i64_maximum &&
+                                      value != 0 && (value & (value - 1)) == 0;
+                    if (single_bit) continue;
+                    snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", literal->data.integer_literal.literal);
+                }
                 diagnostic_error_code_formatted(checker->diagnostics, "E3176", NODE_FILE(checker, statement),
                     variant_value->token.line, variant_value->token.column, 0,
                     enum_name, statement->data.enum_declaration.values[j].name, arena_copy_string(checker->arena, shown));
@@ -20215,21 +20447,6 @@ static void register_declaration_structs(TypeChecker *checker, AstNode *program)
                 if (strcmp(field_names[index], field_names[j]) == 0) {
                     NODE_ERROR_FORMATTED(checker, statement, "E2013", field_names[j], STRUCT_DISPLAY_NAME(statement));
                     break;
-                }
-            }
-            /* Resolve implicit enum selectors in field default values, and
-             * E3175: validate the default value's type against the field's
-             * declared type, the same way E5026 does for a function
-             * parameter default (typechecker.c ~16497). */
-            if (statement->data.struct_declaration.fields[j].default_value) {
-                AstNode *field_default = statement->data.struct_declaration.fields[j].default_value;
-                GrayType *default_type = check_expression_as(checker, field_default, field_types[j]);
-                if (default_type && field_types[j] && default_type->kind != TYPE_KIND_UNKNOWN &&
-                    field_types[j]->kind != TYPE_KIND_UNKNOWN &&
-                    !types_assignable(checker, field_types[j], default_type) &&
-                    default_type->kind != TYPE_KIND_NIL) {
-                    NODE_ERROR_FORMATTED(checker, field_default, "E3175",
-                        field_names[j], type_name(field_types[j]), type_name(default_type));
                 }
             }
         }

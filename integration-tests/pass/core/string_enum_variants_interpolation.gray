@@ -1,0 +1,38 @@
+/*
+ * string_enum_variants_interpolation.gray - A variants() call written directly
+ * inside a string interpolation on a string-backed enum formats the variants'
+ * strings, as it does anywhere else.
+ */
+
+const Status enum {
+    OK = "ok"
+    BAD = "bad"
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== variants() interpolated on a string enum ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    check("alone", "${Status.variants()}" == "{\"ok\", \"bad\"}", addr(passed), addr(failed))
+    check("between text", "x ${Status.variants()} y" == "x {\"ok\", \"bad\"} y", addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

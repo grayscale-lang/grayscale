@@ -1,19 +1,22 @@
 /*
  * vm - run the dillo64 stack VM through a multiply-accumulate loop across
- * three modules: cell, memory and cpu.
+ * three modules: cell, memory and cpu, on several cores, then fault one core.
  * Exercises: distinct aliases, enum dispatch with when, mutable struct
- * aliases, (T, Error) returns, multi-module calls, struct functions.
+ * aliases, (T, Error) returns, multi-module calls, struct functions, maps,
+ * u128 arithmetic, generics.
  */
 
 import "./cell"
 import "./cpu"
 
-const ITERATIONS i64 = 20000000
+const CORES i64 = 3
+const ITERATIONS i64 = 1700000
 
-do main() {
-    // mem[0] counts down from ITERATIONS, mem[1] is the accumulator: acc = acc * 31 + counter.
+do loop_program(iterations i64) -> [cell.Instr] {
+    // mem[0] counts down from iterations, mem[1] is the accumulator: acc = acc * 31 + counter,
+    // mem[2] sums the high word of counter * i64 max.
     mut code [cell.Instr] = {
-        cell.Instr.make(cell.Op.PUSH, ITERATIONS),
+        cell.Instr.make(cell.Op.PUSH, iterations),
         cell.Instr.make(cell.Op.STORE, 0),
         cell.Instr.make(cell.Op.PUSH, 1),
         cell.Instr.make(cell.Op.STORE, 1),
@@ -23,6 +26,13 @@ do main() {
         cell.Instr.make(cell.Op.LOAD, 0),
         cell.Instr.make(cell.Op.ADD),
         cell.Instr.make(cell.Op.STORE, 1),
+        cell.Instr.make(cell.Op.PUSH, 9223372036854775807),
+        cell.Instr.make(cell.Op.LOAD, 0),
+        cell.Instr.make(cell.Op.SWAP),
+        cell.Instr.make(cell.Op.MULHI),
+        cell.Instr.make(cell.Op.LOAD, 2),
+        cell.Instr.make(cell.Op.ADD),
+        cell.Instr.make(cell.Op.STORE, 2),
         cell.Instr.make(cell.Op.LOAD, 0),
         cell.Instr.make(cell.Op.DEC),
         cell.Instr.make(cell.Op.DUP),
@@ -30,12 +40,46 @@ do main() {
         cell.Instr.make(cell.Op.JNZ, 4),
         cell.Instr.make(cell.Op.LOAD, 1),
         cell.Instr.make(cell.Op.OUT),
+        cell.Instr.make(cell.Op.LOAD, 2),
+        cell.Instr.make(cell.Op.OUT),
         cell.Instr.make(cell.Op.HALT)
     }
-    mut core cpu.Cpu = cpu.Cpu.boot(16, ITERATIONS * 12)
-    mut status cpu.Status = cpu.Status.RUNNING
-    as_long_as status == cpu.Status.RUNNING {
-        status = core.step(code)
+    return code
+}
+
+do main() {
+    mut reports [i64] = cell.filled(i64, CORES, 0)
+    mut reads i64 = 0
+    mut writes i64 = 0
+    mut touched i64 = 0
+    for core_id in range(0, CORES) {
+        mut code [cell.Instr] = loop_program(ITERATIONS + core_id)
+        mut core cpu.Cpu = cpu.Cpu.boot(core_id, 16, (ITERATIONS + core_id) * 20)
+        mut status cpu.Status = cpu.Status.RUNNING
+        as_long_as status == cpu.Status.RUNNING {
+            status = core.step(code)
+        }
+        mut high, high_ok = cell.pop_last(cell.Cell, core.out, cast(0, cell.Cell))
+        mut low, low_ok = cell.pop_last(cell.Cell, core.out, cast(0, cell.Cell))
+        reports[core_id] = cast(low, i64) + cast(high, i64)
+        reads += core.ram.reads
+        writes += core.ram.writes
+        touched += core.ram.touched()
+        println("core ${core_id} status=${status} low=${cast(low, i64)} high=${cast(high, i64)} ok=${low_ok && high_ok} fault=${core.last_fault}")
     }
-    println("vm status=${status} out=${cast(core.out[0], i64)} reads=${core.ram.reads} writes=${core.ram.writes} fault=${core.last_fault}")
+    mut faulty [cell.Instr] = {
+        cell.Instr.make(cell.Op.PUSH, 9223372036854775807),
+        cell.Instr.make(cell.Op.PUSH, 4),
+        cell.Instr.make(cell.Op.MULHI),
+        cell.Instr.make(cell.Op.OUT),
+        cell.Instr.make(cell.Op.PUSH, 7),
+        cell.Instr.make(cell.Op.STORE, 99999),
+        cell.Instr.make(cell.Op.HALT)
+    }
+    mut bad cpu.Cpu = cpu.Cpu.boot(CORES, 16, 100)
+    mut bad_status cpu.Status = cpu.Status.RUNNING
+    as_long_as bad_status == cpu.Status.RUNNING {
+        bad_status = bad.step(faulty)
+    }
+    println("vm reports=${reports} reads=${reads} writes=${writes} touched=${touched} bad=${bad_status} fault=${bad.last_fault}")
 }

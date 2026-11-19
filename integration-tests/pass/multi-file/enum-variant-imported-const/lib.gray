@@ -1,0 +1,3 @@
+const BASE i64 = 10
+const NAMES [string, 2] = {"a", "b"}
+const WORD string = "w"

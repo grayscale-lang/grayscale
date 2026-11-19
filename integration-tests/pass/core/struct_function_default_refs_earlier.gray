@@ -1,0 +1,52 @@
+/*
+ * struct_function_default_refs_earlier.gray - A struct function parameter's
+ * default may name an earlier parameter, an earlier defaulted parameter that
+ * is itself omitted, or self, whichever way the function is called.
+ */
+
+const Box struct {
+    n i64
+    do size(self Box, a i64, b i64 = a + 1) -> i64 { return b + self.n }
+    do area(self Box, w i64 = 2, h i64 = w, total i64 = w * h) -> i64 { return total }
+    do own(self Box, b i64 = self.n) -> i64 { return b }
+    do via(self ^Box, b i64 = self.n + 1) -> i64 { return b }
+}
+
+do check(name string, ok bool, passed ^i64, failed ^i64) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed^ += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed^ += 1
+    }
+}
+
+do main() {
+    println("=== struct function defaults naming parameters ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    const box Box = Box{n: 1}
+    check("earlier parameter, value call", box.size(2) == 4, addr(passed), addr(failed))
+    check("earlier parameter, type call", Box.size(box, 2) == 4, addr(passed), addr(failed))
+    check("earlier parameter, named argument", box.size(a: 2) == 4, addr(passed), addr(failed))
+    check("omitted earlier defaulted parameter", box.area() == 4, addr(passed), addr(failed))
+    check("chain with first given", box.area(3) == 9, addr(passed), addr(failed))
+    check("self", box.own() == 1, addr(passed), addr(failed))
+
+    mut other Box = Box{n: 4}
+    check("self through a pointer receiver", other.via() == 5, addr(passed), addr(failed))
+
+    a = 5
+    check("caller variable shares the parameter's name", box.size(a) == 7, addr(passed), addr(failed))
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,9 @@
+import "./lib.gray"
+
+const Level enum {
+    LOW = lib.COUNT
+}
+
+do main() {
+    println("${cast(Level.LOW, i64)}")
+}

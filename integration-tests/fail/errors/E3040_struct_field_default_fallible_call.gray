@@ -1,0 +1,18 @@
+// expect-error: E3040
+// expect-error-count: 1
+
+do parse(s string) -> (i64, Error) {
+    if s == "" {
+        return 0, error(.Unknown, "e")
+    }
+    return 1, nil
+}
+
+const Cfg struct {
+    n i64 = parse("a")
+}
+
+do main() {
+    const c Cfg = Cfg{}
+    println("${c.n}")
+}

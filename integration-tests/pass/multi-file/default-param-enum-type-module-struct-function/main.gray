@@ -1,0 +1,29 @@
+import "./kind"
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut omitted kind.Instr = kind.Instr.make(kind.Op.ADD)
+    if omitted.arg == 0 && omitted.op == kind.Op.ADD {
+        println("  [PASS] omitted default with an enum parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] omitted default: arg ${omitted.arg}")
+        failed += 1
+    }
+
+    mut given kind.Instr = kind.Instr.make(kind.Op.PUSH, 7)
+    if given.arg == 7 && given.op == kind.Op.PUSH {
+        println("  [PASS] explicit argument with an enum parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit argument: arg ${given.arg}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -1,0 +1,8 @@
+const F enum {
+    X = 1 > 0
+    Y
+}
+
+do main() {
+    println("hi")
+}

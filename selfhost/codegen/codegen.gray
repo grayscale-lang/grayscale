@@ -2641,18 +2641,25 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
     for_each declared_param in declared_params {
         if declared_param.is_mutable { has_mutable_parameter = true }
     }
-    if has_mutable_parameter || node^.call^.function^.kind != ast.NodeKind.LABEL { uses_defaults = false }
+    if has_mutable_parameter { uses_defaults = false }
     if uses_defaults {
+        // each argument is evaluated once, in order, into a temporary before any
+        // parameter-named local exists: a caller variable may share a parameter's name
+        binding_id = next_id(generator)
+        mut temporaries = ""
+        mut named_bindings = ""
         mut piece_index i64 = 0
         for i in range(0, len(arguments)) {
             if i >= len(declared_params) || declared_params[i].is_type_param { continue }
             if !declared_params[i].is_mutable && piece_index < len(pieces) {
                 bound_type = ctype(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name))
-                default_bindings = "${default_bindings}${bound_type} ${declared_params[i].name} = ${pieces[piece_index]}; "
+                temporaries = "${temporaries}__auto_type _gray_bp${binding_id}_${i} = ${pieces[piece_index]}; "
+                named_bindings = "${named_bindings}${bound_type} ${declared_params[i].name} = _gray_bp${binding_id}_${i}; "
                 pieces[piece_index] = declared_params[i].name
             }
             piece_index = piece_index + 1
         }
+        default_bindings = "${temporaries}${named_bindings}"
     }
     // omitted trailing arguments take the parameter's default value
     for i in range(len(arguments), len(declared_params)) {
@@ -2662,8 +2669,15 @@ fn gen_declared_call(generator ^CodeGen, node ^ast.AstNode, name string, argumen
         // the caller is the frame running now.
         saved_target = generator^.default_target_name
         generator^.default_target_name = declared_runtime_name(generator, name)
-        arrays.append(pieces, gen_coerced(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name), declared_params[i].default_value))
+        default_piece = gen_coerced(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name), declared_params[i].default_value)
         generator^.default_target_name = saved_target
+        if uses_defaults {
+            // bound like a given argument, so a later default can name this parameter
+            bound_type = ctype(generator, ast.generic_bindings_substitute(callee_bindings, declared_params[i].type_name))
+            default_bindings = "${default_bindings}${bound_type} ${declared_params[i].name} = ${default_piece}; "
+            default_piece = declared_params[i].name
+        }
+        arrays.append(pieces, default_piece)
     }
     // an array or map element passed to a `&` parameter is lent as a local and stored back:
     // the callee may grow the container, which moves the slot
@@ -5903,7 +5917,7 @@ fn gen_enum_definition(generator ^CodeGen, node ^ast.AstNode) {
         for_each value in data^.values {
             // a variant without a value is its own name
             mut text = value.name
-            if value.value != nil { text = ast.ast_string_decode(value.value^.string_value) }
+            if value.value != nil && value.value^.kind == ast.NodeKind.STRING_VALUE { text = ast.ast_string_decode(value.value^.string_value) }
             emit_line(generator, "#define GrayEnum_${data^.name}_${value.name} ((GrayString){ ${c_quote(text)}, ${len(text)} })")
         }
         emit(generator, "\n")
@@ -6714,13 +6728,13 @@ fn gen_json_struct_helpers(generator ^CodeGen, statement ^ast.AstNode) -> string
         mut key = field.name
         if field.json_tag != "" { key = field.json_tag }
         field_type = eff(generator, field.type_name)
-        if field.type_name == "string" {
+        if field_type == "string" {
             text = "${text}${json_key_lookup(key)}      if (_v) { gray_json_check_field_quoting(&_q, _k, true, \"a string\", \"${file}\", ${line}); _r.${field.name} = *(GrayString *)_v; } }\n"
-        } or json_is_number(field.type_name) {
+        } or json_is_number(field_type) {
             text = "${text}${json_key_lookup(key)}      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a number\", \"${file}\", ${line}); gray_json_field_decode(*(GrayString *)_v, GRAY_ELEM_KIND_OF(${ctype(generator, field.type_name)}), &_r.${field.name}, \"${file}\", ${line}); } }\n"
-        } or field.type_name == "bool" {
+        } or field_type == "bool" {
             text = "${text}${json_key_lookup(key)}      if (_v) { gray_json_check_field_quoting(&_q, _k, false, \"a bool\", \"${file}\", ${line}); _r.${field.name} = gray_json_field_as_bool(*(GrayString *)_v, _k, \"${file}\", ${line}); } }\n"
-        } or json_field_is_composite(generator, field.type_name) {
+        } or json_field_is_composite(generator, field_type) {
             text = "${text}${json_key_lookup(key)}"
             if is_array_type(field_type) {
                 element_type = array_element_type(field_type)
@@ -6753,17 +6767,17 @@ fn gen_json_struct_helpers(generator ^CodeGen, statement ^ast.AstNode) -> string
         if index > 0 { fixed = fixed + JSON_SEPARATOR_LENGTH }
         fixed = fixed + JSON_KEY_DECORATION_LENGTH + len(key)
         is_number_enum = maps.contains_key(generator^.enums, field_type) && !is_string_enum(generator, field_type)
-        if is_number_enum { fixed = fixed + MAX_NUMBER_TEXT_LENGTH } or field.type_name == "bool" { fixed = fixed + JSON_FALSE_LENGTH }
+        if is_number_enum { fixed = fixed + MAX_NUMBER_TEXT_LENGTH } or field_type == "bool" { fixed = fixed + JSON_FALSE_LENGTH }
         index = index + 1
     }
     text = "${text}    size_t _need = ${fixed};\n"
     index = 0
     for_each field in struct_members {
         field_type = eff(generator, field.type_name)
-        is_string_valued = field.type_name == "string" || (maps.contains_key(generator^.enums, field_type) && is_string_enum(generator, field_type))
+        is_string_valued = field_type == "string" || (maps.contains_key(generator^.enums, field_type) && is_string_enum(generator, field_type))
         if is_string_valued {
             text = "${text}    _need += json_escaped_len(_s.${field.name});\n"
-        } or json_field_is_composite(generator, field.type_name) {
+        } or json_field_is_composite(generator, field_type) {
             if is_array_type(field_type) {
                 element_type = array_element_type(field_type)
                 if maps.contains_key(generator^.structs, eff(generator, element_type)) {
@@ -6782,7 +6796,7 @@ fn gen_json_struct_helpers(generator ^CodeGen, statement ^ast.AstNode) -> string
                 text = "${text}    GrayString _nt${index} = gray_json_encode_struct_${field_type}(arena, _s.${field.name});\n"
             }
             text = "${text}    _need += (size_t)_nt${index}.len;\n"
-        } or json_is_number(field.type_name) {
+        } or json_is_number(field_type) {
             text = "${text}    GrayString _nt${index} = gray_json_number_text(arena, GRAY_ELEM_KIND_OF(${ctype(generator, field.type_name)}), &_s.${field.name});\n    _need += (size_t)_nt${index}.len;\n"
         }
         index = index + 1
@@ -6795,15 +6809,15 @@ fn gen_json_struct_helpers(generator ^CodeGen, statement ^ast.AstNode) -> string
         field_type = eff(generator, field.type_name)
         if index > 0 { text = "${text}    _buf[_pos++] = ','; _buf[_pos++] = ' ';\n" }
         text = "${text}    _buf[_pos++] = '\"';\n    memcpy(_buf + _pos, \"${json_key_text(key)}\", ${len(key)}); _pos += ${len(key)};\n    _buf[_pos++] = '\"'; _buf[_pos++] = ':'; _buf[_pos++] = ' ';\n"
-        is_string_valued = field.type_name == "string" || (maps.contains_key(generator^.enums, field_type) && is_string_enum(generator, field_type))
+        is_string_valued = field_type == "string" || (maps.contains_key(generator^.enums, field_type) && is_string_enum(generator, field_type))
         is_number_enum = maps.contains_key(generator^.enums, field_type) && !is_string_enum(generator, field_type)
         if is_string_valued {
             text = "${text}    json_append_escaped(_buf, &_pos, _s.${field.name});\n"
         } or is_number_enum {
             text = "${text}    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%lld\", (long long)_s.${field.name});\n"
-        } or json_is_number(field.type_name) || json_field_is_composite(generator, field.type_name) {
+        } or json_is_number(field_type) || json_field_is_composite(generator, field_type) {
             text = "${text}    memcpy(_buf + _pos, _nt${index}.data, (size_t)_nt${index}.len); _pos += _nt${index}.len;\n"
-        } or field.type_name == "bool" {
+        } or field_type == "bool" {
             text = "${text}    { const char *_bv = _s.${field.name} ? \"true\" : \"false\"; int _bl = _s.${field.name} ? 4 : 5;\n      memcpy(_buf + _pos, _bv, (size_t)_bl); _pos += _bl; }\n"
         }
         index = index + 1

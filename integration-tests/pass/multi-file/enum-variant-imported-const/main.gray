@@ -1,0 +1,28 @@
+/*
+ * Test: an enum variant initialized from a const of an imported file takes
+ * that const's value, whether the const is a scalar, part of an expression,
+ * a string, or an element of a const array.
+ */
+import "./lib.gray"
+
+const Level enum {
+    LOW = lib.BASE
+    HIGH = lib.BASE + 1
+    TOP = lib.BASE * 2
+}
+
+const Name enum {
+    FIRST = lib.NAMES[0]
+    SECOND = lib.NAMES[1]
+    WORD = lib.WORD
+}
+
+do main() {
+    assert(cast(Level.LOW, i64) == 10, "scalar imported const")
+    assert(cast(Level.HIGH, i64) == 11, "imported const plus a literal")
+    assert(cast(Level.TOP, i64) == 20, "imported const times a literal")
+    assert(cast(Name.FIRST, string) == "a" && cast(Name.SECOND, string) == "b", "imported array elements")
+    assert(cast(Name.WORD, string) == "w", "imported string const")
+
+    println("ALL TESTS PASSED")
+}

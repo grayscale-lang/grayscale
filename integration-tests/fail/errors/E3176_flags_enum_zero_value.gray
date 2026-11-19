@@ -1,0 +1,12 @@
+// expect-error: E3176
+// expect-error-count: 1
+
+#flags
+const Perm enum {
+    A = 0
+    B
+}
+
+do main() {
+    println("${cast(Perm.B, i64)}")
+}

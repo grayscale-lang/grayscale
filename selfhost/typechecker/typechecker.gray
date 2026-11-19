@@ -613,10 +613,82 @@ fn enum_display_name_for(statement ^ast.AstNode) -> string {
     return statement^.enum_decl^.name
 }
 
+// The file-scope const named `name`, or nil: one declared in the same file as
+// `origin`, else an imported file's, which the resolver has renamed to a
+// module-qualified name no other declaration shares.
+fn find_file_scope_const(program ^ast.AstNode, origin ^ast.AstNode, name string) -> ^ast.AstNode {
+    mut imported ^ast.AstNode = nil
+    for_each statement in program^.program^.stmts {
+        if statement^.kind != ast.NodeKind.VAR_DECL { continue }
+        declaration = statement^.var_decl
+        if declaration^.is_mutable || declaration^.is_synthetic || declaration^.value == nil || declaration^.name != name { continue }
+        if statement^.tok.file == origin^.tok.file { return statement }
+        imported = statement
+    }
+    return imported
+}
+
+// Folds an enum variant initializer into a literal: a file-scope const's name,
+// an element of a const array literal, or integer arithmetic over consts. A C
+// enum constant cannot name a global, so the literal is what codegen emits.
+// Returns a string or integer literal, or nil when `node` does not reduce to one.
+fn fold_enum_variant_value(checker ^TypeChecker, program ^ast.AstNode, node ^ast.AstNode, depth i64) -> ^ast.AstNode {
+    if depth > 16 { return nil }
+    if node^.kind == ast.NodeKind.LABEL {
+        declaration = find_file_scope_const(program, node, node^.label^.value)
+        if declaration != nil && declaration^.var_decl^.value^.kind == ast.NodeKind.STRING_VALUE {
+            return declaration^.var_decl^.value
+        }
+    } or node^.kind == ast.NodeKind.INDEX_EXPR && node^.index_data^.left^.kind == ast.NodeKind.LABEL {
+        declaration = find_file_scope_const(program, node, node^.index_data^.left^.label^.value)
+        if declaration == nil || declaration^.var_decl^.value^.kind != ast.NodeKind.ARRAY_VALUE { return nil }
+        index_value, index_is_constant = folding.constant_fold(checker^.const_integers, node^.index_data^.index_expr)
+        if !index_is_constant || index_value.is_decimal { return nil }
+        index, index_fits = folding.literal_value_as_i64(index_value)
+        elements = declaration^.var_decl^.value^.array_value^.elements
+        if !index_fits || index < 0 || index >= len(elements) { return nil }
+        element = elements[index]
+        if element^.kind == ast.NodeKind.STRING_VALUE || folding.is_literal_expression(element) { return element }
+        return fold_enum_variant_value(checker, program, element, depth + 1)
+    }
+    if folding.is_literal_expression(node) { return nil }
+    folded, is_constant = folding.constant_fold(checker^.const_integers, node)
+    if !is_constant || folded.is_decimal || folded.is_too_large { return nil }
+    number, fits_i64 = folding.literal_value_as_i64(folded)
+    if !fits_i64 || number == -9223372036854775807 - 1 { return nil }
+    mut magnitude i64 = number
+    if number < 0 { magnitude = -number }
+    literal = ast.ast_alloc(ast.NodeKind.INT_VALUE, node^.tok)
+    literal^.int_value = new(ast.IntValueData)
+    literal^.int_value^.value = magnitude
+    literal^.int_value^.literal = "${magnitude}"
+    if number >= 0 { return literal }
+    negation = ast.ast_alloc(ast.NodeKind.PREFIX_EXPR, node^.tok)
+    negation^.prefix = new(ast.PrefixData)
+    negation^.prefix^.op = token.TokenKind.MINUS
+    negation^.prefix^.right = literal
+    return negation
+}
+
+// Replaces each variant initializer that names a const with its folded literal,
+// keeping the variant's own source position.
+fn fold_enum_variant_values(checker ^TypeChecker, program ^ast.AstNode, enum_node ^ast.AstNode) {
+    for_each variant in enum_node^.enum_decl^.values {
+        variant_value = variant.value
+        if variant_value == nil || variant_value^.kind == ast.NodeKind.STRING_VALUE { continue }
+        folded = fold_enum_variant_value(checker, program, variant_value, 0)
+        if folded == nil { continue }
+        position = variant_value^.tok
+        variant_value^ = folded^
+        variant_value^.tok = position
+    }
+}
+
 fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
     stmts = program^.program^.stmts
     for_each statement in stmts {
         if statement^.kind != ast.NodeKind.ENUM_DECL { continue }
+        fold_enum_variant_values(checker, program, statement)
 
         en = enum_display_name_for(statement)
         ed_name = statement^.enum_decl^.name
@@ -638,7 +710,7 @@ fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
             add_diagnostic(checker, "E3143", error_registry.registry_message_formatted("E3143", {en, "${len(values)}"}), file, line, col)
         }
         // A #flags variant with an explicit value must occupy exactly one usable bit.
-        // 0 is allowed as a "none" sentinel; a literal above INT64_MAX reaches the sign bit.
+        // 0 holds none, a string holds no bit, and a literal above INT64_MAX reaches the sign bit.
         if statement^.enum_decl^.is_flags {
             for_each flag_variant in values {
                 flag_value = flag_variant.value
@@ -646,12 +718,17 @@ fn register_decl_enums(checker ^TypeChecker, program ^ast.AstNode) {
                 is_negated = flag_value^.kind == ast.NodeKind.PREFIX_EXPR && flag_value^.prefix^.op == token.TokenKind.MINUS && flag_value^.prefix^.right^.kind == ast.NodeKind.INT_VALUE
                 mut flag_literal = flag_value
                 if is_negated { flag_literal = flag_value^.prefix^.right }
-                if flag_literal^.kind != ast.NodeKind.INT_VALUE { continue }
-                literal_value = flag_literal^.int_value^.value
-                is_single_bit = !is_negated && !flag_literal^.int_value^.overflow && (literal_value == 0 || (literal_value bit_and (literal_value - 1)) == 0)
-                if is_single_bit { continue }
-                mut shown = flag_literal^.int_value^.literal
-                if is_negated { shown = "-${shown}" }
+                if flag_literal^.kind != ast.NodeKind.INT_VALUE && flag_literal^.kind != ast.NodeKind.STRING_VALUE { continue }
+                mut shown = ""
+                if flag_literal^.kind == ast.NodeKind.STRING_VALUE {
+                    shown = "\"${flag_literal^.string_value^.value}\""
+                } otherwise {
+                    literal_value = flag_literal^.int_value^.value
+                    is_single_bit = !is_negated && !flag_literal^.int_value^.overflow && literal_value != 0 && (literal_value bit_and (literal_value - 1)) == 0
+                    if is_single_bit { continue }
+                    shown = flag_literal^.int_value^.literal
+                    if is_negated { shown = "-${shown}" }
+                }
                 add_diagnostic(checker, "E3176", error_registry.registry_message_formatted("E3176", {en, flag_variant.name, shown}), flag_value^.tok.file, flag_value^.tok.line, flag_value^.tok.col)
             }
         }
@@ -1905,6 +1982,19 @@ fn types_assignable(checker ^TypeChecker, dest ^types.GrayType, src ^types.GrayT
     return dest^.kind == src^.kind
 }
 
+// A file-scope variable gets a collision-proof C name in codegen; anything nearer is a local.
+fn mark_label_scope(checker ^TypeChecker, node ^ast.AstNode) {
+    mut declaration_scope = checker^.current_scope
+    as_long_as declaration_scope^.parent != nil && scope.scope_lookup_local(declaration_scope, node^.label^.value) == nil {
+        declaration_scope = declaration_scope^.parent
+    }
+    if declaration_scope^.parent == nil {
+        node^.label^.is_file_global_reference = true
+    } otherwise {
+        node^.label^.is_local_reference = true
+    }
+}
+
 fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     name = node^.label^.value
 
@@ -1917,16 +2007,7 @@ fn resolve_label(checker ^TypeChecker, node ^ast.AstNode) -> ^types.GrayType {
     symbol = scope.scope_lookup(checker^.current_scope, name)
     if symbol != nil && checker^.initialized_variable_name == name { checker^.is_initializer_reading_own_name = true }
     if symbol != nil {
-        // a file-scope variable gets a collision-proof C name in codegen; anything nearer is a local
-        mut declaration_scope = checker^.current_scope
-        as_long_as declaration_scope^.parent != nil && scope.scope_lookup_local(declaration_scope, name) == nil {
-            declaration_scope = declaration_scope^.parent
-        }
-        if declaration_scope^.parent == nil {
-            node^.label^.is_file_global_reference = true
-        } otherwise {
-            node^.label^.is_local_reference = true
-        }
+        mark_label_scope(checker, node)
     }
     if symbol != nil {
         symbol^.used = true
@@ -6574,9 +6655,14 @@ fn apply_call_parameter_write_effects(checker ^TypeChecker, node ^ast.AstNode) {
     }
     signature = resolve_call_signature(checker, node)
     if signature == nil || signature^.decl == nil { return }
+    arguments = node^.call^.args
+    // Instance dispatch passes a pointer receiver by address, which is the address of the
+    // imported module variable it is called on
+    if len(arguments) > 0 && len(signature^.param_types) > 0 && signature^.param_types[0]^.kind == types.TypeKind.POINTER && const_walk_expression_type(checker, arguments[0])^.kind != types.TypeKind.POINTER {
+        report_write_to_module_variable(checker, node, arguments[0])
+    }
     ensure_escape_summary(checker, signature)
     if signature^.writes_through_parameter == 0 { return }
-    arguments = node^.call^.args
     for index in range(0, len(signature^.param_types)) {
         if index >= len(arguments) || index >= MAX_TRACKED_PARAMETERS { break }
         if signature^.writes_through_parameter bit_and (1 bit_shift_left index) == 0 { continue }
@@ -7953,6 +8039,7 @@ fn resolve_call_expr_unchecked(checker ^TypeChecker, node ^ast.AstNode) -> ^type
                 if signature != nil && len(signature^.param_types) > 0 && signature^.param_types[0]^.name == struct_name {
                     result = check_call_against_sig(checker, node, fmt.sprintf("%s.%s", {struct_display_name(checker, struct_name), member}), signature, 1)
                     receiver = callee^.member^.object
+                    if receiver^.kind == ast.NodeKind.LABEL { mark_label_scope(checker, receiver) }
                     retarget_instance_call(node, receiver, struct_name, types.type_display_name(symbol^.sym_type))
                     check_mutable_receiver(checker, node, signature, symbol, receiver, struct_name, member)
                     return result
@@ -8796,6 +8883,44 @@ fn call_return_slots(checker ^TypeChecker, signature ^FuncSig, call ^ast.AstNode
 
 // True when a call appears anywhere inside `node`. Builtins that map directly to
 // C constructs (new, ref, len, ...) are not runtime calls.
+// The first file-scope variable `node` names, or "". An enum variant's value is
+// a C constant, which cannot read a global.
+fn expression_global_reference(node ^ast.AstNode) -> string {
+    if node == nil { return "" }
+    when node^.kind {
+        is ast.NodeKind.LABEL {
+            if node^.label^.is_file_global_reference { return node^.label^.value }
+            return ""
+        }
+        is ast.NodeKind.PREFIX_EXPR { return expression_global_reference(node^.prefix^.right) }
+        is ast.NodeKind.INFIX_EXPR {
+            left = expression_global_reference(node^.infix^.left)
+            if left != "" { return left }
+            return expression_global_reference(node^.infix^.right)
+        }
+        is ast.NodeKind.INDEX_EXPR {
+            left = expression_global_reference(node^.index_data^.left)
+            if left != "" { return left }
+            return expression_global_reference(node^.index_data^.index_expr)
+        }
+        is ast.NodeKind.MEMBER_EXPR { return expression_global_reference(node^.member^.object) }
+        is ast.NodeKind.CAST_EXPR { return expression_global_reference(node^.cast_data^.value) }
+        default { return "" }
+    }
+}
+
+// True when an enum variant's value is not an integer or string constant by its
+// form: a float, bool or nil literal, or an operator over strings.
+fn enum_variant_value_is_not_constant(node ^ast.AstNode) -> bool {
+    when node^.kind {
+        is ast.NodeKind.FLOAT_VALUE { return true }
+        is ast.NodeKind.BOOL_VALUE { return true }
+        is ast.NodeKind.NIL_VALUE { return true }
+        is ast.NodeKind.INFIX_EXPR { return node^.infix^.left^.resolved_type == "string" || node^.infix^.right^.resolved_type == "string" }
+        default { return false }
+    }
+}
+
 fn expression_contains_call(node ^ast.AstNode) -> bool {
     if node == nil { return false }
     when node^.kind {
@@ -9055,7 +9180,13 @@ fn resolve_array_size_text(checker ^TypeChecker, type_text string, file string, 
         }
         return type_text
     }
-    index = folding.constant_table_find(checker^.const_integers, size_text)
+    // A `module.NAME` is registered under the module's own spelling of the name
+    mut lookup_name = size_text
+    dot = strings.index_of(size_text, ".")
+    if dot > 0 {
+        lookup_name = "${resolve_import_alias(checker, strings.slice(size_text, 0, dot))}_${strings.slice(size_text, dot + 1, len(size_text))}"
+    }
+    index = folding.constant_table_find(checker^.const_integers, lookup_name)
     if index < 0 {
         add_diagnostic(checker, "E3125", error_registry.registry_message_formatted("E3125", {size_text}), file, line, col)
         return type_text
@@ -11099,9 +11230,6 @@ fn check_function_declaration_bound(checker ^TypeChecker, node ^ast.AstNode, bin
                 }
             }
         }
-        scope.scope_define(function_scope, p.name, parameter_type, p.is_mutable)
-        parameter_symbol = scope.scope_lookup_local(function_scope, p.name)
-        if parameter_symbol != nil { parameter_symbol^.param_line = node^.tok.line }
         // A default value must fit its parameter (checked once, in the unbound pass)
         if p.default_value != nil && p.type_name != "" && binding_text == "" {
             default_type = check_expression_as(checker, p.default_value, parameter_type)
@@ -11110,6 +11238,9 @@ fn check_function_declaration_bound(checker ^TypeChecker, node ^ast.AstNode, bin
                 add_diagnostic(checker, "E5062", error_registry.registry_message_formatted("E5062", {p.name, p.type_name, shown_type(checker, default_type)}), p.default_value^.tok.file, p.default_value^.tok.line, p.default_value^.tok.col)
             }
         }
+        scope.scope_define(function_scope, p.name, parameter_type, p.is_mutable)
+        parameter_symbol = scope.scope_lookup_local(function_scope, p.name)
+        if parameter_symbol != nil { parameter_symbol^.param_line = node^.tok.line }
         // The parameter shadows a global constant or variable
         if binding_text == "" && p.name != "_" {
             global_symbol = scope.scope_lookup(outer, p.name)
@@ -11672,10 +11803,7 @@ fn check_when_statement(checker ^TypeChecker, node ^ast.AstNode) {
             if subject_valid && !is_range_case && when_type^.kind != types.TypeKind.UNKNOWN && case_type^.kind != types.TypeKind.UNKNOWN {
                 // An enum against a plain integer is a mismatch, as with ==
                 enum_vs_int = (when_type^.kind == types.TypeKind.ENUM && is_int_kind(case_type^.kind)) || (is_int_kind(when_type^.kind) && case_type^.kind == types.TypeKind.ENUM)
-                mut compatible = !enum_vs_int && types_assignable(checker, when_type, case_type)
-                if !enum_vs_int && when_type^.kind == types.TypeKind.ENUM && case_type^.kind == types.TypeKind.STRING && enum_is_string(checker, when_type^.name) {
-                    compatible = true
-                }
+                compatible = !enum_vs_int && types_assignable(checker, when_type, case_type)
                 if !compatible {
                     message = fmt.sprintf("type mismatch in 'when'; comparing '%s' with '%s'", {shown_type(checker, when_type), shown_type(checker, case_type)})
                     add_diagnostic(checker, "E3018", message, value_node^.tok.file, value_node^.tok.line, value_node^.tok.col)
@@ -11867,7 +11995,7 @@ fn json_field_type_supported(checker ^TypeChecker, type_name string) -> bool {
         return field_type^.element_type != "" && !strings.contains(field_type^.element_type, "[") && json_field_type_supported(checker, field_type^.element_type)
     }
     if field_type^.kind == types.TypeKind.INT || field_type^.kind == types.TypeKind.UINT || field_type^.kind == types.TypeKind.FLOAT { return true }
-    if type_name == "string" || type_name == "bool" { return true }
+    if field_type^.kind == types.TypeKind.STRING || field_type^.kind == types.TypeKind.BOOL { return true }
     if field_type^.kind == types.TypeKind.STRUCT {
         info = find_struct(checker, field_type^.name)
         return info != nil && info^.is_json
@@ -11952,6 +12080,7 @@ fn check_struct_declaration(checker ^TypeChecker, node ^ast.AstNode) {
             if field_default == nil || field_index >= len(declared_info^.field_types) { continue }
             field_type = declared_info^.field_types[field_index]
             default_type = check_expression_as(checker, field_default, field_type)
+            reject_multi_return_in_single_position(checker, field_default)
             if default_type^.kind != types.TypeKind.UNKNOWN && field_type^.kind != types.TypeKind.UNKNOWN && !types_assignable(checker, field_type, default_type) && default_type^.kind != types.TypeKind.NIL_TYPE {
                 add_diagnostic(checker, "E3175", error_registry.registry_message_formatted("E3175", {sd^.struct_fields[field_index].name, shown_type(checker, field_type), shown_type(checker, default_type)}), field_default^.tok.file, field_default^.tok.line, field_default^.tok.col)
             }
@@ -12110,10 +12239,22 @@ fn check_statement_kind(checker ^TypeChecker, node ^ast.AstNode) {
                 if folding.is_literal_expression(variant_value) && !folding.literal_expression_is_decimal(variant_value) {
                     check_expression_as(checker, variant_value, checker^.pool^.type_i64)
                 } otherwise {
-                    resolve_expression(checker, variant_value)
+                    variant_type = resolve_expression(checker, variant_value)
+                    if (variant_type^.kind == types.TypeKind.BOOL || variant_type^.kind == types.TypeKind.CHAR || variant_type^.kind == types.TypeKind.ENUM) && !enum_variant_value_is_not_constant(variant_value) {
+                        add_diagnostic(checker, "E3001", error_registry.registry_message_formatted("E3001", {types.type_display_name(variant_type), "i64"}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                        continue
+                    }
                 }
                 if expression_contains_call(variant_value) {
                     add_diagnostic(checker, "E5040", error_registry.registry_message("E5040"), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                }
+                if enum_variant_value_is_not_constant(variant_value) {
+                    add_diagnostic(checker, "E5073", error_registry.registry_message_formatted("E5073", {variant.name}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
+                    continue
+                }
+                global_name = expression_global_reference(variant_value)
+                if global_name != "" {
+                    add_diagnostic(checker, "E5072", error_registry.registry_message_formatted("E5072", {variant.name, global_name}), variant_value^.tok.file, variant_value^.tok.line, variant_value^.tok.col)
                 }
             }
             // A tagged variant's payload type must name a type, at any depth

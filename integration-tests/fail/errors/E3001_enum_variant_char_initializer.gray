@@ -1,0 +1,8 @@
+const H enum {
+    C = 'c'
+    D
+}
+
+do main() {
+    println("hi")
+}
