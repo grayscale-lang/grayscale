@@ -24,6 +24,7 @@ static TypeTable *typecheck_test_input(const char *input) {
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
     TypeChecker *checker =typechecker_create(diagnostics, "test.gray");
+    typechecker_add_file_module(checker, "test.gray", NULL, true);
     typechecker_check(checker, program);
     return typechecker_get_table(checker);
 }
@@ -39,6 +40,7 @@ static GrayType *expression_type(const char *expr_code) {
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
     TypeChecker *checker =typechecker_create(diagnostics, "test.gray");
+    typechecker_add_file_module(checker, "test.gray", NULL, true);
     typechecker_check(checker, program);
     TypeTable *table =typechecker_get_table(checker);
 
@@ -316,6 +318,7 @@ static DiagnosticList *typecheck_diagnostics(const char *input) {
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
     TypeChecker *checker =typechecker_create(diagnostics, "test.gray");
+    typechecker_add_file_module(checker, "test.gray", NULL, true);
     typechecker_check(checker, program);
     return diagnostics;
 }
@@ -328,6 +331,7 @@ static DiagnosticList *typecheck_diagnostics_test_mode(const char *input) {
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
     TypeChecker *checker = typechecker_create(diagnostics, "test.gray");
+    typechecker_add_file_module(checker, "test.gray", NULL, true);
     typechecker_set_test_mode(checker, true);
     typechecker_check(checker, program);
     return diagnostics;
@@ -2822,6 +2826,7 @@ static bool program_emits_code(const DiagnosticProgram *program) {
     AstNode *tree = parser_parse_program(parser);
     if (!diagnostic_has_errors(program_diagnostics)) {
         TypeChecker *checker = typechecker_create(program_diagnostics, program->name);
+        typechecker_add_file_module(checker, program->name, NULL, true);
         typechecker_check(checker, tree);
     }
     bool found = false;
