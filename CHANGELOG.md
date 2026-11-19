@@ -1,5 +1,12 @@
 # Changelog
 
+## experimental-20261119-build7 (2026-11-19)
+
+### Performance
+
+* perf(driver): compile large programs as several C files in parallel (#3520)
+* perf(selfhost): scan generated text once per piece instead of once per identifier (#3518)
+
 ## experimental-20261119-build6 (2026-11-19)
 
 ### Bug Fixes
