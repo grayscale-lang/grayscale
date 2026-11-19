@@ -9,7 +9,7 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
-import @io, @path, @os, @strings, @fmt, @arrays, @maps, @time
+import @io, @path, @os, @strings, @fmt, @arrays, @maps, @time, @threads
 import "../ast/ast"
 import "../lexer/lexer"
 import "./format"
@@ -38,6 +38,12 @@ const DECIMAL_BASE i64 = 10
 const MIN_COMMAND_LINE_LENGTH i64 = 2
 const DEFINE_FLAG_PREFIX string = "--define="
 const ARENA_LIMIT_FLAG_PREFIX string = "--arena-limit="
+const UNITS_FLAG_PREFIX string = "--units="
+// The most C files one program is split into.
+const MAXIMUM_UNIT_COUNT i64 = 64
+// A program whose C code is smaller than this many bytes is compiled as one file; a unit holds at least MINIMUM_UNIT_C_SIZE.
+const SPLIT_MINIMUM_C_SIZE i64 = 6000000
+const MINIMUM_UNIT_C_SIZE i64 = 750000
 // The prefix of a path written relative to the current directory.
 const CURRENT_DIRECTORY_PREFIX string = "./"
 const GRAY_EXTENSION string = ".gray"
@@ -85,6 +91,8 @@ const Options struct {
     arena_limit i64
     // A command given with --cc, used in place of the detected C compiler
     cc_override string
+    // How many C files the program is split into; 0 lets the driver choose
+    unit_count i64
     // Arguments after `--`, given to the program a run starts
     program_arguments [string]
 }
@@ -108,6 +116,7 @@ fn default_options() -> Options {
         test_mode: false,
         arena_limit: 0,
         cc_override: "",
+        unit_count: 0,
         program_arguments: {},
     }
 }
@@ -129,6 +138,7 @@ fn print_usage() {
     eprintln("  --quiet         Suppress all warnings")
     eprintln("  --quiet W1001   Suppress specific warnings (comma-separated)")
     eprintln("  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)")
+    eprintln("  --units=<count> Split the generated C into <count> files compiled in parallel")
     eprintln("  --define=NAME=VALUE   Override the #define constant NAME (repeatable)")
     eprintln("  --no-color      Disable colored output")
     eprintln("  --test          Build a test runner from #test functions (used by 'gray test')")
@@ -250,6 +260,17 @@ fn parse_args() -> Options {
                 exit(1)
             }
             opts.arena_limit = limit
+            argument_index = argument_index + 1
+            continue
+        }
+        if strings.starts_with(argument, UNITS_FLAG_PREFIX) {
+            units_text = strings.slice(argument, len(UNITS_FLAG_PREFIX), len(argument))
+            units, is_valid_units = parse_arena_limit(units_text)
+            if !is_valid_units || units > MAXIMUM_UNIT_COUNT {
+                eprintln("gray: invalid --units '${units_text}': expected a number from 1 to ${MAXIMUM_UNIT_COUNT}")
+                exit(1)
+            }
+            opts.unit_count = units
             argument_index = argument_index + 1
             continue
         }
@@ -1419,8 +1440,10 @@ fn main() {
         }
     }
     tinycc bool = ccompile.is_tinycc(c_compiler)
+    mut program_c string = c_source
     if tinycc {
-        _, lowered_write_err = io.write_file(c_path, ccompile.lower_auto_type(c_source))
+        program_c = ccompile.lower_auto_type(c_source)
+        _, lowered_write_err = io.write_file(c_path, program_c)
         if lowered_write_err != nil { exit(1) }
     }
 
@@ -1466,38 +1489,46 @@ fn main() {
     for_each flag in cinterop.local_header_flags() {
         if tinycc && flag == "-iquote" { arrays.append(compiler_arguments, "-I") } otherwise { arrays.append(compiler_arguments, flag) }
     }
-    for_each flag in {"-o", output_path, c_path} { arrays.append(compiler_arguments, flag) }
+    // What follows the program's own C: the runtime and the link flags
+    mut tail_arguments [string] = {}
     if has_archive {
-        arrays.append(compiler_arguments, archive_path)
+        arrays.append(tail_arguments, archive_path)
     } otherwise {
-        for_each runtime_source in ccompile.runtime_sources() { arrays.append(compiler_arguments, ccompile.join_path(runtime_directory, runtime_source)) }
+        for_each runtime_source in ccompile.runtime_sources() { arrays.append(tail_arguments, ccompile.join_path(runtime_directory, runtime_source)) }
         // The SQLite amalgamation is by far the slowest file to compile, and TinyCC's Mach-O linker
         // rejects it: those compilers include it only for a program that uses it
         skips_unused_sqlite bool = tinycc || ccompile.cannot_link_archive(c_compiler, is_command)
         has_vendor bool = io.file_exists(ccompile.join_path(runtime_directory, "vendor/sqlite3.c")) && (!skips_unused_sqlite || strings.contains(c_source, "#include \"sqlite.h\""))
         for_each stdlib_source in ccompile.stdlib_sources() {
             if !has_vendor && (stdlib_source == "stdlib/sqlite.c" || stdlib_source == "vendor/sqlite3.c") { continue }
-            arrays.append(compiler_arguments, ccompile.join_path(runtime_directory, stdlib_source))
+            arrays.append(tail_arguments, ccompile.join_path(runtime_directory, stdlib_source))
         }
     }
     // Drop the sections nothing references; Apple ld and GNU ld spell it differently
     if !tinycc {
-        if os.current_os() == os.MAC_OS { arrays.append(compiler_arguments, "-Wl,-dead_strip") } otherwise { arrays.append(compiler_arguments, "-Wl,--gc-sections") }
+        if os.current_os() == os.MAC_OS { arrays.append(tail_arguments, "-Wl,-dead_strip") } otherwise { arrays.append(tail_arguments, "-Wl,--gc-sections") }
     }
-    arrays.append(compiler_arguments, "-lm")
-    arrays.append(compiler_arguments, "-lpthread")
-    if !tinycc && os.current_os() == os.MAC_OS { arrays.append(compiler_arguments, "-Wl,-w") }
-
-    if opts.verbose { eprintln("gray: ${strings.join(arrays.concat({compiler_words[0]}, compiler_arguments), " ")}") }
+    arrays.append(tail_arguments, "-lm")
+    arrays.append(tail_arguments, "-lpthread")
+    if !tinycc && os.current_os() == os.MAC_OS { arrays.append(tail_arguments, "-Wl,-w") }
 
     // The compiler's own text is shown only when the build fails or under -v
     mut compiler_status i64 = 1
-    compile_result, compile_error = os.exec(compiler_words[0], compiler_arguments)
-    if compile_error != nil {
-        eprintln("gray: could not run the C compiler '${compiler_words[0]}'")
+    unit_count = chosen_unit_count(opts.unit_count, program_c, tinycc)
+    unit_sources = ccompile.split_c_units(program_c, unit_count)
+    if len(unit_sources) > 1 {
+        compiler_status = compile_units(compiler_words[0], compiler_arguments, tail_arguments, unit_sources, c_path, output_path, opts.verbose)
     } otherwise {
-        compiler_status = compile_result.exit_code
-        if compiler_status != 0 || opts.verbose { eprint(compile_result.stderr) }
+        for_each flag in {"-o", output_path, c_path} { arrays.append(compiler_arguments, flag) }
+        for_each flag in tail_arguments { arrays.append(compiler_arguments, flag) }
+        if opts.verbose { eprintln("gray: ${strings.join(arrays.concat({compiler_words[0]}, compiler_arguments), " ")}") }
+        compile_result, compile_error = os.exec(compiler_words[0], compiler_arguments)
+        if compile_error != nil {
+            eprintln("gray: could not run the C compiler '${compiler_words[0]}'")
+        } otherwise {
+            compiler_status = compile_result.exit_code
+            if compiler_status != 0 || opts.verbose { eprint(compile_result.stderr) }
+        }
     }
     c_compiler_end_time i64 = time.now_ms()
 
@@ -1622,4 +1653,95 @@ fn detect_c_compiler() -> string {
         if found_candidate { return candidate }
     }
     return ""
+}
+
+// The compile command, flags and per-unit paths the threads that compile the units share. Each
+// thread writes only its own slot of the statuses.
+mut unit_compile_command string = ""
+mut unit_compile_flags [string] = {}
+mut unit_source_paths [string] = {}
+mut unit_object_paths [string] = {}
+mut unit_statuses [i64] = {}
+
+fn compile_one_unit(unit_index i64) {
+    unit_arguments = arrays.concat(unit_compile_flags, {"-c", "-o", unit_object_paths[unit_index], unit_source_paths[unit_index]})
+    unit_result, unit_error = os.exec(unit_compile_command, unit_arguments)
+    if unit_error != nil {
+        unit_statuses[unit_index] = 1
+    } otherwise {
+        unit_statuses[unit_index] = unit_result.exit_code
+    }
+}
+
+// Compiles each unit on its own thread, then links the objects with the runtime. Returns the
+// status of the first step that failed, or 0.
+fn compile_units(command string, flags [string], tail_arguments [string], unit_sources [string], c_path string, output_path string, is_verbose bool) -> i64 {
+    path_stem = strings.remove_suffix(c_path, ".c")
+    unit_compile_command = command
+    unit_compile_flags = flags
+    unit_source_paths = {}
+    unit_object_paths = {}
+    unit_statuses = {}
+    for unit_index in range(0, len(unit_sources)) {
+        source_path = "${path_stem}_${unit_index}.c"
+        _, write_error = io.write_file(source_path, unit_sources[unit_index])
+        if write_error != nil {
+            eprintln("gray: cannot write '${source_path}'")
+            return 1
+        }
+        arrays.append(unit_source_paths, source_path)
+        arrays.append(unit_object_paths, "${path_stem}_${unit_index}.o")
+        arrays.append(unit_statuses, 0)
+    }
+    if is_verbose {
+        for unit_index in range(0, len(unit_sources)) {
+            eprintln("gray: ${command} ${strings.join(arrays.concat(flags, {"-c", "-o", unit_object_paths[unit_index], unit_source_paths[unit_index]}), " ")}")
+        }
+    }
+    mut compile_threads [threads.Thread] = {}
+    unsafe {
+        for unit_index in range(0, len(unit_sources)) { arrays.append(compile_threads, threads.spawn_arg(()compile_one_unit, unit_index)) }
+        for_each compile_thread in compile_threads { threads.join(compile_thread) }
+    }
+
+    mut status i64 = 0
+    // A failed unit is compiled again here so the compiler's text reaches the user
+    for unit_index in range(0, len(unit_sources)) {
+        if unit_statuses[unit_index] == 0 { continue }
+        status = 1
+        again_result, again_error = os.exec(command, arrays.concat(flags, {"-c", "-o", unit_object_paths[unit_index], unit_source_paths[unit_index]}))
+        if again_error == nil { eprint(again_result.stderr) }
+    }
+    if status == 0 {
+        mut link_arguments [string] = arrays.concat(flags, {"-o", output_path})
+        for_each object_path in unit_object_paths { arrays.append(link_arguments, object_path) }
+        for_each tail_argument in tail_arguments { arrays.append(link_arguments, tail_argument) }
+        if is_verbose { eprintln("gray: ${command} ${strings.join(link_arguments, " ")}") }
+        link_result, link_error = os.exec(command, link_arguments)
+        if link_error != nil {
+            eprintln("gray: could not run the C compiler '${command}'")
+            status = 1
+        } otherwise {
+            status = link_result.exit_code
+            if status != 0 || is_verbose { eprint(link_result.stderr) }
+        }
+    }
+    for_each source_path in unit_source_paths { remove_file(source_path) }
+    for_each object_path in unit_object_paths { remove_file(object_path) }
+    return status
+}
+
+// How many C files to split the program into. A program is split only when its C is large
+// enough that the C compiler's time outweighs starting a compiler per unit, and never under
+// TinyCC, which compiles the whole program in well under a second. --units overrides the rule.
+fn chosen_unit_count(requested i64, program_c string, tinycc bool) -> i64 {
+    if os.current_os() == os.WINDOWS { return 1 }
+    if requested > 0 { return requested }
+    if tinycc { return 1 }
+    c_size = ccompile.c_code_size(program_c)
+    if c_size < SPLIT_MINIMUM_C_SIZE { return 1 }
+    mut unit_count i64 = c_size / MINIMUM_UNIT_C_SIZE
+    if unit_count > os.cpu_count() { unit_count = os.cpu_count() }
+    if unit_count > MAXIMUM_UNIT_COUNT { unit_count = MAXIMUM_UNIT_COUNT }
+    return unit_count
 }

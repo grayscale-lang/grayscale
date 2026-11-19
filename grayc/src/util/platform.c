@@ -15,6 +15,11 @@
 #define _XOPEN_SOURCE 700
 #endif
 
+#if defined(__APPLE__)
+/* sysconf(_SC_NPROCESSORS_ONLN) is hidden from a strict POSIX build on macOS. */
+#define _DARWIN_C_SOURCE
+#endif
+
 #include "platform.h"
 #include "xalloc.h"
 
@@ -480,19 +485,21 @@ static int spawn_child(const char *const *argv, bool search_path, int *terminati
 
 #else
 
-static int spawn_child(const char *const *argv, bool search_path, int *termination_signal) {
-    pid_t process_id = 0;
+static int spawn_child_start(const char *const *argv, bool search_path, pid_t *process_id) {
     /* posix_spawn takes a non-const argv purely for historical reasons; it does
      * not modify the strings. */
     char *const *spawn_arguments = (char *const *)argv;
 
-    int spawn_error = search_path ? posix_spawnp(&process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ)
-                          : posix_spawn(&process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ);
+    int spawn_error = search_path ? posix_spawnp(process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ)
+                          : posix_spawn(process_id, argv[0], NULL, NULL, spawn_arguments, gray_environ);
     if (spawn_error != 0) {
         errno = spawn_error;
         return -1;
     }
+    return 0;
+}
 
+static int spawn_child_wait(pid_t process_id, int *termination_signal) {
     int status = 0;
     while (waitpid(process_id, &status, 0) < 0) {
         if (errno != EINTR) return -1;
@@ -503,6 +510,12 @@ static int spawn_child(const char *const *argv, bool search_path, int *terminati
         return 128 + WTERMSIG(status);
     }
     return -1;
+}
+
+static int spawn_child(const char *const *argv, bool search_path, int *termination_signal) {
+    pid_t process_id = 0;
+    if (spawn_child_start(argv, search_path, &process_id) != 0) return -1;
+    return spawn_child_wait(process_id, termination_signal);
 }
 
 #endif
@@ -607,6 +620,64 @@ int gray_spawn_capture_stderr(const char *const *argv, FILE *capture) {
     }
     gray_sys_close(null_device);
     return exit_code;
+}
+
+#if GRAY_OS_WINDOWS
+/* Windows spawns synchronously, so the "process" is the finished exit code. */
+int gray_spawn_capture_stderr_start(const char *const *argv, FILE *capture, intptr_t *process) {
+    int exit_code = gray_spawn_capture_stderr(argv, capture);
+    *process = exit_code;
+    return exit_code < 0 ? -1 : 0;
+}
+
+int gray_spawn_wait(intptr_t process) {
+    return (int)process;
+}
+#else
+int gray_spawn_capture_stderr_start(const char *const *argv, FILE *capture, intptr_t *process) {
+    int null_device = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
+    if (null_device < 0) return -1;
+
+    fflush(stdout);
+    fflush(stderr);
+    fflush(capture);
+    int capture_descriptor = fileno(capture);
+
+    int saved_stdout = gray_sys_dup(1);
+    int saved_stderr = gray_sys_dup(2);
+    gray_sys_dup2(null_device, 1);
+    gray_sys_dup2(capture_descriptor, 2);
+
+    pid_t process_id = 0;
+    int start_status = spawn_child_start(argv, true, &process_id);
+
+    if (saved_stdout >= 0) {
+        gray_sys_dup2(saved_stdout, 1);
+        gray_sys_close(saved_stdout);
+    }
+    if (saved_stderr >= 0) {
+        gray_sys_dup2(saved_stderr, 2);
+        gray_sys_close(saved_stderr);
+    }
+    gray_sys_close(null_device);
+    *process = (intptr_t)process_id;
+    return start_status;
+}
+
+int gray_spawn_wait(intptr_t process) {
+    return spawn_child_wait((pid_t)process, NULL);
+}
+#endif
+
+int gray_cpu_count(void) {
+#if GRAY_OS_WINDOWS
+    SYSTEM_INFO system_information;
+    GetSystemInfo(&system_information);
+    return system_information.dwNumberOfProcessors < 1 ? 1 : (int)system_information.dwNumberOfProcessors;
+#else
+    long cores = sysconf(_SC_NPROCESSORS_ONLN);
+    return cores < 1 ? 1 : (int)cores;
+#endif
 }
 
 /* --- Toolchain discovery --- */

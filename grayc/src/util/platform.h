@@ -20,6 +20,7 @@
 #define GRAYC_PLATFORM_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -179,6 +180,18 @@ int gray_spawn_capture_stdout(const char *const *argv, FILE *capture);
  * diagnostic text (e.g. "undeclared identifier") rather than a dump it
  * writes to stdout. */
 int gray_spawn_capture_stderr(const char *const *argv, FILE *capture);
+
+/* Starts the child like gray_spawn_capture_stderr but does not wait: `*process`
+ * is the handle to give gray_spawn_wait. Returns -1 if it could not be started.
+ * Start every child before the next call that redirects stderr. */
+int gray_spawn_capture_stderr_start(const char *const *argv, FILE *capture, intptr_t *process);
+
+/* Waits for a child started by gray_spawn_capture_stderr_start and returns its
+ * exit code, or -1 if it cannot be waited for. */
+int gray_spawn_wait(intptr_t process);
+
+/* The number of logical CPUs available to this process; 1 when unknown. */
+int gray_cpu_count(void);
 
 /* --- Toolchain discovery --- */
 

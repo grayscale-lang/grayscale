@@ -500,3 +500,157 @@ fn version_arguments(words [string]) -> [string] {
     arrays.append(arguments, "--version")
     return arguments
 }
+
+// --- Splitting the generated C into units that compile in parallel ---
+
+// How a line of the generated C is shared among the units.
+const LINE_COMMON i64 = 0
+const LINE_PROTOTYPE i64 = 1
+const LINE_FUNCTION_FIRST i64 = 2
+const LINE_FUNCTION_BODY i64 = 3
+const LINE_UNIT_ZERO i64 = 4
+const LINE_GLOBAL i64 = 5
+const STATIC_PREFIX string = "static "
+const EXTERN_PREFIX string = "extern "
+const MAIN_PREFIX string = "int main("
+const TABLE_PREFIX string = "const "
+const GLOBAL_INITIALIZER string = " = "
+// The first characters of a top-level line that is not a variable definition.
+const NOT_A_GLOBAL_PREFIXES [string, 11] = {"#", " ", "/", "}", "typedef", "struct", "enum", "union", "extern", "static", "const"}
+
+fn is_global_definition(line string) -> bool {
+    if line == "" || !strings.ends_with(line, ";") { return false }
+    for_each prefix in NOT_A_GLOBAL_PREFIXES { if strings.starts_with(line, prefix) { return false } }
+    if strings.starts_with(line, MAIN_PREFIX) { return false }
+    return true
+}
+
+fn global_declarator(line string) -> string {
+    initializer_start = strings.index_of(line, GLOBAL_INITIALIZER)
+    if initializer_start >= 0 { return strings.slice(line, 0, initializer_start) }
+    return strings.slice(line, 0, len(line) - 1)
+}
+
+// The generated C as `unit_count` sources, each holding about the same bytes of function
+// bodies. The unit that holds `main` also defines every global and the signature table; the
+// others declare the globals `extern`. Every function loses `static` so the units can call
+// one another. A shape this does not know returns the program whole.
+fn split_c_units(source string, unit_count i64) -> [string] {
+    if unit_count <= 1 { return {source} }
+    lines = strings.split(source, "\n")
+    line_count = len(lines)
+    mut line_kinds [i64] = {}
+    mut line_owners [i64] = {}
+    mut block_sizes [i64] = {}
+    mut block_starts [i64] = {}
+    mut total_size i64 = 0
+    mut inside_function = false
+    mut inside_main = false
+    mut inside_table = false
+    mut block_size i64 = 0
+    for line_index in range(0, line_count) {
+        line = lines[line_index]
+        mut kind i64 = LINE_COMMON
+        if inside_function {
+            kind = LINE_FUNCTION_BODY
+            block_size = block_size + len(line) + 1
+            if line == "}" {
+                inside_function = false
+                arrays.append(block_sizes, block_size)
+                total_size = total_size + block_size
+            }
+        } or inside_main {
+            kind = LINE_UNIT_ZERO
+            if line == "}" { inside_main = false }
+        } or inside_table {
+            kind = LINE_UNIT_ZERO
+            if strings.ends_with(line, ";") { inside_table = false }
+        } or strings.starts_with(line, STATIC_PREFIX) {
+            if strings.ends_with(line, ") {") {
+                kind = LINE_FUNCTION_FIRST
+                inside_function = true
+                block_size = len(line) + 1
+                arrays.append(block_starts, line_index)
+            } or strings.ends_with(line, ");") {
+                kind = LINE_PROTOTYPE
+            } otherwise {
+                return {source}
+            }
+        } or strings.starts_with(line, MAIN_PREFIX) {
+            kind = LINE_UNIT_ZERO
+            inside_main = true
+        } or strings.starts_with(line, TABLE_PREFIX) {
+            kind = LINE_UNIT_ZERO
+            inside_table = !strings.ends_with(line, ";")
+        } or is_global_definition(line) {
+            if strings.contains(global_declarator(line), "(") {
+                kind = LINE_COMMON
+            } otherwise {
+                kind = LINE_GLOBAL
+            }
+        } or strings.contains(line, GLOBAL_INITIALIZER) && !strings.starts_with(line, "#") && !strings.starts_with(line, " ") && !strings.ends_with(line, ";") && !strings.ends_with(line, "{") && !strings.ends_with(line, "\\") && !strings.starts_with(line, "/") && !strings.starts_with(line, "}") {
+            return {source}
+        }
+        arrays.append(line_kinds, kind)
+        arrays.append(line_owners, 0)
+    }
+    if inside_function || inside_main || inside_table || total_size == 0 { return {source} }
+
+    // Each function goes to the unit its first byte falls in
+    mut size_before i64 = 0
+    for block_index in range(0, len(block_starts)) {
+        owner = size_before * unit_count / total_size
+        mut line_index = block_starts[block_index]
+        line_owners[line_index] = owner
+        line_index = line_index + 1
+        as_long_as line_kinds[line_index] == LINE_FUNCTION_BODY {
+            line_owners[line_index] = owner
+            line_index = line_index + 1
+        }
+        size_before = size_before + block_sizes[block_index]
+    }
+
+    mut units [string] = {}
+    for unit_index in range(0, unit_count) {
+        mut unit_lines [string] = {}
+        for line_index in range(0, line_count) {
+            line = lines[line_index]
+            kind = line_kinds[line_index]
+            if kind == LINE_COMMON {
+                arrays.append(unit_lines, line)
+            } or kind == LINE_PROTOTYPE {
+                arrays.append(unit_lines, strings.remove_prefix(line, STATIC_PREFIX))
+            } or kind == LINE_FUNCTION_FIRST {
+                if line_owners[line_index] == unit_index { arrays.append(unit_lines, strings.remove_prefix(line, STATIC_PREFIX)) }
+            } or kind == LINE_FUNCTION_BODY {
+                if line_owners[line_index] == unit_index { arrays.append(unit_lines, line) }
+            } or kind == LINE_UNIT_ZERO {
+                if unit_index == 0 { arrays.append(unit_lines, line) }
+            } otherwise {
+                if unit_index == 0 {
+                    arrays.append(unit_lines, line)
+                } otherwise {
+                    arrays.append(unit_lines, "${EXTERN_PREFIX}${global_declarator(line)};")
+                }
+            }
+        }
+        arrays.append(units, strings.join(unit_lines, "\n"))
+    }
+    return units
+}
+
+// The bytes of generated C that are code. The #line directives repeat the file's path for every
+// function and statement, so a long path must not make a small program look large.
+fn c_code_size(source string) -> i64 {
+    total = len(source)
+    mut code_size i64 = 0
+    mut line_start i64 = 0
+    as_long_as line_start < total {
+        mut line_end i64 = line_start
+        as_long_as line_end < total && source[line_end] != '\n' { line_end = line_end + 1 }
+        is_directive = line_end - line_start > 1 && source[line_start] == '#' && source[line_start + 1] == 'l'
+        if !is_directive { code_size = code_size + line_end - line_start + 1 }
+        line_start = line_end + 1
+    }
+    return code_size
+}

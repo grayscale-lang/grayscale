@@ -7748,17 +7748,9 @@ fn text_after_is_http_field(text string, start i64) -> bool {
 
 // A field name spelled by code written by hand (the escape of an Error out of a
 // function) is not one that was sanitized.
-fn word_follows_runtime_snippet(text string, start i64) -> bool {
+fn word_follows_runtime_snippet(text string, start i64, in_result_struct bool) -> bool {
     // the field names of the result struct that arrays.find writes by hand
-    mut struct_open i64 = -1
-    mut search_from i64 = 0
-    as_long_as search_from < start {
-        found = strings.index_of(strings.slice(text, search_from, start), "(struct { ")
-        if found < 0 { break }
-        struct_open = search_from + found
-        search_from = struct_open + 1
-    }
-    if struct_open >= 0 && !strings.contains(strings.slice(text, struct_open, start), "}){") { return true }
+    if in_result_struct { return true }
     mut window_start i64 = start - ACCESS_WINDOW_LENGTH
     if window_start < 0 { window_start = 0 }
     window = strings.slice(text, window_start, start)
@@ -7782,6 +7774,25 @@ fn word_follows_runtime_snippet(text string, start i64) -> bool {
     return false
 }
 
+// The first index at or after from where pattern starts in text, or -1.
+fn find_text_from(text string, from i64, pattern string) -> i64 {
+    if from == 0 { return strings.index_of(text, pattern) }
+    last = len(text) - len(pattern)
+    mut at i64 = from
+    as_long_as at <= last {
+        mut matched = true
+        for offset in range(0, len(pattern)) {
+            if text[at + offset] != pattern[offset] {
+                matched = false
+                break
+            }
+        }
+        if matched { return at }
+        at = at + 1
+    }
+    return -1
+}
+
 fn scan_identifiers(generator ^CodeGen, text string, &ordered [string], &seen map[string:bool], &global_used map[string:bool]) {
     mut ignored_word = ""
     for skip_index in range(0, len(generator^.index_skip_texts)) {
@@ -7790,6 +7801,14 @@ fn scan_identifiers(generator ^CodeGen, text string, &ordered [string], &seen ma
     // the index of a for_each is written as it is; it is sanitized where the body names it
     if strings.starts_with(text, "for (int32_t ") { return }
     total = len(text)
+    // the last "(struct { " that ends before a word, and the first "}){" after it
+    mut struct_open i64 = -1
+    mut next_struct i64 = find_text_from(text, 0, "(struct { ")
+    mut struct_close i64 = -1
+    mut closes_left = true
+    // where the first "GRAY_ARRAY_GET_AT(" starts; -2 until it is looked for
+    mut first_get_at i64 = -2
+    mut has_json_parse i64 = -1
     mut position i64 = 0
     as_long_as position < total {
         current = text[position]
@@ -7813,11 +7832,27 @@ fn scan_identifiers(generator ^CodeGen, text string, &ordered [string], &seen ma
         if word == "_" { continue }
         if start >= 1 && text[start - 1] == '#' { continue }
         if start >= len(RETURN_FIELD_PREFIX) && strings.slice(text, start - len(RETURN_FIELD_PREFIX), start) == RETURN_FIELD_PREFIX { continue }
-        if word_follows_runtime_snippet(text, start) { continue }
-        if word == "text" && strings.contains(text, "gray_json_parse_") { continue }
+        as_long_as next_struct >= 0 && next_struct + len("(struct { ") <= start {
+            struct_open = next_struct
+            next_struct = find_text_from(text, struct_open + 1, "(struct { ")
+            if closes_left && struct_close < struct_open {
+                struct_close = find_text_from(text, struct_open, "}){")
+                if struct_close < 0 { closes_left = false }
+            }
+        }
+        in_result_struct = struct_open >= 0 && !(struct_close >= 0 && struct_close + len("}){") <= start)
+        if word_follows_runtime_snippet(text, start, in_result_struct) { continue }
+        if word == "text" {
+            if has_json_parse < 0 { has_json_parse = find_text_from(text, 0, "gray_json_parse_") }
+            if has_json_parse >= 0 { continue }
+        }
         // The name of an argument or field temporary is written where it is declared; it is sanitized where it is used
         if (strings.starts_with(word, "_gray_na") || strings.starts_with(word, "_gray_sf")) && start >= len(AUTO_TYPE_DECLARATION) && strings.slice(text, start - len(AUTO_TYPE_DECLARATION), start) == AUTO_TYPE_DECLARATION { continue }
-        at_ignored_index = ignored_word != "" && word == ignored_word && strings.contains(strings.slice(text, 0, start), "GRAY_ARRAY_GET_AT(")
+        mut at_ignored_index = false
+        if ignored_word != "" && word == ignored_word {
+            if first_get_at == -2 { first_get_at = find_text_from(text, 0, "GRAY_ARRAY_GET_AT(") }
+            at_ignored_index = first_get_at >= 0 && first_get_at + len("GRAY_ARRAY_GET_AT(") <= start
+        }
         if at_ignored_index && !maps.contains_key(seen, word) { arrays.append(generator^.index_only_words, word) }
         if !at_ignored_index && arrays.contains(generator^.index_only_words, word) {
             mut still_only [string] = {}

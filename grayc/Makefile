@@ -52,6 +52,7 @@ SRC = src/main.c \
       src/util/error.c \
       src/util/error_codes.c \
       src/util/platform.c \
+      src/util/c_split.c \
       src/lexer/token.c \
       src/lexer/lexer.c \
       src/parser/ast.c \
