@@ -27,6 +27,7 @@
 #include "util/error.h"
 #include "util/error_codes.h"
 #include "util/platform.h"
+#include "util/c_split.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "parser/imports.h"
@@ -70,6 +71,7 @@ static void print_usage(void) {
     fprintf(stderr, "  --quiet         Suppress all warnings\n");
     fprintf(stderr, "  --quiet W1001   Suppress specific warnings (comma-separated)\n");
     fprintf(stderr, "  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)\n");
+    fprintf(stderr, "  --units=<count> Split the generated C into <count> files compiled in parallel\n");
     fprintf(stderr, "  --define=NAME=VALUE   Override the #define constant NAME (repeatable)\n");
     fprintf(stderr, "  --no-color      Disable colored output\n");
     fprintf(stderr, "  --test          Build a test runner from #test functions (used by 'gray test')\n");
@@ -2032,6 +2034,7 @@ typedef struct {
     bool is_test_mode;               /* --test: emit a test runner instead of calling main() */
     bool is_verbose;
     bool should_show_time;
+    int unit_count;  /* C files the program is split into; 0 lets grayc choose */
     bool is_color_disabled;
     bool should_emit_debug_symbols;
     bool is_quiet_all;
@@ -2127,6 +2130,17 @@ static ArgumentsStatus parse_arguments(int argc, char **argv, CompilerOptions *o
             options->is_test_mode = true;
             continue;
         }
+        if (strncmp(argv[i], "--units=", 8) == 0) {
+            const char *units_text = argv[i] + 8;
+            char *units_end = NULL;
+            long units = strtol(units_text, &units_end, 10);
+            if (!isdigit((unsigned char)units_text[0]) || *units_end != '\0' || units < 1 || units > MAX_C_UNITS) {
+                fprintf(stderr, "gray: invalid --units '%s': expected a number from 1 to %d\n", units_text, MAX_C_UNITS);
+                return ARGUMENTS_ERROR;
+            }
+            options->unit_count = (int)units;
+            continue;
+        }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
             const char *limit_text = argv[i] + 14;
             char *limit_end = NULL;
@@ -2186,6 +2200,130 @@ static char *directory_entry_source(CompilerOptions *options) {
     options->input_file = strdup(resolved);
     options->is_directory_input = true;
     return source;
+}
+
+/* The bytes of generated C that are code. The #line directives repeat the file's path for every
+ * function and statement, so a long path must not make a small program look large. */
+static size_t c_code_size(const char *source) {
+    size_t code_size = 0;
+    const char *line_start = source;
+    while (*line_start) {
+        const char *line_end = strchr(line_start, '\n');
+        size_t length = line_end ? (size_t)(line_end - line_start) : strlen(line_start);
+        bool is_directive = length > 1 && line_start[0] == '#' && line_start[1] == 'l';
+        if (!is_directive) code_size += length + 1;
+        if (!line_end) break;
+        line_start = line_end + 1;
+    }
+    return code_size;
+}
+
+/* A program whose C code is smaller than this many bytes is compiled as one file; a unit holds
+ * at least MINIMUM_UNIT_C_SIZE. */
+#define SPLIT_MINIMUM_C_SIZE 6000000
+#define MINIMUM_UNIT_C_SIZE 750000
+
+/* How many C files to split the program into. A program is split only when its C is large
+ * enough that the C compiler's time outweighs starting a compiler per unit, and never under
+ * TinyCC, which compiles the whole program in well under a second. --units overrides the rule. */
+static int chosen_unit_count(int requested, const char *program_c, bool is_tinycc) {
+#if GRAY_OS_WINDOWS
+    (void)requested; (void)program_c; (void)is_tinycc;
+    return 1;
+#else
+    if (requested > 0) return requested;
+    if (is_tinycc) return 1;
+    size_t c_size = c_code_size(program_c);
+    if (c_size < SPLIT_MINIMUM_C_SIZE) return 1;
+    long units = (long)(c_size / MINIMUM_UNIT_C_SIZE);
+    if (units > gray_cpu_count()) units = gray_cpu_count();
+    if (units > MAX_C_UNITS) units = MAX_C_UNITS;
+    return units < 1 ? 1 : (int)units;
+#endif
+}
+
+/* Builds the program from `unit_sources` that compile at the same time, then links the objects
+ * with the runtime. `base_arguments` is the compiler command and its flags, `tail_arguments`
+ * what follows the program's own C on the link line (the runtime and the link flags). The
+ * compiler's text goes to `errors`. Returns the status of the first step that failed, or 0. */
+static int compile_in_units(char **unit_sources, int unit_count, const char *const *base_arguments,
+                            int base_count, const char *const *tail_arguments, int tail_count,
+                            const char *c_file_path, const char *output_file, bool is_verbose, FILE *errors) {
+    char source_paths[MAX_C_UNITS][PATH_BUFFER_SIZE];
+    char object_paths[MAX_C_UNITS][PATH_BUFFER_SIZE];
+    const char *compile_arguments[MAX_C_UNITS][MAX_C_COMPILER_ARGUMENTS];
+    FILE *unit_errors[MAX_C_UNITS] = {0};
+    intptr_t processes[MAX_C_UNITS];
+    int statuses[MAX_C_UNITS];
+    int path_stem_length = (int)strlen(c_file_path);
+    if (path_stem_length > 2 && strcmp(c_file_path + path_stem_length - 2, ".c") == 0) path_stem_length -= 2;
+
+    int status = 0;
+    for (int unit = 0; unit < unit_count; unit++) {
+        snprintf(source_paths[unit], sizeof(source_paths[unit]), "%.*s_%d.c", path_stem_length, c_file_path, unit);
+        snprintf(object_paths[unit], sizeof(object_paths[unit]), "%.*s_%d.o", path_stem_length, c_file_path, unit);
+        if (!write_file(source_paths[unit], unit_sources[unit])) status = 1;
+        int argument_count = 0;
+        for (int index = 0; index < base_count; index++) compile_arguments[unit][argument_count++] = base_arguments[index];
+        compile_arguments[unit][argument_count++] = "-c";
+        compile_arguments[unit][argument_count++] = "-o";
+        compile_arguments[unit][argument_count++] = object_paths[unit];
+        compile_arguments[unit][argument_count++] = source_paths[unit];
+        compile_arguments[unit][argument_count] = NULL;
+        unit_errors[unit] = gray_tmpfile();
+        statuses[unit] = 1;
+        processes[unit] = 0;
+    }
+    if (status == 0) {
+        for (int unit = 0; unit < unit_count; unit++) {
+            if (is_verbose) {
+                fprintf(stderr, "gray: ");
+                for (int index = 0; compile_arguments[unit][index]; index++)
+                    fprintf(stderr, "%s%s", index ? " " : "", compile_arguments[unit][index]);
+                fprintf(stderr, "\n");
+            }
+            if (!unit_errors[unit] ||
+                gray_spawn_capture_stderr_start(compile_arguments[unit], unit_errors[unit], &processes[unit]) != 0)
+                statuses[unit] = -1;
+        }
+        for (int unit = 0; unit < unit_count; unit++) {
+            if (statuses[unit] != -1) statuses[unit] = gray_spawn_wait(processes[unit]);
+            if (statuses[unit] != 0) status = 1;
+        }
+    }
+    for (int unit = 0; unit < unit_count; unit++) {
+        if (!unit_errors[unit]) continue;
+        if (errors && (statuses[unit] != 0 || is_verbose)) {
+            char text[4096];
+            size_t bytes_read;
+            rewind(unit_errors[unit]);
+            while ((bytes_read = fread(text, 1, sizeof(text), unit_errors[unit])) > 0) fwrite(text, 1, bytes_read, errors);
+        }
+        fclose(unit_errors[unit]);
+    }
+
+    if (status == 0) {
+        const char *link_arguments[MAX_C_COMPILER_ARGUMENTS + MAX_C_UNITS];
+        int argument_count = 0;
+        for (int index = 0; index < base_count; index++) link_arguments[argument_count++] = base_arguments[index];
+        link_arguments[argument_count++] = "-o";
+        link_arguments[argument_count++] = output_file;
+        for (int unit = 0; unit < unit_count; unit++) link_arguments[argument_count++] = object_paths[unit];
+        for (int index = 0; index < tail_count; index++) link_arguments[argument_count++] = tail_arguments[index];
+        link_arguments[argument_count] = NULL;
+        if (is_verbose) {
+            fprintf(stderr, "gray: ");
+            for (int index = 0; link_arguments[index]; index++) fprintf(stderr, "%s%s", index ? " " : "", link_arguments[index]);
+            fprintf(stderr, "\n");
+        }
+        status = errors ? gray_spawn_capture_stderr(link_arguments, errors) : gray_spawn_path(link_arguments);
+        if (status < 0) status = 1;
+    }
+    for (int unit = 0; unit < unit_count; unit++) {
+        gray_remove_file(source_paths[unit]);
+        gray_remove_file(object_paths[unit]);
+    }
+    return status;
 }
 
 int main(int argc, char **argv) {
@@ -2751,9 +2889,11 @@ int main(int argc, char **argv) {
     /* Local C headers ("./x.h") are written relative to the .gray source, not
      * the temp .c handed to the compiler. */
     add_local_c_header_dirs(&c_compiler_arguments, arena, program, options.input_file);
+    const int base_argument_count = c_compiler_arguments.count;
     argument_vector_push(&c_compiler_arguments, "-o");
     argument_vector_push(&c_compiler_arguments, options.output_file);
     argument_vector_push(&c_compiler_arguments, c_file_path);
+    const int tail_argument_start = c_compiler_arguments.count;
 
     if (has_archive) {
         argument_vector_push(&c_compiler_arguments, lib_path);
@@ -2818,7 +2958,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (options.is_verbose) {
+    /* A large program is split so the units compile on every core at once. */
+    char *lowered_source = is_tinycc ? lower_auto_type(c_source) : NULL;
+    const char *program_c = lowered_source ? lowered_source : c_source;
+    int unit_count = chosen_unit_count(options.unit_count, program_c, is_tinycc);
+    char **unit_sources = unit_count > 1 ? split_c_units(program_c, unit_count) : NULL;
+    free(lowered_source);
+
+    if (options.is_verbose && !unit_sources) {
         fprintf(stderr, "gray: ");
         argument_vector_print(&c_compiler_arguments, stderr);
     }
@@ -2828,8 +2975,18 @@ int main(int argc, char **argv) {
      * are shown only under --verbose. A failed build still shows everything
      * the compiler said. */
     FILE *c_compiler_errors = gray_tmpfile();
-    int compiler_status = c_compiler_errors ? gray_spawn_capture_stderr(c_compiler_arguments.values, c_compiler_errors)
-                     : gray_spawn_path(c_compiler_arguments.values);
+    int compiler_status;
+    if (unit_sources) {
+        compiler_status = compile_in_units(unit_sources, unit_count, c_compiler_arguments.values, base_argument_count,
+                                           c_compiler_arguments.values + tail_argument_start,
+                                           c_compiler_arguments.count - tail_argument_start, c_file_path,
+                                           options.output_file, options.is_verbose, c_compiler_errors);
+        for (int unit = 0; unit < unit_count; unit++) free(unit_sources[unit]);
+        free(unit_sources);
+    } else {
+        compiler_status = c_compiler_errors ? gray_spawn_capture_stderr(c_compiler_arguments.values, c_compiler_errors)
+                         : gray_spawn_path(c_compiler_arguments.values);
+    }
     if (compiler_status < 0) {
         fprintf(stderr, "gray: could not run the C compiler '%s'\n", c_compiler_arguments.values[0]);
         compiler_status = 1;
