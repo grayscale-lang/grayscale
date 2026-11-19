@@ -15,6 +15,7 @@ const Status enum {
 }
 
 const Cpu struct {
+    id i64
     stack [cell.Cell]
     ram memory.Memory
     pc cell.Slot
@@ -23,8 +24,8 @@ const Cpu struct {
     out [cell.Cell]
     last_fault string
 
-    do boot(limit i64, budget i64) -> Cpu {
-        return Cpu{ram: memory.Memory.create(limit), budget: budget}
+    do boot(id i64, limit i64, budget i64) -> Cpu {
+        return Cpu{id: id, ram: memory.Memory.create(limit), budget: budget}
     }
 
     do push(&cpu Cpu, value cell.Cell) {
@@ -33,7 +34,7 @@ const Cpu struct {
 
     do pop(&cpu Cpu) -> (cell.Cell, Error) {
         if len(cpu.stack) == 0 {
-            return cast(0, cell.Cell), error(.STACK_EMPTY, "pc ${cpu.pc}")
+            return cast(0, cell.Cell), error(.STACK_EMPTY, "core ${cpu.id} pc ${cpu.pc}")
         }
         return arrays.remove_last(cpu.stack), nil
     }
@@ -59,7 +60,6 @@ const Cpu struct {
         }
         mut inst cell.Instr = code[index]
         cpu.pc += 1
-        #strict
         when inst.op {
             is .PUSH { cpu.push(inst.arg) }
             is .DUP {
@@ -88,6 +88,26 @@ const Cpu struct {
                     return cpu.status
                 }
                 unsafe { cpu.push(cast(wrap_mult(cast(a, i64), cast(b, i64)), cell.Cell)) }
+            }
+            is .MULHI {
+                mut b, e1 = cpu.pop()
+                mut a, e2 = cpu.pop()
+                if e1 != nil || e2 != nil {
+                    cpu.fail(error(.STACK_EMPTY, "mulhi"))
+                    return cpu.status
+                }
+                mut wide u128 = cast(cast(a, i64), u128) * cast(cast(b, i64), u128)
+                cpu.push(cast(cast(wide bit_shift_right 64, i64), cell.Cell))
+            }
+            is .SWAP {
+                mut b, e1 = cpu.pop()
+                mut a, e2 = cpu.pop()
+                if e1 != nil || e2 != nil {
+                    cpu.fail(error(.STACK_EMPTY, "swap"))
+                    return cpu.status
+                }
+                cpu.push(b)
+                cpu.push(a)
             }
             is .STORE {
                 mut value, err = cpu.pop()
@@ -131,6 +151,7 @@ const Cpu struct {
                 arrays.append(cpu.out, value)
             }
             is .HALT { cpu.status = Status.HALTED }
+            default { cpu.fail(error(.BAD_OPCODE, "op")) }
         }
         return cpu.status
     }
