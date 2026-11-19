@@ -9760,7 +9760,14 @@ static void emit_call_binding_defaults(CodeGen *codegen, AstNode *node, AstNode 
         if (parameter->is_type_parameter) continue;
         bool is_provided = (instance && i == 0) || i - offset < node->data.call.argument_count;
         if (!is_provided && !parameter->default_value) continue;
+        /* The parameter's type is spelled in the callee's file, so it
+         * resolves against the callee's module, not the caller's. */
+        const char *caller_module = codegen->current_module;
+        const char *caller_file = codegen->current_file;
+        codegen_enter_node(codegen, function);
         const char *c_type = parameter->type_name ? gray_type_to_c_codegen(codegen, parameter->type_name) : "int64_t";
+        codegen->current_module = caller_module;
+        codegen->current_file = caller_file;
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(parameter->name));
         if (is_provided) emit_formatted(codegen, "_gray_bp%d_%d", temporary_id, i);
         else emit_parameter_default_value(codegen, function, parameter);
