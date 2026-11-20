@@ -1,0 +1,14 @@
+import @strings
+
+const Holder struct {
+    b Builder
+}
+
+do add(h Holder) {
+    strings.builder_append(h.b, "x")
+}
+
+do main() {
+    mut h Holder = Holder{b: strings.builder()}
+    add(h)
+}

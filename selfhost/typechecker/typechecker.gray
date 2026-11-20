@@ -6468,12 +6468,7 @@ fn check_stdlib_mutation(checker ^TypeChecker, node ^ast.AstNode, signature ^std
     } or signature^.module == "strings" {
         if name == "builder_reserve" || name == "builder_append" || name == "builder_append_char" || name == "builder_append_bytes" || name == "builder_append_i64" || name == "builder_append_line" || name == "builder_clear" {
             report_temporary_for_stdlib_mutable_parameter(checker, first_argument, "b", "strings", name)
-            if first_argument^.kind == ast.NodeKind.LABEL {
-                symbol = scope.scope_lookup(checker^.current_scope, first_argument^.label^.value)
-                if symbol != nil && !symbol^.mutable {
-                    add_diagnostic(checker, "E5007", error_registry.registry_message_formatted("E5007", {"string builder", first_argument^.label^.value}), node^.tok.file, node^.tok.line, node^.tok.col)
-                }
-            }
+            report_write_to_const_container(checker, node, first_argument, "string builder")
         }
     }
 }
