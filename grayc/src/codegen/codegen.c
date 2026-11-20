@@ -6284,6 +6284,11 @@ static void emit_value_print(CodeGen *codegen, const char *c_expression, GrayTyp
                 snprintf(field_expression, sizeof(field_expression), "(%s).%s", c_expression, source_location_names[i]);
                 emit_value_print(codegen, field_expression, type_from_name(source_location_types[i]), stream, true);
             }
+        } else if (struct_name && strcmp(struct_name, "Builder") == 0) {
+            /* A builder handle has no declared fields; show what it holds. */
+            emit_indent(codegen);
+            emit_formatted(codegen, "gray_out_printf(%s, \"\\\"%%.*s\\\"\", (%s) ? (int)(%s)->len : 0, (%s) ? (%s)->data : \"\");\n",
+                   stream, c_expression, c_expression, c_expression, c_expression);
         }
 
         emit_value_print_depth--;

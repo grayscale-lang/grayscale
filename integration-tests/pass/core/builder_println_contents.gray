@@ -1,0 +1,22 @@
+import @strings
+
+const Holder struct {
+    b Builder
+    n i64
+}
+
+do main() {
+    mut passed i64 = 0
+
+    mut b Builder = strings.builder()
+    strings.builder_append(b, "ab")
+    println(b)
+    passed += 1
+
+    mut h Holder = Holder{b: b, n: 1}
+    println(h)
+    passed += 1
+
+    println("passed: ${passed}, failed: 0")
+    println("ALL TESTS PASSED")
+}

@@ -2344,6 +2344,9 @@ fn struct_print(generator ^CodeGen, value string, type_name string, stream strin
     } or type_name == "SourceLocation" {
         names = {"file", "line", "column"}
         field_types = {"string", "i64", "i64"}
+    } or type_name == "Builder" {
+        _ = arrays.remove_last(generator^.printing)
+        return "gray_out_printf(${stream}, \"Builder{\\\"%.*s\\\"}\", (${value}) ? (int)(${value})->len : 0, (${value}) ? (${value})->data : \"\");\n"
     }
     mut text = "gray_out_printf(${stream}, \"${display_type_name(generator, type_name)}{\");\n"
     for i in range(0, len(names)) {
