@@ -8213,13 +8213,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             node->data.call.argument_count > 0) {
             AstNode *first_argument_node = node->data.call.arguments[0];
             report_temporary_for_stdlib_mutable_parameter(checker, first_argument_node, "b", "strings", member_function_name);
-            if (first_argument_node->kind == NODE_LABEL) {
-                Symbol *symbol = scope_lookup(checker->current_scope, first_argument_node->data.label.value);
-                if (symbol && !symbol->is_mutable) {
-                    NODE_ERROR_FORMATTED(checker, node, "E5007",
-                        "string builder", first_argument_node->data.label.value);
-                }
-            }
+            report_write_to_const_container(checker, node, first_argument_node, "string builder");
         }
     } else if (strcmp(module_name, "threads") == 0) {
         if ((strcmp(member_function_name, "spawn") == 0 || strcmp(member_function_name, "spawn_arg") == 0) &&
