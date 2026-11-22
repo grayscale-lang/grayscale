@@ -1,5 +1,12 @@
 # Changelog
 
+## experimental-20261122-build8 (2026-11-22)
+
+### Bug Fixes
+
+* fix(codegen): print a Builder's contents instead of Builder{} (#3526)
+* fix(typechecker): enforce Builder mutability through struct fields (#3524)
+
 ## experimental-20261119-build7 (2026-11-19)
 
 ### Performance
